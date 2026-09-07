@@ -21,7 +21,7 @@ async function testSanitizedContext() {
 }
 
 async function testAnalyzeAndIdempotency() {
-  let aiCalls = 0, creates = 0, stored = null;
+  let aiCalls = 0, creates = 0, updates = 0, stored = null;
   const deps = {
     WorkspaceConfig: { findOne: () => query({ socialAi: { analysisEnabled: true, confidenceThreshold: .75 } }) },
     ConversationThread: { findOne: () => query({ _id: "thread", channel: "facebook", status: "open", priority: "normal", contactIds: ["contact"], metadata: { interactionType: "comment", contentId: "post-1" } }) },
@@ -31,14 +31,17 @@ async function testAnalyzeAndIdempotency() {
     SocialAiAnalysis: {
       findOne: () => query(stored),
       create: async values => { creates += 1; stored = { _id: "analysis", ...values, save: async () => stored }; return stored; },
+      findOneAndUpdate: async (_filter, update) => { updates += 1; stored = { ...stored, ...update.$set, save: async () => stored }; return stored; },
     },
     agentExecutionService: { runAgent: async request => { aiCalls += 1; const serialized = JSON.stringify(request); assert(!serialized.includes("accessToken")); assert(serialized.includes("multifamily")); return { output: { intent: "buying_intent", confidence: .91, sentiment: "positive", leadPotential: "high", qualificationSignals: ["first deal"], observedEvidence: ["wants help buying"], inference: ["may need coaching"], recommendedAction: "Review and qualify", suggestedReply: "Thanks — would you like the program details?", requiresHuman: true, reason: "Strong explicit intent" } }; } },
     CrmActivity: {},
   };
   const first = await service.analyze({ workspaceId: "ws", userId: "user", auth: auth("ws"), threadId: "thread", action: "identify_intent", forceAi: true }, deps);
   const second = await service.analyze({ workspaceId: "ws", userId: "user", auth: auth("ws"), threadId: "thread", action: "identify_intent", forceAi: true }, deps);
+  const regenerated = await service.analyze({ workspaceId: "ws", userId: "user", auth: auth("ws"), threadId: "thread", action: "identify_intent", forceAi: true, forceRegenerate: true }, deps);
   assert.equal(first.analysis.intent, "buying_intent"); assert.equal(first.analysis.requiresHuman, true);
-  assert.equal(second.reused, true); assert.equal(aiCalls, 1); assert.equal(creates, 1);
+  assert.equal(second.reused, true); assert.equal(regenerated.reused, false);
+  assert.equal(aiCalls, 2); assert.equal(creates, 1); assert.equal(updates, 1);
   await assert.rejects(() => service.analyze({ workspaceId: "other", auth: auth("ws"), threadId: "thread" }, deps), /Social access/);
 }
 

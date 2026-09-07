@@ -348,6 +348,7 @@ router.post(
       threadId: req.params.id,
       action: req.body.action,
       extraInstruction: req.body.extraInstruction,
+      forceRegenerate: req.body.forceRegenerate === true,
       forceAi: true,
     });
     res.json(result);

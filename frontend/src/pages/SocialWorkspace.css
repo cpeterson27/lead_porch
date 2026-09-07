@@ -478,12 +478,16 @@
   gap: 8px;
   font-size: 0.75rem;
   font-weight: 600;
+  min-height: 16px;
+  line-height: 1.2;
 }
 
 .social-composer-dock input[type="checkbox"] {
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 16px !important;
+  height: 16px !important;
+  min-height: 16px !important;
+  max-height: 16px !important;
   flex: 0 0 16px;
   margin: 0;
   padding: 0;

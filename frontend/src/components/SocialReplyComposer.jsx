@@ -24,21 +24,23 @@ export default function SocialReplyComposer({
   const [analysis, setAnalysis] = useState(initialAnalysis),
     [aiBusy, setAiBusy] = useState(""),
     [aiError, setAiError] = useState("");
-  const ask = async (action) => {
+  const ask = async (action, forceRegenerate = false) => {
     if (aiBusy) return;
     setAiBusy(action);
     setAiError("");
     try {
       const result = await mutateSocialWorkspace(
         `inbox/${thread._id}/ai-assist`,
-        { action },
+        { action, forceRegenerate },
       );
       setAnalysis(result.analysis);
       if (result.analysis?.suggestedReply)
         setBody(result.analysis.suggestedReply);
     } catch (err) {
       setAiError(
-        err.response?.data?.error ||
+        err.response?.status === 429
+          ? "OpenAI credits are empty. Add API credits to generate Social Agent and Jarvis responses."
+          : err.response?.data?.error ||
           "Social Agent could not prepare assistance.",
       );
     } finally {
@@ -60,9 +62,13 @@ export default function SocialReplyComposer({
             type="button"
             key={key}
             disabled={Boolean(aiBusy)}
-            onClick={() => ask(key)}
+            onClick={() => ask(key, key === "suggest_reply" && Boolean(analysis?.suggestedReply))}
           >
-            {aiBusy === key ? "Working…" : label}
+            {aiBusy === key
+              ? "Working…"
+              : key === "suggest_reply" && analysis?.suggestedReply
+                ? "Generate another"
+                : label}
           </button>
         ))}
       </div>
