@@ -230,6 +230,20 @@ connectDatabase(mongoUri)
       });
     });
 
+    // Every route above throws plain Error objects with an intentional,
+    // user-facing message (e.g. "Meta free-form replies require a customer
+    // message within the last 24 hours"). Without this handler those errors
+    // fell through to Express's default HTML error page, so the frontend
+    // never saw the real reason and always showed its generic fallback text
+    // — true for every route in the app, not just this one.
+    app.use("/api", (err, req, res, next) => {
+      if (res.headersSent) return next(err);
+      console.error(`[API error] ${req.method} ${req.originalUrl}:`, err);
+      res.status(err.statusCode || err.status || 400).json({
+        error: err.message || "Something went wrong. Try again.",
+      });
+    });
+
     // Serve the built frontend's hashed JS/CSS/image assets as-is with
     // long-lived caching (safe: Vite fingerprints the filename on every
     // content change). index.html is deliberately excluded here — it must
