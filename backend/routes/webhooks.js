@@ -42,7 +42,14 @@ router.post(["/meta", "/instagram"], async (req, res) => {
   const channel = req.path === "/instagram" ? "instagram" : "meta";
   const entryCount = req.body?.entry?.length || 0;
   console.log(`[Meta webhook] received: channel=${channel} entries=${entryCount}`);
-  if (!validateMetaSignature(req.rawBody, req.get("x-hub-signature-256"), req.path === "/instagram" ? "INSTAGRAM_APP_SECRET" : "META_APP_SECRET")) {
+  // Instagram webhook deliveries can be signed by either the Instagram app
+  // secret or the parent Meta app secret, depending on which login/webhook
+  // surface created the subscription. Both are trusted credentials for this
+  // application; never fall back to accepting an unsigned request.
+  const signatureSecrets = req.path === "/instagram"
+    ? ["INSTAGRAM_APP_SECRET", "META_APP_SECRET"]
+    : ["META_APP_SECRET"];
+  if (!signatureSecrets.some((secretName) => validateMetaSignature(req.rawBody, req.get("x-hub-signature-256"), secretName))) {
     console.warn(`[Meta webhook] ignored: invalid signature channel=${channel}`);
     return res.status(403).json({ error: "Invalid Meta signature" });
   }
