@@ -1113,6 +1113,8 @@ export const deleteContact = (contactId, confirmCascade = false) =>
   api
     .delete(`/contacts/${contactId}`, { data: { confirmCascade } })
     .then((res) => res.data);
+export const mergeContacts = (keepId, mergeId) =>
+  api.post("/contacts/merge", { keepId, mergeId }).then((res) => res.data);
 export const updateContact = (contactId, data) =>
   api.patch(`/contacts/${contactId}`, data).then((res) => res.data);
 export const generateLinkedinContactDraft = (contactId, tone = "warm_direct") =>

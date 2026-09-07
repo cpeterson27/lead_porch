@@ -654,6 +654,41 @@ class ContactService {
 
   }
 
+  /**
+   * Merge two contacts into one.
+   *
+   * Instagram and Facebook Messenger assign the same real person completely
+   * unrelated ids (an Instagram-scoped id vs. a Page-scoped id) with no
+   * shared identifier between them, so the same person messaging through
+   * both channels can create two separate contacts. There is no reliable
+   * automatic signal to detect this — it takes a human recognizing it's the
+   * same person, so this merge is an explicit, user-initiated action.
+   */
+  async mergeContacts(keepId, mergeId) {
+    if (String(keepId) === String(mergeId))
+      throw new Error("Choose two different contacts to merge");
+    const keep = await Contact.findById(keepId);
+    const merge = await Contact.findById(mergeId);
+    if (!keep || !merge) throw new Error("Contact not found");
+
+    const SocialIdentity = require("../models/SocialIdentity");
+    const ConversationThread = require("../models/ConversationThread");
+    const ConversationMessage = require("../models/ConversationMessage");
+
+    await SocialIdentity.updateMany({ contactId: merge._id }, { $set: { contactId: keep._id } });
+    await ConversationMessage.updateMany({ contactId: merge._id }, { $set: { contactId: keep._id } });
+    await ConversationThread.updateMany({ contactIds: merge._id }, { $addToSet: { contactIds: keep._id } });
+    await ConversationThread.updateMany({ contactIds: merge._id }, { $pull: { contactIds: merge._id } });
+    await CrmActivity.updateMany({ contactId: merge._id }, { $set: { contactId: keep._id } });
+
+    keep.sources = [...new Set([...(keep.sources || []), ...(merge.sources || [])])];
+    if (merge.notes && !String(keep.notes || "").includes(merge.notes)) {
+      keep.notes = [keep.notes, merge.notes].filter(Boolean).join("\n");
+    }
+    await keep.save();
+    await Contact.findByIdAndDelete(merge._id);
+    return keep;
+  }
 
 
 

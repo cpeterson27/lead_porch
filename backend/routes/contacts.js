@@ -571,6 +571,19 @@ router.delete("/:id", async (req, res) => {
   }
 });
 
+router.post("/merge", async (req, res) => {
+  try {
+    const { keepId, mergeId } = req.body || {};
+    if (!mongoose.Types.ObjectId.isValid(keepId) || !mongoose.Types.ObjectId.isValid(mergeId)) {
+      return res.status(400).json({ success: false, message: "Two valid contact IDs are required" });
+    }
+    const contact = await contactService.mergeContacts(keepId, mergeId);
+    res.json({ success: true, data: contact, message: "Contacts merged" });
+  } catch (err) {
+    res.status(400).json({ success: false, message: err.message || "Unable to merge contacts" });
+  }
+});
+
 /**
  * POST /api/contacts/check-duplicate
  * Check for duplicate contact

@@ -31,6 +31,7 @@ import {
   fetchLatestContactImport,
   archiveContact,
   deleteContact,
+  mergeContacts,
   updateContact,
   extractBusinessCard,
   resolveDigitalBusinessCard,
@@ -573,6 +574,8 @@ export default function Contacts() {
   const [actionMenu, setActionMenu] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
+  const [mergeConfirmOpen, setMergeConfirmOpen] = useState(false);
+  const [mergeKeepId, setMergeKeepId] = useState(null);
   const [previewStats, setPreviewStats] = useState(null);
   const [duplicatePreview, setDuplicatePreview] = useState(null);
   const [detailContact, setDetailContact] = useState(null);
@@ -1326,6 +1329,28 @@ export default function Contacts() {
       setError(
         err.response?.data?.message ||
           "Unable to delete the selected contacts.",
+      );
+    } finally {
+      setBulkSaving(false);
+    }
+  }
+
+  async function confirmMergeContacts() {
+    if (selectedContacts.length !== 2 || !mergeKeepId) return;
+    const mergeAway = selectedContacts.find(
+      (contact) => String(contact._id) !== String(mergeKeepId),
+    );
+    try {
+      setBulkSaving(true);
+      await mergeContacts(mergeKeepId, mergeAway._id);
+      setBulkNotice("Contacts merged into one.");
+      setMergeConfirmOpen(false);
+      setMergeKeepId(null);
+      setSelectedContactIds([]);
+      await loadContacts();
+    } catch (err) {
+      setError(
+        err.response?.data?.message || "Unable to merge these contacts.",
       );
     } finally {
       setBulkSaving(false);
@@ -2361,6 +2386,19 @@ export default function Contacts() {
                     onClick={archiveSelectedContacts}
                   >
                     Archive
+                  </Button>
+                ) : null}
+                {selectedContacts.length === 2 ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    loading={bulkSaving}
+                    onClick={() => {
+                      setMergeKeepId(String(selectedContacts[0]._id));
+                      setMergeConfirmOpen(true);
+                    }}
+                  >
+                    Merge (same person)
                   </Button>
                 ) : null}
                 <Button
@@ -3835,6 +3873,55 @@ export default function Contacts() {
           to what's deleted. A contact with protected outreach history will
           not be deleted.
         </p>
+      </Modal>
+      <Modal
+        isOpen={mergeConfirmOpen}
+        onClose={() => setMergeConfirmOpen(false)}
+        title="Merge these into one contact"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setMergeConfirmOpen(false)}
+              disabled={bulkSaving}
+            >
+              Cancel
+            </Button>
+            <Button loading={bulkSaving} onClick={confirmMergeContacts}>
+              Merge contacts
+            </Button>
+          </>
+        }
+      >
+        <p>
+          Choose which record to keep. Its name and details stay; the other
+          contact's conversation history moves onto the one you keep, and the
+          other contact record is then removed.
+        </p>
+        {selectedContacts.length === 2 &&
+          selectedContacts.map((contact) => (
+            <label
+              key={contact._id}
+              className="contact-merge-option"
+              style={{ display: "flex", alignItems: "center", gap: "10px", padding: "10px 0" }}
+            >
+              <input
+                type="radio"
+                name="merge-keep"
+                checked={String(mergeKeepId) === String(contact._id)}
+                onChange={() => setMergeKeepId(String(contact._id))}
+              />
+              <span>
+                <strong>{contactDisplayName(contact)}</strong>
+                <br />
+                <small>
+                  {contact.sourceProvider ||
+                    contact.sources?.join(", ") ||
+                    "manual"}
+                </small>
+              </span>
+            </label>
+          ))}
       </Modal>
       <Drawer
         isOpen={Boolean(detailContact)}
