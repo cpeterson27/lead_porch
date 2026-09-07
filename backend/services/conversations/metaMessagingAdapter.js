@@ -102,13 +102,25 @@ class MetaMessagingAdapter extends ConversationChannelAdapter {
     const version = require("../socialProviderConfig").graphVersion();
     if (!token || !version) throw new Error("Meta messaging credentials are unavailable");
     const apiHost = connection.provider === "instagram" ? "graph.instagram.com" : "graph.facebook.com";
+    // A Page-linked Instagram Business Account has no /messages edge of its
+    // own — Meta rejects it with "(#3) Application does not have the
+    // capability to make this API call." Sending must target the parent
+    // Page's own edge instead, with the IGSID as the recipient, exactly like
+    // the webhook subscription edge only exists on the Page for this asset
+    // type. A standalone Instagram Login asset (no parentId) sends via its
+    // own id on graph.instagram.com as before.
+    const sendTargetId =
+      asset?.type === "instagram_business" && asset.parentId
+        ? asset.parentId
+        : assetId;
     console.log(`[Meta messaging] outbound message requested: workspaceId=${connection.workspaceId} channel=${channel} assetId=${assetId} senderType=${senderType} bodyLength=${String(body || "").trim().length}`);
     let response;
     try {
-      response = await axios.post(`https://${apiHost}/${version}/${assetId}/messages`, { recipient: { id: recipientId }, message: { text: String(body || "").trim() } }, { params: { access_token: token }, timeout: 15000 });
+      response = await axios.post(`https://${apiHost}/${version}/${sendTargetId}/messages`, { recipient: { id: recipientId }, message: { text: String(body || "").trim() } }, { params: { access_token: token }, timeout: 15000 });
     } catch (error) {
-      console.error(`[Meta messaging] Meta API request failed: workspaceId=${connection.workspaceId} assetId=${assetId} status=${error.response?.status || "n/a"} providerCode=${error.response?.data?.error?.code || "n/a"}`);
-      throw error;
+      const providerMessage = error.response?.data?.error?.message;
+      console.error(`[Meta messaging] Meta API request failed: workspaceId=${connection.workspaceId} assetId=${assetId} status=${error.response?.status || "n/a"} providerCode=${error.response?.data?.error?.code || "n/a"} providerMessage=${providerMessage || "n/a"}`);
+      throw new Error(providerMessage ? `Meta rejected this reply: ${providerMessage}` : "Meta rejected this reply and gave no further detail.");
     }
     console.log(`[Meta messaging] Meta API response: workspaceId=${connection.workspaceId} assetId=${assetId} status=${response.status} messageId=${response.data?.message_id || "missing"}`);
     if (!response.data?.message_id) throw new Error("Provider message outcome is unknown");
