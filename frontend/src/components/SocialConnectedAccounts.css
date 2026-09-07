@@ -424,16 +424,22 @@
   appearance: none;
   -webkit-appearance: none;
   flex-shrink: 0;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   margin: 0;
   border: 1.5px solid #c3cdc7;
-  border-radius: 6px;
+  border-radius: 5px;
   background: #fff;
   display: grid;
   place-items: center;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
+}
+.social-checkbox:hover:not(:disabled) {
+  border-color: #235d49;
+}
+.social-checkbox:active:not(:disabled) {
+  transform: scale(0.92);
 }
 .social-checkbox:checked {
   background: #235d49;
@@ -441,15 +447,16 @@
 }
 .social-checkbox:checked::after {
   content: "";
-  width: 5px;
-  height: 9px;
+  width: 4px;
+  height: 8px;
   border: solid #fff;
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg) translate(-1px, -1px);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(45deg) translate(-1px, -1.5px);
 }
 .social-checkbox:disabled {
   background: #eef1ef;
   border-color: #d5dbe3;
+  opacity: 0.6;
   cursor: not-allowed;
 }
 .social-checkbox:focus-visible {

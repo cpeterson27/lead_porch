@@ -85,17 +85,27 @@ function ChannelRow({
   const needsDecision =
     connection.connected && !isDirectInstagram && selected.length === 0;
   const showManage = manageOpen || needsDecision;
-  const choose = (asset, checked) =>
-    onSelectAssets(
-      connection.provider,
-      checked
-        ? [...selectedIds, asset.id]
-        : selectedIds.filter(
-            (id) =>
-              id !== asset.id &&
-              !assets.some((row) => row.id === id && row.parentId === asset.id),
-          ),
-    );
+  const choose = (asset, checked) => {
+    if (!checked)
+      return onSelectAssets(
+        connection.provider,
+        selectedIds.filter(
+          (id) =>
+            id !== asset.id &&
+            !assets.some((row) => row.id === id && row.parentId === asset.id),
+        ),
+      );
+    // Selecting a linked Instagram account also connects its Facebook Page —
+    // Meta requires the Page to be selected first, so requiring a second,
+    // separate click here would just look like the checkbox doesn't work.
+    const additions =
+      asset.parentId && !selectedIds.includes(asset.parentId)
+        ? [asset.parentId, asset.id]
+        : [asset.id];
+    onSelectAssets(connection.provider, [
+      ...new Set([...selectedIds, ...additions]),
+    ]);
+  };
   const toggleDirect = (checked) =>
     onSelectAssets(connection.provider, checked ? [directAsset.id] : []);
   const picker = manageableAssets.length > 0 && (
@@ -111,10 +121,6 @@ function ChannelRow({
       </p>
       {manageableAssets.map((asset) => {
         const ownedElsewhere = elsewhere.has(asset.id);
-        const needsParent =
-          asset.type === "instagram_business" &&
-          asset.parentId &&
-          !selectedIds.includes(asset.parentId);
         const linked = manageableAssets.find(
           (row) => row.parentId === asset.id,
         );
@@ -131,7 +137,7 @@ function ChannelRow({
               type="checkbox"
               className="social-checkbox"
               checked={isChecked}
-              disabled={ownedElsewhere || needsParent}
+              disabled={ownedElsewhere}
               onChange={(event) => choose(asset, event.target.checked)}
             />
             <AssetAvatar asset={asset} />
@@ -142,11 +148,9 @@ function ChannelRow({
                   identity.secondary,
                   ownedElsewhere
                     ? "Already connected through another method — deselect it there to switch"
-                    : needsParent
-                      ? "Select its Facebook Page first"
-                      : isChecked
-                        ? "Active for Lead Porch"
-                        : "Available to select",
+                    : isChecked
+                      ? "Active for Lead Porch"
+                      : "Available to select",
                   linked
                     ? `Linked Instagram: @${linked.username || linked.name}`
                     : "",
@@ -160,8 +164,8 @@ function ChannelRow({
       })}
       {channel.provider === "meta" && (
         <p>
-          A linked Instagram account becomes active only after you select it
-          together with its Facebook Page.
+          Selecting a linked Instagram account also connects its Facebook Page
+          automatically.
         </p>
       )}
     </fieldset>
