@@ -5,6 +5,23 @@ const { decryptCredentials } = require("../utils/credentialEncryption");
 const dependencies = { SocialConnection, http: axios, decryptCredentials, graphVersion: () => require("./socialProviderConfig").graphVersion() };
 function clean(value, max = 500) { return String(value || "").trim().slice(0, max); }
 
+// Shared connection/asset/token resolution used by every read below. Returns
+// null (fail soft) rather than throwing so callers can each decide how to
+// react to an unusable connection.
+async function resolveAsset({ workspaceId, provider, assetId }, deps) {
+  const rows = await deps.SocialConnection.find({ workspaceId, provider: { $in: ["meta", "instagram"] }, status: "connected", selectedAssetIds: String(assetId) }).select("+credentialsEncrypted");
+  const connection = provider === "instagram" ? rows.find((row) => row.provider === "instagram") || rows.find((row) => row.provider === "meta") : rows.find((row) => row.provider === "meta");
+  const asset = connection?.assets?.find((row) => String(row.id) === String(assetId));
+  if (!connection || !asset) return null;
+  const credentials = deps.decryptCredentials(connection.credentialsEncrypted);
+  const parentId = asset.type === "instagram_business" ? asset.parentId : asset.id;
+  const token = credentials.pageTokens?.[String(parentId)] || (connection.provider === "instagram" ? credentials.accessToken : null);
+  if (!token) return null;
+  const version = deps.graphVersion();
+  const host = connection.provider === "instagram" ? "graph.instagram.com" : "graph.facebook.com";
+  return { connection, asset, token, version, host };
+}
+
 async function recentPosts({ workspaceId, provider, assetId }, deps = dependencies) {
   if (!workspaceId || !["facebook", "instagram"].includes(provider) || !clean(assetId)) throw new Error("Choose a connected Facebook or Instagram account");
   const rows = await deps.SocialConnection.find({ workspaceId, provider: { $in: ["meta", "instagram"] }, status: "connected", selectedAssetIds: String(assetId) }).select("+credentialsEncrypted");
@@ -46,16 +63,9 @@ async function recentPosts({ workspaceId, provider, assetId }, deps = dependenci
 async function postContext({ workspaceId, provider, assetId, postId }, deps = dependencies) {
   if (!workspaceId || !["facebook", "instagram"].includes(provider) || !clean(assetId) || !clean(postId)) return null;
   try {
-    const rows = await deps.SocialConnection.find({ workspaceId, provider: { $in: ["meta", "instagram"] }, status: "connected", selectedAssetIds: String(assetId) }).select("+credentialsEncrypted");
-    const connection = provider === "instagram" ? rows.find((row) => row.provider === "instagram") || rows.find((row) => row.provider === "meta") : rows.find((row) => row.provider === "meta");
-    const asset = connection?.assets?.find((row) => String(row.id) === String(assetId));
-    if (!connection || !asset) return null;
-    const credentials = deps.decryptCredentials(connection.credentialsEncrypted);
-    const parentId = asset.type === "instagram_business" ? asset.parentId : asset.id;
-    const token = credentials.pageTokens?.[String(parentId)] || (connection.provider === "instagram" ? credentials.accessToken : null);
-    if (!token) return null;
-    const version = deps.graphVersion();
-    const host = connection.provider === "instagram" ? "graph.instagram.com" : "graph.facebook.com";
+    const resolved = await resolveAsset({ workspaceId, provider, assetId }, deps);
+    if (!resolved) return null;
+    const { token, version, host } = resolved;
     const fields = provider === "facebook" ? "message,permalink_url,full_picture" : "caption,permalink,media_url,thumbnail_url";
     const response = await deps.http.get(`https://${host}/${version}/${encodeURIComponent(postId)}`, { params: { fields, access_token: token }, timeout: 15000 });
     const permalink = clean(response.data?.permalink_url || response.data?.permalink, 1000);
@@ -79,16 +89,9 @@ async function postContext({ workspaceId, provider, assetId, postId }, deps = de
 async function postEngagement({ workspaceId, provider, assetId, postId }, deps = dependencies) {
   if (!workspaceId || !["facebook", "instagram"].includes(provider) || !clean(assetId) || !clean(postId)) return null;
   try {
-    const rows = await deps.SocialConnection.find({ workspaceId, provider: { $in: ["meta", "instagram"] }, status: "connected", selectedAssetIds: String(assetId) }).select("+credentialsEncrypted");
-    const connection = provider === "instagram" ? rows.find((row) => row.provider === "instagram") || rows.find((row) => row.provider === "meta") : rows.find((row) => row.provider === "meta");
-    const asset = connection?.assets?.find((row) => String(row.id) === String(assetId));
-    if (!connection || !asset) return null;
-    const credentials = deps.decryptCredentials(connection.credentialsEncrypted);
-    const parentId = asset.type === "instagram_business" ? asset.parentId : asset.id;
-    const token = credentials.pageTokens?.[String(parentId)] || (connection.provider === "instagram" ? credentials.accessToken : null);
-    if (!token) return null;
-    const version = deps.graphVersion();
-    const host = connection.provider === "instagram" ? "graph.instagram.com" : "graph.facebook.com";
+    const resolved = await resolveAsset({ workspaceId, provider, assetId }, deps);
+    if (!resolved) return null;
+    const { token, version, host } = resolved;
     const fields =
       provider === "facebook"
         ? "likes.summary(true).limit(0),comments.summary(true).limit(0)"
@@ -121,4 +124,26 @@ async function postEngagement({ workspaceId, provider, assetId, postId }, deps =
   }
 }
 
-module.exports = { recentPosts, postContext, postEngagement };
+// The comment IDs Facebook's webhook delivers are prefixed with the post's
+// internal "story"/object ID, which is frequently a different number than
+// the page-post ID our own publish call stored (a longstanding Facebook
+// Graph API quirk — the two IDs both refer to the same post, in different
+// contexts). Matching by post ID text is therefore unreliable for Facebook.
+// This instead asks the post itself, via its own /comments edge, which
+// comment IDs really belong to it — authoritative regardless of that
+// discrepancy. Instagram has no such split (its media ID and the comment's
+// own contentId already agree), so this is only needed for Facebook.
+async function postCommentIds({ workspaceId, assetId, postId }, deps = dependencies) {
+  if (!workspaceId || !clean(assetId) || !clean(postId)) return null;
+  try {
+    const resolved = await resolveAsset({ workspaceId, provider: "facebook", assetId }, deps);
+    if (!resolved) return null;
+    const { token, version, host } = resolved;
+    const response = await deps.http.get(`https://${host}/${version}/${encodeURIComponent(postId)}`, { params: { fields: "comments.summary(true).limit(100){id}", access_token: token }, timeout: 15000 });
+    return (response.data?.comments?.data || []).map((row) => clean(row.id, 500)).filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { recentPosts, postContext, postEngagement, postCommentIds };

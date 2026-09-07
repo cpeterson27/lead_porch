@@ -857,6 +857,35 @@ router.get(
     });
   }),
 );
+// Facebook's comment webhook keys post_id/comment_id off the post's internal
+// "story"/object ID, which is frequently a different number than the
+// page-post ID our own publish call stored (both refer to the same post —
+// a longstanding Facebook Graph API quirk). Matching by that ID's text is
+// unreliable, so for Facebook we additionally ask the post's own /comments
+// edge which comment IDs really belong to it, and match on those directly.
+// Instagram has no such split, so contentId matching alone is enough there.
+async function knownIdsForPublications(workspaceId, publications) {
+  const providerPostIds = new Set();
+  const commentIds = new Set();
+  const metaRecentPostService = require("../services/metaRecentPostService");
+  await Promise.all(
+    publications.map(async (row) => {
+      if (!row.providerPostId) return;
+      providerPostIds.add(row.providerPostId);
+      if (row.provider !== "facebook" || !row.assetId) return;
+      providerPostIds.add(`${row.assetId}_${row.providerPostId}`);
+      const bare = String(row.providerPostId).split("_").pop();
+      if (bare) providerPostIds.add(bare);
+      const ids = await metaRecentPostService.postCommentIds({
+        workspaceId,
+        assetId: row.assetId,
+        postId: row.providerPostId,
+      });
+      (ids || []).forEach((id) => commentIds.add(id));
+    }),
+  );
+  return { providerPostIds, commentIds };
+}
 router.get(
   "/content/:id/comments",
   wrap(async (req, res) => {
@@ -869,26 +898,20 @@ router.get(
       .select("social.publications")
       .lean();
     if (!item) return res.status(404).json({ error: "Content not found" });
-    // Facebook's /feed publish response and its comment webhook's post_id do
-    // not always agree on whether the Page ID prefix is included (this has
-    // varied by Graph API version), so match every plausible form of a
-    // Facebook post's ID rather than only the exact string we stored.
-    const providerPostIds = new Set();
-    for (const row of item.social?.publications || []) {
-      if (!row.providerPostId) continue;
-      providerPostIds.add(row.providerPostId);
-      if (row.provider === "facebook" && row.assetId) {
-        providerPostIds.add(`${row.assetId}_${row.providerPostId}`);
-        const bare = String(row.providerPostId).split("_").pop();
-        if (bare) providerPostIds.add(bare);
-      }
-    }
-    if (!providerPostIds.size) return res.json({ threads: [] });
+    const { providerPostIds, commentIds } = await knownIdsForPublications(
+      workspaceId,
+      item.social?.publications || [],
+    );
+    if (!providerPostIds.size && !commentIds.size)
+      return res.json({ threads: [] });
     const threads = await ConversationThread.find({
       workspaceId,
       channel: { $in: socialChannels },
       "metadata.interactionType": { $in: ["comment", "mention"] },
-      "metadata.contentId": { $in: [...providerPostIds] },
+      $or: [
+        { "metadata.contentId": { $in: [...providerPostIds] } },
+        { "metadata.commentId": { $in: [...commentIds] } },
+      ],
     })
       .populate("contactIds", "name")
       .sort({ lastMessageAt: -1 })
@@ -922,23 +945,17 @@ router.get(
     const items = await ContentBrief.find({ workspaceId, type: "social" })
       .select("social.publications")
       .lean();
-    const knownIds = new Set();
-    for (const item of items) {
-      for (const row of item.social?.publications || []) {
-        if (!row.providerPostId) continue;
-        knownIds.add(row.providerPostId);
-        if (row.provider === "facebook" && row.assetId) {
-          knownIds.add(`${row.assetId}_${row.providerPostId}`);
-          const bare = String(row.providerPostId).split("_").pop();
-          if (bare) knownIds.add(bare);
-        }
-      }
-    }
+    const publications = items.flatMap((item) => item.social?.publications || []);
+    const { providerPostIds, commentIds } = await knownIdsForPublications(
+      workspaceId,
+      publications,
+    );
     const threads = await ConversationThread.find({
       workspaceId,
       channel: { $in: socialChannels },
       "metadata.interactionType": { $in: ["comment", "mention"] },
-      "metadata.contentId": { $nin: [...knownIds] },
+      "metadata.contentId": { $nin: [...providerPostIds] },
+      "metadata.commentId": { $nin: [...commentIds] },
     })
       .populate("contactIds", "name")
       .sort({ lastMessageAt: -1 })
