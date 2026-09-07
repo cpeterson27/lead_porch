@@ -55,7 +55,11 @@ router.post(["/meta", "/instagram"], async (req, res) => {
   }
   try {
     for (const entry of req.body?.entry || []) {
-      const connection = await connectionForAsset(entry.id, channel === "instagram" ? "instagram" : "meta");
+      // The /instagram callback can receive events for both Instagram Login
+      // connections and Page-linked Instagram accounts authorized through
+      // Facebook Login for Business. Resolve by the selected asset first;
+      // only the Page callback is restricted to the Meta connection type.
+      const connection = await connectionForAsset(entry.id, channel === "instagram" ? null : "meta");
       if (!connection?.workspaceId) {
         console.log(`[Meta webhook] ignored: no connected workspace matches asset assetId=${entry.id}`);
         continue;
