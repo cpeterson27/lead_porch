@@ -279,6 +279,27 @@
   display: block;
   font-size: 0.75rem;
 }
+.social-subscription-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0;
+  font-weight: 600;
+}
+.social-subscription-status:before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
+.social-subscription-status--connected {
+  color: #226341;
+}
+.social-subscription-status--attention {
+  color: #805117;
+}
 .social-automation-safety {
   display: flex;
   gap: 24px;
@@ -359,25 +380,81 @@
 }
 .social-page-picker {
   margin: 1rem 0;
-  border: 1px solid var(--border-color, #d5dbe3);
-  border-radius: 10px;
-  padding: 1rem;
+  border: 1px solid #dbe3df;
+  border-radius: 12px;
+  padding: 4px 16px;
   min-width: 0;
+  background: #fafcfb;
 }
 .social-page-picker legend {
+  font-size: 0.72rem;
   font-weight: 650;
-  padding: 0 0.3rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #597066;
+  padding: 0 4px;
+}
+.social-page-picker-hint {
+  margin: 0;
+  padding: 12px 0 14px;
+  color: #647269;
+  font-size: 0.82rem;
+  line-height: 1.5;
 }
 .social-page-picker label {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
-  padding: 0.65rem 0;
+  gap: 12px;
+  padding: 14px 4px;
   overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.social-page-picker label + label,
+.social-page-picker label:not(:first-of-type) {
+  border-top: 1px solid #e7ede9;
 }
 .social-page-picker small {
   display: block;
-  opacity: 0.8;
+  margin-top: 2px;
+  color: #647269;
+  font-weight: 400;
+  opacity: 1;
+}
+.social-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  border: 1.5px solid #c3cdc7;
+  border-radius: 6px;
+  background: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.social-checkbox:checked {
+  background: #235d49;
+  border-color: #235d49;
+}
+.social-checkbox:checked::after {
+  content: "";
+  width: 5px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translate(-1px, -1px);
+}
+.social-checkbox:disabled {
+  background: #eef1ef;
+  border-color: #d5dbe3;
+  cursor: not-allowed;
+}
+.social-checkbox:focus-visible {
+  outline: 2px solid #235d49;
+  outline-offset: 2px;
 }
 .social-asset-avatar {
   width: 38px;

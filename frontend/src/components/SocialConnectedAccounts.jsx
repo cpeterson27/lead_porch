@@ -102,12 +102,12 @@ function ChannelRow({
     <fieldset className="social-page-picker" disabled={busy}>
       <legend>
         {channel.provider === "meta"
-          ? "Choose the Facebook Page Lead Porch should manage"
-          : "Choose the LinkedIn Page Lead Porch should manage"}
+          ? "Choose which Facebook Page to manage"
+          : "Choose which LinkedIn Page to manage"}
       </legend>
-      <p>
-        Only selected accounts are used. Created a new Page or account since
-        you connected? Click Reconnect below to refresh this list.
+      <p className="social-page-picker-hint">
+        Only selected accounts are used. If a Page or account is missing, click
+        Reconnect below to refresh this list.
       </p>
       {manageableAssets.map((asset) => {
         const ownedElsewhere = elsewhere.has(asset.id);
@@ -129,6 +129,7 @@ function ChannelRow({
           >
             <input
               type="checkbox"
+              className="social-checkbox"
               checked={isChecked}
               disabled={ownedElsewhere || needsParent}
               onChange={(event) => choose(asset, event.target.checked)}
@@ -165,6 +166,15 @@ function ChannelRow({
       )}
     </fieldset>
   );
+  const subscriptionRows = connection.webhookSubscriptions || [];
+  const subscriptionSummary = subscriptionRows.length
+    ? subscriptionRows.every((row) => row.status === "subscribed")
+      ? { tone: "connected", text: "Message and comment notifications are active." }
+      : {
+          tone: "attention",
+          text: "Message notifications need attention. Try Reconnect below, or reselect the account above.",
+        }
+    : null;
   const identityBlock = connection.connected && (
     <div className="social-identity" aria-label={`${channel.name} signed-in profile`}>
       <AssetAvatar asset={account} />
@@ -350,12 +360,14 @@ function ChannelRow({
             </div>
           )}
         </dl>
-        {connection.webhookSubscriptions?.map((row) => (
-          <p key={row.assetId}>
-            Event subscription: {row.status?.replaceAll("_", " ")} ·{" "}
-            {row.fields?.join(", ")}
+        {subscriptionSummary && (
+          <p
+            className={`social-subscription-status social-subscription-status--${subscriptionSummary.tone}`}
+            role="status"
+          >
+            {subscriptionSummary.text}
           </p>
-        ))}
+        )}
         <p>
           {channel.provider === "meta"
             ? "Facebook Login can also authorize linked professional Instagram accounts. Available actions depend on the selected assets and approved permissions."

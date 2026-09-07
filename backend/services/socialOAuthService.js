@@ -798,6 +798,11 @@ async function provisionMetaSubscriptions(connection, selected, http = axios) {
   const providerConfig = config("meta");
   const credentials = decryptCredentials(connection.credentialsEncrypted);
   const results = [];
+  // A Page-linked Instagram Business Account has no subscribed_apps edge of its
+  // own — Meta only exposes that edge on the Page, and delivers the Instagram
+  // fields through the same Page-level webhook subscription. So assets that
+  // share an underlying Page are grouped and subscribed together in one call.
+  const byPageId = new Map();
   for (const assetId of selected) {
     const asset = connection.assets.find((item) => String(item.id) === assetId);
     const fields = subscriptionFields(asset || {});
@@ -806,56 +811,68 @@ async function provisionMetaSubscriptions(connection, selected, http = axios) {
       asset.type === "instagram_business"
         ? String(asset.parentId)
         : String(asset.id);
+    if (!byPageId.has(pageId)) byPageId.set(pageId, { fields: new Set(), members: [] });
+    const bucket = byPageId.get(pageId);
+    fields.forEach((field) => bucket.fields.add(field));
+    bucket.members.push({ assetId, fields });
+  }
+  for (const [pageId, bucket] of byPageId) {
     const token = credentials.pageTokens?.[pageId];
     if (!token) {
-      results.push({
-        assetId,
-        parentPageId: pageId,
-        fields,
-        status: "failed",
-        error: "A Page authorization token is unavailable",
-      });
+      for (const member of bucket.members)
+        results.push({
+          assetId: member.assetId,
+          parentPageId: pageId,
+          fields: member.fields,
+          status: "failed",
+          error: "A Page authorization token is unavailable",
+        });
       continue;
     }
     try {
+      const allFields = [...bucket.fields];
       await http.post(
-        `https://graph.facebook.com/${providerConfig.apiVersion}/${asset.id}/subscribed_apps`,
+        `https://graph.facebook.com/${providerConfig.apiVersion}/${pageId}/subscribed_apps`,
         null,
         {
-          params: { subscribed_fields: fields.join(","), access_token: token },
+          params: { subscribed_fields: allFields.join(","), access_token: token },
           timeout: 15000,
         },
       );
       const health = await http.get(
-        `https://graph.facebook.com/${providerConfig.apiVersion}/${asset.id}/subscribed_apps`,
+        `https://graph.facebook.com/${providerConfig.apiVersion}/${pageId}/subscribed_apps`,
         { params: { access_token: token }, timeout: 15000 },
       );
-      const subscribed = (health.data?.data || []).some(
-        (row) =>
-          String(row.id || "") === String(providerConfig.clientId) &&
-          fields.every((field) =>
-            (row.subscribed_fields || []).includes(field),
-          ),
-      );
-      results.push({
-        assetId,
-        parentPageId: pageId,
-        fields,
-        status: subscribed ? "subscribed" : "not_subscribed",
-        verifiedAt: new Date(),
-        error: subscribed
-          ? ""
-          : "Meta did not confirm all requested webhook fields",
-      });
+      const subscribedFields =
+        (health.data?.data || []).find(
+          (row) => String(row.id || "") === String(providerConfig.clientId),
+        )?.subscribed_fields || [];
+      for (const member of bucket.members) {
+        const subscribed = member.fields.every((field) =>
+          subscribedFields.includes(field),
+        );
+        results.push({
+          assetId: member.assetId,
+          parentPageId: pageId,
+          fields: member.fields,
+          status: subscribed ? "subscribed" : "not_subscribed",
+          verifiedAt: new Date(),
+          error: subscribed
+            ? ""
+            : "Meta did not confirm all requested webhook fields",
+        });
+      }
     } catch (error) {
-      results.push({
-        assetId,
-        parentPageId: pageId,
-        fields,
-        status: "failed",
-        verifiedAt: new Date(),
-        error: safeProviderError(error, "Webhook subscription failed"),
-      });
+      const message = safeProviderError(error, "Webhook subscription failed");
+      for (const member of bucket.members)
+        results.push({
+          assetId: member.assetId,
+          parentPageId: pageId,
+          fields: member.fields,
+          status: "failed",
+          verifiedAt: new Date(),
+          error: message,
+        });
     }
   }
   return results;
@@ -1254,12 +1271,11 @@ async function provisionInstagramSubscriptions(
         `https://graph.instagram.com/${settings.apiVersion}/${assetId}/subscribed_apps`,
         { params: { access_token: credentials.accessToken }, timeout: 15000 },
       );
-      const verified = (response.data?.data || []).some(
-        (row) =>
-          String(row.id) === settings.clientId &&
-          fields.every((field) =>
-            (row.subscribed_fields || []).includes(field),
-          ),
+      // graph.instagram.com reports the app under its Instagram-scoped app id,
+      // which differs from the OAuth client id used to authorize — the field
+      // list alone is sufficient to confirm our own subscription succeeded.
+      const verified = (response.data?.data || []).some((row) =>
+        fields.every((field) => (row.subscribed_fields || []).includes(field)),
       );
       results.push({
         assetId,
