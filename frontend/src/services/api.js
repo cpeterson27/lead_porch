@@ -1187,6 +1187,8 @@ export const scheduleSocialContent = (id, publishAt) =>
   api
     .post(`/content/${id}/schedule`, { publishAt })
     .then((res) => res.data.data);
+export const publishSocialContentNow = (id) =>
+  api.post(`/content/${id}/publish-now`).then((res) => res.data.data);
 export const cancelSocialContent = (id) =>
   api.post(`/content/${id}/cancel`).then((res) => res.data.data);
 export const retrySocialContent = (id) =>

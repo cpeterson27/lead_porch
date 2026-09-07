@@ -7,6 +7,11 @@ import {
   fetchSocialWorkspace,
   mutateSocialWorkspace,
   fetchSocialPublishingCapabilities,
+  requestSocialApproval,
+  approveSocialContent,
+  cancelSocialContent,
+  scheduleSocialContent,
+  publishSocialContentNow,
 } from "../services/api.js";
 import {
   CampaignSelect,
@@ -45,7 +50,7 @@ function PostAutomationSection({ value, onChange, campaigns, onError }) {
       </label>
       {value.configured && (
         <div className="post-automation__fields">
-          <label>
+          <label className="post-automation__field--full">
             Automation name <small>Internal only</small>
             <input
               value={value.name}
@@ -74,7 +79,7 @@ function PostAutomationSection({ value, onChange, campaigns, onError }) {
               <small>Separate multiple keywords with commas.</small>
             </label>
           )}
-          <label>
+          <label className="post-automation__field--full">
             Automatic reply
             <textarea
               rows="4"
@@ -238,70 +243,109 @@ export default function SocialStudio() {
   const metaDestinations = draft.social.destinations.filter((row) =>
     ["facebook", "instagram"].includes(row.provider),
   );
+  const ensureSaved = async () => {
+    let contentBriefId = savedId;
+    if (!contentBriefId) {
+      const result = await createContentBrief(draft);
+      contentBriefId = result.data?._id || result._id || "";
+      if (!contentBriefId)
+        throw new Error("The saved post did not return an identifier.");
+      setSavedId(contentBriefId);
+    }
+    if (postAutomation.configured) {
+      if (!metaDestinations.length)
+        throw new Error(
+          "Choose at least one connected Facebook or Instagram destination for this automation.",
+        );
+      if (!postAutomation.name.trim())
+        throw new Error("Enter an internal automation name.");
+      if (
+        postAutomation.triggerType === "comment_keyword" &&
+        !postAutomation.keywords.trim()
+      )
+        throw new Error(
+          "Enter at least one comment keyword that should trigger this automation.",
+        );
+      const saved = new Set(automationSavedDestinations);
+      for (const destination of metaDestinations) {
+        const destinationKey = `${destination.provider}:${destination.assetId}`;
+        if (saved.has(destinationKey)) continue;
+        await createSocialAutomation({
+          name:
+            metaDestinations.length > 1
+              ? `${postAutomation.name.trim()} — ${destination.provider}`
+              : postAutomation.name.trim(),
+          provider: destination.provider,
+          assetId: destination.assetId,
+          contentBriefId,
+          contentId: "",
+          triggerType: postAutomation.triggerType,
+          keywords:
+            postAutomation.triggerType === "comment_keyword"
+              ? postAutomation.keywords
+                  .split(",")
+                  .map((item) => item.trim())
+                  .filter(Boolean)
+              : [],
+          responseTemplate: postAutomation.responseTemplate,
+          cta: {
+            label: postAutomation.ctaLabel,
+            destination: postAutomation.ctaDestination,
+          },
+          campaignId: postAutomation.campaignId || null,
+          tags: postAutomation.tags,
+          qualification: [],
+          enabled: postAutomation.enabledWhenPublished,
+        });
+        saved.add(destinationKey);
+        setAutomationSavedDestinations([...saved]);
+      }
+    }
+    return contentBriefId;
+  };
   const savePost = () =>
     run(async () => {
-      let contentBriefId = savedId;
-      if (!contentBriefId) {
-        const result = await createContentBrief(draft);
-        contentBriefId = result.data?._id || result._id || "";
-        if (!contentBriefId)
-          throw new Error("The saved post did not return an identifier.");
-        setSavedId(contentBriefId);
-      }
-      if (postAutomation.configured) {
-        if (!metaDestinations.length)
-          throw new Error(
-            "Choose at least one connected Facebook or Instagram destination for this automation.",
-          );
-        if (!postAutomation.name.trim())
-          throw new Error("Enter an internal automation name.");
-        if (
-          postAutomation.triggerType === "comment_keyword" &&
-          !postAutomation.keywords.trim()
-        )
-          throw new Error(
-            "Enter at least one comment keyword that should trigger this automation.",
-          );
-        const saved = new Set(automationSavedDestinations);
-        for (const destination of metaDestinations) {
-          const destinationKey = `${destination.provider}:${destination.assetId}`;
-          if (saved.has(destinationKey)) continue;
-          await createSocialAutomation({
-            name:
-              metaDestinations.length > 1
-                ? `${postAutomation.name.trim()} — ${destination.provider}`
-                : postAutomation.name.trim(),
-            provider: destination.provider,
-            assetId: destination.assetId,
-            contentBriefId,
-            contentId: "",
-            triggerType: postAutomation.triggerType,
-            keywords:
-              postAutomation.triggerType === "comment_keyword"
-                ? postAutomation.keywords
-                    .split(",")
-                    .map((item) => item.trim())
-                    .filter(Boolean)
-                : [],
-            responseTemplate: postAutomation.responseTemplate,
-            cta: {
-              label: postAutomation.ctaLabel,
-              destination: postAutomation.ctaDestination,
-            },
-            campaignId: postAutomation.campaignId || null,
-            tags: postAutomation.tags,
-            qualification: [],
-            enabled: postAutomation.enabledWhenPublished,
-          });
-          saved.add(destinationKey);
-          setAutomationSavedDestinations([...saved]);
-        }
-      }
+      await ensureSaved();
       setNotice(
         postAutomation.configured
-          ? "Draft and post response automation saved. Review and approve the post in the Content Library."
-          : "Draft saved. Review and approve it in the Content Library before publishing.",
+          ? "Draft and post response automation saved."
+          : "Draft saved.",
       );
+    });
+  // Moves a draft into "approved" regardless of where it currently sits in
+  // the review lifecycle, so Publish now / Schedule work as one click instead
+  // of requiring a separate trip through the Content Library to manually
+  // request approval and approve every time.
+  const readyForApproval = async (id) => {
+    await cancelSocialContent(id).catch(() => {});
+    await requestSocialApproval(id).catch(() => {});
+    await approveSocialContent(id).catch(() => {});
+  };
+  const publishNow = () =>
+    run(async () => {
+      if (!draft.social.destinations.length)
+        throw new Error("Choose at least one connected destination first.");
+      const id = await ensureSaved();
+      await readyForApproval(id);
+      const result = await publishSocialContentNow(id);
+      setNotice(
+        result.status === "published"
+          ? "Published. Check your connected Facebook/Instagram account."
+          : result.status === "partially_published"
+            ? `Published to some accounts, not all. ${result.social?.lastError || ""}`
+            : `Could not publish: ${result.social?.lastError || "Approve this post and add a destination, then try again."}`,
+      );
+    });
+  const [scheduleAt, setScheduleAt] = useState("");
+  const scheduleForLater = () =>
+    run(async () => {
+      if (!draft.social.destinations.length)
+        throw new Error("Choose at least one connected destination first.");
+      if (!scheduleAt) throw new Error("Choose a date and time to schedule this post.");
+      const id = await ensureSaved();
+      await readyForApproval(id);
+      await scheduleSocialContent(id, new Date(scheduleAt).toISOString());
+      setNotice(`Scheduled for ${new Date(scheduleAt).toLocaleString()}.`);
     });
   const automationComplete =
     metaDestinations.length > 0 &&
@@ -590,26 +634,61 @@ export default function SocialStudio() {
           {draft.social.cta.label} {draft.social.cta.url}
         </p>
       </details>
-      <button
-        disabled={
-          busy ||
-          !automationReady ||
-          (savedId && (!postAutomation.configured || automationComplete)) ||
-          !draft.title.trim() ||
-          !draft.body.trim()
-        }
-        onClick={savePost}
-      >
-        {savedId && postAutomation.configured && !automationComplete
-          ? "Retry post automation"
-          : "Save draft"}
-      </button>
+      <div className="social-studio__actions">
+        <button
+          disabled={
+            busy ||
+            !automationReady ||
+            (savedId && (!postAutomation.configured || automationComplete)) ||
+            !draft.title.trim() ||
+            !draft.body.trim()
+          }
+          onClick={savePost}
+        >
+          {savedId && postAutomation.configured && !automationComplete
+            ? "Retry post automation"
+            : "Save draft"}
+        </button>
+        <button
+          className="social-studio__publish-now"
+          disabled={
+            busy ||
+            !publishingEnabled ||
+            !draft.title.trim() ||
+            !draft.body.trim() ||
+            !draft.social.destinations.length
+          }
+          onClick={publishNow}
+        >
+          Publish now
+        </button>
+        <div className="social-studio__schedule">
+          <input
+            type="datetime-local"
+            aria-label="Schedule date and time"
+            value={scheduleAt}
+            onChange={(event) => setScheduleAt(event.target.value)}
+          />
+          <button
+            disabled={
+              busy ||
+              !publishingEnabled ||
+              !scheduleAt ||
+              !draft.title.trim() ||
+              !draft.body.trim() ||
+              !draft.social.destinations.length
+            }
+            onClick={scheduleForLater}
+          >
+            Schedule for later
+          </button>
+        </div>
+      </div>
       <Link
+        className="social-studio__library-link"
         to={savedId ? `/social/content?content=${savedId}` : "/social/content"}
       >
-        {savedId
-          ? "Review saved draft → approve → publish or schedule"
-          : "Open Content Library"}
+        {savedId ? "View this post in the Content Library" : "Open Content Library"}
       </Link>
     </section>
   );
