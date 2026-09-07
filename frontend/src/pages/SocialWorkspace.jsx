@@ -15,6 +15,7 @@ import {
   refreshInstagramAuthorization,
   fetchSocialWorkspace,
   mutateSocialWorkspace,
+  getSocialInboxStreamUrl,
   beginSocialConnection,
   disconnectSocialConnection,
   selectSocialAssets,
@@ -88,46 +89,63 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
             ? `inbox?filter=${filter}&provider=${provider}`
             : section;
     if (["create", "content", "automations", "leads"].includes(section)) return;
-    const load = () => {
-      const request =
-        section === "calendar"
-          ? fetchContentBriefs("social").then((result) => result.data || [])
-          : fetchSocialWorkspace(endpoint);
-      request
-        .then((value) => {
-          if (active) {
-            setData(value);
-            setError("");
-          }
-        })
-        .catch(() => {
-          if (active) setError(connectionsOnly ? "Connected Accounts could not load. Refresh the page or ask the workspace owner to verify this review account's Social access." : "Unable to load this Social area.");
-        });
-    };
-    load();
-    // Poll the inbox list so new conversations and unread counts show up
-    // without the user needing to refresh the page.
-    const interval = section === "inbox" ? setInterval(load, 8000) : null;
+    const request =
+      section === "calendar"
+        ? fetchContentBriefs("social").then((result) => result.data || [])
+        : fetchSocialWorkspace(endpoint);
+    request
+      .then((value) => {
+        if (active) {
+          setData(value);
+          setError("");
+        }
+      })
+      .catch(() => {
+        if (active) setError(connectionsOnly ? "Connected Accounts could not load. Refresh the page or ask the workspace owner to verify this review account's Social access." : "Unable to load this Social area.");
+      });
     return () => {
       active = false;
-      if (interval) clearInterval(interval);
     };
   }, [section, filter, provider, connectionsOnly]);
+  // Live inbox updates: the backend pushes a notice over Server-Sent Events
+  // the instant a new message is saved, so the list and any open conversation
+  // refresh immediately rather than on a fixed polling interval (which
+  // browsers throttle heavily in a backgrounded tab — the most likely reason
+  // a message previously needed a manual page refresh to appear). A
+  // visibility listener and a long-interval fallback cover the rare case
+  // where the stream itself drops without the browser noticing.
   useEffect(() => {
-    if (section !== "inbox" || !selected) return undefined;
+    if (section !== "inbox") return undefined;
     let active = true;
-    const interval = setInterval(() => {
-      fetchSocialWorkspace(`inbox/${selected}`)
+    const refresh = () => {
+      fetchSocialWorkspace(`inbox?filter=${filter}&provider=${provider}`)
         .then((value) => {
-          if (active) setDetail(value);
+          if (active) setData(value);
         })
         .catch(() => {});
-    }, 5000);
+      if (selected)
+        fetchSocialWorkspace(`inbox/${selected}`)
+          .then((value) => {
+            if (active) setDetail(value);
+          })
+          .catch(() => {});
+    };
+    const source = new EventSource(getSocialInboxStreamUrl(), {
+      withCredentials: true,
+    });
+    source.onmessage = refresh;
+    const onVisible = () => {
+      if (document.visibilityState === "visible") refresh();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    const fallback = setInterval(refresh, 60000);
     return () => {
       active = false;
-      clearInterval(interval);
+      source.close();
+      document.removeEventListener("visibilitychange", onVisible);
+      clearInterval(fallback);
     };
-  }, [section, selected]);
+  }, [section, selected, filter, provider]);
   const action = async (fn) => {
     setBusy(true);
     setError("");

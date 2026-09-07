@@ -29,6 +29,8 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+export const getSocialInboxStreamUrl = () =>
+  `${api.defaults.baseURL}/social-workspace/inbox/stream`;
 export const getMcpEndpoint = () =>
   String(api.defaults.baseURL || "").replace(/\/api\/?$/, "/mcp");
 export const getGptActionsSchemaEndpoint = () =>

@@ -1,5 +1,7 @@
 const ConversationThread = require("../../models/ConversationThread");
 const ConversationMessage = require("../../models/ConversationMessage");
+const { currentWorkspaceId } = require("../../tenancy/workspaceContext");
+const { emitWorkspaceEvent } = require("../realtimeEvents");
 
 function messageTime(message) {
   const value = message.sentAt || message.receivedAt || message.createdAt || new Date();
@@ -61,6 +63,12 @@ async function ingestProviderMessage({ thread, message }) {
     contactId: message.contactId || null,
     createdBy: message.createdBy || null,
     metadata: message.metadata || {},
+  });
+  emitWorkspaceEvent(currentWorkspaceId(), {
+    type: "conversation:new-message",
+    threadId: String(savedThread._id),
+    channel: savedThread.channel,
+    direction: message.direction,
   });
   return { thread: savedThread, message: savedMessage.toObject(), created: true };
 }

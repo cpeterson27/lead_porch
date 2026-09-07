@@ -311,6 +311,28 @@ router.get(
     res.json(data);
   }),
 );
+router.get("/inbox/stream", (req, res) => {
+  // Server-Sent Events: pushes a notice the instant a new message is saved
+  // for this workspace, so the inbox updates immediately instead of on a
+  // fixed polling interval (which browsers throttle heavily in background
+  // tabs — the exact case where polling silently falls behind). Registered
+  // before /inbox/:id so "stream" is never matched as a thread id.
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache, no-transform",
+    Connection: "keep-alive",
+  });
+  res.write(": connected\n\n");
+  const unsubscribe = require("../services/realtimeEvents").subscribe(
+    req.auth.workspaceId,
+    (event) => res.write(`data: ${JSON.stringify(event)}\n\n`),
+  );
+  const heartbeat = setInterval(() => res.write(": ping\n\n"), 25000);
+  req.on("close", () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
+});
 router.get(
   "/inbox/:id",
   wrap(async (req, res) => {
