@@ -621,12 +621,27 @@ class ContactService {
 
 
   async deleteContact(id) {
-
+    // A social-sourced contact's SocialIdentity and conversation records must
+    // go with it. Leaving them behind orphans a real, unique-indexed
+    // (provider, providerAssetId, providerUserId) identity row pointing at a
+    // deleted contact — the next inbound message from that same person then
+    // fails to create a fresh contact (it collides with the stale identity)
+    // instead of the clean restart this delete is meant to give.
+    const SocialIdentity = require("../models/SocialIdentity");
+    const ConversationThread = require("../models/ConversationThread");
+    const ConversationMessage = require("../models/ConversationMessage");
+    const threads = await ConversationThread.find({ contactIds: id }).select("_id").lean();
+    const threadIds = threads.map((thread) => thread._id);
+    if (threadIds.length) {
+      await ConversationMessage.deleteMany({ threadId: { $in: threadIds } });
+      await ConversationThread.deleteMany({ _id: { $in: threadIds } });
+    }
+    await ConversationMessage.deleteMany({ contactId: id });
+    await SocialIdentity.deleteMany({ contactId: id });
+    await CrmActivity.deleteMany({ contactId: id });
 
     const result =
       await Contact.findByIdAndDelete(id);
-
-
 
     if (!result) {
 

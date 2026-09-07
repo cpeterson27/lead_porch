@@ -572,6 +572,7 @@ export default function Contacts() {
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const [actionMenu, setActionMenu] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const [previewStats, setPreviewStats] = useState(null);
   const [duplicatePreview, setDuplicatePreview] = useState(null);
   const [detailContact, setDetailContact] = useState(null);
@@ -1301,6 +1302,34 @@ export default function Contacts() {
     setBulkNotice(
       `${selectedContacts.length} selected contact${selectedContacts.length === 1 ? "" : "s"} exported. No CRM records were changed.`,
     );
+  }
+
+  async function deleteSelectedContacts() {
+    if (!selectedContacts.length) return;
+    try {
+      setBulkSaving(true);
+      const results = await Promise.allSettled(
+        selectedContacts.map((contact) => deleteContact(contact._id)),
+      );
+      const failed = results.filter((result) => result.status === "rejected").length;
+      const deleted = results.length - failed;
+      setBulkNotice(
+        `${deleted} contact${deleted === 1 ? "" : "s"} permanently deleted.` +
+          (failed
+            ? ` ${failed} could not be deleted (likely protected outreach history).`
+            : ""),
+      );
+      setBulkDeleteConfirmOpen(false);
+      setSelectedContactIds([]);
+      await loadContacts();
+    } catch (err) {
+      setError(
+        err.response?.data?.message ||
+          "Unable to delete the selected contacts.",
+      );
+    } finally {
+      setBulkSaving(false);
+    }
   }
 
   async function archiveSelectedContacts() {
@@ -2331,6 +2360,14 @@ export default function Contacts() {
                   onClick={archiveSelectedContacts}
                 >
                   Archive
+                </Button>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  loading={bulkSaving}
+                  onClick={() => setBulkDeleteConfirmOpen(true)}
+                >
+                  Delete
                 </Button>
                 <Button
                   variant="ghost"
@@ -3763,6 +3800,39 @@ export default function Contacts() {
             {deleteTarget.campaignIds?.length ? "associated" : "none"}.
           </p>
         ) : null}
+      </Modal>
+      <Modal
+        isOpen={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        title="Delete selected contacts permanently"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setBulkDeleteConfirmOpen(false)}
+              disabled={bulkSaving}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              loading={bulkSaving}
+              onClick={deleteSelectedContacts}
+            >
+              Delete permanently
+            </Button>
+          </>
+        }
+      >
+        <p>
+          This permanently removes {selectedContacts.length} selected contact
+          {selectedContacts.length === 1 ? "" : "s"} — this cannot be undone.
+          For a social-sourced contact, this also removes their conversation
+          history and social identity, so a fresh message from the same
+          person afterward creates a brand-new contact instead of reattaching
+          to what's deleted. A contact with protected outreach history will
+          not be deleted.
+        </p>
       </Modal>
       <Drawer
         isOpen={Boolean(detailContact)}
