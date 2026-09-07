@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import Modal from "../components/Modal.jsx";
+import Button from "../components/Button.jsx";
 import {
   createContentBrief,
   createSocialAutomation,
@@ -321,6 +323,8 @@ export default function SocialStudio() {
     await requestSocialApproval(id).catch(() => {});
     await approveSocialContent(id).catch(() => {});
   };
+  const [confirmation, setConfirmation] = useState(null);
+  const [publishedId, setPublishedId] = useState("");
   const publishNow = () =>
     run(async () => {
       if (!draft.social.destinations.length)
@@ -328,13 +332,21 @@ export default function SocialStudio() {
       const id = await ensureSaved();
       await readyForApproval(id);
       const result = await publishSocialContentNow(id);
-      setNotice(
-        result.status === "published"
-          ? "Published. Check your connected Facebook/Instagram account."
-          : result.status === "partially_published"
-            ? `Published to some accounts, not all. ${result.social?.lastError || ""}`
-            : `Could not publish: ${result.social?.lastError || "Approve this post and add a destination, then try again."}`,
-      );
+      setPublishedId(id);
+      setConfirmation({
+        title:
+          result.status === "published"
+            ? "Published"
+            : result.status === "partially_published"
+              ? "Partially published"
+              : "Publish failed",
+        body:
+          result.status === "published"
+            ? "Your post is live. Check your connected Facebook/Instagram account to see it."
+            : result.status === "partially_published"
+              ? `Published to some accounts, not all. ${result.social?.lastError || ""}`
+              : `Could not publish: ${result.social?.lastError || "Approve this post and add a destination, then try again."}`,
+      });
     });
   const [scheduleAt, setScheduleAt] = useState("");
   const scheduleForLater = () =>
@@ -345,7 +357,11 @@ export default function SocialStudio() {
       const id = await ensureSaved();
       await readyForApproval(id);
       await scheduleSocialContent(id, new Date(scheduleAt).toISOString());
-      setNotice(`Scheduled for ${new Date(scheduleAt).toLocaleString()}.`);
+      setPublishedId(id);
+      setConfirmation({
+        title: "Scheduled",
+        body: `This post will publish at ${new Date(scheduleAt).toLocaleString()}.`,
+      });
     });
   const automationComplete =
     metaDestinations.length > 0 &&
@@ -690,6 +706,26 @@ export default function SocialStudio() {
       >
         {savedId ? "View this post in the Content Library" : "Open Content Library"}
       </Link>
+      <Modal
+        isOpen={Boolean(confirmation)}
+        onClose={() => setConfirmation(null)}
+        title={confirmation?.title}
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setConfirmation(null)}>
+              Stay here
+            </Button>
+            <Link
+              className="btn"
+              to={publishedId ? `/social/content?content=${publishedId}` : "/social/content"}
+            >
+              Go to Content Library
+            </Link>
+          </>
+        }
+      >
+        <p>{confirmation?.body}</p>
+      </Modal>
     </section>
   );
 }
