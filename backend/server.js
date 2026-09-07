@@ -56,6 +56,7 @@ const { restrictNewRoleSurface } = require("./middleware/authorization");
 const { startResearchMonitorRunner } = require("./services/researchMonitorService");
 const { startCommunicationJobRunner } = require("./services/communicationJobRunner");
 const { startAutomationRunner } = require("./services/automationRunner");
+const { startSocialPublishingRunner } = require("./services/socialPublishingRunner");
 
 const app = express();
 
@@ -264,6 +265,7 @@ connectDatabase(mongoUri)
       if (process.env.RESEARCH_WORKER_MODE !== "external") startResearchMonitorRunner();
       startCommunicationJobRunner();
       startAutomationRunner();
+      startSocialPublishingRunner();
     });
 
     server.on("error", (error) => {
