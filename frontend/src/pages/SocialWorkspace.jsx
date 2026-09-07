@@ -3,7 +3,6 @@ import { Link, NavLink, useParams, useSearchParams } from "react-router-dom";
 import SocialLeads from "./SocialLeads.jsx";
 import Content from "./Content.jsx";
 import SocialConnectedAccounts from "../components/SocialConnectedAccounts.jsx";
-import SocialStudio from "./SocialStudio.jsx";
 import SocialReplyComposer from "../components/SocialReplyComposer.jsx";
 import Modal from "../components/Modal.jsx";
 import Button from "../components/Button.jsx";
@@ -27,7 +26,6 @@ import "./SocialWorkspace.css";
 
 const sections = [
   ["overview", "Overview"],
-  ["create", "Create post"],
   ["leads", "Leads"],
   ["calendar", "Calendar"],
   ["content", "Content"],
@@ -240,11 +238,7 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
         </div>
       )}
 
-      {section === "create" ? (
-        <div className="social-panel">
-          <SocialStudio />
-        </div>
-      ) : section === "content" ? (
+      {section === "content" || section === "create" ? (
         <div className="social-panel">
           <Content />
         </div>

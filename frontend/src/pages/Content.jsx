@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { FaFacebookF, FaInstagram, FaLinkedinIn, FaTiktok, FaXTwitter } from "react-icons/fa6";
 import { publishingBlocker } from "../utils/socialPublishingReadiness.js";
 import SocialContentDetail from "../components/SocialContentDetail.jsx";
+import SocialStudio from "./SocialStudio.jsx";
 import Button from "../components/Button.jsx";
 import Modal from "../components/Modal.jsx";
 import {
@@ -258,7 +259,8 @@ export default function Content() {
     [publishAt, setPublishAt] = useState(""),
     [deleteTarget, setDeleteTarget] = useState(null),
     [uploading, setUploading] = useState(false),
-    [publishedNotice, setPublishedNotice] = useState(null);
+    [publishedNotice, setPublishedNotice] = useState(null),
+    [createOpen, setCreateOpen] = useState(false);
   const fileInputRef = useRef(null);
   const load = async () => {
     try {
@@ -403,9 +405,7 @@ export default function Content() {
             caption, image, and destinations, then approve before publishing.
           </p>
         </div>
-        <Link className="btn btn--primary" to="/social/create">
-          Create post
-        </Link>
+        <Button onClick={() => setCreateOpen(true)}>Create post</Button>
       </div>
       {error ? <p className="form-error">{error}</p> : null}
       {message ? <p className="discovery-notice">{message}</p> : null}
@@ -447,6 +447,13 @@ export default function Content() {
           </Button>
         }
       >
+        {["published", "partially_published"].includes(editing?.status) && (
+          <p className="social-publishing-safety" role="status">
+            This post already went out. Saving here only updates your Lead
+            Porch record (useful for notes or reusing it later) — it does not
+            change the post already live on Facebook or Instagram.
+          </p>
+        )}
         <div className="social-editor__layout">
             <div className="social-editor__fields">
               <label>
@@ -664,9 +671,12 @@ export default function Content() {
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={["scheduled", "publishing", "published"].includes(
-                      item.status,
-                    )}
+                    disabled={["scheduled", "publishing"].includes(item.status)}
+                    title={
+                      ["scheduled", "publishing"].includes(item.status)
+                        ? "Cancel the schedule first to edit this post"
+                        : undefined
+                    }
                     onClick={() => edit(item)}
                   >
                     Edit
@@ -846,6 +856,17 @@ export default function Content() {
         }
       >
         <p>{publishedNotice}</p>
+      </Modal>
+      <Modal
+        isOpen={createOpen}
+        onClose={() => {
+          setCreateOpen(false);
+          load();
+        }}
+        title="Create post"
+        size="workspace"
+      >
+        <SocialStudio />
       </Modal>
     </div>
   );
