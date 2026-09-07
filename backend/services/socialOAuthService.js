@@ -765,17 +765,24 @@ async function status(workspaceId, provider) {
 
 function subscriptionFields(asset) {
   return asset.type === "instagram_business"
-    ? [
-        "comments",
-        "live_comments",
-        "messages",
-        "message_edit",
-        "message_reactions",
-        "messaging_postbacks",
-        "messaging_referral",
-        "messaging_seen",
-        "mentions",
-      ]
+    ? asset.parentId
+      ? // A Page-linked Instagram Business Account has no webhook fields of its
+        // own — Meta delivers its DMs through the parent Page's "messages"
+        // field, and rejects Instagram-only field names (comments, mentions,
+        // etc.) on the Page's subscribed_apps edge with an invalid-parameter
+        // error. Only a standalone Instagram Login connection uses those.
+        ["messages"]
+      : [
+          "comments",
+          "live_comments",
+          "messages",
+          "message_edit",
+          "message_reactions",
+          "messaging_postbacks",
+          "messaging_referral",
+          "messaging_seen",
+          "mentions",
+        ]
     : asset.type === "facebook_page"
       ? [
           "feed",

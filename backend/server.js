@@ -226,7 +226,7 @@ connectDatabase(mongoUri)
 
     app.get("/api/health", (req, res) => {
       res.json({
-        status: "Growth Operator backend running 🚀",
+        status: "Lead Porch backend running 🚀",
       });
     });
 

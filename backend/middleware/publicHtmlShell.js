@@ -11,7 +11,7 @@ const INDEX_HTML_PATH = path.join(
   "dist",
   "index.html",
 );
-const FALLBACK_TITLE = "Growth Operator — The intelligent growth workspace";
+const FALLBACK_TITLE = "Lead Porch — The intelligent growth workspace";
 const ASSET_PATH = /\.[a-z0-9]+$/i;
 
 function escapeHtml(value) {
