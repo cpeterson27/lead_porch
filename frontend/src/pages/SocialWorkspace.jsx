@@ -32,6 +32,7 @@ const sections = [
   ["calendar", "Calendar"],
   ["content", "Content"],
   ["inbox", "Inbox"],
+  ["comments", "Comments"],
   ["automations", "Automations"],
   ["distribution", "Ambassadors"],
   ["analytics", "Analytics"],
@@ -63,7 +64,7 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
   const oauthError = oauthStatus === "denied" ? `${providerName} authorization was cancelled. You can connect it when you are ready.` : oauthStatus === "failed" ? params.get("message") || `${providerName} connection failed. Try again or ask the app administrator to verify provider configuration.` : "";
   useEffect(() => {
     let active = true;
-    if (section === "inbox" && threadId)
+    if (["inbox", "comments"].includes(section) && threadId)
       fetchSocialWorkspace(`inbox/${threadId}`)
         .then((value) => {
           if (active) {
@@ -87,7 +88,9 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
           ? "accounts"
           : section === "inbox"
             ? `inbox?filter=${filter}&provider=${provider}`
-            : section;
+            : section === "comments"
+              ? `inbox?type=comments&provider=${provider}`
+              : section;
     if (["create", "content", "automations", "leads"].includes(section)) return;
     const request =
       section === "calendar"
@@ -115,10 +118,14 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
   // visibility listener and a long-interval fallback cover the rare case
   // where the stream itself drops without the browser noticing.
   useEffect(() => {
-    if (section !== "inbox") return undefined;
+    if (!["inbox", "comments"].includes(section)) return undefined;
     let active = true;
+    const listEndpoint =
+      section === "comments"
+        ? `inbox?type=comments&provider=${provider}`
+        : `inbox?filter=${filter}&provider=${provider}`;
     const refresh = () => {
-      fetchSocialWorkspace(`inbox?filter=${filter}&provider=${provider}`)
+      fetchSocialWorkspace(listEndpoint)
         .then((value) => {
           if (active) setData(value);
         })
@@ -178,9 +185,12 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
       if (result.threadDeleted) {
         setDetail(null);
         setSelected(null);
-        setData(
-          await fetchSocialWorkspace(`inbox?filter=${filter}&provider=${provider}`),
-        );
+        const listEndpoint =
+          detail.thread.metadata?.interactionType === "comment" ||
+          detail.thread.metadata?.interactionType === "mention"
+            ? `inbox?type=comments&provider=${provider}`
+            : `inbox?filter=${filter}&provider=${provider}`;
+        setData(await fetchSocialWorkspace(listEndpoint));
       } else {
         await openThread(detail.thread);
       }
@@ -462,26 +472,30 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
         </div>
       ) : null}
 
-      {section === "inbox" ? (
+      {["inbox", "comments"].includes(section) ? (
         <div className="social-panel social-inbox-shell">
           <div className="social-inbox-toolbar">
             <div>
-              <span className="social-inbox-eyebrow">Messages</span>
-              <h2>Social inbox</h2>
+              <span className="social-inbox-eyebrow">
+                {section === "comments" ? "Public replies" : "Messages"}
+              </span>
+              <h2>{section === "comments" ? "Post comments" : "Social inbox"}</h2>
             </div>
             <div className="social-filters">
-            <label>
-              Show
-              <select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-              >
-                <option value="">All</option>
-                <option value="unread">Unread</option>
-                <option value="needs_reply">Needs reply</option>
-                <option value="assigned">Assigned to me</option>
-              </select>
-            </label>
+            {section === "inbox" && (
+              <label>
+                Show
+                <select
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                >
+                  <option value="">All</option>
+                  <option value="unread">Unread</option>
+                  <option value="needs_reply">Needs reply</option>
+                  <option value="assigned">Assigned to me</option>
+                </select>
+              </label>
+            )}
             <label>
               Network
               <select
@@ -496,8 +510,15 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
             </label>
             </div>
           </div>
+          {section === "comments" && (
+            <p className="social-comments-intro">
+              Comments and mentions on your posts — separate from direct
+              messages because each one is a public reply to a specific post,
+              not a private conversation.
+            </p>
+          )}
           <div className="social-inbox">
-            <section className="social-thread-list" aria-label="Social conversations">
+            <section className="social-thread-list" aria-label={section === "comments" ? "Post comments" : "Social conversations"}>
               {Array.isArray(data) &&
                 data.map((row) => (
                   <button
@@ -516,21 +537,129 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                   </button>
                 ))}
               {Array.isArray(data) && !data.length && (
-                <p>No matching social conversations.</p>
+                <p>
+                  {section === "comments"
+                    ? "No comments or mentions yet."
+                    : "No matching social conversations."}
+                </p>
               )}
             </section>
             <section className="social-conversation-pane">
               {detail ? (
-                <>
-                  {(() => {
-                    const identity = detail.identity;
-                    const contactName =
-                      detail.thread.contactIds?.[0]?.name || "Conversation";
-                    const profileLink =
-                      identity?.username && detail.thread.channel === "instagram"
-                        ? `https://instagram.com/${identity.username}`
-                        : null;
+                (() => {
+                  const isCommentThread = ["comment", "mention"].includes(
+                    detail.thread.metadata?.interactionType,
+                  );
+                  if (isCommentThread) {
+                    const postContext = detail.thread.metadata?.postContext;
+                    const comment = detail.messages.find(
+                      (message) => message.direction === "inbound",
+                    );
+                    const replies = detail.messages.filter(
+                      (message) => message.direction === "outbound",
+                    );
+                    const commenterName =
+                      comment?.sender?.name ||
+                      detail.thread.contactIds?.[0]?.name ||
+                      "Someone";
                     return (
+                      <>
+                        <header className="social-post-context">
+                          {postContext?.imageUrl && (
+                            <img
+                              src={postContext.imageUrl}
+                              alt=""
+                              referrerPolicy="no-referrer"
+                            />
+                          )}
+                          <div>
+                            <span>
+                              {detail.thread.metadata?.interactionType === "mention"
+                                ? "Mentioned you in a"
+                                : "Comment on your"}{" "}
+                              {human(detail.thread.channel)} post
+                            </span>
+                            <p>
+                              {postContext?.text ||
+                                "The original post text isn't available."}
+                            </p>
+                            {postContext?.permalink ? (
+                              <a
+                                href={postContext.permalink}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                View post ↗
+                              </a>
+                            ) : (
+                              <small>
+                                A link to the post isn't available yet.
+                              </small>
+                            )}
+                          </div>
+                        </header>
+                        <div className="social-comment-thread">
+                          <article className="social-comment">
+                            <div className="social-message-head">
+                              <strong>{commenterName} commented</strong>
+                              <button
+                                type="button"
+                                className="social-message-delete"
+                                aria-label="Delete this comment from Lead Porch"
+                                onClick={() => setPendingDeleteId(comment._id)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                            <p>{comment?.body}</p>
+                            <small>{date(comment?.createdAt)}</small>
+                          </article>
+                          {replies.map((reply) => (
+                            <article
+                              className="social-comment social-comment--reply"
+                              key={reply._id}
+                            >
+                              <div className="social-message-head">
+                                <strong>
+                                  Your reply
+                                  {reply.metadata?.privateReply
+                                    ? " (private)"
+                                    : ""}
+                                </strong>
+                                <button
+                                  type="button"
+                                  className="social-message-delete"
+                                  aria-label="Delete this reply from Lead Porch"
+                                  onClick={() => setPendingDeleteId(reply._id)}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                              <p>{reply.body}</p>
+                              <small>{date(reply.createdAt)}</small>
+                            </article>
+                          ))}
+                        </div>
+                        <div className="social-composer-dock">
+                          <SocialReplyComposer
+                            key={detail.thread._id}
+                            thread={detail.thread}
+                            initialAnalysis={detail.socialAi}
+                            onSent={() => openThread(detail.thread)}
+                          />
+                        </div>
+                      </>
+                    );
+                  }
+                  const identity = detail.identity;
+                  const contactName =
+                    detail.thread.contactIds?.[0]?.name || "Conversation";
+                  const profileLink =
+                    identity?.username && detail.thread.channel === "instagram"
+                      ? `https://instagram.com/${identity.username}`
+                      : null;
+                  return (
+                    <>
                       <header className="social-conversation-header">
                         <span className="social-conversation-avatar" aria-hidden="true">
                           {identity?.avatarUrl ? (
@@ -563,51 +692,52 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                           )}
                         </div>
                       </header>
-                    );
-                  })()}
-                  <div className="social-message-stream">
-                    {detail.messages.map((message) => {
-                      const inbound = message.direction === "inbound";
-                      const sender = inbound
-                        ? message.sender?.name || "Contact"
-                        : message.metadata?.senderType === "automation"
-                          ? "Lead Porch automation"
-                          : message.createdBy?.name || "Team";
-                      return (
-                        <article
-                          className={`social-message ${inbound ? "social-message--inbound" : "social-message--outbound"}`}
-                          key={message._id}
-                        >
-                          <div className="social-message-head">
-                            <strong>{sender}</strong>
-                            <button
-                              type="button"
-                              className="social-message-delete"
-                              aria-label="Delete this message from Lead Porch"
-                              onClick={() => setPendingDeleteId(message._id)}
+                      <div className="social-message-stream">
+                        {detail.messages.map((message) => {
+                          const inbound = message.direction === "inbound";
+                          const sender = inbound
+                            ? message.sender?.name || "Contact"
+                            : message.metadata?.senderType === "automation"
+                              ? "Lead Porch automation"
+                              : message.createdBy?.name || "Team";
+                          return (
+                            <article
+                              className={`social-message ${inbound ? "social-message--inbound" : "social-message--outbound"}`}
+                              key={message._id}
                             >
-                              Delete
-                            </button>
-                          </div>
-                          <div className="social-message-bubble"><p>{message.body}</p></div>
-                          <small>{date(message.createdAt)} · {message.deliveryStatus}</small>
-                        </article>
-                      );
-                    })}
-                  </div>
-                  <div className="social-composer-dock">
-                    <SocialReplyComposer
-                      key={detail.thread._id}
-                      thread={detail.thread}
-                      initialAnalysis={detail.socialAi}
-                      onSent={() => openThread(detail.thread)}
-                    />
-                  </div>
-                </>
+                              <div className="social-message-head">
+                                <strong>{sender}</strong>
+                                <button
+                                  type="button"
+                                  className="social-message-delete"
+                                  aria-label="Delete this message from Lead Porch"
+                                  onClick={() => setPendingDeleteId(message._id)}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                              <div className="social-message-bubble"><p>{message.body}</p></div>
+                              <small>{date(message.createdAt)} · {message.deliveryStatus}</small>
+                            </article>
+                          );
+                        })}
+                      </div>
+                      <div className="social-composer-dock">
+                        <SocialReplyComposer
+                          key={detail.thread._id}
+                          thread={detail.thread}
+                          initialAnalysis={detail.socialAi}
+                          onSent={() => openThread(detail.thread)}
+                        />
+                      </div>
+                    </>
+                  );
+                })()
               ) : (
                 <p className="social-inbox-empty">
-                  Select a conversation to see the exact incoming and outgoing
-                  messages.
+                  {section === "comments"
+                    ? "Select a comment to see the post it belongs to and reply."
+                    : "Select a conversation to see the exact incoming and outgoing messages."}
                 </p>
               )}
             </section>

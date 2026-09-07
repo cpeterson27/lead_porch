@@ -303,6 +303,13 @@ router.get(
     if (req.query.filter === "unread") query.unreadCount = { $gt: 0 };
     if (req.query.filter === "needs_reply") query.status = "open";
     if (req.query.filter === "assigned") query.assignedTo = req.auth.user._id;
+    // Comments and mentions are replies to a specific public post, not a
+    // direct-message conversation — they get their own section (?type=
+    // comments) so the inbox itself only ever shows real DM threads.
+    query["metadata.interactionType"] =
+      req.query.type === "comments"
+        ? { $in: ["comment", "mention"] }
+        : { $nin: ["comment", "mention"] };
     const data = await ConversationThread.find(query)
       .populate("contactIds", "name")
       .sort({ lastMessageAt: -1 })
@@ -363,6 +370,25 @@ router.get(
           .select("username displayName avatarUrl providerUserId")
           .lean()
       : null;
+    if (
+      ["comment", "mention"].includes(thread.metadata?.interactionType) &&
+      thread.metadata?.contentId &&
+      !thread.metadata?.postContext
+    ) {
+      const postContext = await require("../services/metaRecentPostService").postContext({
+        workspaceId: req.auth.workspaceId,
+        provider: thread.channel,
+        assetId: thread.metadata.assetId,
+        postId: thread.metadata.contentId,
+      });
+      if (postContext) {
+        await ConversationThread.updateOne(
+          { _id: thread._id },
+          { $set: { "metadata.postContext": postContext } },
+        );
+        thread.metadata.postContext = postContext;
+      }
+    }
     res.json({
       thread,
       messages,
