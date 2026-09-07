@@ -6,6 +6,7 @@ const { deliver } = require("./services/metaAutomationReplyService");
 const {
   connectionForAsset,
   metaMessagingAdapter,
+  webhookAssetId,
 } = require("./services/conversations/metaMessagingAdapter");
 const Connection = require("./models/SocialConnection");
 const oauth = require("./services/socialOAuthService");
@@ -75,6 +76,39 @@ const dm = normalize({
 });
 assert.equal(dm.eventType, "dm_received");
 assert.equal(dm.opensMessagingWindow, true);
+const pageLinkedConnection = {
+  ...connection,
+  provider: "meta",
+  assets: [
+    { id: "page", type: "facebook_page" },
+    { id: "ig", type: "instagram_business", parentId: "page" },
+  ],
+  selectedAssetIds: ["page", "ig"],
+};
+assert.equal(
+  webhookAssetId(pageLinkedConnection, "page", {
+    sender: { id: "person" },
+    recipient: { id: "ig" },
+  }),
+  "ig",
+  "Page-level webhook deliveries must route Instagram DMs to the linked Instagram asset",
+);
+assert.equal(
+  normalize({
+    connection: pageLinkedConnection,
+    assetId: webhookAssetId(pageLinkedConnection, "page", {
+      sender: { id: "person" },
+      recipient: { id: "ig" },
+    }),
+    messaging: {
+      sender: { id: "person" },
+      recipient: { id: "ig" },
+      timestamp: now,
+      message: { mid: "page-routed-instagram-dm", text: "Hello from Instagram" },
+    },
+  }).provider,
+  "instagram",
+);
 const edited = normalize({
   connection,
   assetId: "ig",

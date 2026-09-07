@@ -29,6 +29,20 @@ function assetChannel(connection, assetId) {
   return asset?.type === "instagram_business" ? "instagram" : "facebook";
 }
 
+function webhookAssetId(connection, entryAssetId, payload = {}) {
+  const entryId = String(entryAssetId || "");
+  const recipientId = String(payload?.recipient?.id || "");
+  if (!recipientId || recipientId === entryId) return entryId;
+  const selected = new Set((connection?.selectedAssetIds || []).map(String));
+  const recipientAsset = (connection?.assets || []).find(
+    (asset) =>
+      String(asset.id) === recipientId &&
+      selected.has(String(asset.id)) &&
+      (String(asset.parentId || "") === entryId || String(asset.id) === entryId),
+  );
+  return recipientAsset ? String(recipientAsset.id) : entryId;
+}
+
 async function ingestMetaMessage({ connection, assetId, event, entryTime }) {
   const normalized = require("../metaEventNormalizer").normalize({ connection, assetId, messaging: event, entryTime });
   return normalized ? ingestSocialEvent(normalized) : { ignored: true };
@@ -101,4 +115,4 @@ class MetaMessagingAdapter extends ConversationChannelAdapter {
 }
 
 const metaMessagingAdapter = registerConversationAdapter(new MetaMessagingAdapter());
-module.exports = { MetaMessagingAdapter, assetChannel, connectionForAsset, ingestMetaComment, ingestMetaMessage, metaMessagingAdapter, validateMetaSignature };
+module.exports = { MetaMessagingAdapter, assetChannel, connectionForAsset, ingestMetaComment, ingestMetaMessage, metaMessagingAdapter, validateMetaSignature, webhookAssetId };

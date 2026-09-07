@@ -15,7 +15,7 @@ const MessagingSender = require("../models/MessagingSender");
 const { normalizePhone } = require("../services/communicationPolicyService");
 const { twilioConversationAdapter, validateTwilioSignature } = require("../services/conversations/twilioConversationAdapter");
 const { runWithWorkspace } = require("../tenancy/workspaceContext");
-const { connectionForAsset, ingestMetaComment, ingestMetaMessage, validateMetaSignature } = require("../services/conversations/metaMessagingAdapter");
+const { connectionForAsset, ingestMetaComment, ingestMetaMessage, validateMetaSignature, webhookAssetId } = require("../services/conversations/metaMessagingAdapter");
 const { deliver: deliverMetaReply } = require("../services/metaAutomationReplyService");
 
 const router = express.Router();
@@ -58,8 +58,9 @@ router.post(["/meta", "/instagram"], async (req, res) => {
         if (Array.isArray(entry.standby) && entry.standby.length) console.warn("[Meta webhook] standby events are intentionally not processed; remove standby in Meta");
         if (Array.isArray(entry.messaging_handover) && entry.messaging_handover.length) console.warn("[Meta webhook] handover events are intentionally not processed; remove messaging_handover in Meta");
         for (const event of entry.messaging || []) {
-          const result = await ingestMetaMessage({ connection, assetId: entry.id, event, entryTime: entry.time });
-          logIngestResult(result, entry.id);
+          const assetId = webhookAssetId(connection, entry.id, event);
+          const result = await ingestMetaMessage({ connection, assetId, event, entryTime: entry.time });
+          logIngestResult(result, assetId);
           await deliverMetaReply(result?.event);
         }
         for (const change of entry.changes || []) {
@@ -68,8 +69,9 @@ router.post(["/meta", "/instagram"], async (req, res) => {
             continue;
           }
           if (["comments", "live_comments", "feed", "mentions", "mention", "messages", "message_edit", "message_edits", "message_reactions", "message_reads", "message_deliveries", "messaging_seen", "messaging_optins", "messaging_postbacks", "messaging_referral", "messaging_referrals", "messaging_customer_information", "messaging_in_thread_lead_form_submit"].includes(change.field)) {
-            const result = await ingestMetaComment({ connection, assetId: entry.id, change, entryTime: entry.time });
-            logIngestResult(result, entry.id);
+            const assetId = webhookAssetId(connection, entry.id, change.value);
+            const result = await ingestMetaComment({ connection, assetId, change, entryTime: entry.time });
+            logIngestResult(result, assetId);
             await deliverMetaReply(result?.event);
           }
         }

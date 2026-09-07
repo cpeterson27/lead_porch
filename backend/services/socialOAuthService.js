@@ -731,9 +731,9 @@ function publicConnection(connection, provider) {
         : "",
     disconnectNotice:
       provider === "instagram"
-        ? "Disconnect removes access from Growth Operator locally. To revoke the authorization at Instagram, also remove this app in Instagram's Apps and websites settings."
+        ? "Disconnect removes access from Lead Porch locally. To revoke the authorization at Instagram, also remove this app in Instagram's Apps and websites settings."
         : provider === "linkedin"
-          ? "Disconnect removes the encrypted LinkedIn authorization from Growth Operator. You can also remove Growth Operator from LinkedIn's permitted services."
+          ? "Disconnect removes the encrypted LinkedIn authorization from Lead Porch. You can also remove Lead Porch from LinkedIn's permitted services."
           : "",
   };
 }
