@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { FaFacebookF, FaInstagram, FaLinkedinIn, FaTiktok, FaXTwitter } from "react-icons/fa6";
 import { publishingBlocker } from "../utils/socialPublishingReadiness.js";
 import SocialContentDetail from "../components/SocialContentDetail.jsx";
+import SocialReplyComposer from "../components/SocialReplyComposer.jsx";
 import SocialStudio from "./SocialStudio.jsx";
 import Button from "../components/Button.jsx";
 import Modal from "../components/Modal.jsx";
@@ -240,6 +241,112 @@ function PostPreview({ draft }) {
           <p className="preview-card__none">Choose a destination to preview the post.</p>
         )}
       </div>
+    </div>
+  );
+}
+function PostComments({ item }) {
+  const [open, setOpen] = useState(false),
+    [threads, setThreads] = useState(null),
+    [error, setError] = useState("");
+  const load = () => {
+    fetchSocialWorkspace(`content/${item._id}/comments`)
+      .then((result) => setThreads(result.threads || []))
+      .catch(() => setError("Unable to load comments."));
+  };
+  const toggle = () => {
+    const next = !open;
+    setOpen(next);
+    if (next && threads === null) load();
+  };
+  const deleteMessage = async (threadId, messageId) => {
+    if (
+      !window.confirm(
+        "Delete this from Lead Porch? This does not remove it from Facebook or Instagram.",
+      )
+    )
+      return;
+    try {
+      await mutateSocialWorkspace(
+        `inbox/${threadId}/messages/${messageId}/delete`,
+        {},
+      );
+      load();
+    } catch {
+      setError("Could not delete this.");
+    }
+  };
+  return (
+    <div className="social-post-comments">
+      <Button size="sm" variant="outline" onClick={toggle}>
+        {open ? "Hide comments" : "Comments"}
+      </Button>
+      {open && (
+        <div className="social-post-comments__panel">
+          {error ? <p className="form-error">{error}</p> : null}
+          {threads === null ? (
+            <p>Loading comments…</p>
+          ) : threads.length ? (
+            threads.map(({ thread, messages }) => {
+              const comment = messages.find(
+                (message) => message.direction === "inbound",
+              );
+              const replies = messages.filter(
+                (message) => message.direction === "outbound",
+              );
+              const commenterName =
+                comment?.sender?.name ||
+                thread.contactIds?.[0]?.name ||
+                "Someone";
+              return (
+                <article key={thread._id} className="social-comment-thread-card">
+                  <header>
+                    <strong>{commenterName}</strong>
+                    <span>
+                      {thread.metadata?.interactionType === "mention"
+                        ? "mentioned you"
+                        : "commented"}
+                    </span>
+                    <button
+                      type="button"
+                      className="social-message-delete"
+                      onClick={() => deleteMessage(thread._id, comment._id)}
+                    >
+                      Delete
+                    </button>
+                  </header>
+                  <p>{comment?.body}</p>
+                  {replies.map((reply) => (
+                    <div
+                      key={reply._id}
+                      className="social-comment-thread-card__reply"
+                    >
+                      <div>
+                        <strong>
+                          Your reply
+                          {reply.metadata?.privateReply ? " (private)" : ""}
+                        </strong>
+                        <button
+                          type="button"
+                          className="social-message-delete"
+                          onClick={() => deleteMessage(thread._id, reply._id)}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                      <p>{reply.body}</p>
+                    </div>
+                  ))}
+                  <div className="social-composer-dock">
+                    <SocialReplyComposer thread={thread} onSent={load} />
+                  </div>
+                </article>
+              );
+            })
+          ) : (
+            <p>No comments yet.</p>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -799,6 +906,9 @@ export default function Content() {
                       {publishingBlocker(item, matrix, publishingEnabled)}
                     </p>
                   )}
+                {item.social?.publications?.some((row) => row.providerPostId) ? (
+                  <PostComments item={item} />
+                ) : null}
                 <SocialContentDetail content={item} />
                 {item.social?.publications?.length ? (
                   <details>

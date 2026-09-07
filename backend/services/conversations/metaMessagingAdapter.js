@@ -143,9 +143,13 @@ class MetaMessagingAdapter extends ConversationChannelAdapter {
     if (!token) throw new Error("Selected account credentials are unavailable");
     const version = require("../socialProviderConfig").graphVersion();
     const host = connection.provider === "instagram" ? "graph.instagram.com" : "graph.facebook.com";
+    // Page-linked Instagram assets have no /messages edge of their own — the
+    // private reply must target the parent Page's edge instead, same as the
+    // DM send path above and the manual reply path in metaPageEngagementService.js.
+    const sendTargetId = asset.parentId || assetId;
     const response = asset.type === "facebook_page"
       ? await axios.post(`https://graph.facebook.com/${version}/${commentId}/private_replies`, { message: String(body) }, { params: { access_token: token }, timeout: 15000 })
-      : await axios.post(`https://${host}/${version}/${assetId}/messages`, { recipient: { comment_id: commentId }, message: { text: String(body) } }, { params: { access_token: token }, timeout: 15000 });
+      : await axios.post(`https://${host}/${version}/${sendTargetId}/messages`, { recipient: { comment_id: commentId }, message: { text: String(body) } }, { params: { access_token: token }, timeout: 15000 });
     const messageId = response.data?.message_id || response.data?.id;
     if (!messageId) throw new Error("Provider message outcome is unknown");
     return ingestProviderMessage({ thread: { channel: thread.channel, provider: "meta", providerThreadId: thread.providerThreadId, participants: thread.participants, contactIds: thread.contactIds, metadata: thread.metadata }, message: { providerMessageId: String(messageId), direction: "outbound", body: String(body), sender: { address: String(assetId) }, contactId: thread.contactIds?.[0], deliveryStatus: "sent", metadata: { senderType, commentId, privateReply: true } } });

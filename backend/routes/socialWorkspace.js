@@ -857,4 +857,49 @@ router.get(
     });
   }),
 );
+router.get(
+  "/content/:id/comments",
+  wrap(async (req, res) => {
+    const workspaceId = req.auth.workspaceId;
+    const item = await ContentBrief.findOne({
+      _id: req.params.id,
+      workspaceId,
+      type: "social",
+    })
+      .select("social.publications")
+      .lean();
+    if (!item) return res.status(404).json({ error: "Content not found" });
+    const providerPostIds = [
+      ...new Set(
+        (item.social?.publications || [])
+          .map((row) => row.providerPostId)
+          .filter(Boolean),
+      ),
+    ];
+    if (!providerPostIds.length) return res.json({ threads: [] });
+    const threads = await ConversationThread.find({
+      workspaceId,
+      channel: { $in: socialChannels },
+      "metadata.interactionType": { $in: ["comment", "mention"] },
+      "metadata.contentId": { $in: providerPostIds },
+    })
+      .populate("contactIds", "name")
+      .sort({ lastMessageAt: -1 })
+      .lean();
+    const withMessages = await Promise.all(
+      threads.map(async (thread) => ({
+        thread,
+        messages: await ConversationMessage.find({
+          workspaceId,
+          threadId: thread._id,
+          deletedAt: null,
+        })
+          .populate("createdBy", "name")
+          .sort({ createdAt: 1 })
+          .lean(),
+      })),
+    );
+    res.json({ threads: withMessages });
+  }),
+);
 module.exports = router;

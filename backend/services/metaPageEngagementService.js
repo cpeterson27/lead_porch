@@ -32,9 +32,12 @@ function clean(value, max = 2000) {
 }
 function safeProviderError(error) {
   const status = Number(error?.response?.status || 0);
-  return status >= 400 && status < 500
-    ? `Meta rejected this action (HTTP ${status})`
-    : "Meta action outcome could not be confirmed";
+  const providerMessage = error?.response?.data?.error?.message;
+  if (status >= 400 && status < 500)
+    return providerMessage
+      ? `Meta rejected this action: ${providerMessage}`
+      : `Meta rejected this action (HTTP ${status})`;
+  return "Meta action outcome could not be confirmed";
 }
 
 async function reserve(models, values) {
@@ -159,8 +162,19 @@ async function perform(
         throw new Error(
           "Instagram currently supports approved private replies here; moderation actions remain provider-limited",
         );
+      // A Page-linked Instagram Business Account has no /messages edge of its
+      // own — Meta rejects it with "(#3) Application does not have the
+      // capability to make this API call." The private reply must target the
+      // parent Page's edge instead, on graph.facebook.com, exactly like the
+      // DM send path in metaMessagingAdapter.js. A standalone Instagram Login
+      // asset (no parentId) sends via its own id on graph.instagram.com.
+      const apiHost =
+        connection.provider === "instagram"
+          ? "graph.instagram.com"
+          : "graph.facebook.com";
+      const sendTargetId = asset.parentId || assetId;
       response = await models.http.post(
-        `https://graph.instagram.com/${version}/${assetId}/messages`,
+        `https://${apiHost}/${version}/${sendTargetId}/messages`,
         {
           recipient: { comment_id: commentId },
           message: { text: clean(body) },
@@ -240,6 +254,9 @@ async function perform(
     );
     return { duplicate: false, status: "confirmed", action };
   } catch (error) {
+    console.error(
+      `[Meta comment action] failed: workspaceId=${workspaceId} action=${action} provider=${provider} assetId=${assetId} status=${error.response?.status || "n/a"} providerCode=${error.response?.data?.error?.code || "n/a"} providerMessage=${error.response?.data?.error?.message || "n/a"}`,
+    );
     const outcome =
       Number(error?.response?.status || 0) >= 400 &&
       Number(error?.response?.status || 0) < 500
