@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { FaThumbsUp, FaRegThumbsUp } from "react-icons/fa6";
 import { manageFacebookComment } from "../services/api.js";
 import "./FacebookCommentActions.css";
 
@@ -102,11 +103,19 @@ export default function FacebookCommentActions({ thread, onChanged }) {
           <button disabled={Boolean(busy)} onClick={() => run("unhide")}>
             Unhide
           </button>
-          <button disabled={Boolean(busy)} onClick={() => run("like")}>
-            Like as Page
+          <button
+            className="facebook-comment-actions__like"
+            disabled={Boolean(busy)}
+            onClick={() => run("like")}
+          >
+            <FaThumbsUp aria-hidden="true" /> Like as Page
           </button>
-          <button disabled={Boolean(busy)} onClick={() => run("unlike")}>
-            Remove Page like
+          <button
+            className="facebook-comment-actions__unlike"
+            disabled={Boolean(busy)}
+            onClick={() => run("unlike")}
+          >
+            <FaRegThumbsUp aria-hidden="true" /> Remove Page like
           </button>
           <button
             className="is-destructive"

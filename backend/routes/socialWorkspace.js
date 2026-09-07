@@ -910,6 +910,57 @@ router.get(
   }),
 );
 router.get(
+  "/content/comments/unlinked",
+  wrap(async (req, res) => {
+    // Comments and mentions only ever show up per-post on that post's own
+    // Content Library card, matched by its Facebook/Instagram post ID. A
+    // comment on a post that was published outside Lead Porch, or whose
+    // ContentBrief record was later deleted, has no card to appear under and
+    // would otherwise become permanently invisible — this lists exactly
+    // those orphaned threads so nothing gets lost.
+    const workspaceId = req.auth.workspaceId;
+    const items = await ContentBrief.find({ workspaceId, type: "social" })
+      .select("social.publications")
+      .lean();
+    const knownIds = new Set();
+    for (const item of items) {
+      for (const row of item.social?.publications || []) {
+        if (!row.providerPostId) continue;
+        knownIds.add(row.providerPostId);
+        if (row.provider === "facebook" && row.assetId) {
+          knownIds.add(`${row.assetId}_${row.providerPostId}`);
+          const bare = String(row.providerPostId).split("_").pop();
+          if (bare) knownIds.add(bare);
+        }
+      }
+    }
+    const threads = await ConversationThread.find({
+      workspaceId,
+      channel: { $in: socialChannels },
+      "metadata.interactionType": { $in: ["comment", "mention"] },
+      "metadata.contentId": { $nin: [...knownIds] },
+    })
+      .populate("contactIds", "name")
+      .sort({ lastMessageAt: -1 })
+      .limit(200)
+      .lean();
+    const withMessages = await Promise.all(
+      threads.map(async (thread) => ({
+        thread,
+        messages: await ConversationMessage.find({
+          workspaceId,
+          threadId: thread._id,
+          deletedAt: null,
+        })
+          .populate("createdBy", "name")
+          .sort({ createdAt: 1 })
+          .lean(),
+      })),
+    );
+    res.json({ threads: withMessages });
+  }),
+);
+router.get(
   "/content/:id/insights",
   wrap(async (req, res) => {
     const workspaceId = req.auth.workspaceId;

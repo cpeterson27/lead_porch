@@ -310,6 +310,110 @@ function PostPerformance({ item }) {
     </div>
   );
 }
+function CommentGroups({ threads, destinations, onReload }) {
+  const deleteMessage = async (threadId, messageId) => {
+    if (
+      !window.confirm(
+        "Delete this from Lead Porch? This does not remove it from Facebook or Instagram.",
+      )
+    )
+      return;
+    try {
+      await mutateSocialWorkspace(
+        `inbox/${threadId}/messages/${messageId}/delete`,
+        {},
+      );
+      onReload();
+    } catch {
+      window.alert("Could not delete this.");
+    }
+  };
+  // Groups come from the caller's known destinations when there is a fixed
+  // list to show (a specific post's platforms, always shown even if empty);
+  // otherwise fall back to whatever channels actually turned up.
+  const groups =
+    destinations || [...new Set(threads.map((row) => row.thread.channel))];
+  if (!groups.length) return <p className="social-comment-group__empty">No comments yet.</p>;
+  return groups.map((provider) => {
+    const Icon = platformIcons[provider];
+    const groupThreads = threads.filter((row) => row.thread.channel === provider);
+    return (
+      <section
+        key={provider}
+        className={`social-comment-group social-comment-group--${provider}`}
+      >
+        <header className="social-comment-group__header">
+          <span className="social-comment-group__icon">
+            {Icon ? <Icon /> : null}
+          </span>
+          <strong>{platformNames[provider] || provider}</strong>
+          <span className="social-comment-group__count">
+            {groupThreads.length}
+          </span>
+        </header>
+        {groupThreads.length ? (
+          groupThreads.map(({ thread, messages }) => {
+            const comment = messages.find(
+              (message) => message.direction === "inbound",
+            );
+            const replies = messages.filter(
+              (message) => message.direction === "outbound",
+            );
+            const commenterName =
+              comment?.sender?.name ||
+              thread.contactIds?.[0]?.name ||
+              "Someone";
+            return (
+              <article key={thread._id} className="social-comment-thread-card">
+                <header>
+                  <strong>{commenterName}</strong>
+                  <span>
+                    {thread.metadata?.interactionType === "mention"
+                      ? "mentioned you"
+                      : "commented"}
+                  </span>
+                  <button
+                    type="button"
+                    className="social-message-delete"
+                    onClick={() => deleteMessage(thread._id, comment._id)}
+                  >
+                    Delete
+                  </button>
+                </header>
+                <p>{comment?.body}</p>
+                {replies.map((reply) => (
+                  <div key={reply._id} className="social-comment-thread-card__reply">
+                    <div>
+                      <strong>
+                        Your reply
+                        {reply.metadata?.privateReply ? " (private)" : ""}
+                      </strong>
+                      <button
+                        type="button"
+                        className="social-message-delete"
+                        onClick={() => deleteMessage(thread._id, reply._id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                    <p>{reply.body}</p>
+                  </div>
+                ))}
+                <div className="social-composer-dock">
+                  <SocialReplyComposer thread={thread} onSent={onReload} />
+                </div>
+              </article>
+            );
+          })
+        ) : (
+          <p className="social-comment-group__empty">
+            No {platformNames[provider] || provider} comments yet.
+          </p>
+        )}
+      </section>
+    );
+  });
+}
 function PostComments({ item }) {
   const [open, setOpen] = useState(false),
     [threads, setThreads] = useState(null),
@@ -324,23 +428,6 @@ function PostComments({ item }) {
     const next = !open;
     setOpen(next);
     if (next && threads === null) load();
-  };
-  const deleteMessage = async (threadId, messageId) => {
-    if (
-      !window.confirm(
-        "Delete this from Lead Porch? This does not remove it from Facebook or Instagram.",
-      )
-    )
-      return;
-    try {
-      await mutateSocialWorkspace(
-        `inbox/${threadId}/messages/${messageId}/delete`,
-        {},
-      );
-      load();
-    } catch {
-      setError("Could not delete this.");
-    }
   };
   const totalCount = threads?.length || 0;
   return (
@@ -366,100 +453,47 @@ function PostComments({ item }) {
               Loading comments…
             </p>
           ) : (
-            destinations.map((provider) => {
-              const Icon = platformIcons[provider];
-              const groupThreads = threads.filter(
-                (row) => row.thread.channel === provider,
-              );
-              return (
-                <section
-                  key={provider}
-                  className={`social-comment-group social-comment-group--${provider}`}
-                >
-                  <header className="social-comment-group__header">
-                    <span className="social-comment-group__icon">
-                      {Icon ? <Icon /> : null}
-                    </span>
-                    <strong>{platformNames[provider]}</strong>
-                    <span className="social-comment-group__count">
-                      {groupThreads.length}
-                    </span>
-                  </header>
-                  {groupThreads.length ? (
-                    groupThreads.map(({ thread, messages }) => {
-                      const comment = messages.find(
-                        (message) => message.direction === "inbound",
-                      );
-                      const replies = messages.filter(
-                        (message) => message.direction === "outbound",
-                      );
-                      const commenterName =
-                        comment?.sender?.name ||
-                        thread.contactIds?.[0]?.name ||
-                        "Someone";
-                      return (
-                        <article
-                          key={thread._id}
-                          className="social-comment-thread-card"
-                        >
-                          <header>
-                            <strong>{commenterName}</strong>
-                            <span>
-                              {thread.metadata?.interactionType === "mention"
-                                ? "mentioned you"
-                                : "commented"}
-                            </span>
-                            <button
-                              type="button"
-                              className="social-message-delete"
-                              onClick={() =>
-                                deleteMessage(thread._id, comment._id)
-                              }
-                            >
-                              Delete
-                            </button>
-                          </header>
-                          <p>{comment?.body}</p>
-                          {replies.map((reply) => (
-                            <div
-                              key={reply._id}
-                              className="social-comment-thread-card__reply"
-                            >
-                              <div>
-                                <strong>
-                                  Your reply
-                                  {reply.metadata?.privateReply
-                                    ? " (private)"
-                                    : ""}
-                                </strong>
-                                <button
-                                  type="button"
-                                  className="social-message-delete"
-                                  onClick={() =>
-                                    deleteMessage(thread._id, reply._id)
-                                  }
-                                >
-                                  Delete
-                                </button>
-                              </div>
-                              <p>{reply.body}</p>
-                            </div>
-                          ))}
-                          <div className="social-composer-dock">
-                            <SocialReplyComposer thread={thread} onSent={load} />
-                          </div>
-                        </article>
-                      );
-                    })
-                  ) : (
-                    <p className="social-comment-group__empty">
-                      No {platformNames[provider]} comments yet.
-                    </p>
-                  )}
-                </section>
-              );
-            })
+            <CommentGroups threads={threads} destinations={destinations} onReload={load} />
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+function UnlinkedComments() {
+  const [open, setOpen] = useState(false),
+    [threads, setThreads] = useState(null);
+  const load = () => {
+    fetchSocialWorkspace("content/comments/unlinked")
+      .then((result) => setThreads(result.threads || []))
+      .catch(() => setThreads([]));
+  };
+  useEffect(() => {
+    load();
+  }, []);
+  if (!threads || !threads.length) return null;
+  return (
+    <div className="social-unlinked-comments">
+      <button
+        type="button"
+        className="social-post-comments__toggle social-unlinked-comments__toggle"
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span
+          className={`social-post-comments__chevron${open ? " social-post-comments__chevron--open" : ""}`}
+          aria-hidden="true"
+        >
+          ›
+        </span>
+        Other comments ({threads.length})
+      </button>
+      <p className="social-unlinked-comments__note">
+        Comments on a post that isn't tracked below — published outside Lead
+        Porch, or its record here was deleted. Nothing here is lost.
+      </p>
+      {open && (
+        <div className="social-post-comments__panel">
+          <CommentGroups threads={threads} destinations={null} onReload={load} />
         </div>
       )}
     </div>
@@ -817,6 +851,7 @@ export default function Content() {
           </select>
         </label>
       </div>
+      <UnlinkedComments />
       <section className="social-queue">
         {items.length ? (
           items

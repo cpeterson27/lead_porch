@@ -192,3 +192,9 @@
 .social-receipts__row--tiktok .social-receipts__icon{background:#000}
 .social-receipts__id{color:#8e8e93;font-size:.74rem;overflow-wrap:anywhere}
 @media(max-width:560px){.social-post-performance__stat{min-width:100%}}
+
+/* Comments that aren't attached to any tracked post card */
+.social-unlinked-comments{background:#fff;border:1px solid rgba(0,0,0,.05);border-radius:20px;padding:18px 20px;margin-bottom:20px;box-shadow:0 1px 3px rgba(0,0,0,.04)}
+.social-unlinked-comments__toggle{font-size:.92rem}
+.social-unlinked-comments__note{margin:6px 0 0;color:#8e8e93;font-size:.78rem;line-height:1.4}
+.social-unlinked-comments .social-post-comments__panel{margin-top:14px}
