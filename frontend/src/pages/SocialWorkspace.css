@@ -451,6 +451,13 @@
   gap: 9px;
 }
 
+.social-composer-dock .social-ai-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin: 10px 0 14px;
+}
+
 .social-composer-dock textarea {
   width: 100%;
   min-height: 74px;
