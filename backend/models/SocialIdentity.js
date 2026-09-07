@@ -9,6 +9,7 @@ const schema = new mongoose.Schema({
   providerAssetId: { type: String, default: "", trim: true, index: true },
   username: { type: String, default: "", trim: true },
   displayName: { type: String, default: "", trim: true },
+  avatarUrl: { type: String, default: "", trim: true },
   providerThreadId: { type: String, default: "", trim: true },
   sourceMetadata: { type: mongoose.Schema.Types.Mixed, default: {} },
   firstActivityAt: { type: Date, default: Date.now },

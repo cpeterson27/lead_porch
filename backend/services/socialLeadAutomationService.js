@@ -233,6 +233,7 @@ async function resolveIdentity(event, deps = models) {
         ...identityFilter,
         username: clean(event.username),
         displayName: clean(event.displayName),
+        avatarUrl: clean(event.avatarUrl, 2000),
         providerThreadId: clean(event.providerThreadId, 1000),
         sourceMetadata: event.sourceMetadata || {},
         lastActivityAt: event.occurredAt || new Date(),
@@ -254,10 +255,22 @@ async function resolveIdentity(event, deps = models) {
   } else {
     identity.username = clean(event.username) || identity.username;
     identity.displayName = clean(event.displayName) || identity.displayName;
+    identity.avatarUrl = clean(event.avatarUrl, 2000) || identity.avatarUrl;
     identity.providerThreadId =
       clean(event.providerThreadId, 1000) || identity.providerThreadId;
     identity.lastActivityAt = event.occurredAt || new Date();
     await identity.save();
+    // A message-derived contact starts with a generic placeholder name because
+    // the webhook payload alone never carries the sender's real name — repair
+    // it once a profile lookup (or a comment payload, which does include one)
+    // resolves a real name or username.
+    const genericName = `${event.provider} contact`;
+    const betterName = clean(event.displayName || event.username, 180);
+    if (betterName && String(contact.name || "").toLowerCase() === genericName) {
+      contact.name = betterName;
+      contact.firstName = betterName;
+      await contact.save();
+    }
   }
   return { contact, identity, created };
 }

@@ -43,9 +43,35 @@ function webhookAssetId(connection, entryAssetId, payload = {}) {
   return recipientAsset ? String(recipientAsset.id) : entryId;
 }
 
+async function fetchSenderProfile(connection, assetId, providerUserId) {
+  // Instagram exposes name/username for a message sender via a direct profile
+  // lookup. Facebook Messenger's equivalent PSID lookup has been restricted by
+  // Meta for standard business use since 2022 and reliably returns a
+  // permission error — confirmed against this workspace's own Page token —
+  // so it is not attempted here.
+  const asset = connection.assets?.find((item) => String(item.id) === String(assetId));
+  if (asset?.type !== "instagram_business" || !providerUserId) return null;
+  try {
+    const credentials = decryptCredentials(connection.credentialsEncrypted);
+    const pageId = asset.parentId || assetId;
+    const token = credentials.pageTokens?.[String(pageId)] || (connection.provider === "instagram" ? credentials.accessToken : null);
+    if (!token) return null;
+    const version = require("../socialProviderConfig").graphVersion();
+    const host = connection.provider === "instagram" ? "graph.instagram.com" : "graph.facebook.com";
+    const response = await axios.get(`https://${host}/${version}/${providerUserId}`, { params: { fields: "name,username,profile_pic", access_token: token }, timeout: 8000 });
+    return { displayName: response.data?.name || "", username: response.data?.username || "", avatarUrl: response.data?.profile_pic || "" };
+  } catch {
+    return null;
+  }
+}
 async function ingestMetaMessage({ connection, assetId, event, entryTime }) {
   const normalized = require("../metaEventNormalizer").normalize({ connection, assetId, messaging: event, entryTime });
-  return normalized ? ingestSocialEvent(normalized) : { ignored: true };
+  if (!normalized) return { ignored: true };
+  if (normalized.providerUserId && !normalized.displayName && !normalized.username) {
+    const profile = await fetchSenderProfile(connection, assetId, normalized.providerUserId);
+    if (profile) Object.assign(normalized, profile);
+  }
+  return ingestSocialEvent(normalized);
 }
 async function ingestMetaComment({ connection, assetId, change, entryTime }) {
   const normalized = require("../metaEventNormalizer").normalize({ connection, assetId, change, entryTime });

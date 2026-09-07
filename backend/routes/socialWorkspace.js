@@ -332,9 +332,19 @@ router.get(
       .sort({ createdAt: 1 })
       .limit(500)
       .lean();
+    const identity = thread.contactIds?.[0]
+      ? await SocialIdentity.findOne({
+          workspaceId: req.auth.workspaceId,
+          contactId: thread.contactIds[0]._id,
+          provider: thread.channel,
+        })
+          .select("username displayName avatarUrl providerUserId")
+          .lean()
+      : null;
     res.json({
       thread,
       messages,
+      identity,
       socialAi: await socialAiService.latest(req.auth.workspaceId, thread._id),
     });
   }),
@@ -578,7 +588,30 @@ router.post(
     );
     if (!message)
       return res.status(404).json({ error: "Message not found" });
-    res.json({ success: true });
+    const remaining = await ConversationMessage.find({
+      workspaceId: req.auth.workspaceId,
+      threadId: thread._id,
+      deletedAt: null,
+    })
+      .sort({ createdAt: -1 })
+      .limit(1)
+      .lean();
+    if (!remaining.length) {
+      // The contact itself stays in the CRM — only the now-empty conversation
+      // shell is removed so it stops showing stale preview/unread state.
+      await ConversationThread.deleteOne({ _id: thread._id });
+      return res.json({ success: true, threadDeleted: true });
+    }
+    await ConversationThread.updateOne(
+      { _id: thread._id },
+      {
+        $set: {
+          preview: String(remaining[0].body || "").slice(0, 1000),
+          lastMessageAt: remaining[0].createdAt,
+        },
+      },
+    );
+    res.json({ success: true, threadDeleted: false });
   }),
 );
 router.get(

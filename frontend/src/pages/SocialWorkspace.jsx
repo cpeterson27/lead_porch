@@ -5,6 +5,8 @@ import Content from "./Content.jsx";
 import SocialConnectedAccounts from "../components/SocialConnectedAccounts.jsx";
 import SocialStudio from "./SocialStudio.jsx";
 import SocialReplyComposer from "../components/SocialReplyComposer.jsx";
+import Modal from "../components/Modal.jsx";
+import Button from "../components/Button.jsx";
 import SocialOnboardingSettings from "../components/SocialOnboardingSettings.jsx";
 import SocialAutomationControls from "../components/SocialAutomationControls.jsx";
 import SocialDistributionForm from "../components/SocialDistributionForm.jsx";
@@ -50,7 +52,9 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
     [provider, setProvider] = useState(""),
     [selected, setSelected] = useState(null),
     [detail, setDetail] = useState(null),
-    [busy, setBusy] = useState(false);
+    [busy, setBusy] = useState(false),
+    [pendingDeleteId, setPendingDeleteId] = useState(null),
+    [deleting, setDeleting] = useState(false);
   const oauthStatus = connectionsOnly ? params.get("status") : "";
   const oauthProvider = params.get("social") || "social account";
   const providerName = oauthProvider === "meta" ? "Facebook + Instagram" : oauthProvider === "linkedin" ? "LinkedIn" : oauthProvider === "instagram" ? "Instagram" : oauthProvider === "x" ? "X" : "Social account";
@@ -122,21 +126,29 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
       setError("Conversation unavailable.");
     }
   };
-  const deleteMessage = async (messageId) => {
-    if (
-      !window.confirm(
-        "Delete this message from Lead Porch? This only removes it from your inbox here — Instagram and Facebook have no way for a business to unsend a message, so the recipient still has their copy.",
-      )
-    )
-      return;
+  const confirmDeleteMessage = async () => {
+    const messageId = pendingDeleteId;
+    if (!messageId) return;
+    setDeleting(true);
     try {
-      await mutateSocialWorkspace(
+      const result = await mutateSocialWorkspace(
         `inbox/${detail.thread._id}/messages/${messageId}/delete`,
         {},
       );
-      await openThread(detail.thread);
+      if (result.threadDeleted) {
+        setDetail(null);
+        setSelected(null);
+        setData(
+          await fetchSocialWorkspace(`inbox?filter=${filter}&provider=${provider}`),
+        );
+      } else {
+        await openThread(detail.thread);
+      }
+      setPendingDeleteId(null);
     } catch {
       setError("Could not delete this message.");
+    } finally {
+      setDeleting(false);
     }
   };
   return (
@@ -470,15 +482,49 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
             <section className="social-conversation-pane">
               {detail ? (
                 <>
-                  <header className="social-conversation-header">
-                    <span className="social-conversation-avatar" aria-hidden="true">
-                      {(detail.thread.contactIds?.[0]?.name || "C").charAt(0).toUpperCase()}
-                    </span>
-                    <div>
-                      <h2>{detail.thread.contactIds?.[0]?.name || "Conversation"}</h2>
-                      <span>{human(detail.thread.channel)} conversation</span>
-                    </div>
-                  </header>
+                  {(() => {
+                    const identity = detail.identity;
+                    const contactName =
+                      detail.thread.contactIds?.[0]?.name || "Conversation";
+                    const profileLink =
+                      identity?.username && detail.thread.channel === "instagram"
+                        ? `https://instagram.com/${identity.username}`
+                        : null;
+                    return (
+                      <header className="social-conversation-header">
+                        <span className="social-conversation-avatar" aria-hidden="true">
+                          {identity?.avatarUrl ? (
+                            <img src={identity.avatarUrl} alt="" referrerPolicy="no-referrer" />
+                          ) : (
+                            contactName.charAt(0).toUpperCase()
+                          )}
+                        </span>
+                        <div>
+                          <h2>{contactName}</h2>
+                          <span>
+                            {human(detail.thread.channel)} conversation
+                            {identity?.username ? ` · @${identity.username}` : ""}
+                          </span>
+                          {profileLink && (
+                            <a
+                              className="social-conversation-profile-link"
+                              href={profileLink}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              View Instagram profile
+                            </a>
+                          )}
+                          {!profileLink && detail.thread.channel === "facebook" && (
+                            <span className="social-conversation-profile-note">
+                              Facebook does not provide a profile link for
+                              message senders.
+                            </span>
+                          )}
+                        </div>
+                      </header>
+                    );
+                  })()}
                   <div className="social-message-stream">
                     {detail.messages.map((message) => {
                       const inbound = message.direction === "inbound";
@@ -498,7 +544,7 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                               type="button"
                               className="social-message-delete"
                               aria-label="Delete this message from Lead Porch"
-                              onClick={() => deleteMessage(message._id)}
+                              onClick={() => setPendingDeleteId(message._id)}
                             >
                               Delete
                             </button>
@@ -588,6 +634,35 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
           {!data.length && <p>No content tasks assigned yet.</p>}
         </div>
       ) : null}
+      <Modal
+        isOpen={Boolean(pendingDeleteId)}
+        onClose={() => setPendingDeleteId(null)}
+        title="Delete this message?"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setPendingDeleteId(null)}
+              disabled={deleting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={confirmDeleteMessage}
+              loading={deleting}
+            >
+              Delete message
+            </Button>
+          </>
+        }
+      >
+        <p>
+          This removes the message from Lead Porch only. Instagram and
+          Facebook do not offer any way for a business to unsend a message
+          on their side, so the recipient will still have their copy.
+        </p>
+      </Modal>
     </main>
   );
 }
