@@ -23,6 +23,8 @@ const conversationMessageSchema = new mongoose.Schema({
   contactId: { type: mongoose.Schema.Types.ObjectId, ref: "Contact", default: null, index: true },
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   metadata: { type: mongoose.Schema.Types.Mixed, default: {} },
+  deletedAt: { type: Date, default: null },
+  deletedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
 }, { timestamps: true, collection: "conversation_messages" });
 
 conversationMessageSchema.index({ workspaceId: 1, threadId: 1, createdAt: 1 });

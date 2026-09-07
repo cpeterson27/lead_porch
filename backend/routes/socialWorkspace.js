@@ -326,6 +326,7 @@ router.get(
     const messages = await ConversationMessage.find({
       workspaceId: req.auth.workspaceId,
       threadId: thread._id,
+      deletedAt: null,
     })
       .populate("createdBy", "name")
       .sort({ createdAt: 1 })
@@ -549,6 +550,34 @@ router.post(
     );
     if (!thread)
       return res.status(404).json({ error: "Conversation not found" });
+    res.json({ success: true });
+  }),
+);
+router.post(
+  "/inbox/:id/messages/:messageId/delete",
+  wrap(async (req, res) => {
+    const thread = await ConversationThread.findOne({
+      _id: req.params.id,
+      workspaceId: req.auth.workspaceId,
+      channel: { $in: socialChannels },
+    });
+    if (!thread)
+      return res.status(404).json({ error: "Conversation not found" });
+    // Removes the message from Lead Porch only. Instagram and Facebook do not
+    // offer any API for a business to unsend a message on the provider's side —
+    // unsend is a manual, sender-only action inside their own apps.
+    const message = await ConversationMessage.findOneAndUpdate(
+      {
+        _id: req.params.messageId,
+        threadId: thread._id,
+        workspaceId: req.auth.workspaceId,
+        deletedAt: null,
+      },
+      { $set: { deletedAt: new Date(), deletedBy: req.auth.user._id } },
+      { new: true },
+    );
+    if (!message)
+      return res.status(404).json({ error: "Message not found" });
     res.json({ success: true });
   }),
 );

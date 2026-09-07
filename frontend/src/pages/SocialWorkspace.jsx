@@ -12,6 +12,7 @@ import SocialAutomation from "./SocialAutomation.jsx";
 import {
   refreshInstagramAuthorization,
   fetchSocialWorkspace,
+  mutateSocialWorkspace,
   beginSocialConnection,
   disconnectSocialConnection,
   selectSocialAssets,
@@ -119,6 +120,23 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
       setDetail(await fetchSocialWorkspace(`inbox/${row._id}`));
     } catch {
       setError("Conversation unavailable.");
+    }
+  };
+  const deleteMessage = async (messageId) => {
+    if (
+      !window.confirm(
+        "Delete this message from Lead Porch? This only removes it from your inbox here — Instagram and Facebook have no way for a business to unsend a message, so the recipient still has their copy.",
+      )
+    )
+      return;
+    try {
+      await mutateSocialWorkspace(
+        `inbox/${detail.thread._id}/messages/${messageId}/delete`,
+        {},
+      );
+      await openThread(detail.thread);
+    } catch {
+      setError("Could not delete this message.");
     }
   };
   return (
@@ -474,7 +492,17 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                           className={`social-message ${inbound ? "social-message--inbound" : "social-message--outbound"}`}
                           key={message._id}
                         >
-                          <strong>{sender}</strong>
+                          <div className="social-message-head">
+                            <strong>{sender}</strong>
+                            <button
+                              type="button"
+                              className="social-message-delete"
+                              aria-label="Delete this message from Lead Porch"
+                              onClick={() => deleteMessage(message._id)}
+                            >
+                              Delete
+                            </button>
+                          </div>
                           <div className="social-message-bubble"><p>{message.body}</p></div>
                           <small>{date(message.createdAt)} · {message.deliveryStatus}</small>
                         </article>
