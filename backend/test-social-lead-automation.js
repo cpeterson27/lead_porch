@@ -272,6 +272,13 @@ async function behaviorChecks() {
         identities.push(item);
         return item;
       },
+      async find(filter) {
+        if (filter?.linkedIdentityKeys)
+          return identities.filter((item) =>
+            (item.linkedIdentityKeys || []).includes(filter.linkedIdentityKeys),
+          );
+        return identities.filter((item) => item.contactId === filter?.contactId);
+      },
     },
     SocialAutomation: {
       find() {

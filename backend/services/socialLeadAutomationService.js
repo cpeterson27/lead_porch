@@ -202,6 +202,10 @@ async function reserveEvent(event, deps = models) {
   }
 }
 
+function identityKey({ provider, providerAssetId, providerUserId }) {
+  return `${provider}:${providerAssetId || ""}:${providerUserId}`;
+}
+
 async function resolveIdentity(event, deps = models) {
   const identityFilter = {
     provider: event.provider,
@@ -209,48 +213,95 @@ async function resolveIdentity(event, deps = models) {
     providerUserId: event.providerUserId,
   };
   let identity = await deps.SocialIdentity.findOne(identityFilter);
-  let contact = identity
+  let contact = identity?.contactId
     ? await deps.Contact.findById(identity.contactId)
     : null;
   let created = false;
   if (!contact) {
+    // A prior identity row can survive its contact being deleted (a "start
+    // fresh" reset keeps the row so a manually-merged link isn't forgotten).
+    // Before treating this as a brand new person, check whether this exact
+    // identity — or a different provider identity a human has confirmed is
+    // the same person via merge — already has a live contact.
+    const myKey = identityKey(identityFilter);
+    const linkedIdentities = await deps.SocialIdentity.find({
+      linkedIdentityKeys: myKey,
+    });
+    let linkedContact = null;
+    for (const peer of linkedIdentities) {
+      if (!peer.contactId) continue;
+      linkedContact = await deps.Contact.findById(peer.contactId);
+      if (linkedContact) break;
+    }
     const name = clean(
       event.displayName || event.username || `${event.provider} contact`,
       180,
     );
-    contact = await deps.Contact.create({
-      name,
-      firstName: name,
-      sources: [`social:${event.provider}`],
-      sourceProvider: `social:${event.provider}`,
-      type: "lead",
-      status: "active",
-      tags: ["social-lead"],
-    });
-    try {
-      identity = await deps.SocialIdentity.create({
-        contactId: contact._id,
-        ...identityFilter,
-        username: clean(event.username),
-        displayName: clean(event.displayName),
-        avatarUrl: clean(event.avatarUrl, 2000),
-        providerThreadId: clean(event.providerThreadId, 1000),
-        sourceMetadata: event.sourceMetadata || {},
-        lastActivityAt: event.occurredAt || new Date(),
-      });
+    contact =
+      linkedContact ||
+      (await deps.Contact.create({
+        name,
+        firstName: name,
+        sources: [`social:${event.provider}`],
+        sourceProvider: `social:${event.provider}`,
+        type: "lead",
+        status: "active",
+        tags: ["social-lead"],
+      }));
+    if (linkedContact) {
+      let dirty = false;
+      if (!linkedContact.sources.includes(`social:${event.provider}`)) {
+        linkedContact.sources.push(`social:${event.provider}`);
+        dirty = true;
+      }
+      // The linked contact may have been created from whichever channel's
+      // generic placeholder name arrived first — upgrade it once a real
+      // name/username is available from the other linked channel.
+      const looksGeneric = /^(instagram|facebook|tiktok|linkedin|x) contact$/i.test(
+        String(linkedContact.name || "").trim(),
+      );
+      const betterName = clean(event.displayName || event.username, 180);
+      if (looksGeneric && betterName) {
+        linkedContact.name = betterName;
+        linkedContact.firstName = betterName;
+        dirty = true;
+      }
+      if (dirty) await linkedContact.save();
+    }
+    if (identity) {
+      // Reattach the surviving identity row rather than creating a new one —
+      // its unique (provider, providerAssetId, providerUserId) index would
+      // otherwise collide with this exact row.
+      identity.contactId = contact._id;
+      await identity.save();
       created = true;
-    } catch (error) {
-      if (error?.code !== 11000) throw error;
-      if (deps.Contact.deleteOne)
-        await deps.Contact.deleteOne({ _id: contact._id });
-      identity = await deps.SocialIdentity.findOne(identityFilter);
-      contact = identity
-        ? await deps.Contact.findById(identity.contactId)
-        : null;
-      if (!identity || !contact)
-        throw new Error(
-          "Social identity could not be resolved after concurrent creation",
-        );
+    } else {
+      try {
+        identity = await deps.SocialIdentity.create({
+          contactId: contact._id,
+          ...identityFilter,
+          username: clean(event.username),
+          displayName: clean(event.displayName),
+          avatarUrl: clean(event.avatarUrl, 2000),
+          linkedIdentityKeys: linkedIdentities.map((peer) => identityKey(peer)),
+          providerThreadId: clean(event.providerThreadId, 1000),
+          sourceMetadata: event.sourceMetadata || {},
+          lastActivityAt: event.occurredAt || new Date(),
+        });
+        created = true;
+      } catch (error) {
+        if (error?.code !== 11000) throw error;
+        if (!linkedContact && deps.Contact.deleteOne)
+          await deps.Contact.deleteOne({ _id: contact._id });
+        identity = await deps.SocialIdentity.findOne(identityFilter);
+        contact = identity?.contactId
+          ? await deps.Contact.findById(identity.contactId)
+          : null;
+        if (!identity || !contact)
+          throw new Error(
+            "Social identity could not be resolved after concurrent creation",
+          );
+      }
     }
   } else {
     identity.username = clean(event.username) || identity.username;
@@ -757,6 +808,7 @@ module.exports = {
   isAllowedDestination,
   containsKeyword,
   createTrackedLink,
+  identityKey,
   ingestSocialEvent,
   matchingAutomation,
   mergeLabels,

@@ -225,6 +225,12 @@ async function duplicateWebhookDoesNotDuplicateRecords() {
         store.identities.set(key, record);
         return record;
       },
+      async find(filter) {
+        const all = [...store.identities.values()];
+        if (filter?.linkedIdentityKeys)
+          return all.filter((item) => (item.linkedIdentityKeys || []).includes(filter.linkedIdentityKeys));
+        return all.filter((item) => item.contactId === filter?.contactId);
+      },
     },
     Contact: {
       async create(values) {

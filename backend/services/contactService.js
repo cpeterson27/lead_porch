@@ -621,12 +621,12 @@ class ContactService {
 
 
   async deleteContact(id) {
-    // A social-sourced contact's SocialIdentity and conversation records must
-    // go with it. Leaving them behind orphans a real, unique-indexed
-    // (provider, providerAssetId, providerUserId) identity row pointing at a
-    // deleted contact — the next inbound message from that same person then
-    // fails to create a fresh contact (it collides with the stale identity)
-    // instead of the clean restart this delete is meant to give.
+    // Conversation history and activity log entries only exist because of
+    // this contact, so they're removed with it. SocialIdentity rows are
+    // different: they're detached (contactId cleared), not deleted. Fully
+    // deleting them would silently forget any "same person" link a human
+    // recorded via merge, and a fresh message from that provider identity
+    // would then fragment into a new, unlinked contact all over again.
     const SocialIdentity = require("../models/SocialIdentity");
     const ConversationThread = require("../models/ConversationThread");
     const ConversationMessage = require("../models/ConversationMessage");
@@ -637,7 +637,7 @@ class ContactService {
       await ConversationThread.deleteMany({ _id: { $in: threadIds } });
     }
     await ConversationMessage.deleteMany({ contactId: id });
-    await SocialIdentity.deleteMany({ contactId: id });
+    await SocialIdentity.updateMany({ contactId: id }, { $set: { contactId: null } });
     await CrmActivity.deleteMany({ contactId: id });
 
     const result =
@@ -674,6 +674,27 @@ class ContactService {
     const SocialIdentity = require("../models/SocialIdentity");
     const ConversationThread = require("../models/ConversationThread");
     const ConversationMessage = require("../models/ConversationMessage");
+    const { identityKey } = require("./socialLeadAutomationService");
+
+    // Record the link on the identity rows themselves, independent of which
+    // Contact currently owns them — so if either contact is later deleted
+    // (e.g. to start a test over), a fresh message from either provider
+    // identity still finds its way back to one shared contact instead of
+    // fragmenting into two again.
+    const keepIdentities = await SocialIdentity.find({ contactId: keep._id });
+    const mergeIdentities = await SocialIdentity.find({ contactId: merge._id });
+    const keepKeys = keepIdentities.map((row) => identityKey(row));
+    const mergeKeys = mergeIdentities.map((row) => identityKey(row));
+    if (keepKeys.length && mergeKeys.length) {
+      await SocialIdentity.updateMany(
+        { _id: { $in: mergeIdentities.map((row) => row._id) } },
+        { $addToSet: { linkedIdentityKeys: { $each: keepKeys } } },
+      );
+      await SocialIdentity.updateMany(
+        { _id: { $in: keepIdentities.map((row) => row._id) } },
+        { $addToSet: { linkedIdentityKeys: { $each: mergeKeys } } },
+      );
+    }
 
     await SocialIdentity.updateMany({ contactId: merge._id }, { $set: { contactId: keep._id } });
     await ConversationMessage.updateMany({ contactId: merge._id }, { $set: { contactId: keep._id } });
