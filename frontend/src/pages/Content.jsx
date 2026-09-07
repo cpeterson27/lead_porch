@@ -15,6 +15,7 @@ import {
   requestSocialApproval,
   retrySocialContent,
   scheduleSocialContent,
+  publishSocialContentNow,
   updateContentBrief,
 } from "../services/api.js";
 import "./Content.css";
@@ -31,6 +32,51 @@ const labels = {
   human_assisted: "Human-assisted",
   unavailable: "Unavailable",
 };
+function PostPreview({ draft }) {
+  const providers = draft.social.destinations.map((row) => row.provider);
+  const platform = providers.includes("instagram")
+    ? "Instagram"
+    : providers.includes("facebook")
+      ? "Facebook"
+      : providers[0]
+        ? providers[0][0].toUpperCase() + providers[0].slice(1)
+        : "Preview";
+  const image = draft.social.media[0]?.url;
+  return (
+    <div className="post-preview-phone">
+      <div className="post-preview-phone__notch" />
+      <div className="post-preview-card">
+        <div className="post-preview-card__head">
+          <span className="post-preview-card__avatar">L</span>
+          <div>
+            <strong>Lead Porch</strong>
+            <small>{platform}</small>
+          </div>
+        </div>
+        {image ? (
+          <img src={image} alt="" className="post-preview-card__image" />
+        ) : (
+          <div className="post-preview-card__image post-preview-card__image--empty">
+            Add an image URL to preview it here
+          </div>
+        )}
+        <div className="post-preview-card__icons" aria-hidden="true">
+          <span>♡</span>
+          <span>💬</span>
+          <span>↗</span>
+        </div>
+        <p className="post-preview-card__caption">
+          {draft.body || "Your caption will appear here as you type."}
+        </p>
+        {draft.social.cta.label && (
+          <a className="post-preview-card__cta" href={draft.social.cta.url || "#"}>
+            {draft.social.cta.label}
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
 export default function Content() {
   const [params] = useSearchParams();
   const [publishingEnabled, setPublishingEnabled] = useState(false);
@@ -162,101 +208,107 @@ export default function Content() {
         ))}
       </section>
       {open ? (
-        <section className="social-editor">
+        <section className="social-editor social-editor--split">
           <header>
             <h2>{editing ? "Edit social content" : "New social draft"}</h2>
             <button onClick={() => setOpen(false)}>Close</button>
           </header>
-          <div>
-            <label>
-              Internal title
-              <input
-                value={draft.title}
-                onChange={(e) => setDraft({ ...draft, title: e.target.value })}
-              />
-            </label>
-            <label className="wide">
-              Caption
-              <textarea
-                value={draft.body}
-                onChange={(e) => setDraft({ ...draft, body: e.target.value })}
-              />
-            </label>
-            <label>
-              CTA label
-              <input
-                value={draft.social.cta.label}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    social: {
-                      ...draft.social,
-                      cta: { ...draft.social.cta, label: e.target.value },
-                    },
-                  })
-                }
-              />
-            </label>
-            <label>
-              CTA/link URL
-              <input
-                type="url"
-                value={draft.social.cta.url}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    social: {
-                      ...draft.social,
-                      cta: { ...draft.social.cta, url: e.target.value },
-                    },
-                  })
-                }
-              />
-            </label>
-            <label className="wide">
-              Public image URL (required for Instagram)
-              <input
-                type="url"
-                value={draft.social.media[0]?.url || ""}
-                onChange={(e) =>
-                  setDraft({
-                    ...draft,
-                    social: {
-                      ...draft.social,
-                      media: e.target.value
-                        ? [{ type: "image", url: e.target.value, alt: "" }]
-                        : [],
-                    },
-                  })
-                }
-              />
-            </label>
-            <fieldset className="wide">
-              <legend>Destinations</legend>
-              {matrix.map((row) => (
-                <label key={row.provider}>
-                  <input
-                    type="checkbox"
-                    disabled={row.status !== "api" || !row.asset?.id}
-                    checked={draft.social.destinations.some(
-                      (item) => item.provider === row.provider,
-                    )}
-                    onChange={(e) =>
-                      selectProvider(row.provider, e.target.checked)
-                    }
-                  />
-                  {row.provider} · {labels[row.status]}
-                </label>
-              ))}
-            </fieldset>
+          <div className="social-editor__layout">
+            <div className="social-editor__fields">
+              <label>
+                Internal title
+                <input
+                  value={draft.title}
+                  onChange={(e) => setDraft({ ...draft, title: e.target.value })}
+                />
+              </label>
+              <label>
+                Caption
+                <textarea
+                  value={draft.body}
+                  onChange={(e) => setDraft({ ...draft, body: e.target.value })}
+                />
+              </label>
+              <label>
+                CTA label
+                <input
+                  value={draft.social.cta.label}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      social: {
+                        ...draft.social,
+                        cta: { ...draft.social.cta, label: e.target.value },
+                      },
+                    })
+                  }
+                />
+              </label>
+              <label>
+                CTA/link URL
+                <input
+                  type="url"
+                  value={draft.social.cta.url}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      social: {
+                        ...draft.social,
+                        cta: { ...draft.social.cta, url: e.target.value },
+                      },
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Public image URL (required for Instagram)
+                <input
+                  type="url"
+                  value={draft.social.media[0]?.url || ""}
+                  onChange={(e) =>
+                    setDraft({
+                      ...draft,
+                      social: {
+                        ...draft.social,
+                        media: e.target.value
+                          ? [{ type: "image", url: e.target.value, alt: "" }]
+                          : [],
+                      },
+                    })
+                  }
+                />
+              </label>
+              <fieldset>
+                <legend>Destinations</legend>
+                {matrix.map((row) => (
+                  <label key={row.provider}>
+                    <input
+                      type="checkbox"
+                      disabled={row.status !== "api" || !row.asset?.id}
+                      checked={draft.social.destinations.some(
+                        (item) => item.provider === row.provider,
+                      )}
+                      onChange={(e) =>
+                        selectProvider(row.provider, e.target.checked)
+                      }
+                    />
+                    {row.provider} · {labels[row.status]}
+                  </label>
+                ))}
+              </fieldset>
+              <Button
+                loading={saving}
+                disabled={!draft.title || !draft.body}
+                onClick={save}
+              >
+                {editing ? "Save and return to approval" : "Save draft"}
+              </Button>
+            </div>
+            <div className="social-editor__preview">
+              <span className="social-editor__preview-label">Preview</span>
+              <PostPreview draft={draft} />
+            </div>
           </div>
-          <Button
-            loading={saving}
-            disabled={!draft.title || !draft.body}
-            onClick={save}
-          >
-            {editing ? "Save and return to approval" : "Save draft"}
-          </Button>
         </section>
       ) : null}
       {params.get("content") && (
@@ -412,13 +464,7 @@ export default function Content() {
                             publishingBlocker(item, matrix, publishingEnabled),
                           )
                         }
-                        onClick={() =>
-                          act(
-                            scheduleSocialContent,
-                            item._id,
-                            new Date().toISOString(),
-                          )
-                        }
+                        onClick={() => act(publishSocialContentNow, item._id)}
                       >
                         Publish now
                       </Button>
