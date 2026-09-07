@@ -393,8 +393,13 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
       ) : null}
 
       {section === "inbox" ? (
-        <div className="social-panel">
-          <div className="social-filters">
+        <div className="social-panel social-inbox-shell">
+          <div className="social-inbox-toolbar">
+            <div>
+              <span className="social-inbox-eyebrow">Messages</span>
+              <h2>Social inbox</h2>
+            </div>
+            <div className="social-filters">
             <label>
               Show
               <select
@@ -419,9 +424,10 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                 ))}
               </select>
             </label>
+            </div>
           </div>
           <div className="social-inbox">
-            <section aria-label="Social conversations">
+            <section className="social-thread-list" aria-label="Social conversations">
               {Array.isArray(data) &&
                 data.map((row) => (
                   <button
@@ -443,36 +449,49 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                 <p>No matching social conversations.</p>
               )}
             </section>
-            <section className="social-panel">
+            <section className="social-conversation-pane">
               {detail ? (
                 <>
-                  <h2>
-                    {detail.thread.contactIds?.[0]?.name || "Conversation"}
-                  </h2>
-                  {detail.messages.map((message) => (
-                    <article key={message._id}>
-                      <strong>
-                        {message.direction === "inbound"
-                          ? message.sender?.name || "Contact"
-                          : message.metadata?.senderType === "automation"
-                            ? "Lead Porch automation"
-                            : message.createdBy?.name || "Team"}
-                      </strong>
-                      <p>{message.body}</p>
-                      <small>
-                        {date(message.createdAt)} · {message.deliveryStatus}
-                      </small>
-                    </article>
-                  ))}
-                  <SocialReplyComposer
-                    key={detail.thread._id}
-                    thread={detail.thread}
-                    initialAnalysis={detail.socialAi}
-                    onSent={() => openThread(detail.thread)}
-                  />
+                  <header className="social-conversation-header">
+                    <span className="social-conversation-avatar" aria-hidden="true">
+                      {(detail.thread.contactIds?.[0]?.name || "C").charAt(0).toUpperCase()}
+                    </span>
+                    <div>
+                      <h2>{detail.thread.contactIds?.[0]?.name || "Conversation"}</h2>
+                      <span>{human(detail.thread.channel)} conversation</span>
+                    </div>
+                  </header>
+                  <div className="social-message-stream">
+                    {detail.messages.map((message) => {
+                      const inbound = message.direction === "inbound";
+                      const sender = inbound
+                        ? message.sender?.name || "Contact"
+                        : message.metadata?.senderType === "automation"
+                          ? "Lead Porch automation"
+                          : message.createdBy?.name || "Team";
+                      return (
+                        <article
+                          className={`social-message ${inbound ? "social-message--inbound" : "social-message--outbound"}`}
+                          key={message._id}
+                        >
+                          <strong>{sender}</strong>
+                          <div className="social-message-bubble"><p>{message.body}</p></div>
+                          <small>{date(message.createdAt)} · {message.deliveryStatus}</small>
+                        </article>
+                      );
+                    })}
+                  </div>
+                  <div className="social-composer-dock">
+                    <SocialReplyComposer
+                      key={detail.thread._id}
+                      thread={detail.thread}
+                      initialAnalysis={detail.socialAi}
+                      onSent={() => openThread(detail.thread)}
+                    />
+                  </div>
                 </>
               ) : (
-                <p>
+                <p className="social-inbox-empty">
                   Select a conversation to see the exact incoming and outgoing
                   messages.
                 </p>
