@@ -2255,7 +2255,7 @@ export default function Contacts() {
           </section>
         ) : null}
         {contactTab !== "best-connections" && contacts.length &&
-        !["archived", "unsubscribed"].includes(contactTab) ? (
+        contactTab !== "unsubscribed" ? (
           <section
             className={`contact-bulk-actions ${selectedContactIds.length ? "has-selection" : ""}`}
             aria-label="Selected contact actions"
@@ -2353,14 +2353,16 @@ export default function Contacts() {
                 >
                   Update fields with Jarvis
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  loading={bulkSaving}
-                  onClick={archiveSelectedContacts}
-                >
-                  Archive
-                </Button>
+                {contactTab !== "archived" ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    loading={bulkSaving}
+                    onClick={archiveSelectedContacts}
+                  >
+                    Archive
+                  </Button>
+                ) : null}
                 <Button
                   variant="danger"
                   size="sm"
