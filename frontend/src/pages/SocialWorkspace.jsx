@@ -88,24 +88,46 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
             ? `inbox?filter=${filter}&provider=${provider}`
             : section;
     if (["create", "content", "automations", "leads"].includes(section)) return;
-    const request =
-      section === "calendar"
-        ? fetchContentBriefs("social").then((result) => result.data || [])
-        : fetchSocialWorkspace(endpoint);
-    request
-      .then((value) => {
-        if (active) {
-          setData(value);
-          setError("");
-        }
-      })
-      .catch(() => {
-        if (active) setError(connectionsOnly ? "Connected Accounts could not load. Refresh the page or ask the workspace owner to verify this review account's Social access." : "Unable to load this Social area.");
-      });
+    const load = () => {
+      const request =
+        section === "calendar"
+          ? fetchContentBriefs("social").then((result) => result.data || [])
+          : fetchSocialWorkspace(endpoint);
+      request
+        .then((value) => {
+          if (active) {
+            setData(value);
+            setError("");
+          }
+        })
+        .catch(() => {
+          if (active) setError(connectionsOnly ? "Connected Accounts could not load. Refresh the page or ask the workspace owner to verify this review account's Social access." : "Unable to load this Social area.");
+        });
+    };
+    load();
+    // Poll the inbox list so new conversations and unread counts show up
+    // without the user needing to refresh the page.
+    const interval = section === "inbox" ? setInterval(load, 8000) : null;
     return () => {
       active = false;
+      if (interval) clearInterval(interval);
     };
   }, [section, filter, provider, connectionsOnly]);
+  useEffect(() => {
+    if (section !== "inbox" || !selected) return undefined;
+    let active = true;
+    const interval = setInterval(() => {
+      fetchSocialWorkspace(`inbox/${selected}`)
+        .then((value) => {
+          if (active) setDetail(value);
+        })
+        .catch(() => {});
+    }, 5000);
+    return () => {
+      active = false;
+      clearInterval(interval);
+    };
+  }, [section, selected]);
   const action = async (fn) => {
     setBusy(true);
     setError("");
