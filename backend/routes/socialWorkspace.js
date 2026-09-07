@@ -869,19 +869,26 @@ router.get(
       .select("social.publications")
       .lean();
     if (!item) return res.status(404).json({ error: "Content not found" });
-    const providerPostIds = [
-      ...new Set(
-        (item.social?.publications || [])
-          .map((row) => row.providerPostId)
-          .filter(Boolean),
-      ),
-    ];
-    if (!providerPostIds.length) return res.json({ threads: [] });
+    // Facebook's /feed publish response and its comment webhook's post_id do
+    // not always agree on whether the Page ID prefix is included (this has
+    // varied by Graph API version), so match every plausible form of a
+    // Facebook post's ID rather than only the exact string we stored.
+    const providerPostIds = new Set();
+    for (const row of item.social?.publications || []) {
+      if (!row.providerPostId) continue;
+      providerPostIds.add(row.providerPostId);
+      if (row.provider === "facebook" && row.assetId) {
+        providerPostIds.add(`${row.assetId}_${row.providerPostId}`);
+        const bare = String(row.providerPostId).split("_").pop();
+        if (bare) providerPostIds.add(bare);
+      }
+    }
+    if (!providerPostIds.size) return res.json({ threads: [] });
     const threads = await ConversationThread.find({
       workspaceId,
       channel: { $in: socialChannels },
       "metadata.interactionType": { $in: ["comment", "mention"] },
-      "metadata.contentId": { $in: providerPostIds },
+      "metadata.contentId": { $in: [...providerPostIds] },
     })
       .populate("contactIds", "name")
       .sort({ lastMessageAt: -1 })
@@ -900,6 +907,39 @@ router.get(
       })),
     );
     res.json({ threads: withMessages });
+  }),
+);
+router.get(
+  "/content/:id/insights",
+  wrap(async (req, res) => {
+    const workspaceId = req.auth.workspaceId;
+    const item = await ContentBrief.findOne({
+      _id: req.params.id,
+      workspaceId,
+      type: "social",
+    })
+      .select("social.publications")
+      .lean();
+    if (!item) return res.status(404).json({ error: "Content not found" });
+    const metaRecentPostService = require("../services/metaRecentPostService");
+    const rows = (item.social?.publications || []).filter(
+      (row) =>
+        ["facebook", "instagram"].includes(row.provider) &&
+        row.providerPostId,
+    );
+    const destinations = await Promise.all(
+      rows.map(async (row) => ({
+        provider: row.provider,
+        assetId: row.assetId,
+        engagement: await metaRecentPostService.postEngagement({
+          workspaceId,
+          provider: row.provider,
+          assetId: row.assetId,
+          postId: row.providerPostId,
+        }),
+      })),
+    );
+    res.json({ destinations });
   }),
 );
 module.exports = router;

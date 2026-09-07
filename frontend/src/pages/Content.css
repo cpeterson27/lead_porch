@@ -132,3 +132,63 @@
 .social-comment-thread-card .social-ai-actions{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0}
 .social-comment-thread-card .social-ai-actions button{border:1px solid #ccd5cf;background:#fff;border-radius:999px;padding:6px 12px;font-size:.72rem;cursor:pointer}
 .social-comment-thread-card .social-ai-result{margin:8px 0;padding:10px 12px;background:#f5f5f7;border-radius:10px;font-size:.8rem}
+
+/* Platform brand accents, reused across badges, comment groups and performance stats */
+:root{--brand-facebook:#1877f2;--brand-instagram:#c13584;--brand-linkedin:#0a66c2;--brand-x:#0f1419;--brand-tiktok:#25d3c4}
+
+/* Destination badges in the card header — icon + platform name, brand-tinted */
+.social-destination-badge{display:inline-flex!important;align-items:center;gap:6px}
+.social-destination-badge svg{font-size:.85em}
+.social-destination-badge--facebook{background:#e8f1fe;color:var(--brand-facebook)}
+.social-destination-badge--instagram{background:#fbe9f2;color:var(--brand-instagram)}
+.social-destination-badge--linkedin{background:#e8f2fb;color:var(--brand-linkedin)}
+.social-destination-badge--x{background:#f0f0f2;color:var(--brand-x)}
+.social-destination-badge--tiktok{background:#e6fbf9;color:#0f8a80}
+
+/* Live per-post performance strip — always visible on a published post's card */
+.social-post-performance{display:flex;flex-wrap:wrap;gap:10px;margin:14px 0}
+.social-post-performance__stat{display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:14px;background:#fbfbfd;border:1px solid #eee;flex:1 1 200px;min-width:180px}
+.social-post-performance__icon{width:32px;height:32px;border-radius:9px;display:grid;place-items:center;color:#fff;flex:0 0 32px;font-size:.95rem}
+.social-post-performance__stat--facebook .social-post-performance__icon{background:var(--brand-facebook)}
+.social-post-performance__stat--instagram .social-post-performance__icon{background:linear-gradient(45deg,#f58529,#dd2a7b,#8134af,#515bd4)}
+.social-post-performance__stat--linkedin .social-post-performance__icon{background:var(--brand-linkedin)}
+.social-post-performance__stat--x .social-post-performance__icon{background:var(--brand-x)}
+.social-post-performance__stat--tiktok .social-post-performance__icon{background:#000}
+.social-post-performance__body{display:flex;flex-direction:column;gap:2px;min-width:0}
+.social-post-performance__body>strong{font-size:.78rem;color:#1d1d1f}
+.social-post-performance__numbers{display:flex;gap:10px;font-size:.76rem;color:#6e6e73;flex-wrap:wrap}
+.social-post-performance__numbers>b{color:#1d1d1f;font-weight:700;margin-right:3px}
+.social-post-performance__loading,.social-post-performance__unavailable{font-size:.74rem;color:#a1a1a6}
+
+/* Comments toggle + per-platform grouping */
+.social-post-comments{margin-top:15px;border-top:1px solid #f0f0f2;padding-top:14px}
+.social-post-comments__toggle{appearance:none;border:0;background:none;padding:0;display:flex;align-items:center;gap:6px;font-size:.85rem;font-weight:600;color:#1d1d1f;cursor:pointer}
+.social-post-comments__chevron{display:inline-block;transition:transform .15s ease;color:#8e8e93}
+.social-post-comments__chevron--open{transform:rotate(90deg)}
+.social-post-comments__loading{color:#8e8e93;font-size:.82rem}
+.social-comment-group{margin-top:14px;padding-left:14px;border-left:3px solid #e5e5ea}
+.social-comment-group--facebook{border-left-color:var(--brand-facebook)}
+.social-comment-group--instagram{border-left-color:var(--brand-instagram)}
+.social-comment-group__header{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.social-comment-group__icon{width:24px;height:24px;border-radius:7px;display:grid;place-items:center;color:#fff;font-size:.72rem;flex:0 0 24px}
+.social-comment-group--facebook .social-comment-group__icon{background:var(--brand-facebook)}
+.social-comment-group--instagram .social-comment-group__icon{background:linear-gradient(45deg,#f58529,#dd2a7b,#8134af,#515bd4)}
+.social-comment-group__header>strong{font-size:.82rem}
+.social-comment-group__count{background:#f0f0f2;color:#6e6e73;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:999px}
+.social-comment-group__empty{color:#a1a1a6;font-size:.8rem;margin:0 0 16px}
+.social-comment-group .social-comment-thread-card{margin-bottom:12px}
+
+/* Publication receipts, tidied up to match the rest of the card */
+.social-receipts summary{cursor:pointer;font-size:.8rem;font-weight:600;color:#6e6e73;list-style:none}
+.social-receipts summary::-webkit-details-marker{display:none}
+.social-receipts summary::before{content:"›";display:inline-block;margin-right:6px;transition:transform .15s ease}
+.social-receipts[open] summary::before{transform:rotate(90deg)}
+.social-receipts__row{display:flex!important;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #f0f0f2;font-size:.8rem}
+.social-receipts__icon{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:#fff;font-size:.68rem;flex:0 0 22px}
+.social-receipts__row--facebook .social-receipts__icon{background:var(--brand-facebook)}
+.social-receipts__row--instagram .social-receipts__icon{background:linear-gradient(45deg,#f58529,#dd2a7b,#8134af,#515bd4)}
+.social-receipts__row--linkedin .social-receipts__icon{background:var(--brand-linkedin)}
+.social-receipts__row--x .social-receipts__icon{background:var(--brand-x)}
+.social-receipts__row--tiktok .social-receipts__icon{background:#000}
+.social-receipts__id{color:#8e8e93;font-size:.74rem;overflow-wrap:anywhere}
+@media(max-width:560px){.social-post-performance__stat{min-width:100%}}

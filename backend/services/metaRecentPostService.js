@@ -70,4 +70,55 @@ async function postContext({ workspaceId, provider, assetId, postId }, deps = de
   }
 }
 
-module.exports = { recentPosts, postContext };
+// Real published-post engagement counts (likes, comments, shares), read
+// directly off the post/media object's own field summaries rather than the
+// Insights API — those fields are covered by the read permission we already
+// require to show recent posts, and unlike Insights metric names they are
+// not prone to being renamed or deprecated between Graph API versions. Fails
+// soft (null) so a card can show "unavailable" instead of breaking.
+async function postEngagement({ workspaceId, provider, assetId, postId }, deps = dependencies) {
+  if (!workspaceId || !["facebook", "instagram"].includes(provider) || !clean(assetId) || !clean(postId)) return null;
+  try {
+    const rows = await deps.SocialConnection.find({ workspaceId, provider: { $in: ["meta", "instagram"] }, status: "connected", selectedAssetIds: String(assetId) }).select("+credentialsEncrypted");
+    const connection = provider === "instagram" ? rows.find((row) => row.provider === "instagram") || rows.find((row) => row.provider === "meta") : rows.find((row) => row.provider === "meta");
+    const asset = connection?.assets?.find((row) => String(row.id) === String(assetId));
+    if (!connection || !asset) return null;
+    const credentials = deps.decryptCredentials(connection.credentialsEncrypted);
+    const parentId = asset.type === "instagram_business" ? asset.parentId : asset.id;
+    const token = credentials.pageTokens?.[String(parentId)] || (connection.provider === "instagram" ? credentials.accessToken : null);
+    if (!token) return null;
+    const version = deps.graphVersion();
+    const host = connection.provider === "instagram" ? "graph.instagram.com" : "graph.facebook.com";
+    const fields =
+      provider === "facebook"
+        ? "likes.summary(true).limit(0),comments.summary(true).limit(0)"
+        : "like_count,comments_count";
+    const response = await deps.http.get(`https://${host}/${version}/${encodeURIComponent(postId)}`, { params: { fields, access_token: token }, timeout: 15000 });
+    if (provider !== "facebook")
+      return {
+        likes: response.data?.like_count ?? null,
+        comments: response.data?.comments_count ?? null,
+        shares: null,
+      };
+    // The "shares" field errors with "Tried accessing nonexisting field" on
+    // any post that has never been shared, so it cannot be requested
+    // alongside likes/comments without failing the whole call — fetch it
+    // separately and treat a failure as "no shares" rather than "unavailable".
+    let shares = null;
+    try {
+      const shareResponse = await deps.http.get(`https://${host}/${version}/${encodeURIComponent(postId)}`, { params: { fields: "shares", access_token: token }, timeout: 15000 });
+      shares = shareResponse.data?.shares?.count ?? 0;
+    } catch {
+      shares = 0;
+    }
+    return {
+      likes: response.data?.likes?.summary?.total_count ?? null,
+      comments: response.data?.comments?.summary?.total_count ?? null,
+      shares,
+    };
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { recentPosts, postContext, postEngagement };

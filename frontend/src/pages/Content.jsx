@@ -244,10 +244,77 @@ function PostPreview({ draft }) {
     </div>
   );
 }
+function publishedDestinations(item) {
+  return (item.social?.publications || []).filter(
+    (row) => ["facebook", "instagram"].includes(row.provider) && row.providerPostId,
+  );
+}
+function PostPerformance({ item }) {
+  const destinations = publishedDestinations(item);
+  const [rows, setRows] = useState(null);
+  useEffect(() => {
+    let active = true;
+    if (!destinations.length) return undefined;
+    fetchSocialWorkspace(`content/${item._id}/insights`)
+      .then((result) => {
+        if (active) setRows(result.destinations || []);
+      })
+      .catch(() => {
+        if (active) setRows([]);
+      });
+    return () => {
+      active = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [item._id]);
+  if (!destinations.length) return null;
+  return (
+    <div className="social-post-performance">
+      {destinations.map((destination) => {
+        const Icon = platformIcons[destination.provider];
+        const row = rows?.find((r) => r.provider === destination.provider);
+        const engagement = row?.engagement;
+        return (
+          <div
+            key={destination.provider}
+            className={`social-post-performance__stat social-post-performance__stat--${destination.provider}`}
+          >
+            <span className="social-post-performance__icon">
+              {Icon ? <Icon /> : null}
+            </span>
+            <div className="social-post-performance__body">
+              <strong>{platformNames[destination.provider]}</strong>
+              {!rows ? (
+                <span className="social-post-performance__loading">
+                  Loading…
+                </span>
+              ) : engagement ? (
+                <span className="social-post-performance__numbers">
+                  <b>{engagement.likes ?? "—"}</b> likes
+                  <b>{engagement.comments ?? "—"}</b> comments
+                  {engagement.shares !== null && engagement.shares !== undefined ? (
+                    <>
+                      <b>{engagement.shares}</b> shares
+                    </>
+                  ) : null}
+                </span>
+              ) : (
+                <span className="social-post-performance__unavailable">
+                  Live stats unavailable
+                </span>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 function PostComments({ item }) {
   const [open, setOpen] = useState(false),
     [threads, setThreads] = useState(null),
     [error, setError] = useState("");
+  const destinations = publishedDestinations(item).map((row) => row.provider);
   const load = () => {
     fetchSocialWorkspace(`content/${item._id}/comments`)
       .then((result) => setThreads(result.threads || []))
@@ -275,75 +342,123 @@ function PostComments({ item }) {
       setError("Could not delete this.");
     }
   };
+  const totalCount = threads?.length || 0;
   return (
     <div className="social-post-comments">
-      <Button size="sm" variant="outline" onClick={toggle}>
-        {open ? "Hide comments" : "Comments"}
-      </Button>
+      <button
+        type="button"
+        className="social-post-comments__toggle"
+        onClick={toggle}
+      >
+        <span
+          className={`social-post-comments__chevron${open ? " social-post-comments__chevron--open" : ""}`}
+          aria-hidden="true"
+        >
+          ›
+        </span>
+        Comments{threads !== null ? ` (${totalCount})` : ""}
+      </button>
       {open && (
         <div className="social-post-comments__panel">
           {error ? <p className="form-error">{error}</p> : null}
           {threads === null ? (
-            <p>Loading comments…</p>
-          ) : threads.length ? (
-            threads.map(({ thread, messages }) => {
-              const comment = messages.find(
-                (message) => message.direction === "inbound",
+            <p className="social-post-comments__loading">
+              Loading comments…
+            </p>
+          ) : (
+            destinations.map((provider) => {
+              const Icon = platformIcons[provider];
+              const groupThreads = threads.filter(
+                (row) => row.thread.channel === provider,
               );
-              const replies = messages.filter(
-                (message) => message.direction === "outbound",
-              );
-              const commenterName =
-                comment?.sender?.name ||
-                thread.contactIds?.[0]?.name ||
-                "Someone";
               return (
-                <article key={thread._id} className="social-comment-thread-card">
-                  <header>
-                    <strong>{commenterName}</strong>
-                    <span>
-                      {thread.metadata?.interactionType === "mention"
-                        ? "mentioned you"
-                        : "commented"}
+                <section
+                  key={provider}
+                  className={`social-comment-group social-comment-group--${provider}`}
+                >
+                  <header className="social-comment-group__header">
+                    <span className="social-comment-group__icon">
+                      {Icon ? <Icon /> : null}
                     </span>
-                    <button
-                      type="button"
-                      className="social-message-delete"
-                      onClick={() => deleteMessage(thread._id, comment._id)}
-                    >
-                      Delete
-                    </button>
+                    <strong>{platformNames[provider]}</strong>
+                    <span className="social-comment-group__count">
+                      {groupThreads.length}
+                    </span>
                   </header>
-                  <p>{comment?.body}</p>
-                  {replies.map((reply) => (
-                    <div
-                      key={reply._id}
-                      className="social-comment-thread-card__reply"
-                    >
-                      <div>
-                        <strong>
-                          Your reply
-                          {reply.metadata?.privateReply ? " (private)" : ""}
-                        </strong>
-                        <button
-                          type="button"
-                          className="social-message-delete"
-                          onClick={() => deleteMessage(thread._id, reply._id)}
+                  {groupThreads.length ? (
+                    groupThreads.map(({ thread, messages }) => {
+                      const comment = messages.find(
+                        (message) => message.direction === "inbound",
+                      );
+                      const replies = messages.filter(
+                        (message) => message.direction === "outbound",
+                      );
+                      const commenterName =
+                        comment?.sender?.name ||
+                        thread.contactIds?.[0]?.name ||
+                        "Someone";
+                      return (
+                        <article
+                          key={thread._id}
+                          className="social-comment-thread-card"
                         >
-                          Delete
-                        </button>
-                      </div>
-                      <p>{reply.body}</p>
-                    </div>
-                  ))}
-                  <div className="social-composer-dock">
-                    <SocialReplyComposer thread={thread} onSent={load} />
-                  </div>
-                </article>
+                          <header>
+                            <strong>{commenterName}</strong>
+                            <span>
+                              {thread.metadata?.interactionType === "mention"
+                                ? "mentioned you"
+                                : "commented"}
+                            </span>
+                            <button
+                              type="button"
+                              className="social-message-delete"
+                              onClick={() =>
+                                deleteMessage(thread._id, comment._id)
+                              }
+                            >
+                              Delete
+                            </button>
+                          </header>
+                          <p>{comment?.body}</p>
+                          {replies.map((reply) => (
+                            <div
+                              key={reply._id}
+                              className="social-comment-thread-card__reply"
+                            >
+                              <div>
+                                <strong>
+                                  Your reply
+                                  {reply.metadata?.privateReply
+                                    ? " (private)"
+                                    : ""}
+                                </strong>
+                                <button
+                                  type="button"
+                                  className="social-message-delete"
+                                  onClick={() =>
+                                    deleteMessage(thread._id, reply._id)
+                                  }
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                              <p>{reply.body}</p>
+                            </div>
+                          ))}
+                          <div className="social-composer-dock">
+                            <SocialReplyComposer thread={thread} onSent={load} />
+                          </div>
+                        </article>
+                      );
+                    })
+                  ) : (
+                    <p className="social-comment-group__empty">
+                      No {platformNames[provider]} comments yet.
+                    </p>
+                  )}
+                </section>
               );
             })
-          ) : (
-            <p>No comments yet.</p>
           )}
         </div>
       )}
@@ -742,11 +857,18 @@ export default function Content() {
                     </small>
                   </div>
                   <div>
-                    {item.social?.destinations?.map((row) => (
-                      <em key={`${row.provider}:${row.assetId}`}>
-                        {row.provider} · {labels[row.mode]}
-                      </em>
-                    ))}
+                    {item.social?.destinations?.map((row) => {
+                      const Icon = platformIcons[row.provider];
+                      return (
+                        <em
+                          key={`${row.provider}:${row.assetId}`}
+                          className={`social-destination-badge social-destination-badge--${row.provider}`}
+                        >
+                          {Icon ? <Icon /> : null}
+                          {platformNames[row.provider] || row.provider}
+                        </em>
+                      );
+                    })}
                   </div>
                 </header>
                 <p>{item.body}</p>
@@ -765,6 +887,7 @@ export default function Content() {
                     {item.social.cta.label || "CTA"}: {item.social.cta.url}
                   </a>
                 ) : null}
+                <PostPerformance item={item} />
                 {item.social?.requestedPublishAt ? (
                   <small>
                     Requested:{" "}
@@ -906,21 +1029,37 @@ export default function Content() {
                       {publishingBlocker(item, matrix, publishingEnabled)}
                     </p>
                   )}
-                {item.social?.publications?.some((row) => row.providerPostId) ? (
+                {publishedDestinations(item).length ? (
                   <PostComments item={item} />
                 ) : null}
                 <SocialContentDetail content={item} />
                 {item.social?.publications?.length ? (
-                  <details>
+                  <details className="social-receipts">
                     <summary>Publication receipts</summary>
-                    {item.social.publications.map((row) => (
-                      <p key={`${row.provider}:${row.assetId}`}>
-                        {row.provider} · {row.status} ·{" "}
-                        {row.providerPostId ||
-                          row.attempts?.at(-1)?.error ||
-                          "Pending"}
-                      </p>
-                    ))}
+                    {item.social.publications.map((row) => {
+                      const Icon = platformIcons[row.provider];
+                      return (
+                        <p
+                          key={`${row.provider}:${row.assetId}`}
+                          className={`social-receipts__row social-receipts__row--${row.provider}`}
+                        >
+                          <span className="social-receipts__icon">
+                            {Icon ? <Icon /> : null}
+                          </span>
+                          <strong>{platformNames[row.provider] || row.provider}</strong>
+                          <span
+                            className={`social-status-pill social-status-pill--${row.status}`}
+                          >
+                            {row.status.replaceAll("_", " ")}
+                          </span>
+                          <span className="social-receipts__id">
+                            {row.providerPostId ||
+                              row.attempts?.at(-1)?.error ||
+                              "Pending"}
+                          </span>
+                        </p>
+                      );
+                    })}
                   </details>
                 ) : null}
               </article>
