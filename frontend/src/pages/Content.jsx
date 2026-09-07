@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { publishingBlocker } from "../utils/socialPublishingReadiness.js";
 import SocialContentDetail from "../components/SocialContentDetail.jsx";
 import Button from "../components/Button.jsx";
+import Modal from "../components/Modal.jsx";
 import {
   fetchSocialWorkspace,
   approveSocialContent,
@@ -16,6 +17,7 @@ import {
   retrySocialContent,
   scheduleSocialContent,
   publishSocialContentNow,
+  deleteSocialContent,
   updateContentBrief,
 } from "../services/api.js";
 import "./Content.css";
@@ -90,7 +92,8 @@ export default function Content() {
     [error, setError] = useState(""),
     [message, setMessage] = useState(""),
     [saving, setSaving] = useState(false),
-    [publishAt, setPublishAt] = useState("");
+    [publishAt, setPublishAt] = useState(""),
+    [deleteTarget, setDeleteTarget] = useState(null);
   const load = async () => {
     try {
       const [rows, caps, accounts] = await Promise.all([
@@ -154,6 +157,19 @@ export default function Content() {
       await load();
     } catch (err) {
       setError(err.response?.data?.error || "Unable to update social content.");
+    } finally {
+      setSaving(false);
+    }
+  };
+  const confirmDelete = async () => {
+    try {
+      setSaving(true);
+      await deleteSocialContent(deleteTarget._id);
+      setDeleteTarget(null);
+      setMessage("Post deleted.");
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to delete this post.");
     } finally {
       setSaving(false);
     }
@@ -368,7 +384,9 @@ export default function Content() {
               >
                 <header>
                   <div>
-                    <span>{item.status.replaceAll("_", " ")}</span>
+                    <span className={`social-status-pill social-status-pill--${item.status}`}>
+                      {item.status.replaceAll("_", " ")}
+                    </span>
                     <h2>{item.title}</h2>
                     <small>
                       {item.source === "jarvis"
@@ -525,6 +543,15 @@ export default function Content() {
                   >
                     Duplicate
                   </Button>
+                  {!["scheduled", "publishing"].includes(item.status) && (
+                    <Button
+                      size="sm"
+                      variant="danger"
+                      onClick={() => setDeleteTarget(item)}
+                    >
+                      Delete
+                    </Button>
+                  )}
                 </footer>
                 {["approved", "failed", "partially_published"].includes(
                   item.status,
@@ -557,6 +584,31 @@ export default function Content() {
           </p>
         )}
       </section>
+      <Modal
+        isOpen={Boolean(deleteTarget)}
+        onClose={() => setDeleteTarget(null)}
+        title="Delete this post?"
+        footer={
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setDeleteTarget(null)}
+              disabled={saving}
+            >
+              Cancel
+            </Button>
+            <Button variant="danger" loading={saving} onClick={confirmDelete}>
+              Delete post
+            </Button>
+          </>
+        }
+      >
+        <p>
+          This permanently removes "{deleteTarget?.title}" — this cannot be
+          undone. Already-published posts on Facebook or Instagram are not
+          affected; this only removes it from Lead Porch.
+        </p>
+      </Modal>
     </div>
   );
 }

@@ -1195,6 +1195,8 @@ export const retrySocialContent = (id) =>
   api.post(`/content/${id}/retry`).then((res) => res.data.data);
 export const duplicateSocialContent = (id) =>
   api.post(`/content/${id}/duplicate`).then((res) => res.data.data);
+export const deleteSocialContent = (id) =>
+  api.delete(`/content/${id}`).then((res) => res.data);
 
 export const generateOutreach = (campaignId, onlyMissing = false) =>
   api
