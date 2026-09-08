@@ -7,6 +7,7 @@ import SocialReplyComposer from "../components/SocialReplyComposer.jsx";
 import SocialStudio from "./SocialStudio.jsx";
 import Button from "../components/Button.jsx";
 import Modal from "../components/Modal.jsx";
+import { PostAutomationSection } from "../components/SocialAutomationFields.jsx";
 import {
   fetchSocialWorkspace,
   mutateSocialWorkspace,
@@ -14,6 +15,10 @@ import {
   approveSocialContent,
   cancelSocialContent,
   createContentBrief,
+  createSocialAutomation,
+  updateSocialAutomation,
+  fetchSocialAutomations,
+  fetchCampaigns,
   duplicateSocialContent,
   fetchContentBriefs,
   fetchSocialPublishingCapabilities,
@@ -33,6 +38,18 @@ const empty = {
   callToAction: "",
   source: "human",
   social: { destinations: [], media: [], cta: { label: "", url: "" } },
+};
+const emptyPostAutomation = {
+  configured: false,
+  name: "",
+  triggerType: "comment_keyword",
+  keywords: "",
+  responseTemplate: "",
+  ctaLabel: "",
+  ctaDestination: "",
+  campaignId: "",
+  tags: [],
+  enabledWhenPublished: true,
 };
 const labels = {
   api: "Official API",
@@ -636,7 +653,10 @@ export default function Content() {
     [deleteTarget, setDeleteTarget] = useState(null),
     [uploading, setUploading] = useState(false),
     [publishedNotice, setPublishedNotice] = useState(null),
-    [createOpen, setCreateOpen] = useState(false);
+    [createOpen, setCreateOpen] = useState(false),
+    [postAutomation, setPostAutomation] = useState(emptyPostAutomation),
+    [existingAutomations, setExistingAutomations] = useState([]),
+    [campaigns, setCampaigns] = useState([]);
   const fileInputRef = useRef(null);
   const load = async () => {
     try {
@@ -652,6 +672,11 @@ export default function Content() {
       setError(err.response?.data?.error || "Unable to load social content.");
     }
   };
+  useEffect(() => {
+    fetchCampaigns()
+      .then((rows) => setCampaigns(Array.isArray(rows) ? rows.filter(Boolean) : []))
+      .catch(() => {});
+  }, []);
   useEffect(() => {
     const timer = window.setTimeout(load, 0);
     return () => window.clearTimeout(timer);
@@ -685,14 +710,82 @@ export default function Content() {
       },
     });
   };
+  const syncPostAutomation = async (contentBriefId) => {
+    if (!postAutomation.configured) {
+      // Turning the toggle off pauses the automation rather than deleting its configuration, in case
+      // it's turned back on later.
+      for (const automation of existingAutomations)
+        if (automation.enabled)
+          await updateSocialAutomation(automation._id, { enabled: false });
+      return;
+    }
+    const metaDestinations = draft.social.destinations.filter((row) =>
+      ["facebook", "instagram"].includes(row.provider),
+    );
+    if (!metaDestinations.length)
+      throw new Error(
+        "Choose at least one connected Facebook or Instagram destination for this automation.",
+      );
+    if (!postAutomation.name.trim())
+      throw new Error("Enter an internal automation name.");
+    if (
+      postAutomation.triggerType === "comment_keyword" &&
+      !postAutomation.keywords.trim()
+    )
+      throw new Error(
+        "Enter at least one comment keyword that should trigger this automation.",
+      );
+    for (const destination of metaDestinations) {
+      const existing = existingAutomations.find(
+        (automation) =>
+          automation.provider === destination.provider &&
+          String(automation.assetId) === String(destination.assetId),
+      );
+      const payload = {
+        name:
+          metaDestinations.length > 1
+            ? `${postAutomation.name.trim()} — ${destination.provider}`
+            : postAutomation.name.trim(),
+        triggerType: postAutomation.triggerType,
+        keywords:
+          postAutomation.triggerType === "comment_keyword"
+            ? postAutomation.keywords
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean)
+            : [],
+        responseTemplate: postAutomation.responseTemplate,
+        cta: { label: postAutomation.ctaLabel, destination: postAutomation.ctaDestination },
+        campaignId: postAutomation.campaignId || null,
+        tags: postAutomation.tags,
+        enabled: postAutomation.enabledWhenPublished,
+      };
+      if (existing) await updateSocialAutomation(existing._id, payload);
+      else
+        await createSocialAutomation({
+          ...payload,
+          provider: destination.provider,
+          assetId: destination.assetId,
+          contentBriefId,
+          contentId: "",
+        });
+    }
+  };
   const save = async () => {
     try {
       setSaving(true);
+      let contentBriefId = editing?._id;
       if (editing) await updateContentBrief(editing._id, draft);
-      else await createContentBrief(draft);
+      else {
+        const created = await createContentBrief(draft);
+        contentBriefId = created.data?._id || created._id;
+      }
+      await syncPostAutomation(contentBriefId);
       setOpen(false);
       setDraft(empty);
       setEditing(null);
+      setPostAutomation(emptyPostAutomation);
+      setExistingAutomations([]);
       await load();
     } catch (err) {
       setError(err.response?.data?.error || "Unable to save social content.");
@@ -778,9 +871,13 @@ export default function Content() {
     try {
       setSaving(true);
       setError("");
-      await deleteSocialContent(deleteTarget._id);
+      const result = await deleteSocialContent(deleteTarget._id);
       setDeleteTarget(null);
-      setMessage("Post deleted from Lead Porch and every published destination.");
+      setMessage(
+        result?.warnings?.length
+          ? `Post deleted from Lead Porch. ${result.warnings.join(" ")}`
+          : "Post deleted from Lead Porch and every published destination.",
+      );
       await load();
     } catch (err) {
       setError(err.response?.data?.error || "Unable to delete this post.");
@@ -788,7 +885,7 @@ export default function Content() {
       setSaving(false);
     }
   };
-  const edit = (item) => {
+  const edit = async (item) => {
     setEditing(item);
     setDraft({
       title: item.title,
@@ -802,7 +899,29 @@ export default function Content() {
         cta: item.social?.cta || { label: "", url: "" },
       },
     });
+    setPostAutomation(emptyPostAutomation);
+    setExistingAutomations([]);
     setOpen(true);
+    try {
+      const automations = await fetchSocialAutomations(item._id);
+      setExistingAutomations(automations || []);
+      const first = automations?.[0];
+      if (first)
+        setPostAutomation({
+          configured: true,
+          name: first.name || "",
+          triggerType: first.triggerType || "comment_keyword",
+          keywords: (first.keywords || []).join(", "),
+          responseTemplate: first.responseTemplate || "",
+          ctaLabel: first.cta?.label || "",
+          ctaDestination: first.cta?.destination || "",
+          campaignId: first.campaignId?._id || first.campaignId || "",
+          tags: first.tags || [],
+          enabledWhenPublished: first.enabled !== false,
+        });
+    } catch {
+      // The post itself is still editable even if its automation can't be loaded right now.
+    }
   };
   return (
     <div className="page-dashboard social-content">
@@ -843,7 +962,11 @@ export default function Content() {
       </section>
       <Modal
         isOpen={open}
-        onClose={() => setOpen(false)}
+        onClose={() => {
+          setOpen(false);
+          setPostAutomation(emptyPostAutomation);
+          setExistingAutomations([]);
+        }}
         title={editing ? "Edit social content" : "New social draft"}
         size="workspace"
         className="social-editor-modal"
@@ -965,6 +1088,12 @@ export default function Content() {
                   </label>
                 ))}
               </fieldset>
+              <PostAutomationSection
+                value={postAutomation}
+                onChange={setPostAutomation}
+                campaigns={campaigns}
+                onError={setError}
+              />
             </div>
             <div className="social-editor__preview">
               <span className="social-editor__preview-label">Preview</span>

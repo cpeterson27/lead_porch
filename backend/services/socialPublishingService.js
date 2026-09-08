@@ -69,7 +69,7 @@ async function processItem(item,models=deps){let failed=!item.social.destination
 async function publishNow({workspaceId,id,userId},models=deps){const item=await models.ContentBrief.findOne({_id:id,workspaceId,type:"social"});if(!item)throw new Error("Social content not found");if(item.status!=="approved")throw new Error("Approve this post before publishing");if(!item.social.destinations?.length)throw new Error("Choose at least one publishing destination");if(process.env.SOCIAL_PUBLISHING_ENABLED!=="true")throw new Error("Publishing is turned off for this workspace right now — ask your administrator to enable it before publishing.");item.status="publishing";item.updatedBy=userId;await item.save();const result=await processItem(item,models);await models.CrmActivity.create({workspaceId,campaignId:item.campaignId||null,type:"system",title:"Social content published immediately",source:"crm",createdBy:userId,metadata:{eventType:"social.content.publish_now",contentBriefId:item._id,status:result.status}});return result}
 async function deletePublished({workspaceId,item},models=deps){
   const publications=(item.social?.publications||[]).filter(row=>row.providerPostId&&["published","unknown"].includes(row.status));
-  const failures=[],deleted=[];
+  const failures=[],deleted=[],warnings=[];
   for(const publication of publications){
     try{
       if(!["facebook","instagram"].includes(publication.provider))throw new Error(`${publication.provider} post deletion is not integrated`);
@@ -154,14 +154,17 @@ async function deletePublished({workspaceId,item},models=deps){
       deleted.push(publication.provider);
     }catch(error){
       const providerError=error.response?.data?.error;
-      const message=publication.provider==="instagram"&&Number(providerError?.code)===10
-        ?"Meta allows this connection to read and publish the Instagram post but does not allow API deletion of the published media. Delete it in Instagram, then retry here to remove the Lead Porch record."
-        :providerError?.message||error.message;
-      failures.push(`${publication.provider}: ${clean(message,500)}`);
+      // Meta simply does not expose a delete endpoint for Instagram media published through the Graph
+      // API — confirmed live: even a definitely-live, definitely-readable post rejects DELETE with this
+      // exact signature. Retrying can never succeed, so this must not block removing the Lead Porch
+      // record (unlike a real, possibly-transient failure below, which still should).
+      const knownInstagramDeleteLimitation=publication.provider==="instagram"&&(Number(providerError?.code)===10||(Number(providerError?.code)===100&&Number(providerError?.error_subcode)===33));
+      if(knownInstagramDeleteLimitation)warnings.push(`${publication.provider}: Meta does not allow this connection to delete a published Instagram post through its API. Delete it directly in Instagram if you also want it removed there.`);
+      else failures.push(`${publication.provider}: ${clean(providerError?.message||error.message,500)}`);
     }
   }
   if(failures.length){const error=new Error(`Could not delete every published copy. ${failures.join("; ")}. The Lead Porch record was kept so you can retry.`);error.status=502;error.deleted=deleted;throw error}
-  return{deleted};
+  return{deleted,warnings};
 }
 async function runDue({now=new Date(),limit=20}={},models=deps){if(process.env.SOCIAL_PUBLISHING_ENABLED!=="true")return[];const completed=[];for(let i=0;i<limit;i+=1){const item=await models.ContentBrief.findOneAndUpdate({type:"social",status:"scheduled","social.requestedPublishAt":{$lte:now}},{$set:{status:"publishing"}},{new:true,sort:{"social.requestedPublishAt":1}});if(!item)break;completed.push(await runWithWorkspace(item.workspaceId,()=>processItem(item,models)))}return completed}
 module.exports={capability,createDraft,deletePublished,edit,matrix,processItem,publishDestination,publishNow,runDue,safeInput,transition};

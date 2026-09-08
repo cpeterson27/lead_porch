@@ -5,6 +5,109 @@ import {
 } from "../services/api.js";
 import "./SocialAutomationFields.css";
 
+export function PostAutomationSection({ value, onChange, campaigns, onError }) {
+  const set = (values) => onChange({ ...value, ...values });
+  return (
+    <details className="post-automation" open={value.configured}>
+      <summary>
+        <strong>Automate responses to this post</strong>
+        <span>Optional · uses Social Automation</span>
+      </summary>
+      <label className="post-automation__toggle">
+        <input
+          type="checkbox"
+          checked={value.configured}
+          onChange={(event) => set({ configured: event.target.checked })}
+        />
+        Configure a response automation for this post
+      </label>
+      {value.configured && (
+        <div className="post-automation__fields">
+          <label className="post-automation__field--full">
+            Automation name <small>Internal only</small>
+            <input
+              value={value.name}
+              placeholder="Freedom lead responses"
+              onChange={(event) => set({ name: event.target.value })}
+            />
+          </label>
+          <label>
+            Trigger
+            <select
+              value={value.triggerType}
+              onChange={(event) => set({ triggerType: event.target.value })}
+            >
+              <option value="comment_keyword">Comment contains keyword</option>
+              <option value="comment_any">Any new comment</option>
+            </select>
+          </label>
+          {value.triggerType === "comment_keyword" && (
+            <label>
+              Keywords
+              <input
+                placeholder="DEAL"
+                value={value.keywords}
+                onChange={(event) => set({ keywords: event.target.value })}
+              />
+              <small>Separate multiple keywords with commas.</small>
+            </label>
+          )}
+          <label className="post-automation__field--full">
+            Automatic reply
+            <textarea
+              rows="4"
+              value={value.responseTemplate}
+              onChange={(event) =>
+                set({ responseTemplate: event.target.value })
+              }
+            />
+            <small>
+              Delivery still follows existing Meta permissions and the
+              automatic-reply safety setting.
+            </small>
+          </label>
+          <label>
+            Button text (optional)
+            <input
+              placeholder="Learn more"
+              value={value.ctaLabel}
+              onChange={(event) => set({ ctaLabel: event.target.value })}
+            />
+          </label>
+          <label>
+            Button link (optional)
+            <input
+              type="url"
+              placeholder="https://elliescoaching.com/apply"
+              value={value.ctaDestination}
+              onChange={(event) => set({ ctaDestination: event.target.value })}
+            />
+          </label>
+          <CampaignSelect
+            campaigns={campaigns}
+            value={value.campaignId}
+            onChange={(campaignId) => set({ campaignId })}
+          />
+          <ContactLabelsControl
+            value={value.tags}
+            onChange={(tags) => set({ tags })}
+            onError={onError}
+          />
+          <label className="post-automation__toggle">
+            <input
+              type="checkbox"
+              checked={value.enabledWhenPublished}
+              onChange={(event) =>
+                set({ enabledWhenPublished: event.target.checked })
+              }
+            />
+            Turn on when post is published
+          </label>
+        </div>
+      )}
+    </details>
+  );
+}
 export function CampaignSelect({ campaigns, value, onChange }) {
   return (
     <label>

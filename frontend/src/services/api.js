@@ -83,8 +83,12 @@ export const selectMeetupGroups = (groupUrlnames) =>
 
 export const fetchSocialAutomationOverview = () =>
   api.get("/social-automation/overview").then((res) => res.data.data);
-export const fetchSocialAutomations = () =>
-  api.get("/social-automation/automations").then((res) => res.data.data);
+export const fetchSocialAutomations = (contentBriefId) =>
+  api
+    .get("/social-automation/automations", {
+      params: contentBriefId ? { contentBriefId } : {},
+    })
+    .then((res) => res.data.data);
 export const fetchSocialContactLabels = () =>
   api.get("/social-automation/contact-labels").then((res) => res.data.data);
 export const createSocialContactLabel = (label) =>

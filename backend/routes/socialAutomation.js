@@ -121,16 +121,18 @@ router.get("/overview", async (_req, res) => {
   });
 });
 
-router.get("/automations", async (_req, res) =>
+router.get("/automations", async (req, res) => {
+  const filter = { workspaceId: req.auth.workspaceId };
+  if (req.query.contentBriefId) filter.contentBriefId = req.query.contentBriefId;
   res.json({
     success: true,
-    data: await SocialAutomation.find({})
+    data: await SocialAutomation.find(filter)
       .populate("campaignId", "name")
       .populate("contentBriefId", "title status")
       .sort({ updatedAt: -1 })
       .lean(),
-  }),
-);
+  });
+});
 router.get("/contact-labels", async (req, res) => {
   const config = await WorkspaceConfig.findOne({
     workspaceId: req.auth.workspaceId,
@@ -335,7 +337,10 @@ router.post("/automations", async (req, res) => {
 });
 
 router.patch("/automations/:id", async (req, res) => {
-  const record = await SocialAutomation.findById(req.params.id);
+  const record = await SocialAutomation.findOne({
+    _id: req.params.id,
+    workspaceId: req.auth.workspaceId,
+  });
   if (!record)
     return res.status(404).json({ error: "Social automation not found" });
   if (
@@ -356,9 +361,17 @@ router.patch("/automations/:id", async (req, res) => {
         error:
           "CTA destination must use this workspace's verified HTTPS website or an approved Eventbrite URL",
       });
+  if (
+    req.body.triggerType !== undefined &&
+    !SUPPORTED_TRIGGERS[record.provider]?.includes(req.body.triggerType)
+  )
+    return res
+      .status(400)
+      .json({ error: "This provider trigger is not supported by the native connection" });
   for (const key of [
     "name",
     "contentId",
+    "triggerType",
     "responseTemplate",
     "campaignId",
     "enabled",
