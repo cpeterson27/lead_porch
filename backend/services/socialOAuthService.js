@@ -932,59 +932,6 @@ async function selectAssets(workspaceId, provider, assetIds, http = axios) {
         "Select the Facebook Page before its linked Instagram account",
       );
   }
-  const other = await SocialConnection.findOne({
-    workspaceId,
-    provider: { $ne: provider },
-    selectedAssetIds: { $in: selected },
-  }).lean();
-  let releasedConnection = null;
-  let releasedSelectedIds = null;
-  if (other && selected.length) {
-    const conflicts = selected.filter((id) =>
-      (other.selectedAssetIds || []).map(String).includes(id),
-    );
-    const directAssets = connection.assets.filter((asset) =>
-      conflicts.includes(String(asset.id)),
-    );
-    const otherAssets = (other.assets || []).filter((asset) =>
-      conflicts.includes(String(asset.id)),
-    );
-    const canTransferInstagram =
-      new Set([provider, other.provider]).size === 2 &&
-      [provider, other.provider].every((value) =>
-        ["meta", "instagram"].includes(value),
-      ) &&
-      conflicts.length > 0 &&
-      directAssets.length === conflicts.length &&
-      otherAssets.length === conflicts.length &&
-      directAssets.every((asset) => asset.type === "instagram_business") &&
-      otherAssets.every((asset) => asset.type === "instagram_business");
-    if (!canTransferInstagram)
-      throw new Error(
-        "This account is already selected through another connection. Deselect it there first; direct Instagram is recommended for Instagram.",
-      );
-    // Switching the same Instagram business account between Meta and direct
-    // Instagram Login is an intentional ownership handoff. Only Instagram is
-    // transferred; the linked Facebook Page remains selected and operational.
-    releasedConnection = await SocialConnection.findOne({
-      _id: other._id,
-      workspaceId,
-    }).select("+credentialsEncrypted");
-    releasedSelectedIds = (releasedConnection.selectedAssetIds || []).map(String);
-    releasedConnection.selectedAssetIds = releasedSelectedIds.filter(
-      (id) => !conflicts.includes(id),
-    );
-    releasedConnection.webhookSubscriptions = (
-      releasedConnection.webhookSubscriptions || []
-    ).filter((row) => !conflicts.includes(String(row.assetId)));
-    await releasedConnection.save();
-    if (other.provider === "meta")
-      await removeMetaSubscriptions(
-        { ...other, credentialsEncrypted: releasedConnection.credentialsEncrypted },
-        conflicts,
-        http,
-      );
-  }
   const removed = (connection.selectedAssetIds || [])
     .map(String)
     .filter((id) => !selected.includes(id));
@@ -1028,14 +975,6 @@ async function selectAssets(workspaceId, provider, assetIds, http = axios) {
   try {
     await connection.save();
   } catch (error) {
-    if (releasedConnection && releasedSelectedIds) {
-      releasedConnection.selectedAssetIds = releasedSelectedIds;
-      await releasedConnection.save().catch(() => {});
-    }
-    if (error.code === 11000)
-      throw new Error(
-        "This account is already selected through another connection",
-      );
     throw error;
   }
   if (provider === "meta") {

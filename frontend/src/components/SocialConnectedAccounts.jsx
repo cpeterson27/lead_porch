@@ -77,11 +77,6 @@ function ChannelRow({
   );
   const directAsset = isDirectInstagram ? assets[0] : null;
   const directActive = directAsset ? selectedIds.includes(directAsset.id) : false;
-  const elsewhere = new Set(
-    connections
-      .filter((row) => row.provider !== connection.provider)
-      .flatMap((row) => row.selectedAssetIds || []),
-  );
   const needsDecision =
     connection.connected && !isDirectInstagram && selected.length === 0;
   const showManage = manageOpen || needsDecision;
@@ -120,7 +115,6 @@ function ChannelRow({
         Reconnect below to refresh this list.
       </p>
       {manageableAssets.map((asset) => {
-        const ownedElsewhere = elsewhere.has(asset.id);
         const linked = manageableAssets.find(
           (row) => row.parentId === asset.id,
         );
@@ -145,13 +139,7 @@ function ChannelRow({
               <small>
                 {[
                   identity.secondary,
-                  ownedElsewhere
-                    ? asset.type === "instagram_business"
-                      ? "Active via Instagram Login — select here to switch it back to Facebook"
-                      : "Already connected through another method"
-                    : isChecked
-                      ? "Active for Lead Porch"
-                      : "Available to select",
+                  isChecked ? "Active for Lead Porch" : "Available to select",
                   linked
                     ? `Linked Instagram: @${linked.username || linked.name}`
                     : "",
@@ -165,11 +153,9 @@ function ChannelRow({
       })}
       {channel.provider === "meta" && (
         <p>
-          {manageableAssets.some(
-            (asset) => asset.type === "instagram_business" && elsewhere.has(asset.id),
-          )
-            ? "Your linked Instagram account is active through Instagram Login. Select it here if you want to switch management back to the Facebook connection."
-            : "Selecting a linked Instagram account also connects its Facebook Page automatically."}
+          Selecting a linked Instagram account also connects its Facebook Page
+          automatically. It may remain active here and through Instagram Login;
+          Lead Porch routes each action through the correct provider.
         </p>
       )}
     </fieldset>

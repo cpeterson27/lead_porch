@@ -45,8 +45,10 @@ const socialConnectionSchema = new mongoose.Schema({
 }, { timestamps: true, optimisticConcurrency: true });
 
 socialConnectionSchema.index({ workspaceId: 1, provider: 1 }, { unique: true });
-// Only explicitly selected assets claim ownership; discovery never does.
-socialConnectionSchema.index({ workspaceId: 1, selectedAssetIds: 1 }, { unique: true, name: "workspace_selected_social_asset", partialFilterExpression: { "selectedAssetIds.0": { $exists: true } } });
+// An Instagram business account may intentionally be selected through both
+// Facebook Login and Instagram Login. Provider-specific routing decides which
+// authorization handles each action.
+socialConnectionSchema.index({ workspaceId: 1, selectedAssetIds: 1 }, { name: "workspace_selected_social_asset_routes", partialFilterExpression: { "selectedAssetIds.0": { $exists: true } } });
 
 socialConnectionSchema.plugin(workspacePlugin);
 module.exports = mongoose.model("SocialConnection", socialConnectionSchema);
