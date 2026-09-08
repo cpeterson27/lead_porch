@@ -746,7 +746,7 @@ export default function Content() {
       setSaving(true);
       await deleteSocialContent(deleteTarget._id);
       setDeleteTarget(null);
-      setMessage("Post deleted.");
+      setMessage("Post deleted from Lead Porch and every published destination.");
       await load();
     } catch (err) {
       setError(err.response?.data?.error || "Unable to delete this post.");
@@ -1245,9 +1245,10 @@ export default function Content() {
         }
       >
         <p>
-          This permanently removes "{deleteTarget?.title}" — this cannot be
-          undone. Already-published posts on Facebook or Instagram are not
-          affected; this only removes it from Lead Porch.
+          This permanently removes "{deleteTarget?.title}" from Lead Porch,
+          Facebook, Instagram, and every published destination. If any
+          platform cannot confirm deletion, Lead Porch keeps the record so
+          you can retry.
         </p>
       </Modal>
       <Modal
