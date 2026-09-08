@@ -139,6 +139,9 @@
 .social-comment-delete-icon{appearance:none;border:0;background:none;padding:6px;border-radius:8px;color:#8e8e93;cursor:pointer;display:grid;place-items:center;font-size:.85rem}
 .social-comment-delete-icon:hover{background:#fde8e8;color:#ff3b30}
 .social-comment-thread-card__reply{display:flex;align-items:flex-start;gap:8px;margin:2px 0 0 20px;padding:8px 12px;border-radius:12px;background:#f0f0f2}
+.social-comment-reply-delete{flex:0 0 auto;opacity:0;transition:opacity .12s ease}
+.social-comment-thread-card__reply:hover .social-comment-reply-delete,.social-comment-reply-delete:focus-visible{opacity:1}
+@media(hover:none){.social-comment-reply-delete{opacity:1}}
 .social-comment-thread-card__reply .social-comment-thread-card__row-body strong{font-size:.76rem;color:#6e6e73}
 .social-comment-thread-card__reply .social-comment-thread-card__row-body p{font-size:.85rem;line-height:1.35}
 .social-comment-thread-card .social-composer-dock{margin-top:10px;padding:0;background:none;border-top:1px solid #e5e5ea;padding-top:12px}

@@ -256,15 +256,23 @@ function PostPerformance({ item }) {
   useEffect(() => {
     let active = true;
     if (!destinations.length) return undefined;
-    fetchSocialWorkspace(`content/${item._id}/insights`)
-      .then((result) => {
-        if (active) setRows(result.destinations || []);
-      })
-      .catch(() => {
-        if (active) setRows([]);
-      });
+    const loadInsights = () => {
+      fetchSocialWorkspace(`content/${item._id}/insights`)
+        .then((result) => {
+          if (active) setRows(result.destinations || []);
+        })
+        .catch(() => {
+          if (active) setRows([]);
+        });
+    };
+    const handleCommentsChanged = (event) => {
+      if (String(event.detail?.contentId) === String(item._id)) loadInsights();
+    };
+    loadInsights();
+    window.addEventListener("social-comments-changed", handleCommentsChanged);
     return () => {
       active = false;
+      window.removeEventListener("social-comments-changed", handleCommentsChanged);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [item._id]);
@@ -335,6 +343,18 @@ function when(value) {
 }
 function CommentGroups({ threads, destinations, onReload }) {
   const [expandedId, setExpandedId] = useState(null);
+  const deleteReply = async (thread, reply) => {
+    if (!window.confirm("Delete this reply from Facebook and Lead Porch? This cannot be undone.")) return;
+    try {
+      await mutateSocialWorkspace(
+        `inbox/${thread._id}/messages/${reply._id}/delete`,
+        { approved: true, idempotencyKey: actionKey() },
+      );
+      onReload();
+    } catch (err) {
+      window.alert(err.response?.data?.error || "Facebook could not confirm this deletion. The reply was not removed from Lead Porch.");
+    }
+  };
   // Deletes the commenter's original comment from the platform itself
   // (confirmed working for both Facebook and Instagram) — on reload, this
   // post's comment count and list update on their own, since both are
@@ -502,6 +522,11 @@ function CommentGroups({ threads, destinations, onReload }) {
                           </strong>
                           <p>{reply.body}</p>
                         </div>
+                        {provider === "facebook" ? (
+                          <button type="button" className="social-comment-delete-icon social-comment-reply-delete" onClick={() => deleteReply(thread, reply)} title="Delete this reply from Facebook and Lead Porch" aria-label="Delete Facebook reply">
+                            <FaRegTrashCan aria-hidden="true" />
+                          </button>
+                        ) : null}
                       </div>
                     ))}
                     <div className="social-composer-dock">
@@ -535,6 +560,14 @@ function PostComments({ item }) {
       .then((result) => setThreads(result.threads || []))
       .catch(() => setError("Unable to load comments."));
   };
+  const reloadAfterChange = () => {
+    load();
+    window.dispatchEvent(
+      new CustomEvent("social-comments-changed", {
+        detail: { contentId: item._id },
+      }),
+    );
+  };
   const toggle = () => {
     const next = !open;
     setOpen(next);
@@ -565,7 +598,7 @@ function PostComments({ item }) {
               Loading comments…
             </p>
           ) : (
-            <CommentGroups threads={threads} destinations={destinations} onReload={load} />
+            <CommentGroups threads={threads} destinations={destinations} onReload={reloadAfterChange} />
           )}
         </div>
       )}

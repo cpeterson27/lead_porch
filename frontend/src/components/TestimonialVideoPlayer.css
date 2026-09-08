@@ -1,8 +1,7 @@
 .testimonial-video-cover {
   display: block;
   width: 100%;
-  aspect-ratio: 4 / 5;
-  max-height: 380px;
+  aspect-ratio: 9 / 16;
   border: 0;
   border-radius: 14px;
   background-color: #000;
@@ -28,8 +27,7 @@
 .testimonial-video-player {
   display: block;
   width: 100%;
-  aspect-ratio: 4 / 5;
-  max-height: 380px;
+  aspect-ratio: 9 / 16;
   border-radius: 14px;
   background: #000;
   object-fit: cover;

@@ -1,6 +1,7 @@
 const axios = require("axios");
 const crypto = require("crypto");
 const ConversationThread = require("../models/ConversationThread");
+const ConversationMessage = require("../models/ConversationMessage");
 const CrmActivity = require("../models/CrmActivity");
 const { decryptCredentials } = require("../utils/credentialEncryption");
 const { connectionForAsset } = require("./conversations/metaMessagingAdapter");
@@ -16,9 +17,11 @@ const ACTIONS = new Set([
   "delete",
   "like",
   "unlike",
+  "delete_reply",
 ]);
 const deps = {
   ConversationThread,
+  ConversationMessage,
   CrmActivity,
   connectionForAsset,
   ingestProviderMessage,
@@ -64,7 +67,7 @@ async function reserve(models, values) {
 }
 
 async function perform(
-  { workspaceId, userId, threadId, action, body, idempotencyKey },
+  { workspaceId, userId, threadId, action, body, messageId, idempotencyKey },
   models = deps,
 ) {
   if (!ACTIONS.has(action))
@@ -83,6 +86,23 @@ async function perform(
     throw new Error(
       "Instagram does not let a business like a comment through Meta's API. Try Hide, Unhide, or Delete instead.",
     );
+  let reply = null;
+  if (action === "delete_reply") {
+    if (provider !== "facebook")
+      throw new Error(
+        "Instagram does not provide an API to unsend a private reply. Delete the original Instagram comment to reset this conversation.",
+      );
+    reply = await models.ConversationMessage.findOne({
+      _id: messageId,
+      workspaceId,
+      threadId,
+      direction: "outbound",
+      deletedAt: null,
+      "metadata.publicCommentReply": true,
+    }).lean();
+    if (!reply?.providerMessageId)
+      throw new Error("Facebook reply context is unavailable");
+  }
   const assetId = clean(thread.metadata?.assetId, 255),
     commentId = clean(thread.metadata?.commentId, 500);
   if (!assetId || !commentId)
@@ -137,6 +157,7 @@ async function perform(
     delete: `${provider === "instagram" ? "Instagram" : "Facebook"} comment deleted`,
     like: `${provider === "instagram" ? "Instagram" : "Facebook"} comment liked`,
     unlike: `${provider === "instagram" ? "Instagram" : "Facebook"} comment reaction removed`,
+    delete_reply: "Facebook reply deleted",
   }[action];
   const reserved = await reserve(models, {
     workspaceId,
@@ -155,6 +176,7 @@ async function perform(
       commentId,
       threadId,
       senderType: "human",
+      messageId: reply?._id || null,
       outcome: "pending",
     },
   });
@@ -220,6 +242,11 @@ async function perform(
         `https://graph.facebook.com/${version}/${commentId}`,
         { params: { access_token: token }, timeout: 15000 },
       );
+    else if (action === "delete_reply")
+      response = await models.http.delete(
+        `https://graph.facebook.com/${version}/${reply.providerMessageId}`,
+        { params: { access_token: token }, timeout: 15000 },
+      );
     else if (action === "like")
       response = await models.http.post(
         `https://graph.facebook.com/${version}/${commentId}/likes`,
@@ -270,6 +297,11 @@ async function perform(
           },
         },
       });
+    if (action === "delete_reply")
+      await models.ConversationMessage.updateOne(
+        { _id: reply._id, workspaceId, threadId, deletedAt: null },
+        { $set: { deletedAt: new Date(), deletedBy: userId } },
+      );
     await models.CrmActivity.updateOne(
       { _id: reserved.activity._id, workspaceId },
       {

@@ -587,8 +587,19 @@ router.post(
         threadId: req.params.id,
         action: req.body.action,
         body: req.body.body,
+        messageId: req.body.messageId,
         idempotencyKey: req.body.idempotencyKey,
       });
+      if (req.body.action === "delete" && !result.duplicate) {
+        await ConversationMessage.deleteMany({
+          workspaceId: req.auth.workspaceId,
+          threadId: req.params.id,
+        });
+        await ConversationThread.deleteOne({
+          workspaceId: req.auth.workspaceId,
+          _id: req.params.id,
+        });
+      }
       return res.json(result);
     } catch (error) {
       return res.status(error.status || 400).json({ error: error.message });
@@ -622,9 +633,31 @@ router.post(
     });
     if (!thread)
       return res.status(404).json({ error: "Conversation not found" });
-    // Removes the message from Lead Porch only. Instagram and Facebook do not
-    // offer any API for a business to unsend a message on the provider's side —
-    // unsend is a manual, sender-only action inside their own apps.
+    const existing = await ConversationMessage.findOne({
+      _id: req.params.messageId,
+      threadId: thread._id,
+      workspaceId: req.auth.workspaceId,
+      deletedAt: null,
+    }).lean();
+    if (!existing)
+      return res.status(404).json({ error: "Message not found" });
+    if (existing.metadata?.publicCommentReply) {
+      if (req.body.approved !== true)
+        return res.status(400).json({
+          error: "Explicit approval is required to delete this Facebook reply",
+        });
+      const result = await pageEngagement.perform({
+        workspaceId: req.auth.workspaceId,
+        userId: req.auth.user._id,
+        threadId: thread._id,
+        action: "delete_reply",
+        messageId: existing._id,
+        idempotencyKey: req.body.idempotencyKey,
+      });
+      return res.json({ success: true, providerDeleted: true, ...result });
+    }
+    // Meta does not expose direct-message unsend through this API. Ordinary
+    // inbox messages can therefore only be removed from Lead Porch locally.
     const message = await ConversationMessage.findOneAndUpdate(
       {
         _id: req.params.messageId,
