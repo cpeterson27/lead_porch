@@ -707,15 +707,6 @@
   object-fit: cover;
   width: 100%;
 }
-.homepage-media-advanced {
-  border-top: 1px solid #d9e2de;
-  padding-top: 16px;
-}
-.homepage-media-advanced summary {
-  cursor: pointer;
-  font-weight: 800;
-  margin-bottom: 14px;
-}
 .public-profile-photo-field {
   display: grid;
   gap: 7px;

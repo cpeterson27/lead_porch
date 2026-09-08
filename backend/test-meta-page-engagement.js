@@ -61,7 +61,7 @@ function fixtures(scopes = ["pages_manage_engagement"], channel = "facebook") {
     connectionForAsset: async (assetId, provider, workspaceId) => {
       assert.deepEqual(
         [assetId, provider, workspaceId],
-        ["page-1", "meta", "workspace-1"],
+        ["page-1", null, "workspace-1"],
       );
       return {
         workspaceId,

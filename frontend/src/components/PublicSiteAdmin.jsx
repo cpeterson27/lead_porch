@@ -760,9 +760,7 @@ export default function PublicSiteAdmin({ section = "website" }) {
       {tab === "video" ? (
         <section className="homepage-media-editor">
           <p className="public-admin__help">
-            Upload your video and poster image here. YouTube, Vimeo, and direct
-            HTTPS links remain available as an advanced option. Audio never
-            autoplays.
+            Upload your video and poster image here. Audio never autoplays.
           </p>
           <div className="homepage-media-uploads">
             <article>
@@ -830,29 +828,6 @@ export default function PublicSiteAdmin({ section = "website" }) {
             </article>
           </div>
           <div className="public-admin__grid">
-            <details className="wide homepage-media-advanced">
-              <summary>Advanced video and image URLs</summary>
-              <div className="public-admin__grid">
-                <label>
-                  Intro video URL
-                  <input
-                    value={config.publicSite.introVideoUrl || ""}
-                    onChange={(e) =>
-                      patchPublic("introVideoUrl", e.target.value)
-                    }
-                  />
-                </label>
-                <label>
-                  Poster/background image URL
-                  <input
-                    value={config.publicSite.introVideoPosterUrl || ""}
-                    onChange={(e) =>
-                      patchPublic("introVideoPosterUrl", e.target.value)
-                    }
-                  />
-                </label>
-              </div>
-            </details>
             <label>
               Video eyebrow
               <input

@@ -113,9 +113,17 @@ async function perform(
   // Lead Porch's own copy of a reply can be removed, via the plain message
   // delete endpoint, not this one.
 
+  // Don't force provider:"meta" here — a comment's asset can be owned by
+  // either a Facebook Login ("meta") connection or a standalone Direct
+  // Instagram Login ("instagram") connection, and connectionForAsset already
+  // prefers the "instagram" owner when both exist for the same asset (as
+  // they do whenever a Page-linked IG account is also connected directly).
+  // Forcing "meta" here rejected that legitimate owner outright with "The
+  // selected Meta account is not connected", even though the account was
+  // fully connected via the standalone Instagram connection.
   const connection = await models.connectionForAsset(
     assetId,
-    "meta",
+    null,
     workspaceId,
   );
   const asset = connection?.assets?.find(
