@@ -335,23 +335,6 @@ function when(value) {
 }
 function CommentGroups({ threads, destinations, onReload }) {
   const [expandedId, setExpandedId] = useState(null);
-  const deleteMessage = async (threadId, messageId) => {
-    if (
-      !window.confirm(
-        "Remove this from Lead Porch? This does not remove it from Facebook or Instagram.",
-      )
-    )
-      return;
-    try {
-      await mutateSocialWorkspace(
-        `inbox/${threadId}/messages/${messageId}/delete`,
-        {},
-      );
-      onReload();
-    } catch {
-      window.alert("Could not remove this.");
-    }
-  };
   // Deletes the commenter's original comment from the platform itself
   // (confirmed working for both Facebook and Instagram) — on reload, this
   // post's comment count and list update on their own, since both are
@@ -503,7 +486,7 @@ function CommentGroups({ threads, destinations, onReload }) {
                           type="button"
                           className="social-comment-delete-icon"
                           onClick={() => deleteComment(thread)}
-                          title="Delete this comment"
+                          title="Delete this comment (and any reply) from Facebook or Instagram"
                           aria-label="Delete this comment"
                         >
                           <FaRegTrashCan aria-hidden="true" />
@@ -518,17 +501,6 @@ function CommentGroups({ threads, destinations, onReload }) {
                             {reply.metadata?.privateReply ? " (private)" : ""}
                           </strong>
                           <p>{reply.body}</p>
-                        </div>
-                        <div className="social-comment-thread-card__row-actions">
-                          <button
-                            type="button"
-                            className="social-comment-delete-icon"
-                            onClick={() => deleteMessage(thread._id, reply._id)}
-                            title="Remove from Lead Porch — Facebook does not allow deleting a Page's own reply through their API"
-                            aria-label="Remove this reply from Lead Porch"
-                          >
-                            <FaRegTrashCan aria-hidden="true" />
-                          </button>
                         </div>
                       </div>
                     ))}

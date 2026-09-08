@@ -141,9 +141,6 @@
 .social-comment-thread-card__reply{display:flex;align-items:flex-start;gap:8px;margin:2px 0 0 20px;padding:8px 12px;border-radius:12px;background:#f0f0f2}
 .social-comment-thread-card__reply .social-comment-thread-card__row-body strong{font-size:.76rem;color:#6e6e73}
 .social-comment-thread-card__reply .social-comment-thread-card__row-body p{font-size:.85rem;line-height:1.35}
-.social-comment-thread-card__reply .social-comment-thread-card__row-actions{opacity:0}
-.social-comment-thread-card__reply:hover .social-comment-thread-card__row-actions,
-.social-comment-thread-card__reply .social-comment-thread-card__row-actions:focus-within{opacity:1}
 .social-comment-thread-card .social-composer-dock{margin-top:10px;padding:0;background:none;border-top:1px solid #e5e5ea;padding-top:12px}
 .social-comment-thread-card .social-composer-dock form{display:grid;gap:9px}
 .social-comment-thread-card .social-composer-dock textarea{width:100%;min-height:70px;padding:11px 13px;resize:vertical;color:#1d1d1f;background:#fff;border:1px solid #ccd5cf;border-radius:12px;font:inherit;font-size:.86rem;box-sizing:border-box}
