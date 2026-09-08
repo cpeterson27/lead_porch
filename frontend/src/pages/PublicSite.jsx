@@ -19,6 +19,7 @@ import {
   fetchPublicTestimonials,
 } from "../services/api.js";
 import { cloudinaryImage } from "../utils/cloudinaryImage.js";
+import TestimonialVideoPlayer from "../components/TestimonialVideoPlayer.jsx";
 import "./PublicSite.css";
 import "./PublicEnhancements.css";
 
@@ -533,7 +534,12 @@ function Testimonials({ rows = [] }) {
     <div className="testimonial-grid">
       {rows.map((row, index) => (
         <blockquote className={index === 0 ? "is-featured" : ""} key={row.id}>
-          {row.avatarUrl && !row.videoUrl ? (
+          {row.videoUrl ? (
+            <TestimonialVideoPlayer
+              videoUrl={row.videoUrl}
+              coverUrl={row.avatarUrl ? cloudinaryImage(row.avatarUrl, 1000) : ""}
+            />
+          ) : row.avatarUrl ? (
             <img
               className="testimonial-avatar"
               src={cloudinaryImage(row.avatarUrl, 128)}
@@ -557,19 +563,6 @@ function Testimonials({ rows = [] }) {
             <strong>{row.displayName}</strong>
             {row.headline ? <span>{row.headline}</span> : null}
           </footer>
-          {row.videoUrl ? (
-            <video
-              className="testimonial-video-player"
-              src={row.videoUrl}
-              poster={row.avatarUrl ? cloudinaryImage(row.avatarUrl, 800) : undefined}
-              controls
-              controlsList="nodownload noremoteplayback"
-              disablePictureInPicture
-              playsInline
-              preload="metadata"
-              onContextMenu={(event) => event.preventDefault()}
-            />
-          ) : null}
         </blockquote>
       ))}
     </div>
