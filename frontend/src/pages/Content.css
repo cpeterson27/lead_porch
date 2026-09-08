@@ -211,4 +211,6 @@
 .social-receipts__row--x .social-receipts__icon{background:var(--brand-x)}
 .social-receipts__row--tiktok .social-receipts__icon{background:#000}
 .social-receipts__id{color:#8e8e93;font-size:.74rem;overflow-wrap:anywhere}
+.social-receipts__time{color:#8e8e93;font-size:.74rem;white-space:nowrap}
+.social-receipts__link{font-size:.74rem;font-weight:600;white-space:nowrap}
 @media(max-width:560px){.social-post-performance__stat{min-width:100%}}

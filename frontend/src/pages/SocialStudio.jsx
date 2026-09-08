@@ -337,6 +337,9 @@ export default function SocialStudio() {
       await readyForApproval(id);
       const result = await publishSocialContentNow(id);
       setPublishedId(id);
+      const liveLinks = (result.social?.publications || []).filter(
+        (pub) => pub.status === "published" && pub.publicUrl,
+      );
       setConfirmation({
         title:
           result.status === "published"
@@ -346,10 +349,11 @@ export default function SocialStudio() {
               : "Publish failed",
         body:
           result.status === "published"
-            ? "Your post is live. Check your connected Facebook/Instagram account to see it."
+            ? "Your post is live."
             : result.status === "partially_published"
               ? `Published to some accounts, not all. ${result.social?.lastError || ""}`
               : `Could not publish: ${result.social?.lastError || "Approve this post and add a destination, then try again."}`,
+        liveLinks,
       });
     });
   const [scheduleAt, setScheduleAt] = useState("");
@@ -733,6 +737,18 @@ export default function SocialStudio() {
         }
       >
         <p>{confirmation?.body}</p>
+        {confirmation?.liveLinks?.length ? (
+          <ul>
+            {confirmation.liveLinks.map((pub) => (
+              <li key={`${pub.provider}:${pub.assetId}`}>
+                <a href={pub.publicUrl} target="_blank" rel="noreferrer">
+                  View the live {pub.provider} post
+                </a>{" "}
+                · published {new Date(pub.publishedAt).toLocaleString()}
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </Modal>
     </section>
   );

@@ -100,7 +100,7 @@ function mergeLabels(existing, additions) {
 }
 function containsKeyword(text, keywords) {
   const value = clean(text, 5000).toLowerCase();
-  return keywords.some((keyword) => value.includes(keyword));
+  return keywords.some((keyword) => value.includes(String(keyword).toLowerCase()));
 }
 function attributionFrom(event, automation) {
   return {

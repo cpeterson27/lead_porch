@@ -705,12 +705,38 @@ export default function Content() {
       setSaving(true);
       const result = await fn(id, ...args);
       if (fn === publishSocialContentNow) {
+        const liveLinks = (result?.social?.publications || []).filter(
+          (pub) => pub.status === "published" && pub.publicUrl,
+        );
         setPublishedNotice(
-          result?.status === "published"
-            ? "Published! Check your connected accounts."
-            : result?.status === "partially_published"
-              ? `Published to some accounts, not all. ${result.social?.lastError || ""}`
-              : `Could not publish: ${result?.social?.lastError || "Unknown error."}`,
+          result?.status === "published" || result?.status === "partially_published" ? (
+            <>
+              <p>
+                {result.status === "published"
+                  ? "Published."
+                  : `Published to some accounts, not all. ${result.social?.lastError || ""}`}
+              </p>
+              {liveLinks.length ? (
+                <ul>
+                  {liveLinks.map((pub) => (
+                    <li key={`${pub.provider}:${pub.assetId}`}>
+                      <a href={pub.publicUrl} target="_blank" rel="noreferrer">
+                        View the live {pub.provider} post
+                      </a>{" "}
+                      · published {new Date(pub.publishedAt).toLocaleString()}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>Check your connected accounts to confirm.</p>
+              )}
+            </>
+          ) : (
+            <p>
+              Could not publish:{" "}
+              {result?.social?.lastError || "Unknown error."}
+            </p>
+          ),
         );
       } else {
         setMessage("Social content updated.");
@@ -1217,6 +1243,21 @@ export default function Content() {
                               row.attempts?.at(-1)?.error ||
                               "Pending"}
                           </span>
+                          {row.publishedAt ? (
+                            <span className="social-receipts__time">
+                              {new Date(row.publishedAt).toLocaleString()}
+                            </span>
+                          ) : null}
+                          {row.publicUrl ? (
+                            <a
+                              className="social-receipts__link"
+                              href={row.publicUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                            >
+                              View live post
+                            </a>
+                          ) : null}
                         </p>
                       );
                     })}
@@ -1270,7 +1311,7 @@ export default function Content() {
           <Button onClick={() => setPublishedNotice(null)}>Done</Button>
         }
       >
-        <p>{publishedNotice}</p>
+        {publishedNotice}
       </Modal>
       <Modal
         isOpen={createOpen}

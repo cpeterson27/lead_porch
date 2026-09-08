@@ -29,6 +29,11 @@ assert.deepEqual(normalizedKeywords([" DEAL ", "deal", "Underwriting", ""]), [
 ]);
 assert.equal(containsKeyword("I want the DEAL guide", ["deal"]), true);
 assert.equal(containsKeyword("Just saying hello", ["deal"]), false);
+// Keywords aren't always lowercased before reaching this function (normalizedKeywords does that at the
+// route layer, but a record written any other way must still match) — the text side alone being
+// lowercased isn't enough.
+assert.equal(containsKeyword("Deal", ["DEAL"]), true);
+assert.equal(containsKeyword("deal", ["DEAL"]), true);
 assert.deepEqual(normalizedLabels([" Freedom Lead ", "freedom lead", "VIP"]), [
   "Freedom Lead",
   "VIP",
