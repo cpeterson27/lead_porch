@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { FaFacebookF, FaInstagram, FaLinkedinIn, FaTiktok, FaXTwitter, FaThumbsUp, FaRegThumbsUp, FaRegTrashCan } from "react-icons/fa6";
 import { publishingBlocker } from "../utils/socialPublishingReadiness.js";
 import SocialContentDetail from "../components/SocialContentDetail.jsx";
@@ -656,6 +656,13 @@ export default function Content() {
     const timer = window.setTimeout(load, 0);
     return () => window.clearTimeout(timer);
   }, []);
+  useEffect(() => {
+    const targetId = params.get("content");
+    if (!targetId || !items.length) return;
+    document
+      .getElementById(`content-${targetId}`)
+      ?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [params, items]);
   const selectProvider = (provider, checked) => {
     const cap = matrix.find((row) => row.provider === provider),
       others = draft.social.destinations.filter(
@@ -939,9 +946,6 @@ export default function Content() {
             </div>
         </div>
       </Modal>
-      {params.get("content") && (
-        <Link to="/social/content">Show all content</Link>
-      )}
       <div className="social-filters">
         <label>
           Search content
@@ -977,8 +981,6 @@ export default function Content() {
           items
             .filter(
               (item) =>
-                (!params.get("content") ||
-                  params.get("content") === item._id) &&
                 (!statusFilter || item.status === statusFilter) &&
                 `${item.title} ${item.body}`
                   .toLowerCase()
