@@ -343,6 +343,7 @@ function when(value) {
 }
 function CommentGroups({ threads, destinations, onReload }) {
   const [expandedId, setExpandedId] = useState(null);
+  const [likeOverrides, setLikeOverrides] = useState({});
   const deleteReply = async (thread, reply) => {
     const providerName = platformNames[thread.channel] || thread.channel;
     if (!window.confirm(`Delete this reply from ${providerName} and Lead Porch? This cannot be undone.`)) return;
@@ -386,12 +387,19 @@ function CommentGroups({ threads, destinations, onReload }) {
   // Facebook only — Meta has no way for a business to like an Instagram
   // comment (confirmed against their API: no endpoint, no field for it).
   const toggleLike = async (thread, liked) => {
+    const desired = !liked;
     try {
-      await manageFacebookComment(thread._id, {
-        action: liked ? "unlike" : "like",
+      const result = await manageFacebookComment(thread._id, {
+        action: desired ? "like" : "unlike",
         approved: true,
         idempotencyKey: actionKey(),
       });
+      if (result.status !== "confirmed" && !result.duplicate)
+        throw new Error("Facebook did not confirm the reaction");
+      setLikeOverrides((current) => ({
+        ...current,
+        [thread._id]: desired,
+      }));
       onReload();
     } catch (err) {
       window.alert(
@@ -442,7 +450,15 @@ function CommentGroups({ threads, destinations, onReload }) {
               thread.contactIds?.[0]?.name ||
               "Someone";
             const isExpanded = expandedId === thread._id;
-            const LikeIcon = like?.liked ? FaThumbsUp : FaRegThumbsUp;
+            const isLiked = likeOverrides[thread._id] ?? like?.liked ?? false;
+            const displayedLikeCount = Math.max(
+              0,
+              Number(like?.likeCount || 0) +
+                (likeOverrides[thread._id] === undefined || isLiked === Boolean(like?.liked)
+                  ? 0
+                  : isLiked ? 1 : -1),
+            );
+            const LikeIcon = isLiked ? FaThumbsUp : FaRegThumbsUp;
             return (
               <article
                 key={thread._id}
@@ -493,13 +509,13 @@ function CommentGroups({ threads, destinations, onReload }) {
                         {provider === "facebook" && (
                           <button
                             type="button"
-                            className={`social-comment-like${like?.liked ? " social-comment-like--active" : ""}`}
-                            onClick={() => toggleLike(thread, like?.liked)}
-                            title={like?.liked ? "Remove Page like" : "Like as Page"}
+                            className={`social-comment-like${isLiked ? " social-comment-like--active" : ""}`}
+                            onClick={() => toggleLike(thread, isLiked)}
+                            title={isLiked ? "Remove Page like" : "Like as Page"}
                           >
                             <LikeIcon aria-hidden="true" />
-                            {typeof like?.likeCount === "number" && like.likeCount > 0
-                              ? like.likeCount
+                            {displayedLikeCount > 0
+                              ? displayedLikeCount
                               : null}
                           </button>
                         )}

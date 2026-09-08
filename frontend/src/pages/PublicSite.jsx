@@ -532,8 +532,8 @@ function ProgramCards({ programs = [] }) {
 function Testimonials({ rows = [] }) {
   return (
     <div className="testimonial-grid">
-      {rows.map((row, index) => (
-        <blockquote className={index === 0 ? "is-featured" : ""} key={row.id}>
+      {rows.map((row) => (
+        <blockquote key={row.id}>
           {row.videoUrl ? (
             <TestimonialVideoPlayer
               videoUrl={row.videoUrl}
@@ -557,8 +557,14 @@ function Testimonials({ rows = [] }) {
               ))}
             </div>
           ) : null}
-          <p>"{row.body}"</p>
-          {row.resultContext ? <small>{row.resultContext}</small> : null}
+          <details className="testimonial-story">
+            <summary>
+              <span>{row.body}</span>
+              <em aria-hidden="true" />
+            </summary>
+            <p>{row.body}</p>
+          </details>
+          {row.resultContext ? <small className="testimonial-result">{row.resultContext}</small> : null}
           <footer>
             <strong>{row.displayName}</strong>
             {row.headline ? <span>{row.headline}</span> : null}
