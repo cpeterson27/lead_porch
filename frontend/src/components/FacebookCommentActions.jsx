@@ -10,7 +10,7 @@ function actionKey() {
   );
 }
 
-export default function FacebookCommentActions({ thread, onChanged }) {
+export default function FacebookCommentActions({ thread, replies = [], onChanged }) {
   const [body, setBody] = useState(""),
     [approved, setApproved] = useState(false),
     [busy, setBusy] = useState(""),
@@ -49,6 +49,24 @@ export default function FacebookCommentActions({ thread, onChanged }) {
     }
   };
   const instagram = thread.channel === "instagram";
+  // A Facebook reply is itself a real, independently deletable comment —
+  // deleting it removes only that reply, leaving the commenter's original
+  // comment untouched. Instagram replies are sent as a private message, not
+  // a public comment, so Meta has no endpoint to delete one.
+  const ownDeletableReplies = instagram
+    ? []
+    : replies.filter(
+        (reply) => reply.metadata?.publicCommentReply && reply.providerMessageId,
+      );
+  const deleteReply = (reply) => {
+    if (
+      !window.confirm(
+        "Delete this reply from Facebook? This only removes your reply — the commenter's original comment stays up. This cannot be undone.",
+      )
+    )
+      return;
+    run("delete", { targetCommentId: reply.providerMessageId });
+  };
   return (
     <section
       className="facebook-comment-actions"
@@ -120,6 +138,18 @@ export default function FacebookCommentActions({ thread, onChanged }) {
             </button>
           </>
         )}
+        {ownDeletableReplies.map((reply) => (
+          <button
+            key={reply.providerMessageId}
+            className="is-destructive"
+            disabled={Boolean(busy)}
+            onClick={() => deleteReply(reply)}
+          >
+            {ownDeletableReplies.length > 1
+              ? `Delete our reply (${new Date(reply.createdAt).toLocaleDateString()})`
+              : "Delete our reply"}
+          </button>
+        ))}
         <button
           className="is-destructive"
           disabled={Boolean(busy)}
@@ -139,10 +169,11 @@ export default function FacebookCommentActions({ thread, onChanged }) {
           </strong>
           <p>
             This removes the commenter's original comment
-            {!instagram && " and every reply nested under it, including yours"}
+            {!instagram && " and any replies nested under it"}
             . This cannot be undone.
             {!instagram &&
-              " To remove only your own reply and leave their comment up, use Delete from Facebook next to that specific reply instead."}
+              ownDeletableReplies.length > 0 &&
+              " To remove only your own reply and leave their comment up, use Delete our reply above instead."}
           </p>
           <div>
             <button

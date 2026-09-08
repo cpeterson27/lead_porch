@@ -101,7 +101,11 @@ export default function SocialReplyComposer({
     return (
       <>
         {aiPanel}
-        <FacebookCommentActions thread={thread} onChanged={onSent} />
+        <FacebookCommentActions
+          thread={thread}
+          replies={replies}
+          onChanged={onSent}
+        />
       </>
     );
   if (

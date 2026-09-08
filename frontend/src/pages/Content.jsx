@@ -10,7 +10,6 @@ import Modal from "../components/Modal.jsx";
 import {
   fetchSocialWorkspace,
   mutateSocialWorkspace,
-  manageFacebookComment,
   approveSocialContent,
   cancelSocialContent,
   createContentBrief,
@@ -311,12 +310,6 @@ function PostPerformance({ item }) {
     </div>
   );
 }
-function actionKey() {
-  return (
-    globalThis.crypto?.randomUUID?.() ||
-    `action_${Date.now()}_${Math.random().toString(36).slice(2)}`
-  );
-}
 function initials(name) {
   const parts = String(name || "?").trim().split(/\s+/);
   return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase() || "?";
@@ -350,38 +343,6 @@ function CommentGroups({ threads, destinations, onReload }) {
       onReload();
     } catch {
       window.alert("Could not remove this.");
-    }
-  };
-  // A Facebook reply is itself a real, independently deletable comment —
-  // deleting it removes only that reply from Facebook, leaving the
-  // commenter's original comment (and any other replies) untouched. An
-  // Instagram reply is sent as a private message, not a public comment, so
-  // Meta has no endpoint to delete it there; those fall back to removing
-  // Lead Porch's own copy only.
-  const deleteReply = async (thread, reply) => {
-    const isRealComment =
-      thread.channel === "facebook" &&
-      reply.metadata?.publicCommentReply &&
-      reply.providerMessageId;
-    if (!isRealComment) return deleteMessage(thread._id, reply._id);
-    if (
-      !window.confirm(
-        "Delete this reply from Facebook? This only removes your reply — the commenter's original comment stays up. This cannot be undone.",
-      )
-    )
-      return;
-    try {
-      await manageFacebookComment(thread._id, {
-        action: "delete",
-        approved: true,
-        idempotencyKey: actionKey(),
-        targetCommentId: reply.providerMessageId,
-      });
-      onReload();
-    } catch (err) {
-      window.alert(
-        err.response?.data?.error || "Could not delete this reply from Facebook.",
-      );
     }
   };
   // Groups come from the caller's known destinations when there is a fixed
@@ -480,39 +441,31 @@ function CommentGroups({ threads, destinations, onReload }) {
                       </button>
                     </div>
                     <p>{comment?.body}</p>
-                    {replies.map((reply) => {
-                      const isRealComment =
-                        thread.channel === "facebook" &&
-                        reply.metadata?.publicCommentReply &&
-                        reply.providerMessageId;
-                      return (
-                        <div key={reply._id} className="social-comment-thread-card__reply">
-                          <div>
-                            <strong>
-                              Your reply
-                              {reply.metadata?.privateReply ? " (private)" : ""}
-                            </strong>
-                            <button
-                              type="button"
-                              className="social-message-delete"
-                              onClick={() => deleteReply(thread, reply)}
-                              title={
-                                isRealComment
-                                  ? "Deletes just this reply from Facebook"
-                                  : "Removes Lead Porch's copy only"
-                              }
-                            >
-                              {isRealComment
-                                ? "Delete from Facebook"
-                                : "Remove from Lead Porch"}
-                            </button>
-                          </div>
-                          <p>{reply.body}</p>
+                    {replies.map((reply) => (
+                      <div key={reply._id} className="social-comment-thread-card__reply">
+                        <div>
+                          <strong>
+                            Your reply
+                            {reply.metadata?.privateReply ? " (private)" : ""}
+                          </strong>
+                          <button
+                            type="button"
+                            className="social-message-delete"
+                            onClick={() => deleteMessage(thread._id, reply._id)}
+                            title="Removes Lead Porch's copy only — to delete your reply from Facebook itself, use Delete our reply below."
+                          >
+                            Remove from Lead Porch
+                          </button>
                         </div>
-                      );
-                    })}
+                        <p>{reply.body}</p>
+                      </div>
+                    ))}
                     <div className="social-composer-dock">
-                      <SocialReplyComposer thread={thread} onSent={onReload} />
+                      <SocialReplyComposer
+                        thread={thread}
+                        replies={replies}
+                        onSent={onReload}
+                      />
                     </div>
                   </div>
                 )}
