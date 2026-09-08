@@ -34,7 +34,7 @@ async function publishDestination(item,destination,models=deps){const provider=d
 // labeled link Facebook/LinkedIn/X will auto-linkify in the post text.
 const ctaUrl=item.social?.cta?.url||"";
 const ctaLine=ctaUrl?`${item.social?.cta?.label||item.callToAction||"Learn more"}: ${ctaUrl}`:"";
-const text=[item.social?.variants?.find(row=>row.provider===provider)?.body||item.body,ctaLine].filter(Boolean).join("\n\n"),version=["facebook","instagram"].includes(provider)?require("./socialProviderConfig").graphVersion():"";if(connection.expiresAt&&new Date(connection.expiresAt)<=new Date())throw new Error("Authorization expired; reconnect account");if(provider==="x"){if(item.social?.media?.length)throw new Error("X media upload is not implemented; use a text-only draft");const result=await models.http.post("https://api.x.com/2/tweets",{text},{headers:{Authorization:`Bearer ${credentials.accessToken}`},timeout:15000});if(!result.data?.data?.id)throw new Error("X publication result needs reconciliation");return{providerPostId:String(result.data.data.id),publicUrl:`https://x.com/i/status/${result.data.data.id}`}}if(provider==="facebook"){const token=credentials.pageTokens?.[asset.id];if(!token)throw new Error("Selected Facebook Page token is unavailable");const response=await models.http.post(`https://graph.facebook.com/${version}/${asset.id}/${item.social?.media?.length?"photos":"feed"}`,{...(item.social?.media?.length?{url:item.social.media[0].url,caption:text}:{message:text}),access_token:token},{timeout:15000});return{providerPostId:String(response.data?.id||""),publicUrl:""}}if(provider==="instagram"){
+const text=[item.social?.variants?.find(row=>row.provider===provider)?.body||item.body,ctaLine].filter(Boolean).join("\n\n"),version=["facebook","instagram"].includes(provider)?require("./socialProviderConfig").graphVersion():"";if(connection.expiresAt&&new Date(connection.expiresAt)<=new Date())throw new Error("Authorization expired; reconnect account");if(provider==="x"){if(item.social?.media?.length)throw new Error("X media upload is not implemented; use a text-only draft");const result=await models.http.post("https://api.x.com/2/tweets",{text},{headers:{Authorization:`Bearer ${credentials.accessToken}`},timeout:15000});if(!result.data?.data?.id)throw new Error("X publication result needs reconciliation");return{providerPostId:String(result.data.data.id),publicUrl:`https://x.com/i/status/${result.data.data.id}`}}if(provider==="facebook"){const token=credentials.pageTokens?.[asset.id];if(!token)throw new Error("Selected Facebook Page token is unavailable");const response=await models.http.post(`https://graph.facebook.com/${version}/${asset.id}/${item.social?.media?.length?"photos":"feed"}`,{...(item.social?.media?.length?{url:item.social.media[0].url,caption:text}:{message:text}),access_token:token},{timeout:15000});return{providerPostId:String(response.data?.post_id||response.data?.id||""),publicUrl:""}}if(provider==="instagram"){
   const media=item.social?.media?.find(row=>row.type==="image");
   if(!media)throw new Error("Instagram publishing currently requires one public HTTPS image");
   const token=credentials.pageTokens?.[asset.parentId]||credentials.accessToken;
@@ -74,11 +74,27 @@ async function deletePublished({workspaceId,item},models=deps){
       const asset=connection?.assets?.find(row=>String(row.id)===String(publication.assetId));
       if(!connection||!asset)throw new Error("connected account not found");
       const credentials=decryptCredentials(connection.credentialsEncrypted);
-      const token=credentials.pageTokens?.[String(asset.parentId||asset.id)]||credentials.accessToken;
-      if(!token)throw new Error("account authorization is unavailable");
+      const tokens=[credentials.pageTokens?.[String(asset.parentId||asset.id)],credentials.accessToken].filter((value,index,all)=>value&&all.indexOf(value)===index);
+      if(!tokens.length)throw new Error("account authorization is unavailable");
       const host=publication.provider==="instagram"&&connection.provider==="instagram"?"graph.instagram.com":"graph.facebook.com";
-      const response=await models.http.delete(`https://${host}/${require("./socialProviderConfig").graphVersion()}/${encodeURIComponent(publication.providerPostId)}`,{params:{access_token:token},timeout:15000});
-      if(response?.data?.success===false)throw new Error("provider did not confirm deletion");
+      const storedId=String(publication.providerPostId);
+      const bareId=storedId.split("_").pop();
+      const ids=publication.provider==="facebook"
+        ?[storedId,`${publication.assetId}_${bareId}`,bareId].filter((value,index,all)=>value&&all.indexOf(value)===index)
+        :[storedId];
+      let confirmed=false,lastError=null;
+      for(const token of tokens){
+        for(const id of ids){
+          try{
+            const response=await models.http.delete(`https://${host}/${require("./socialProviderConfig").graphVersion()}/${encodeURIComponent(id)}`,{params:{access_token:token},timeout:15000});
+            if(response?.data?.success===false)throw new Error("provider did not confirm deletion");
+            confirmed=true;
+            break;
+          }catch(error){lastError=error}
+        }
+        if(confirmed)break;
+      }
+      if(!confirmed)throw lastError||new Error("provider did not confirm deletion");
       deleted.push(publication.provider);
     }catch(error){
       failures.push(`${publication.provider}: ${clean(error.response?.data?.error?.message||error.message,500)}`);
