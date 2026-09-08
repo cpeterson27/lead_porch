@@ -409,7 +409,7 @@ function CommentGroups({ threads, destinations, onReload }) {
           </span>
         </header>
         {groupThreads.length ? (
-          groupThreads.map(({ thread, messages, like }) => {
+          groupThreads.map(({ thread, messages, like, hasConfirmedReply }) => {
             const comment = messages.find(
               (message) => message.direction === "inbound",
             );
@@ -507,7 +507,7 @@ function CommentGroups({ threads, destinations, onReload }) {
                     <div className="social-composer-dock">
                       <SocialReplyComposer
                         thread={thread}
-                        replies={replies}
+                        hasConfirmedReply={hasConfirmedReply}
                         onSent={onReload}
                       />
                     </div>

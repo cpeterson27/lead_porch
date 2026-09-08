@@ -947,6 +947,21 @@ router.get(
           .populate("createdBy", "name")
           .sort({ createdAt: 1 })
           .lean(),
+        // Instagram permanently allows only one private reply per comment —
+        // once Meta has confirmed one, removing our own local copy of that
+        // reply (which only ever tidies up Lead Porch's view, never Meta's
+        // side) must not make the reply composer reappear, or the very next
+        // attempt fails with Meta's raw "already has a reply" error again.
+        // So this checks every reply ever sent, including ones since
+        // removed locally, not just what's currently displayed.
+        hasConfirmedReply: Boolean(
+          await ConversationMessage.exists({
+            workspaceId,
+            threadId: thread._id,
+            direction: "outbound",
+            "metadata.publicCommentReply": true,
+          }),
+        ),
         like:
           thread.channel === "facebook"
             ? await metaRecentPostService.commentLikeStatus({
