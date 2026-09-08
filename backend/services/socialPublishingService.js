@@ -79,9 +79,19 @@ async function deletePublished({workspaceId,item},models=deps){
       const host=publication.provider==="instagram"&&connection.provider==="instagram"?"graph.instagram.com":"graph.facebook.com";
       const storedId=String(publication.providerPostId);
       const bareId=storedId.split("_").pop();
-      const ids=publication.provider==="facebook"
+      let ids=publication.provider==="facebook"
         ?[storedId,`${publication.assetId}_${bareId}`,bareId].filter((value,index,all)=>value&&all.indexOf(value)===index)
         :[storedId];
+      if(publication.provider==="facebook"){
+        for(const token of tokens){
+          try{
+            const lookup=await models.http.get(`https://graph.facebook.com/${require("./socialProviderConfig").graphVersion()}/${encodeURIComponent(publication.assetId)}/published_posts`,{params:{fields:"id,object_id",limit:100,access_token:token},timeout:15000});
+            const matched=(lookup.data?.data||[]).find(row=>String(row.object_id||"")===bareId||String(row.id||"").split("_").pop()===bareId);
+            if(matched?.id)ids=[String(matched.id),...ids.filter(id=>id!==String(matched.id))];
+            if(matched)break;
+          }catch{}
+        }
+      }
       let confirmed=false,lastError=null;
       for(const token of tokens){
         for(const id of ids){
@@ -95,6 +105,9 @@ async function deletePublished({workspaceId,item},models=deps){
         if(confirmed)break;
       }
       if(!confirmed)throw lastError||new Error("provider did not confirm deletion");
+      publication.status="deleted";
+      publication.deletedAt=new Date();
+      await item.save();
       deleted.push(publication.provider);
     }catch(error){
       failures.push(`${publication.provider}: ${clean(error.response?.data?.error?.message||error.message,500)}`);
