@@ -90,6 +90,21 @@ app.use((req, res, next) => {
   if (!req.path.startsWith("/api/")) return publicAssetCors(req, res, next);
   return workspaceCors(req, res, next);
 });
+// Video uploads (testimonials, program media) arrive as a base64 data URI in
+// the JSON body — a 75MB video inflates to ~100MB of base64 text, far past
+// the 12MB ceiling the rest of the API uses to limit memory exposure per
+// request. Only these two known video-upload routes get the larger limit;
+// express.json() is a no-op on a request whose body it has already parsed,
+// so the second, smaller-limit parser below safely skips these requests.
+const videoUploadPaths = new Set([
+  "/api/public-management/program-media",
+  "/api/public-management/testimonial-media",
+]);
+const videoUploadJson = express.json({ limit: "110mb" });
+app.use((req, res, next) => {
+  if (videoUploadPaths.has(req.path)) return videoUploadJson(req, res, next);
+  next();
+});
 app.use(express.json({
   limit: "12mb",
   verify(req, _res, buffer) {
