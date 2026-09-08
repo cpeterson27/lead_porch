@@ -147,7 +147,9 @@ function ChannelRow({
                 {[
                   identity.secondary,
                   ownedElsewhere
-                    ? "Already connected through another method — deselect it there to switch"
+                    ? asset.type === "instagram_business"
+                      ? "Active via Instagram Login — no additional selection is needed here"
+                      : "Already connected through another method"
                     : isChecked
                       ? "Active for Lead Porch"
                       : "Available to select",
@@ -164,8 +166,11 @@ function ChannelRow({
       })}
       {channel.provider === "meta" && (
         <p>
-          Selecting a linked Instagram account also connects its Facebook Page
-          automatically.
+          {manageableAssets.some(
+            (asset) => asset.type === "instagram_business" && elsewhere.has(asset.id),
+          )
+            ? "Your linked Instagram account is already active through Instagram Login. Keep the Facebook Page selected here; there is nothing else to activate in this list."
+            : "Selecting a linked Instagram account also connects its Facebook Page automatically."}
         </p>
       )}
     </fieldset>
