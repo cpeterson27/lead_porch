@@ -82,11 +82,13 @@ async function deletePublished({workspaceId,item},models=deps){
       let ids=publication.provider==="facebook"
         ?[storedId,`${publication.assetId}_${bareId}`,bareId].filter((value,index,all)=>value&&all.indexOf(value)===index)
         :[storedId];
+      let facebookFeedMatch=false;
       if(publication.provider==="facebook"){
         for(const token of tokens){
           try{
-            const lookup=await models.http.get(`https://graph.facebook.com/${require("./socialProviderConfig").graphVersion()}/${encodeURIComponent(publication.assetId)}/published_posts`,{params:{fields:"id,object_id",limit:100,access_token:token},timeout:15000});
-            const matched=(lookup.data?.data||[]).find(row=>String(row.object_id||"")===bareId||String(row.id||"").split("_").pop()===bareId);
+            const lookup=await models.http.get(`https://graph.facebook.com/${require("./socialProviderConfig").graphVersion()}/${encodeURIComponent(publication.assetId)}/published_posts`,{params:{fields:"id,message,attachments{target}",limit:100,access_token:token},timeout:15000});
+            const matched=(lookup.data?.data||[]).find(row=>String(row.id||"").split("_").pop()===bareId||String(row.attachments?.data?.[0]?.target?.id||"")===bareId||String(row.message||"").includes(String(item.body||"").slice(0,80)));
+            facebookFeedMatch=Boolean(matched);
             if(matched?.id)ids=[String(matched.id),...ids.filter(id=>id!==String(matched.id))];
             if(matched)break;
           }catch{}
@@ -104,13 +106,19 @@ async function deletePublished({workspaceId,item},models=deps){
         }
         if(confirmed)break;
       }
+      if(!confirmed&&publication.provider==="facebook"&&!facebookFeedMatch&&Number(lastError?.response?.data?.error?.code)===100&&Number(lastError?.response?.data?.error?.error_subcode)===33)confirmed=true;
+      if(!confirmed&&publication.provider==="instagram"&&Number(lastError?.response?.data?.error?.code)===100&&Number(lastError?.response?.data?.error?.error_subcode)===33)confirmed=true;
       if(!confirmed)throw lastError||new Error("provider did not confirm deletion");
       publication.status="deleted";
       publication.deletedAt=new Date();
       await item.save();
       deleted.push(publication.provider);
     }catch(error){
-      failures.push(`${publication.provider}: ${clean(error.response?.data?.error?.message||error.message,500)}`);
+      const providerError=error.response?.data?.error;
+      const message=publication.provider==="instagram"&&Number(providerError?.code)===10
+        ?"Meta allows this connection to read and publish the Instagram post but does not allow API deletion of the published media. Delete it in Instagram, then retry here to remove the Lead Porch record."
+        :providerError?.message||error.message;
+      failures.push(`${publication.provider}: ${clean(message,500)}`);
     }
   }
   if(failures.length){const error=new Error(`Could not delete every published copy. ${failures.join("; ")}. The Lead Porch record was kept so you can retry.`);error.status=502;error.deleted=deleted;throw error}
