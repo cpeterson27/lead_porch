@@ -123,7 +123,18 @@ async function deletePublished({workspaceId,item},models=deps){
         if(confirmed)break;
       }
       if(!confirmed&&publication.provider==="facebook"&&!facebookFeedMatch&&Number(lastError?.response?.data?.error?.code)===100&&Number(lastError?.response?.data?.error?.error_subcode)===33)confirmed=true;
-      if(confirmed&&publication.provider==="instagram"){
+      // Instagram gives this exact "does not exist" error (code 100, subcode
+      // 33) both when we can't delete it AND when it was never there to
+      // begin with — the same signature the Facebook rescue above already
+      // handles. If our own pre-delete check (instagramReadableBeforeDelete)
+      // already found it unreadable, the post is already gone; there is
+      // nothing left to delete, so this is success, not failure. This must
+      // skip the post-delete re-read verification below — that check exists
+      // to confirm a delete we actually performed, which doesn't apply when
+      // there was nothing to delete in the first place.
+      const instagramAlreadyGone=!confirmed&&publication.provider==="instagram"&&!instagramReadableBeforeDelete&&Number(lastError?.response?.data?.error?.code)===100&&Number(lastError?.response?.data?.error?.error_subcode)===33;
+      if(instagramAlreadyGone)confirmed=true;
+      else if(confirmed&&publication.provider==="instagram"){
         let stillReadable=false;
         for(const token of tokens){
           try{
