@@ -588,7 +588,6 @@ router.post(
         action: req.body.action,
         body: req.body.body,
         idempotencyKey: req.body.idempotencyKey,
-        targetCommentId: req.body.targetCommentId,
       });
       return res.json(result);
     } catch (error) {
@@ -936,6 +935,7 @@ router.get(
       .populate("contactIds", "name")
       .sort({ lastMessageAt: -1 })
       .lean();
+    const metaRecentPostService = require("../services/metaRecentPostService");
     const withMessages = await Promise.all(
       threads.map(async (thread) => ({
         thread,
@@ -947,6 +947,14 @@ router.get(
           .populate("createdBy", "name")
           .sort({ createdAt: 1 })
           .lean(),
+        like:
+          thread.channel === "facebook"
+            ? await metaRecentPostService.commentLikeStatus({
+                workspaceId,
+                assetId: thread.metadata?.assetId,
+                commentId: thread.metadata?.commentId,
+              })
+            : null,
       })),
     );
     res.json({ threads: withMessages });

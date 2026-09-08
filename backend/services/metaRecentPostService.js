@@ -151,4 +151,25 @@ async function postCommentIds({ workspaceId, provider, assetId, postId }, deps =
   }
 }
 
-module.exports = { recentPosts, postContext, postEngagement, postCommentIds };
+// Live like status for one Facebook comment, so a thumbs-up control can show
+// its real current state instead of always looking "unliked." Facebook-only:
+// Instagram has no like concept for comments at all (confirmed against
+// Meta's API — no endpoint, and the comment object has no like-related
+// field to even read). Fails soft (null) rather than throwing.
+async function commentLikeStatus({ workspaceId, assetId, commentId }, deps = dependencies) {
+  if (!workspaceId || !clean(assetId) || !clean(commentId)) return null;
+  try {
+    const resolved = await resolveAsset({ workspaceId, provider: "facebook", assetId }, deps);
+    if (!resolved) return null;
+    const { token, version } = resolved;
+    const response = await deps.http.get(`https://graph.facebook.com/${version}/${encodeURIComponent(commentId)}`, { params: { fields: "like_count,user_likes", access_token: token }, timeout: 15000 });
+    return {
+      liked: Boolean(response.data?.user_likes),
+      likeCount: response.data?.like_count ?? null,
+    };
+  } catch {
+    return null;
+  }
+}
+
+module.exports = { recentPosts, postContext, postEngagement, postCommentIds, commentLikeStatus };

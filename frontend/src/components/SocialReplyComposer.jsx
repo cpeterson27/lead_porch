@@ -16,7 +16,6 @@ export default function SocialReplyComposer({
   onSent,
   initialBody = "",
   initialAnalysis = null,
-  replies = [],
 }) {
   const [body, setBody] = useState(initialBody),
     [approved, setApproved] = useState(false),
@@ -101,11 +100,7 @@ export default function SocialReplyComposer({
     return (
       <>
         {aiPanel}
-        <FacebookCommentActions
-          thread={thread}
-          replies={replies}
-          onChanged={onSent}
-        />
+        <FacebookCommentActions thread={thread} onChanged={onSent} />
       </>
     );
   if (

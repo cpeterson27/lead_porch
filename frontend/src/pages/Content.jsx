@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { FaFacebookF, FaInstagram, FaLinkedinIn, FaTiktok, FaXTwitter } from "react-icons/fa6";
+import { FaFacebookF, FaInstagram, FaLinkedinIn, FaTiktok, FaXTwitter, FaThumbsUp, FaRegThumbsUp, FaRegTrashCan } from "react-icons/fa6";
 import { publishingBlocker } from "../utils/socialPublishingReadiness.js";
 import SocialContentDetail from "../components/SocialContentDetail.jsx";
 import SocialReplyComposer from "../components/SocialReplyComposer.jsx";
@@ -10,6 +10,7 @@ import Modal from "../components/Modal.jsx";
 import {
   fetchSocialWorkspace,
   mutateSocialWorkspace,
+  manageFacebookComment,
   approveSocialContent,
   cancelSocialContent,
   createContentBrief,
@@ -310,6 +311,12 @@ function PostPerformance({ item }) {
     </div>
   );
 }
+function actionKey() {
+  return (
+    globalThis.crypto?.randomUUID?.() ||
+    `action_${Date.now()}_${Math.random().toString(36).slice(2)}`
+  );
+}
 function initials(name) {
   const parts = String(name || "?").trim().split(/\s+/);
   return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase() || "?";
@@ -345,6 +352,49 @@ function CommentGroups({ threads, destinations, onReload }) {
       window.alert("Could not remove this.");
     }
   };
+  // Deletes the commenter's original comment from the platform itself
+  // (confirmed working for both Facebook and Instagram) — on reload, this
+  // post's comment count and list update on their own, since both are
+  // rebuilt from what Meta currently confirms exists.
+  const deleteComment = async (thread) => {
+    if (
+      !window.confirm(
+        thread.channel === "facebook"
+          ? "Delete this comment from Facebook? This also removes any replies nested under it, including yours. This cannot be undone."
+          : "Delete this comment from Instagram? This cannot be undone.",
+      )
+    )
+      return;
+    try {
+      await manageFacebookComment(thread._id, {
+        action: "delete",
+        approved: true,
+        idempotencyKey: actionKey(),
+      });
+      onReload();
+    } catch (err) {
+      window.alert(
+        err.response?.data?.error ||
+          "Meta could not confirm this deletion. Review the Page before trying again.",
+      );
+    }
+  };
+  // Facebook only — Meta has no way for a business to like an Instagram
+  // comment (confirmed against their API: no endpoint, no field for it).
+  const toggleLike = async (thread, liked) => {
+    try {
+      await manageFacebookComment(thread._id, {
+        action: liked ? "unlike" : "like",
+        approved: true,
+        idempotencyKey: actionKey(),
+      });
+      onReload();
+    } catch (err) {
+      window.alert(
+        err.response?.data?.error || "Meta could not confirm this.",
+      );
+    }
+  };
   // Groups come from the caller's known destinations when there is a fixed
   // list to show (a specific post's platforms, always shown even if empty);
   // otherwise fall back to whatever channels actually turned up.
@@ -376,7 +426,7 @@ function CommentGroups({ threads, destinations, onReload }) {
           </span>
         </header>
         {groupThreads.length ? (
-          groupThreads.map(({ thread, messages }) => {
+          groupThreads.map(({ thread, messages, like }) => {
             const comment = messages.find(
               (message) => message.direction === "inbound",
             );
@@ -388,6 +438,7 @@ function CommentGroups({ threads, destinations, onReload }) {
               thread.contactIds?.[0]?.name ||
               "Someone";
             const isExpanded = expandedId === thread._id;
+            const LikeIcon = like?.liked ? FaThumbsUp : FaRegThumbsUp;
             return (
               <article
                 key={thread._id}
@@ -429,43 +480,60 @@ function CommentGroups({ threads, destinations, onReload }) {
                 </button>
                 {isExpanded && (
                   <div className="social-comment-thread-card__detail">
-                    <div className="social-comment-thread-card__head">
-                      <strong>{commenterName}</strong>
-                      <button
-                        type="button"
-                        className="social-message-delete"
-                        onClick={() => deleteMessage(thread._id, comment._id)}
-                        title="Removes Lead Porch's copy only — to delete it from Facebook or Instagram, use Delete comment below."
-                      >
-                        Remove from Lead Porch
-                      </button>
+                    <div className="social-comment-thread-card__row">
+                      <div className="social-comment-thread-card__row-body">
+                        <strong>{commenterName}</strong>
+                        <p>{comment?.body}</p>
+                      </div>
+                      <div className="social-comment-thread-card__row-actions">
+                        {provider === "facebook" && (
+                          <button
+                            type="button"
+                            className={`social-comment-like${like?.liked ? " social-comment-like--active" : ""}`}
+                            onClick={() => toggleLike(thread, like?.liked)}
+                            title={like?.liked ? "Remove Page like" : "Like as Page"}
+                          >
+                            <LikeIcon aria-hidden="true" />
+                            {typeof like?.likeCount === "number" && like.likeCount > 0
+                              ? like.likeCount
+                              : null}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          className="social-comment-delete-icon"
+                          onClick={() => deleteComment(thread)}
+                          title="Delete this comment"
+                          aria-label="Delete this comment"
+                        >
+                          <FaRegTrashCan aria-hidden="true" />
+                        </button>
+                      </div>
                     </div>
-                    <p>{comment?.body}</p>
                     {replies.map((reply) => (
                       <div key={reply._id} className="social-comment-thread-card__reply">
-                        <div>
+                        <div className="social-comment-thread-card__row-body">
                           <strong>
                             Your reply
                             {reply.metadata?.privateReply ? " (private)" : ""}
                           </strong>
+                          <p>{reply.body}</p>
+                        </div>
+                        <div className="social-comment-thread-card__row-actions">
                           <button
                             type="button"
-                            className="social-message-delete"
+                            className="social-comment-delete-icon"
                             onClick={() => deleteMessage(thread._id, reply._id)}
-                            title="Removes Lead Porch's copy only — to delete your reply from Facebook itself, use Delete our reply below."
+                            title="Remove from Lead Porch — Facebook does not allow deleting a Page's own reply through their API"
+                            aria-label="Remove this reply from Lead Porch"
                           >
-                            Remove from Lead Porch
+                            <FaRegTrashCan aria-hidden="true" />
                           </button>
                         </div>
-                        <p>{reply.body}</p>
                       </div>
                     ))}
                     <div className="social-composer-dock">
-                      <SocialReplyComposer
-                        thread={thread}
-                        replies={replies}
-                        onSent={onReload}
-                      />
+                      <SocialReplyComposer thread={thread} onSent={onReload} />
                     </div>
                   </div>
                 )}

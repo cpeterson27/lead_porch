@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { FaThumbsUp, FaRegThumbsUp } from "react-icons/fa6";
 import { manageFacebookComment } from "../services/api.js";
 import "./FacebookCommentActions.css";
 
@@ -10,13 +9,12 @@ function actionKey() {
   );
 }
 
-export default function FacebookCommentActions({ thread, replies = [], onChanged }) {
+export default function FacebookCommentActions({ thread, onChanged }) {
   const [body, setBody] = useState(""),
     [approved, setApproved] = useState(false),
     [busy, setBusy] = useState(""),
     [error, setError] = useState(""),
-    [notice, setNotice] = useState(""),
-    [confirmDelete, setConfirmDelete] = useState(false);
+    [notice, setNotice] = useState("");
   const run = async (action, values = {}) => {
     setBusy(action);
     setError("");
@@ -37,7 +35,6 @@ export default function FacebookCommentActions({ thread, replies = [], onChanged
         setBody("");
         setApproved(false);
       }
-      if (action === "delete") setConfirmDelete(false);
       onChanged?.();
     } catch (err) {
       setError(
@@ -49,24 +46,6 @@ export default function FacebookCommentActions({ thread, replies = [], onChanged
     }
   };
   const instagram = thread.channel === "instagram";
-  // A Facebook reply is itself a real, independently deletable comment —
-  // deleting it removes only that reply, leaving the commenter's original
-  // comment untouched. Instagram replies are sent as a private message, not
-  // a public comment, so Meta has no endpoint to delete one.
-  const ownDeletableReplies = instagram
-    ? []
-    : replies.filter(
-        (reply) => reply.metadata?.publicCommentReply && reply.providerMessageId,
-      );
-  const deleteReply = (reply) => {
-    if (
-      !window.confirm(
-        "Delete this reply from Facebook? This only removes your reply — the commenter's original comment stays up. This cannot be undone.",
-      )
-    )
-      return;
-    run("delete", { targetCommentId: reply.providerMessageId });
-  };
   return (
     <section
       className="facebook-comment-actions"
@@ -120,78 +99,7 @@ export default function FacebookCommentActions({ thread, replies = [], onChanged
         <button disabled={Boolean(busy)} onClick={() => run("unhide")}>
           Unhide
         </button>
-        {!instagram && (
-          <>
-            <button
-              className="facebook-comment-actions__like"
-              disabled={Boolean(busy)}
-              onClick={() => run("like")}
-            >
-              <FaThumbsUp aria-hidden="true" /> Like as Page
-            </button>
-            <button
-              className="facebook-comment-actions__unlike"
-              disabled={Boolean(busy)}
-              onClick={() => run("unlike")}
-            >
-              <FaRegThumbsUp aria-hidden="true" /> Remove Page like
-            </button>
-          </>
-        )}
-        {ownDeletableReplies.map((reply) => (
-          <button
-            key={reply.providerMessageId}
-            className="is-destructive"
-            disabled={Boolean(busy)}
-            onClick={() => deleteReply(reply)}
-          >
-            {ownDeletableReplies.length > 1
-              ? `Delete our reply (${new Date(reply.createdAt).toLocaleDateString()})`
-              : "Delete our reply"}
-          </button>
-        ))}
-        <button
-          className="is-destructive"
-          disabled={Boolean(busy)}
-          onClick={() => setConfirmDelete(true)}
-        >
-          Delete their comment
-        </button>
       </div>
-      {confirmDelete ? (
-        <div
-          className="facebook-comment-actions__confirmation"
-          role="alertdialog"
-          aria-labelledby="delete-facebook-comment-title"
-        >
-          <strong id="delete-facebook-comment-title">
-            Delete this comment from {instagram ? "Instagram" : "Facebook"}?
-          </strong>
-          <p>
-            This removes the commenter's original comment
-            {!instagram && " and any replies nested under it"}
-            . This cannot be undone.
-            {!instagram &&
-              ownDeletableReplies.length > 0 &&
-              " To remove only your own reply and leave their comment up, use Delete our reply above instead."}
-          </p>
-          <div>
-            <button
-              disabled={Boolean(busy)}
-              onClick={() => setConfirmDelete(false)}
-            >
-              Cancel
-            </button>
-            <button
-              className="is-destructive"
-              disabled={Boolean(busy)}
-              onClick={() => run("delete")}
-            >
-              Delete their comment
-            </button>
-          </div>
-        </div>
-      ) : null}
       {notice ? <p role="status">{notice}</p> : null}
       {error ? (
         <p role="alert" className="form-error">

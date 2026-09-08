@@ -1,7 +1,6 @@
 const axios = require("axios");
 const crypto = require("crypto");
 const ConversationThread = require("../models/ConversationThread");
-const ConversationMessage = require("../models/ConversationMessage");
 const CrmActivity = require("../models/CrmActivity");
 const { decryptCredentials } = require("../utils/credentialEncryption");
 const { connectionForAsset } = require("./conversations/metaMessagingAdapter");
@@ -20,7 +19,6 @@ const ACTIONS = new Set([
 ]);
 const deps = {
   ConversationThread,
-  ConversationMessage,
   CrmActivity,
   connectionForAsset,
   ingestProviderMessage,
@@ -66,7 +64,7 @@ async function reserve(models, values) {
 }
 
 async function perform(
-  { workspaceId, userId, threadId, action, body, idempotencyKey, targetCommentId },
+  { workspaceId, userId, threadId, action, body, idempotencyKey },
   models = deps,
 ) {
   if (!ACTIONS.has(action))
@@ -86,38 +84,18 @@ async function perform(
       "Instagram does not let a business like a comment through Meta's API. Try Hide, Unhide, or Delete instead.",
     );
   const assetId = clean(thread.metadata?.assetId, 255),
-    rootCommentId = clean(thread.metadata?.commentId, 500);
-  if (!assetId || !rootCommentId)
+    commentId = clean(thread.metadata?.commentId, 500);
+  if (!assetId || !commentId)
     throw new Error("Meta comment context is unavailable");
   if (action === "reply" && (!clean(body) || clean(body).length > 2000))
     throw new Error("Reply must contain 1–2000 characters");
-  // "delete" can target either the commenter's original comment (the
-  // default) or one specific public reply the Page itself posted — Facebook
-  // replies are their own real, independently deletable comments. Deleting
-  // the original comment removes it and every reply nested under it, since
-  // Meta cascades that automatically; deleting one of our own replies only
-  // removes that reply. Instagram replies are sent as a private DM, not a
-  // public comment, so Meta has no endpoint to delete one.
-  let commentId = rootCommentId;
-  if (action === "delete" && clean(targetCommentId, 500)) {
-    const wanted = clean(targetCommentId, 500);
-    if (wanted !== rootCommentId) {
-      if (provider === "instagram")
-        throw new Error(
-          "Instagram replies are sent as a private message, not a public comment — Meta has no way to delete one.",
-        );
-      const ownReply = await models.ConversationMessage.findOne({
-        workspaceId,
-        threadId,
-        direction: "outbound",
-        providerMessageId: wanted,
-        "metadata.publicCommentReply": true,
-      }).lean();
-      if (!ownReply)
-        throw new Error("That reply could not be found on this comment");
-      commentId = wanted;
-    }
-  }
+  // Every action here (including delete) always targets the commenter's
+  // original comment. A Page's own reply cannot be independently managed
+  // through this API — confirmed live: Facebook rejects even a plain read of
+  // a reply by its own ID ("does not support this operation"), the same
+  // reply that reads back fine when nested under its parent comment. Only
+  // Lead Porch's own copy of a reply can be removed, via the plain message
+  // delete endpoint, not this one.
 
   const connection = await models.connectionForAsset(
     assetId,

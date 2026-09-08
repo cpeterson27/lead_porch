@@ -125,16 +125,25 @@
 .social-comment-thread-card--expanded .social-comment-thread-card__snippet{display:none}
 .social-comment-thread-card__summary .social-post-comments__chevron{margin-top:4px;flex:0 0 auto}
 .social-comment-thread-card__detail{padding:0 16px 14px}
-.social-comment-thread-card__head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
-.social-comment-thread-card__head>.social-message-delete{margin-left:auto}
-.social-comment-thread-card__detail>p{margin:0 0 6px;font-size:.88rem;line-height:1.4;color:#1d1d1f}
-.social-comment-thread-card__reply{margin:10px 0 0 20px;padding:10px 12px;border-radius:12px;background:#f0f0f2}
-.social-comment-thread-card__reply>div{display:flex;align-items:center;gap:8px}
-.social-comment-thread-card__reply>div>strong{font-size:.76rem;color:#6e6e73}
-.social-comment-thread-card__reply>div>.social-message-delete{margin-left:auto}
-.social-comment-thread-card__reply>p{margin:4px 0 0;font-size:.85rem;line-height:1.35}
-.social-message-delete{appearance:none;border:0;background:transparent;padding:0;font-size:.72rem;font-weight:600;color:#c7c7cc;cursor:pointer}
-.social-message-delete:hover{color:#ff3b30;text-decoration:underline}
+.social-comment-thread-card__row{display:flex;align-items:flex-start;gap:10px;padding:8px 6px;border-radius:10px;margin-bottom:2px;transition:background .12s ease}
+.social-comment-thread-card__row:hover{background:#f5f5f7}
+.social-comment-thread-card__row-body{flex:1;min-width:0}
+.social-comment-thread-card__row-body strong{font-size:.85rem}
+.social-comment-thread-card__row-body p{margin:2px 0 0;font-size:.88rem;line-height:1.4;color:#1d1d1f}
+.social-comment-thread-card__row-actions{display:flex;align-items:center;gap:4px;flex:0 0 auto;opacity:0;transition:opacity .12s ease}
+.social-comment-thread-card__row:hover .social-comment-thread-card__row-actions,
+.social-comment-thread-card__row-actions:focus-within{opacity:1}
+.social-comment-like{appearance:none;border:0;background:none;display:flex;align-items:center;gap:4px;padding:6px 8px;border-radius:8px;color:#8e8e93;font-size:.76rem;font-weight:700;cursor:pointer}
+.social-comment-like:hover{background:#e8f1fe;color:#1877f2}
+.social-comment-like--active{color:#1877f2}
+.social-comment-delete-icon{appearance:none;border:0;background:none;padding:6px;border-radius:8px;color:#8e8e93;cursor:pointer;display:grid;place-items:center;font-size:.85rem}
+.social-comment-delete-icon:hover{background:#fde8e8;color:#ff3b30}
+.social-comment-thread-card__reply{display:flex;align-items:flex-start;gap:8px;margin:2px 0 0 20px;padding:8px 12px;border-radius:12px;background:#f0f0f2}
+.social-comment-thread-card__reply .social-comment-thread-card__row-body strong{font-size:.76rem;color:#6e6e73}
+.social-comment-thread-card__reply .social-comment-thread-card__row-body p{font-size:.85rem;line-height:1.35}
+.social-comment-thread-card__reply .social-comment-thread-card__row-actions{opacity:0}
+.social-comment-thread-card__reply:hover .social-comment-thread-card__row-actions,
+.social-comment-thread-card__reply .social-comment-thread-card__row-actions:focus-within{opacity:1}
 .social-comment-thread-card .social-composer-dock{margin-top:10px;padding:0;background:none;border-top:1px solid #e5e5ea;padding-top:12px}
 .social-comment-thread-card .social-composer-dock form{display:grid;gap:9px}
 .social-comment-thread-card .social-composer-dock textarea{width:100%;min-height:70px;padding:11px 13px;resize:vertical;color:#1d1d1f;background:#fff;border:1px solid #ccd5cf;border-radius:12px;font:inherit;font-size:.86rem;box-sizing:border-box}

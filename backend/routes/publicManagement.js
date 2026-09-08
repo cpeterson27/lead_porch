@@ -24,6 +24,17 @@ router.post("/program-media", admin, async (req, res) => {
     res.status(error.status || 400).json({ error: error.message });
   }
 });
+router.post("/testimonial-media", admin, async (req, res) => {
+  try {
+    const asset = await media.uploadVideo({
+      file: req.body.file,
+      folder: `growth-operator/testimonials/${req.auth.workspaceId}`,
+    });
+    res.status(201).json({ success: true, data: { ...asset, type: "video" } });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
 router.get("/config", admin, async (req, res) => {
   const config = await WorkspaceConfig.findOne({
     workspaceId: req.auth.workspaceId,

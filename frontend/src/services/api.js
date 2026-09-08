@@ -282,6 +282,10 @@ export const uploadProgramVideo = (values) =>
   api
     .post("/public-management/program-media", values)
     .then((res) => res.data.data);
+export const uploadTestimonialVideo = (values) =>
+  api
+    .post("/public-management/testimonial-media", values)
+    .then((res) => res.data.data);
 export const fetchWorkspaceMedia = () =>
   api.get("/social-workspace/media").then((res) => res.data);
 export const fetchManagedProfiles = () =>

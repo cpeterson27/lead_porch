@@ -8,6 +8,8 @@ assert(/item\.status\s*!==\s*"approved"/.test(management));
 assert(/status:\s*"approved"/.test(publicRoute));
 assert(service.includes("testimonialProjection"));
 assert(/router\.post\(\s*"\/program-media",\s*admin/.test(management));
+assert(/router\.post\(\s*"\/testimonial-media",\s*admin/.test(management));
+assert(model.includes("videoUrl"));
 assert.throws(() => media.validateDataVideo("data:image/png;base64,AAAA"), /MP4, WEBM, or MOV/);
 assert.equal(media.validateDataVideo("data:video/mp4;base64,AAAA").mimeType, "video/mp4");
 for (const privateField of ["approvedBy", "rejectedBy", "contactId", "workspaceId"]) assert(!service.match(new RegExp(`function testimonialProjection\\(item\\).*${privateField}`)), `${privateField} must not be projected publicly`);
