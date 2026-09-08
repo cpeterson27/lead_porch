@@ -533,7 +533,11 @@ function CommentGroups({ threads, destinations, onReload }) {
                       </div>
                     ))}
                     <div className="social-composer-dock">
-                      <SocialReplyComposer thread={thread} onSent={onReload} />
+                      <SocialReplyComposer
+                        thread={thread}
+                        replies={replies}
+                        onSent={onReload}
+                      />
                     </div>
                   </div>
                 )}

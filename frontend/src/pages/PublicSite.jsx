@@ -203,7 +203,9 @@ export function PublicLayout({ children }) {
             </a>
           ) : null}
           {showTestimonials ? (
-            <Link to="/testimonials">Testimonials</Link>
+            <a onClick={close} href="/#results">
+              Testimonials
+            </a>
           ) : null}
           <Link className="public-login" to="/login">
             Login
@@ -240,7 +242,7 @@ export function PublicLayout({ children }) {
             {showPrograms ? <a href="/#programs">Programs</a> : null}
             <a href="/#about">About</a>
             {showTeam ? <a href="/#team">Team</a> : null}
-            {showResults ? <Link to="/testimonials">Results</Link> : null}
+            {showResults ? <a href="/#results">Results</a> : null}
           </div>
           <div className="public-footer-col">
             <div className="public-footer-label">CONNECT</div>
@@ -531,7 +533,7 @@ function Testimonials({ rows = [] }) {
     <div className="testimonial-grid">
       {rows.map((row, index) => (
         <blockquote className={index === 0 ? "is-featured" : ""} key={row.id}>
-          {row.avatarUrl ? (
+          {row.avatarUrl && !row.videoUrl ? (
             <img
               className="testimonial-avatar"
               src={cloudinaryImage(row.avatarUrl, 128)}
@@ -556,9 +558,17 @@ function Testimonials({ rows = [] }) {
             {row.headline ? <span>{row.headline}</span> : null}
           </footer>
           {row.videoUrl ? (
-            <a href={row.videoUrl} target="_blank" rel="noreferrer">
-              Watch their story <FiExternalLink />
-            </a>
+            <video
+              className="testimonial-video-player"
+              src={row.videoUrl}
+              poster={row.avatarUrl ? cloudinaryImage(row.avatarUrl, 800) : undefined}
+              controls
+              controlsList="nodownload noremoteplayback"
+              disablePictureInPicture
+              playsInline
+              preload="metadata"
+              onContextMenu={(event) => event.preventDefault()}
+            />
           ) : null}
         </blockquote>
       ))}

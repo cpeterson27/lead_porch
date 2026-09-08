@@ -2006,6 +2006,13 @@
   font-weight: 600;
   text-decoration: none;
 }
+.testimonial-video-player {
+  width: 100%;
+  margin-top: 14px;
+  border-radius: 12px;
+  background: #000;
+  display: block;
+}
 @media (max-width: 760px) {
   .testimonial-grid blockquote.is-featured {
     grid-column: auto;

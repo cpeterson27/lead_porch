@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 
-const selectors = { home: ".public-hero", about: ".public-intro", programs: ".public-section--programs", team: ".team-section", testimonials: ".results-section", contact: ".public-final" };
+const selectors = { home: ".public-hero", about: ".public-intro", programs: ".public-section--programs", team: ".team-section", results: "#results", contact: ".public-final" };
 export default function PublicHomepageAnchors() {
   const location = useLocation();
   useEffect(() => {

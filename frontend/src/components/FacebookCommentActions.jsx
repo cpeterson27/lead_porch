@@ -9,7 +9,11 @@ function actionKey() {
   );
 }
 
-export default function FacebookCommentActions({ thread, onChanged }) {
+export default function FacebookCommentActions({
+  thread,
+  alreadyReplied = false,
+  onChanged,
+}) {
   const [body, setBody] = useState(""),
     [approved, setApproved] = useState(false),
     [busy, setBusy] = useState(""),
@@ -61,34 +65,42 @@ export default function FacebookCommentActions({ thread, onChanged }) {
             : "These are manual Page actions. Automatic replies remain disabled."}
         </p>
       </header>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          run("reply", { body });
-        }}
-      >
-        <label>
-          {instagram ? "Private reply" : "Public reply"}
-          <textarea
-            maxLength="2000"
-            rows="3"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
-            required
-          />
-        </label>
-        <label className="social-approval">
-          <input
-            type="checkbox"
-            checked={approved}
-            onChange={(e) => setApproved(e.target.checked)}
-          />
-          I approve sending this exact reply
-        </label>
-        <button disabled={Boolean(busy) || !approved || !body.trim()}>
-          {instagram ? "Send private reply" : "Post public reply"}
-        </button>
-      </form>
+      {alreadyReplied ? (
+        <p className="facebook-comment-actions__note">
+          You've already sent a private reply to this comment. Instagram
+          only allows one private reply per comment and will reject a
+          second one — this isn't something Lead Porch can override.
+        </p>
+      ) : (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            run("reply", { body });
+          }}
+        >
+          <label>
+            {instagram ? "Private reply" : "Public reply"}
+            <textarea
+              maxLength="2000"
+              rows="3"
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              required
+            />
+          </label>
+          <label className="social-approval">
+            <input
+              type="checkbox"
+              checked={approved}
+              onChange={(e) => setApproved(e.target.checked)}
+            />
+            I approve sending this exact reply
+          </label>
+          <button disabled={Boolean(busy) || !approved || !body.trim()}>
+            {instagram ? "Send private reply" : "Post public reply"}
+          </button>
+        </form>
+      )}
       <div
         className="facebook-comment-actions__toolbar"
         aria-label={`${instagram ? "Instagram" : "Facebook"} comment moderation`}
