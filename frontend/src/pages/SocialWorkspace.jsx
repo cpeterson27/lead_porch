@@ -1,5 +1,13 @@
 import { useEffect, useState } from "react";
 import { FaFacebookF, FaInstagram } from "react-icons/fa6";
+import {
+  FunnelChart,
+  Funnel,
+  Cell,
+  LabelList,
+  Tooltip as RechartsTooltip,
+  ResponsiveContainer,
+} from "recharts";
 import { Link, NavLink, useParams, useSearchParams } from "react-router-dom";
 import SocialLeads from "./SocialLeads.jsx";
 import Content from "./Content.jsx";
@@ -55,6 +63,19 @@ const STAGE_LABELS = {
   enrollments: "Enrollments",
 };
 const PLATFORM_ICONS = { facebook: FaFacebookF, instagram: FaInstagram };
+const FUNNEL_COLORS = ["#1f5c50", "#2f7566", "#3f8f7d", "#5aab93", "#7fc4ad", "#a8dcc9"];
+function FunnelTooltip({ active, payload }) {
+  if (!active || !payload?.length) return null;
+  const row = payload[0]?.payload;
+  if (!row) return null;
+  return (
+    <div className="social-funnel-tooltip">
+      <strong>{row.name}</strong>
+      <span>{row.value}</span>
+      {row.rateLabel ? <small>{row.rateLabel}</small> : null}
+    </div>
+  );
+}
 export default function SocialWorkspace({ connectionsOnly = false, section: sectionProp }) {
   const { section: sectionParam = "overview" } = useParams();
   const section = sectionProp || sectionParam;
@@ -328,10 +349,6 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
               const stageValue = (key) =>
                 growth.socialFunnel.stages.find((row) => row.key === key)
                   ?.value ?? 0;
-              const maxStage = Math.max(
-                1,
-                ...growth.socialFunnel.stages.map((row) => row.value),
-              );
               const kpis = [
                 { key: "interactions", label: "Interactions", value: stageValue("interactions") },
                 { key: "conversations", label: "Conversations", value: stageValue("conversations") },
@@ -350,6 +367,16 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
               const platforms = (growth.attribution.social || []).filter(
                 (row) => row.source === "facebook" || row.source === "instagram",
               );
+              const funnelData = growth.socialFunnel.stages.map((stage, index) => ({
+                name: STAGE_LABELS[stage.key] || human(stage.key),
+                value: stage.value,
+                rateLabel:
+                  index > 0
+                    ? `${growth.socialFunnel.conversions[index - 1].rate}% of ${(
+                        STAGE_LABELS[growth.socialFunnel.stages[index - 1].key] || ""
+                      ).toLowerCase()}`
+                    : "100% of interactions",
+              }));
               return (
                 <>
                   <div className="social-stat-grid">
@@ -368,24 +395,39 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                       lead, an application, a booked call, and an enrollment —
                       from real CRM and comment/DM activity.
                     </p>
-                    <div className="social-funnel">
-                      {growth.socialFunnel.stages.map((stage, index) => (
-                        <div className="social-funnel__row" key={stage.key}>
-                          <div className="social-funnel__label">
-                            <span>{STAGE_LABELS[stage.key] || human(stage.key)}</span>
-                            <strong>{stage.value}</strong>
-                          </div>
-                          <div className="progress-bar">
-                            <div
-                              className="progress-bar__fill"
-                              style={{ width: `${(stage.value / maxStage) * 100}%` }}
+                    <div className="social-funnel-chart">
+                      <ResponsiveContainer width="100%" height={280}>
+                        <FunnelChart>
+                          <RechartsTooltip content={<FunnelTooltip />} />
+                          <Funnel dataKey="value" data={funnelData} isAnimationActive>
+                            <LabelList
+                              position="right"
+                              dataKey="name"
+                              fill="var(--color-text)"
+                              stroke="none"
+                              fontSize={13}
+                              fontWeight={700}
                             />
-                          </div>
+                            {funnelData.map((entry, index) => (
+                              <Cell key={entry.name} fill={FUNNEL_COLORS[index % FUNNEL_COLORS.length]} />
+                            ))}
+                          </Funnel>
+                        </FunnelChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="social-funnel-detail">
+                      {growth.socialFunnel.stages.map((stage, index) => (
+                        <div className="social-funnel-detail__item" key={stage.key}>
+                          <span
+                            className="social-funnel-detail__dot"
+                            style={{ background: FUNNEL_COLORS[index % FUNNEL_COLORS.length] }}
+                          />
+                          <span className="social-funnel-detail__label">
+                            {STAGE_LABELS[stage.key] || human(stage.key)}
+                          </span>
+                          <strong>{stage.value}</strong>
                           {index > 0 ? (
-                            <span className="social-funnel__rate">
-                              {growth.socialFunnel.conversions[index - 1].rate}%
-                              of {(STAGE_LABELS[growth.socialFunnel.stages[index - 1].key] || "").toLowerCase()}
-                            </span>
+                            <small>{growth.socialFunnel.conversions[index - 1].rate}% conv.</small>
                           ) : null}
                         </div>
                       ))}
@@ -498,6 +540,62 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                       </div>
                     ) : (
                       <p>No Facebook or Instagram leads recorded yet.</p>
+                    )}
+                  </div>
+
+                  <div className="social-panel">
+                    <h3>Performance by post</h3>
+                    <p>
+                      Every post with at least one real comment or DM,
+                      individually — from the same live interaction records
+                      as the funnel above.
+                    </p>
+                    {growth.socialFunnel.byPost?.length ? (
+                      <div style={{ overflowX: "auto" }}>
+                        <table className="analytics-table">
+                          <thead>
+                            <tr>
+                              <th>Post</th>
+                              <th>Platform</th>
+                              <th>Interactions</th>
+                              <th>Conversations</th>
+                              <th>Leads</th>
+                              <th>Applications</th>
+                              <th>Sales</th>
+                              <th>Revenue</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {growth.socialFunnel.byPost.map((post) => (
+                              <tr key={post.contentBriefId}>
+                                <th>{post.title}</th>
+                                <td>
+                                  {post.providers.map((provider) => {
+                                    const Icon = PLATFORM_ICONS[provider];
+                                    return Icon ? (
+                                      <Icon
+                                        key={provider}
+                                        title={human(provider)}
+                                        style={{ marginRight: 4 }}
+                                      />
+                                    ) : null;
+                                  })}
+                                </td>
+                                <td>{post.interactions}</td>
+                                <td>{post.conversations}</td>
+                                <td>{post.leads}</td>
+                                <td>{post.applications}</td>
+                                <td>{post.sales}</td>
+                                <td>{currency(post.revenue)}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p>
+                        No individual post has a recorded comment or DM yet.
+                      </p>
                     )}
                   </div>
                 </>
