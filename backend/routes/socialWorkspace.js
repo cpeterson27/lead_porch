@@ -871,18 +871,36 @@ async function knownIdsForPublications(workspaceId, publications) {
   const metaRecentPostService = require("../services/metaRecentPostService");
   await Promise.all(
     publications.map(async (row) => {
-      if (!row.providerPostId) return;
-      providerPostIds.add(row.providerPostId);
-      if (row.provider !== "facebook" || !row.assetId) return;
-      providerPostIds.add(`${row.assetId}_${row.providerPostId}`);
-      const bare = String(row.providerPostId).split("_").pop();
-      if (bare) providerPostIds.add(bare);
+      if (
+        !row.providerPostId ||
+        !["facebook", "instagram"].includes(row.provider) ||
+        !row.assetId
+      )
+        return;
       const ids = await metaRecentPostService.postCommentIds({
         workspaceId,
+        provider: row.provider,
         assetId: row.assetId,
         postId: row.providerPostId,
       });
-      (ids || []).forEach((id) => commentIds.add(id));
+      if (ids) {
+        // Meta just told us, right now, exactly which comments exist on this
+        // post — trust that completely rather than also matching by post ID,
+        // so a comment we recorded earlier but that has since been deleted
+        // on Facebook or Instagram stops showing up here too.
+        ids.forEach((id) => commentIds.add(id));
+        return;
+      }
+      // The live check itself failed (no connection/token, timeout) — fall
+      // back to matching by post ID so a real outage doesn't just blank the
+      // comments list, accepting that a deleted comment might briefly still
+      // show until the live check succeeds again.
+      providerPostIds.add(row.providerPostId);
+      if (row.provider === "facebook") {
+        providerPostIds.add(`${row.assetId}_${row.providerPostId}`);
+        const bare = String(row.providerPostId).split("_").pop();
+        if (bare) providerPostIds.add(bare);
+      }
     }),
   );
   return { providerPostIds, commentIds };

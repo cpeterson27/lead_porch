@@ -1,5 +1,5 @@
 const assert = require("node:assert/strict");
-const { recentPosts } = require("./services/metaRecentPostService");
+const { recentPosts, postCommentIds } = require("./services/metaRecentPostService");
 
 function query(rows, captures) {
   return { find(filter) { captures.filters.push(filter); return { async select(selection) { captures.selections.push(selection); return rows; } }; } };
@@ -21,5 +21,18 @@ async function run() {
   let providerCalls = 0;
   await assert.rejects(() => recentPosts({ workspaceId: "workspace-1", provider: "facebook", assetId: "other" }, { SocialConnection: query([], captures), decryptCredentials: () => ({}), graphVersion: () => "v26.0", http: { async get() { providerCalls += 1; } } }), /not selected/);
   assert.equal(providerCalls, 0);
+
+  // postCommentIds is the live source of truth for "which comments really
+  // exist on this post right now" — used to keep Lead Porch's comment lists
+  // from still showing a comment after it has been deleted on the platform.
+  const fbCommentIds = await postCommentIds({ workspaceId: "workspace-1", provider: "facebook", assetId: "page-1", postId: "post-1" }, { SocialConnection: query([facebook], captures), decryptCredentials: () => ({ pageTokens: { "page-1": "secret-page-token" } }), graphVersion: () => "v26.0", http: { async get(url) { calls.push({ url }); return { data: { comments: { data: [{ id: "comment-1" }] } } }; } } });
+  assert.deepEqual(fbCommentIds, ["comment-1"]);
+  const igCommentIds = await postCommentIds({ workspaceId: "workspace-1", provider: "instagram", assetId: "ig-1", postId: "media-1" }, { SocialConnection: query([instagram], captures), decryptCredentials: () => ({ accessToken: "secret-ig-token" }), graphVersion: () => "v26.0", http: { async get(url) { calls.push({ url }); return { data: { comments: { data: [{ id: "ig-comment-1" }] } } }; } } });
+  assert.deepEqual(igCommentIds, ["ig-comment-1"]);
+  assert.equal(
+    await postCommentIds({ workspaceId: "workspace-1", provider: "facebook", assetId: "other", postId: "post-1" }, { SocialConnection: query([], captures), decryptCredentials: () => ({}), graphVersion: () => "v26.0", http: { async get() { throw new Error("must not be called"); } } }),
+    null,
+    "must fail soft (null) rather than throw when the connection cannot be resolved",
+  );
 }
 run().then(() => console.log("Recent Meta post selection passed with mocked Facebook/Instagram responses, workspace scoping and selected-asset enforcement.")).catch((error) => { console.error(error); process.exitCode = 1; });

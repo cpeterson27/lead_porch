@@ -124,19 +124,24 @@ async function postEngagement({ workspaceId, provider, assetId, postId }, deps =
   }
 }
 
-// The comment IDs Facebook's webhook delivers are prefixed with the post's
-// internal "story"/object ID, which is frequently a different number than
-// the page-post ID our own publish call stored (a longstanding Facebook
-// Graph API quirk — the two IDs both refer to the same post, in different
-// contexts). Matching by post ID text is therefore unreliable for Facebook.
-// This instead asks the post itself, via its own /comments edge, which
-// comment IDs really belong to it — authoritative regardless of that
-// discrepancy. Instagram has no such split (its media ID and the comment's
-// own contentId already agree), so this is only needed for Facebook.
-async function postCommentIds({ workspaceId, assetId, postId }, deps = dependencies) {
-  if (!workspaceId || !clean(assetId) || !clean(postId)) return null;
+// Asks the post/media itself, via its own /comments edge, which comment IDs
+// really belong to it right now — the single source of truth for "does this
+// comment still exist." Two different problems both land here:
+// - Facebook's webhook delivers comment/post IDs prefixed with the post's
+//   internal "story"/object ID, frequently a different number than the
+//   page-post ID our own publish call stored (both refer to the same post,
+//   a longstanding Graph API quirk) — so matching by post ID text alone is
+//   unreliable there.
+// - On any platform, a comment can be deleted after we recorded it from a
+//   webhook. Nothing tells us that after the fact, so without re-asking the
+//   post directly, a deleted comment keeps showing up forever.
+// A null return means the live check itself failed (no connection/token) —
+// callers should fall back to their own looser matching rather than treat
+// that as "no comments exist."
+async function postCommentIds({ workspaceId, provider, assetId, postId }, deps = dependencies) {
+  if (!workspaceId || !["facebook", "instagram"].includes(provider) || !clean(assetId) || !clean(postId)) return null;
   try {
-    const resolved = await resolveAsset({ workspaceId, provider: "facebook", assetId }, deps);
+    const resolved = await resolveAsset({ workspaceId, provider, assetId }, deps);
     if (!resolved) return null;
     const { token, version, host } = resolved;
     const response = await deps.http.get(`https://${host}/${version}/${encodeURIComponent(postId)}`, { params: { fields: "comments.summary(true).limit(100){id}", access_token: token }, timeout: 15000 });
