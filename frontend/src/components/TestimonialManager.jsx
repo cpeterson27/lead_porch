@@ -26,6 +26,13 @@ const blank = {
   consentConfirmed: true,
 };
 
+const orderTestimonials = (items) =>
+  [...items].sort(
+    (left, right) =>
+      Number(left.sortOrder || 0) - Number(right.sortOrder || 0) ||
+      new Date(right.createdAt || 0).getTime() - new Date(left.createdAt || 0).getTime(),
+  );
+
 // Lets the admin scrub through the uploaded video and capture whatever frame
 // is showing as the cover photo, instead of uploading a separate image.
 function VideoCoverPicker({ videoUrl, coverUrl, onCapture }) {
@@ -132,7 +139,7 @@ export default function TestimonialManager() {
     [error, setError] = useState("");
   const load = () =>
     fetchManagedTestimonials()
-      .then(setRows)
+      .then((items) => setRows(orderTestimonials(items)))
       .catch((err) => setError(err.response?.data?.error || "Unable to load testimonials."));
   useEffect(() => {
     const timer = window.setTimeout(load, 0);
@@ -151,7 +158,7 @@ export default function TestimonialManager() {
         ? await updateManagedTestimonial(draft._id, payload)
         : await createManagedTestimonial(payload);
       setRows((items) =>
-        draft._id ? items.map((item) => (item._id === saved._id ? saved : item)) : [saved, ...items],
+        orderTestimonials(draft._id ? items.map((item) => (item._id === saved._id ? saved : item)) : [saved, ...items]),
       );
       setDraft(null);
       setError("");
@@ -164,7 +171,7 @@ export default function TestimonialManager() {
   const update = async (row, values) => {
     try {
       const saved = await updateManagedTestimonial(row._id, { ...row, ...values });
-      setRows((items) => items.map((item) => (item._id === saved._id ? saved : item)));
+      setRows((items) => orderTestimonials(items.map((item) => (item._id === saved._id ? saved : item))));
     } catch (err) {
       setError(err.response?.data?.error || "Unable to update testimonial.");
     }

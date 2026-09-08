@@ -244,7 +244,7 @@ router.get("/testimonials", admin, async (req, res) =>
   res.json({
     success: true,
     data: await Testimonial.find({ workspaceId: req.auth.workspaceId })
-      .sort({ status: 1, sortOrder: 1, createdAt: -1 })
+      .sort({ sortOrder: 1, createdAt: -1 })
       .lean(),
   }),
 );
