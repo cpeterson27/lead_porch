@@ -1,7 +1,9 @@
 .testimonial-video-cover {
   display: block;
   width: 100%;
-  aspect-ratio: 16 / 9;
+  max-width: 260px;
+  margin: 0 auto;
+  aspect-ratio: 9 / 16;
   border: 0;
   border-radius: 14px;
   background-color: #000;
@@ -17,7 +19,7 @@
   left: 50%;
   transform: translate(-50%, -50%);
   color: #fff;
-  font-size: 56px;
+  font-size: 44px;
   filter: drop-shadow(0 2px 10px rgba(0, 0, 0, 0.45));
   transition: transform 0.12s ease;
 }
@@ -27,7 +29,9 @@
 .testimonial-video-player {
   display: block;
   width: 100%;
-  aspect-ratio: 16 / 9;
+  max-width: 260px;
+  margin: 0 auto;
+  aspect-ratio: 9 / 16;
   border-radius: 14px;
   background: #000;
 }
