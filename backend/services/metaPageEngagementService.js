@@ -79,6 +79,10 @@ async function perform(
   }).lean();
   if (!thread) throw new Error("Meta comment conversation not found");
   const provider = String(thread.channel);
+  if (provider === "instagram" && ["like", "unlike"].includes(action))
+    throw new Error(
+      "Instagram does not let a business like a comment through Meta's API. Try Hide, Unhide, or Delete instead.",
+    );
   const assetId = clean(thread.metadata?.assetId, 255),
     commentId = clean(thread.metadata?.commentId, 500);
   if (!assetId || !commentId)
@@ -158,10 +162,6 @@ async function perform(
   try {
     let response;
     if (provider === "instagram") {
-      if (action !== "reply")
-        throw new Error(
-          "Instagram currently supports approved private replies here; moderation actions remain provider-limited",
-        );
       // A Page-linked Instagram Business Account has no /messages edge of its
       // own — Meta rejects it with "(#3) Application does not have the
       // capability to make this API call." The private reply must target the
@@ -172,15 +172,30 @@ async function perform(
         connection.provider === "instagram"
           ? "graph.instagram.com"
           : "graph.facebook.com";
-      const sendTargetId = asset.parentId || assetId;
-      response = await models.http.post(
-        `https://${apiHost}/${version}/${sendTargetId}/messages`,
-        {
-          recipient: { comment_id: commentId },
-          message: { text: clean(body) },
-        },
-        { params: { access_token: token }, timeout: 15000 },
-      );
+      if (action === "reply") {
+        const sendTargetId = asset.parentId || assetId;
+        response = await models.http.post(
+          `https://${apiHost}/${version}/${sendTargetId}/messages`,
+          {
+            recipient: { comment_id: commentId },
+            message: { text: clean(body) },
+          },
+          { params: { access_token: token }, timeout: 15000 },
+        );
+      } else if (["hide", "unhide"].includes(action)) {
+        // Real, documented Instagram comment moderation — operates on the
+        // comment node directly, unlike the reply above.
+        response = await models.http.post(
+          `https://${apiHost}/${version}/${commentId}`,
+          { hide: action === "hide" },
+          { params: { access_token: token }, timeout: 15000 },
+        );
+      } else if (action === "delete") {
+        response = await models.http.delete(
+          `https://${apiHost}/${version}/${commentId}`,
+          { params: { access_token: token }, timeout: 15000 },
+        );
+      }
     } else if (action === "reply")
       response = await models.http.post(
         `https://graph.facebook.com/${version}/${commentId}/comments`,

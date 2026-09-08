@@ -310,7 +310,24 @@ function PostPerformance({ item }) {
     </div>
   );
 }
+function initials(name) {
+  const parts = String(name || "?").trim().split(/\s+/);
+  return ((parts[0]?.[0] || "") + (parts[1]?.[0] || "")).toUpperCase() || "?";
+}
+function when(value) {
+  if (!value) return "";
+  const diffMs = Date.now() - new Date(value).getTime();
+  const minutes = Math.round(diffMs / 60000);
+  if (minutes < 1) return "Just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(value).toLocaleDateString();
+}
 function CommentGroups({ threads, destinations, onReload }) {
+  const [expandedId, setExpandedId] = useState(null);
   const deleteMessage = async (threadId, messageId) => {
     if (
       !window.confirm(
@@ -363,45 +380,82 @@ function CommentGroups({ threads, destinations, onReload }) {
               comment?.sender?.name ||
               thread.contactIds?.[0]?.name ||
               "Someone";
+            const isExpanded = expandedId === thread._id;
             return (
-              <article key={thread._id} className="social-comment-thread-card">
-                <header>
-                  <strong>{commenterName}</strong>
-                  <span>
-                    {thread.metadata?.interactionType === "mention"
-                      ? "mentioned you"
-                      : "commented"}
+              <article
+                key={thread._id}
+                className={`social-comment-thread-card${isExpanded ? " social-comment-thread-card--expanded" : ""}`}
+              >
+                <button
+                  type="button"
+                  className="social-comment-thread-card__summary"
+                  onClick={() => setExpandedId(isExpanded ? null : thread._id)}
+                >
+                  <span className="social-comment-thread-card__avatar">
+                    {initials(commenterName)}
                   </span>
-                  <button
-                    type="button"
-                    className="social-message-delete"
-                    onClick={() => deleteMessage(thread._id, comment._id)}
+                  <span className="social-comment-thread-card__summary-body">
+                    <span className="social-comment-thread-card__summary-head">
+                      <strong>{commenterName}</strong>
+                      <span className="social-comment-thread-card__meta">
+                        {thread.metadata?.interactionType === "mention"
+                          ? "mentioned you"
+                          : "commented"}{" "}
+                        · {when(comment?.createdAt)}
+                      </span>
+                      {replies.length ? (
+                        <span className="social-comment-thread-card__reply-count">
+                          {replies.length} repl{replies.length === 1 ? "y" : "ies"}
+                        </span>
+                      ) : null}
+                    </span>
+                    <span className="social-comment-thread-card__snippet">
+                      {comment?.body}
+                    </span>
+                  </span>
+                  <span
+                    className={`social-post-comments__chevron${isExpanded ? " social-post-comments__chevron--open" : ""}`}
+                    aria-hidden="true"
                   >
-                    Delete
-                  </button>
-                </header>
-                <p>{comment?.body}</p>
-                {replies.map((reply) => (
-                  <div key={reply._id} className="social-comment-thread-card__reply">
-                    <div>
-                      <strong>
-                        Your reply
-                        {reply.metadata?.privateReply ? " (private)" : ""}
-                      </strong>
+                    ›
+                  </span>
+                </button>
+                {isExpanded && (
+                  <div className="social-comment-thread-card__detail">
+                    <div className="social-comment-thread-card__head">
+                      <strong>{commenterName}</strong>
                       <button
                         type="button"
                         className="social-message-delete"
-                        onClick={() => deleteMessage(thread._id, reply._id)}
+                        onClick={() => deleteMessage(thread._id, comment._id)}
                       >
                         Delete
                       </button>
                     </div>
-                    <p>{reply.body}</p>
+                    <p>{comment?.body}</p>
+                    {replies.map((reply) => (
+                      <div key={reply._id} className="social-comment-thread-card__reply">
+                        <div>
+                          <strong>
+                            Your reply
+                            {reply.metadata?.privateReply ? " (private)" : ""}
+                          </strong>
+                          <button
+                            type="button"
+                            className="social-message-delete"
+                            onClick={() => deleteMessage(thread._id, reply._id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                        <p>{reply.body}</p>
+                      </div>
+                    ))}
+                    <div className="social-composer-dock">
+                      <SocialReplyComposer thread={thread} onSent={onReload} />
+                    </div>
                   </div>
-                ))}
-                <div className="social-composer-dock">
-                  <SocialReplyComposer thread={thread} onSent={onReload} />
-                </div>
+                )}
               </article>
             );
           })

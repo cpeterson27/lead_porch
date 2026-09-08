@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FaThumbsUp, FaRegThumbsUp } from "react-icons/fa6";
+import { FaThumbsUp, FaRegThumbsUp, FaRegHeart } from "react-icons/fa6";
 import { manageFacebookComment } from "../services/api.js";
 import "./FacebookCommentActions.css";
 
@@ -60,7 +60,7 @@ export default function FacebookCommentActions({ thread, onChanged }) {
         </h3>
         <p>
           {instagram
-            ? "Send an approved private reply to this Instagram commenter."
+            ? "Sent as an approved private reply (a DM), since Instagram has no public reply-to-comment API."
             : "These are manual Page actions. Automatic replies remain disabled."}
         </p>
       </header>
@@ -71,7 +71,7 @@ export default function FacebookCommentActions({ thread, onChanged }) {
         }}
       >
         <label>
-          Public reply
+          {instagram ? "Private reply" : "Public reply"}
           <textarea
             maxLength="2000"
             rows="3"
@@ -86,46 +86,57 @@ export default function FacebookCommentActions({ thread, onChanged }) {
             checked={approved}
             onChange={(e) => setApproved(e.target.checked)}
           />
-          I approve posting this exact public reply
+          I approve sending this exact reply
         </label>
         <button disabled={Boolean(busy) || !approved || !body.trim()}>
-          Post public reply
+          {instagram ? "Send private reply" : "Post public reply"}
         </button>
       </form>
-      {!instagram ? (
-        <div
-          className="facebook-comment-actions__toolbar"
-          aria-label="Facebook comment moderation"
+      <div
+        className="facebook-comment-actions__toolbar"
+        aria-label={`${instagram ? "Instagram" : "Facebook"} comment moderation`}
+      >
+        <button disabled={Boolean(busy)} onClick={() => run("hide")}>
+          Hide
+        </button>
+        <button disabled={Boolean(busy)} onClick={() => run("unhide")}>
+          Unhide
+        </button>
+        {instagram ? (
+          <button
+            type="button"
+            className="facebook-comment-actions__like facebook-comment-actions__like--unavailable"
+            disabled
+            title="Instagram does not let a business like a comment through Meta's API."
+          >
+            <FaRegHeart aria-hidden="true" /> Like unavailable
+          </button>
+        ) : (
+          <>
+            <button
+              className="facebook-comment-actions__like"
+              disabled={Boolean(busy)}
+              onClick={() => run("like")}
+            >
+              <FaThumbsUp aria-hidden="true" /> Like as Page
+            </button>
+            <button
+              className="facebook-comment-actions__unlike"
+              disabled={Boolean(busy)}
+              onClick={() => run("unlike")}
+            >
+              <FaRegThumbsUp aria-hidden="true" /> Remove Page like
+            </button>
+          </>
+        )}
+        <button
+          className="is-destructive"
+          disabled={Boolean(busy)}
+          onClick={() => setConfirmDelete(true)}
         >
-          <button disabled={Boolean(busy)} onClick={() => run("hide")}>
-            Hide
-          </button>
-          <button disabled={Boolean(busy)} onClick={() => run("unhide")}>
-            Unhide
-          </button>
-          <button
-            className="facebook-comment-actions__like"
-            disabled={Boolean(busy)}
-            onClick={() => run("like")}
-          >
-            <FaThumbsUp aria-hidden="true" /> Like as Page
-          </button>
-          <button
-            className="facebook-comment-actions__unlike"
-            disabled={Boolean(busy)}
-            onClick={() => run("unlike")}
-          >
-            <FaRegThumbsUp aria-hidden="true" /> Remove Page like
-          </button>
-          <button
-            className="is-destructive"
-            disabled={Boolean(busy)}
-            onClick={() => setConfirmDelete(true)}
-          >
-            Delete comment
-          </button>
-        </div>
-      ) : null}
+          Delete comment
+        </button>
+      </div>
       {confirmDelete ? (
         <div
           className="facebook-comment-actions__confirmation"
@@ -133,7 +144,7 @@ export default function FacebookCommentActions({ thread, onChanged }) {
           aria-labelledby="delete-facebook-comment-title"
         >
           <strong id="delete-facebook-comment-title">
-            Delete this comment from Facebook?
+            Delete this comment from {instagram ? "Instagram" : "Facebook"}?
           </strong>
           <p>This cannot be undone in Lead Porch.</p>
           <div>
@@ -148,7 +159,7 @@ export default function FacebookCommentActions({ thread, onChanged }) {
               disabled={Boolean(busy)}
               onClick={() => run("delete")}
             >
-              Delete from Facebook
+              Delete from {instagram ? "Instagram" : "Facebook"}
             </button>
           </div>
         </div>

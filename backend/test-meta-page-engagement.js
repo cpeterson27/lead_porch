@@ -13,15 +13,15 @@ const service = require("./services/metaPageEngagementService");
 function lean(value) {
   return { lean: async () => value };
 }
-function fixtures(scopes = ["pages_manage_engagement"]) {
+function fixtures(scopes = ["pages_manage_engagement"], channel = "facebook") {
   const activities = [],
     calls = [],
     messages = [];
   const thread = {
     _id: "thread-1",
     workspaceId: "workspace-1",
-    channel: "facebook",
-    providerThreadId: "facebook:page-1:person-1:comment:comment-1",
+    channel,
+    providerThreadId: `${channel}:page-1:person-1:comment:comment-1`,
     contactIds: ["contact-1"],
     participants: [{ kind: "contact", address: "person-1" }],
     metadata: {
@@ -51,7 +51,12 @@ function fixtures(scopes = ["pages_manage_engagement"]) {
         status: "connected",
         scopes,
         selectedAssetIds: ["page-1"],
-        assets: [{ id: "page-1", type: "facebook_page" }],
+        assets: [
+          {
+            id: "page-1",
+            type: channel === "instagram" ? "instagram_business" : "facebook_page",
+          },
+        ],
         credentialsEncrypted: encryptCredentials({
           pageTokens: { "page-1": "fixture-page-token" },
         }),
@@ -180,6 +185,48 @@ async function run() {
       ),
     /permission is required/,
   );
+
+  // Instagram now supports the same real moderation actions as Facebook
+  // (hide, unhide, delete) — only liking a comment has no Meta API endpoint.
+  const ig = fixtures(["instagram_manage_comments"], "instagram");
+  for (const action of ["hide", "unhide", "delete"])
+    await service.perform(
+      { ...base, action, idempotencyKey: `ig_${action}_action_0001` },
+      ig.models,
+    );
+  assert(
+    ig.calls.some(
+      (row) =>
+        row.method === "post" &&
+        row.body?.hide === true &&
+        row.url.endsWith("/comment-1"),
+    ),
+    "Instagram hide must POST { hide: true } to the comment node",
+  );
+  assert(
+    ig.calls.some(
+      (row) =>
+        row.method === "post" &&
+        row.body?.hide === false &&
+        row.url.endsWith("/comment-1"),
+    ),
+    "Instagram unhide must POST { hide: false } to the comment node",
+  );
+  assert(
+    ig.calls.some(
+      (row) => row.method === "delete" && row.url.endsWith("/comment-1"),
+    ),
+    "Instagram delete must DELETE the comment node",
+  );
+  for (const action of ["like", "unlike"])
+    await assert.rejects(
+      () =>
+        service.perform(
+          { ...base, action, idempotencyKey: `ig_${action}_action_0001` },
+          fixtures(["instagram_manage_comments"], "instagram").models,
+        ),
+      /does not let a business like a comment/,
+    );
   await assert.rejects(
     () =>
       service.perform(
