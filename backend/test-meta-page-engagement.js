@@ -16,7 +16,8 @@ function lean(value) {
 function fixtures(scopes = ["pages_manage_engagement"], channel = "facebook") {
   const activities = [],
     calls = [],
-    messages = [];
+    messages = [],
+    outboundReplies = [];
   const thread = {
     _id: "thread-1",
     workspaceId: "workspace-1",
@@ -86,6 +87,21 @@ function fixtures(scopes = ["pages_manage_engagement"], channel = "facebook") {
       messages.push(payload);
       return payload;
     },
+    ConversationMessage: {
+      findOne(filter) {
+        return lean(
+          outboundReplies.find(
+            (row) =>
+              row.workspaceId === filter.workspaceId &&
+              row.threadId === filter.threadId &&
+              filter.direction === "outbound" &&
+              row.providerMessageId === filter.providerMessageId &&
+              filter["metadata.publicCommentReply"] === true &&
+              row.metadata?.publicCommentReply === true,
+          ) || null,
+        );
+      },
+    },
     http: {
       post: async (url, body, options) => {
         calls.push({ method: "post", url, body, options });
@@ -103,7 +119,7 @@ function fixtures(scopes = ["pages_manage_engagement"], channel = "facebook") {
       },
     },
   };
-  return { models, activities, calls, messages };
+  return { models, activities, calls, messages, outboundReplies };
 }
 
 async function run() {
@@ -246,6 +262,59 @@ async function run() {
         ),
       /does not let a business like a comment/,
     );
+
+  // Deleting a specific reply (targetCommentId) removes only that reply's
+  // own comment on Facebook, leaving the commenter's original comment alone
+  // — distinct from the default delete, which removes the original comment.
+  const withReply = fixtures();
+  withReply.outboundReplies.push({
+    workspaceId: "workspace-1",
+    threadId: "thread-1",
+    direction: "outbound",
+    providerMessageId: "our-reply-1",
+    metadata: { publicCommentReply: true },
+  });
+  await service.perform(
+    {
+      ...base,
+      action: "delete",
+      idempotencyKey: "delete_reply_action_0001",
+      targetCommentId: "our-reply-1",
+    },
+    withReply.models,
+  );
+  assert(
+    withReply.calls.some(
+      (row) => row.method === "delete" && row.url.endsWith("/our-reply-1"),
+    ),
+    "Deleting a reply must target that reply's own comment ID, not the thread's root comment",
+  );
+  await assert.rejects(
+    () =>
+      service.perform(
+        {
+          ...base,
+          action: "delete",
+          idempotencyKey: "delete_unknown_reply_0001",
+          targetCommentId: "not-a-real-reply",
+        },
+        fixtures().models,
+      ),
+    /could not be found on this comment/,
+  );
+  await assert.rejects(
+    () =>
+      service.perform(
+        {
+          ...base,
+          action: "delete",
+          idempotencyKey: "delete_ig_reply_0001",
+          targetCommentId: "some-other-id",
+        },
+        fixtures(["instagram_manage_comments"], "instagram").models,
+      ),
+    /sent as a private message, not a public comment/,
+  );
   await assert.rejects(
     () =>
       service.perform(

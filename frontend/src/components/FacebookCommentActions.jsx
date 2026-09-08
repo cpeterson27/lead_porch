@@ -125,7 +125,7 @@ export default function FacebookCommentActions({ thread, onChanged }) {
           disabled={Boolean(busy)}
           onClick={() => setConfirmDelete(true)}
         >
-          Delete comment
+          Delete their comment
         </button>
       </div>
       {confirmDelete ? (
@@ -137,7 +137,13 @@ export default function FacebookCommentActions({ thread, onChanged }) {
           <strong id="delete-facebook-comment-title">
             Delete this comment from {instagram ? "Instagram" : "Facebook"}?
           </strong>
-          <p>This cannot be undone in Lead Porch.</p>
+          <p>
+            This removes the commenter's original comment
+            {!instagram && " and every reply nested under it, including yours"}
+            . This cannot be undone.
+            {!instagram &&
+              " To remove only your own reply and leave their comment up, use Delete from Facebook next to that specific reply instead."}
+          </p>
           <div>
             <button
               disabled={Boolean(busy)}
@@ -150,7 +156,7 @@ export default function FacebookCommentActions({ thread, onChanged }) {
               disabled={Boolean(busy)}
               onClick={() => run("delete")}
             >
-              Delete from {instagram ? "Instagram" : "Facebook"}
+              Delete their comment
             </button>
           </div>
         </div>

@@ -587,6 +587,7 @@ router.post(
         action: req.body.action,
         body: req.body.body,
         idempotencyKey: req.body.idempotencyKey,
+        targetCommentId: req.body.targetCommentId,
       });
       return res.json(result);
     } catch (error) {
@@ -995,17 +996,50 @@ router.get(
         ["facebook", "instagram"].includes(row.provider) &&
         row.providerPostId,
     );
+    // The comment count shown here must always match what the Comments panel
+    // below can actually display — Meta's own live comment count can outrun
+    // our copy briefly (their webhook delivery lags their read API), which
+    // showed as two different numbers for the same post. Counting our own
+    // matched threads (the same matching used to build that panel) instead
+    // of trusting Meta's raw count keeps the two permanently in agreement;
+    // likes and shares have no local copy to disagree with, so those still
+    // come straight from Meta.
+    const { providerPostIds, commentIds } = await knownIdsForPublications(
+      workspaceId,
+      rows,
+    );
+    const threads =
+      providerPostIds.size || commentIds.size
+        ? await ConversationThread.find({
+            workspaceId,
+            channel: { $in: socialChannels },
+            "metadata.interactionType": { $in: ["comment", "mention"] },
+            $or: [
+              { "metadata.contentId": { $in: [...providerPostIds] } },
+              { "metadata.commentId": { $in: [...commentIds] } },
+            ],
+          })
+            .select("channel")
+            .lean()
+        : [];
     const destinations = await Promise.all(
-      rows.map(async (row) => ({
-        provider: row.provider,
-        assetId: row.assetId,
-        engagement: await metaRecentPostService.postEngagement({
+      rows.map(async (row) => {
+        const engagement = await metaRecentPostService.postEngagement({
           workspaceId,
           provider: row.provider,
           assetId: row.assetId,
           postId: row.providerPostId,
-        }),
-      })),
+        });
+        return {
+          provider: row.provider,
+          assetId: row.assetId,
+          engagement: {
+            likes: engagement?.likes ?? null,
+            comments: threads.filter((t) => t.channel === row.provider).length,
+            shares: engagement?.shares ?? null,
+          },
+        };
+      }),
     );
     res.json({ destinations });
   }),
