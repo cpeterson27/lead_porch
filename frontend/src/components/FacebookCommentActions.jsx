@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FaThumbsUp, FaRegThumbsUp, FaRegHeart } from "react-icons/fa6";
+import { FaThumbsUp, FaRegThumbsUp } from "react-icons/fa6";
 import { manageFacebookComment } from "../services/api.js";
 import "./FacebookCommentActions.css";
 
@@ -102,16 +102,7 @@ export default function FacebookCommentActions({ thread, onChanged }) {
         <button disabled={Boolean(busy)} onClick={() => run("unhide")}>
           Unhide
         </button>
-        {instagram ? (
-          <button
-            type="button"
-            className="facebook-comment-actions__like facebook-comment-actions__like--unavailable"
-            disabled
-            title="Instagram does not let a business like a comment through Meta's API."
-          >
-            <FaRegHeart aria-hidden="true" /> Like unavailable
-          </button>
-        ) : (
+        {!instagram && (
           <>
             <button
               className="facebook-comment-actions__like"
