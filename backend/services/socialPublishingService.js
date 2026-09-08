@@ -86,6 +86,15 @@ async function deletePublished({workspaceId,item},models=deps){
       const host=publication.provider==="instagram"&&connection.provider==="instagram"?"graph.instagram.com":"graph.facebook.com";
       const storedId=String(publication.providerPostId);
       const bareId=storedId.split("_").pop();
+      let instagramReadableBeforeDelete=false;
+      if(publication.provider==="instagram"){
+        for(const token of tokens){
+          try{
+            const lookup=await models.http.get(`https://${host}/${require("./socialProviderConfig").graphVersion()}/${encodeURIComponent(storedId)}`,{params:{fields:"id",access_token:token},timeout:15000});
+            if(String(lookup.data?.id||"")===storedId){instagramReadableBeforeDelete=true;break}
+          }catch{}
+        }
+      }
       let ids=publication.provider==="facebook"
         ?[storedId,`${publication.assetId}_${bareId}`,bareId].filter((value,index,all)=>value&&all.indexOf(value)===index)
         :[storedId];
@@ -106,7 +115,7 @@ async function deletePublished({workspaceId,item},models=deps){
         for(const id of ids){
           try{
             const response=await models.http.delete(`https://${host}/${require("./socialProviderConfig").graphVersion()}/${encodeURIComponent(id)}`,{params:{access_token:token},timeout:15000});
-            if(response?.data?.success===false)throw new Error("provider did not confirm deletion");
+            if(response?.data?.success!==true)throw new Error("provider did not explicitly confirm deletion");
             confirmed=true;
             break;
           }catch(error){lastError=error}
@@ -114,7 +123,16 @@ async function deletePublished({workspaceId,item},models=deps){
         if(confirmed)break;
       }
       if(!confirmed&&publication.provider==="facebook"&&!facebookFeedMatch&&Number(lastError?.response?.data?.error?.code)===100&&Number(lastError?.response?.data?.error?.error_subcode)===33)confirmed=true;
-      if(!confirmed&&publication.provider==="instagram"&&Number(lastError?.response?.data?.error?.code)===100&&Number(lastError?.response?.data?.error?.error_subcode)===33)confirmed=true;
+      if(confirmed&&publication.provider==="instagram"){
+        let stillReadable=false;
+        for(const token of tokens){
+          try{
+            const verification=await models.http.get(`https://${host}/${require("./socialProviderConfig").graphVersion()}/${encodeURIComponent(storedId)}`,{params:{fields:"id",access_token:token},timeout:15000});
+            if(String(verification.data?.id||"")===storedId){stillReadable=true;break}
+          }catch{}
+        }
+        if(stillReadable||!instagramReadableBeforeDelete){confirmed=false;lastError=new Error(stillReadable?"Instagram still reports the post after deletion":"Instagram deletion could not be independently verified")}
+      }
       if(!confirmed)throw lastError||new Error("provider did not confirm deletion");
       publication.status="deleted";
       publication.deletedAt=new Date();
