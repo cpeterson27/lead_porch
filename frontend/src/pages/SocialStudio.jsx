@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Modal from "../components/Modal.jsx";
 import Button from "../components/Button.jsx";
@@ -157,6 +157,10 @@ export default function SocialStudio() {
     [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [notice, setNotice] = useState("");
+  const errorRef = useRef(null);
+  useEffect(() => {
+    if (error) errorRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [error]);
   const [postAutomation, setPostAutomation] = useState({
     configured: false,
     name: "",
@@ -387,7 +391,11 @@ export default function SocialStudio() {
           prepare it for review.
         </p>
       )}
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" ref={errorRef} className="form-error">
+          {error}
+        </p>
+      )}
       {notice && <p role="status">{notice}</p>}
       <label>
         Internal post name{" "}
