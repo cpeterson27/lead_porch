@@ -744,6 +744,7 @@ export default function Content() {
   const confirmDelete = async () => {
     try {
       setSaving(true);
+      setError("");
       await deleteSocialContent(deleteTarget._id);
       setDeleteTarget(null);
       setMessage("Post deleted from Lead Porch and every published destination.");
@@ -1169,7 +1170,10 @@ export default function Content() {
                     <Button
                       size="sm"
                       variant="danger"
-                      onClick={() => setDeleteTarget(item)}
+                      onClick={() => {
+                        setError("");
+                        setDeleteTarget(item);
+                      }}
                     >
                       Delete
                     </Button>
@@ -1250,6 +1254,11 @@ export default function Content() {
           platform cannot confirm deletion, Lead Porch keeps the record so
           you can retry.
         </p>
+        {error ? (
+          <p className="form-error" role="alert">
+            {error}
+          </p>
+        ) : null}
       </Modal>
       <Modal
         isOpen={Boolean(publishedNotice)}
