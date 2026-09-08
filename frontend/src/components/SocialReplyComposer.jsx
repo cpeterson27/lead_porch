@@ -16,6 +16,7 @@ export default function SocialReplyComposer({
   onSent,
   initialBody = "",
   initialAnalysis = null,
+  replies = [],
 }) {
   const [body, setBody] = useState(initialBody),
     [approved, setApproved] = useState(false),

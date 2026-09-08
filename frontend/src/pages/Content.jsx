@@ -393,6 +393,13 @@ function CommentGroups({ threads, destinations, onReload }) {
   return groups.map((provider) => {
     const Icon = platformIcons[provider];
     const groupThreads = threads.filter((row) => row.thread.channel === provider);
+    // A reply is itself a comment, so this counts every message (the
+    // original comment plus every reply) — the same definition the
+    // performance strip above uses, so the two numbers always agree.
+    const groupCount = groupThreads.reduce(
+      (sum, row) => sum + row.messages.length,
+      0,
+    );
     return (
       <section
         key={provider}
@@ -404,7 +411,7 @@ function CommentGroups({ threads, destinations, onReload }) {
           </span>
           <strong>{platformNames[provider] || provider}</strong>
           <span className="social-comment-group__count">
-            {groupThreads.length}
+            {groupCount}
           </span>
         </header>
         {groupThreads.length ? (
@@ -536,7 +543,8 @@ function PostComments({ item }) {
     setOpen(next);
     if (next && threads === null) load();
   };
-  const totalCount = threads?.length || 0;
+  const totalCount =
+    threads?.reduce((sum, row) => sum + row.messages.length, 0) || 0;
   return (
     <div className="social-post-comments">
       <button
@@ -562,45 +570,6 @@ function PostComments({ item }) {
           ) : (
             <CommentGroups threads={threads} destinations={destinations} onReload={load} />
           )}
-        </div>
-      )}
-    </div>
-  );
-}
-function UnlinkedComments() {
-  const [open, setOpen] = useState(false),
-    [threads, setThreads] = useState(null);
-  const load = () => {
-    fetchSocialWorkspace("content/comments/unlinked")
-      .then((result) => setThreads(result.threads || []))
-      .catch(() => setThreads([]));
-  };
-  useEffect(() => {
-    load();
-  }, []);
-  if (!threads || !threads.length) return null;
-  return (
-    <div className="social-unlinked-comments">
-      <button
-        type="button"
-        className="social-post-comments__toggle social-unlinked-comments__toggle"
-        onClick={() => setOpen((value) => !value)}
-      >
-        <span
-          className={`social-post-comments__chevron${open ? " social-post-comments__chevron--open" : ""}`}
-          aria-hidden="true"
-        >
-          ›
-        </span>
-        Other comments ({threads.length})
-      </button>
-      <p className="social-unlinked-comments__note">
-        Comments on a post that isn't tracked below — published outside Lead
-        Porch, or its record here was deleted. Nothing here is lost.
-      </p>
-      {open && (
-        <div className="social-post-comments__panel">
-          <CommentGroups threads={threads} destinations={null} onReload={load} />
         </div>
       )}
     </div>
@@ -958,7 +927,6 @@ export default function Content() {
           </select>
         </label>
       </div>
-      <UnlinkedComments />
       <section className="social-queue">
         {items.length ? (
           items
