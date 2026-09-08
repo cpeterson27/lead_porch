@@ -40,6 +40,24 @@ function fixtures(scopes = ["pages_manage_engagement"], channel = "facebook") {
         );
       },
     },
+    ConversationMessage: {
+      findOne(filter) {
+        return lean(
+          filter._id === "reply-message-1"
+            ? {
+                _id: "reply-message-1",
+                workspaceId: "workspace-1",
+                threadId: "thread-1",
+                direction: "outbound",
+                providerMessageId: "reply-1",
+                metadata: { publicCommentReply: true },
+                deletedAt: null,
+              }
+            : null,
+        );
+      },
+      updateOne: async () => ({ acknowledged: true }),
+    },
     connectionForAsset: async (assetId, provider, workspaceId) => {
       assert.deepEqual(
         [assetId, provider, workspaceId],
@@ -90,11 +108,9 @@ function fixtures(scopes = ["pages_manage_engagement"], channel = "facebook") {
       post: async (url, body, options) => {
         calls.push({ method: "post", url, body, options });
         return {
-          data: url.endsWith("/comments")
+          data: url.endsWith("/comments") || url.endsWith("/replies")
             ? { id: "reply-1" }
-            : url.endsWith("/messages")
-              ? { recipient_id: "person-1", message_id: "msg-1" }
-              : { success: true },
+            : { success: true },
         };
       },
       delete: async (url, options) => {
@@ -188,10 +204,7 @@ async function run() {
     /permission is required/,
   );
 
-  // Instagram's private-reply-via-messages endpoint confirms success with a
-  // "message_id" field, not the "id" field Facebook's comment-reply returns —
-  // treating only "id" as success previously made every real, successfully
-  // sent Instagram reply report back as a failure.
+  // Instagram replies are public child comments, not one-time private DMs.
   const igReply = fixtures(["instagram_manage_comments"], "instagram");
   const igReplyResult = await service.perform(
     {
@@ -203,7 +216,9 @@ async function run() {
     igReply.models,
   );
   assert.equal(igReplyResult.status, "confirmed");
-  assert.equal(igReply.messages[0].message.providerMessageId, "msg-1");
+  assert.equal(igReply.messages[0].message.providerMessageId, "reply-1");
+  assert.match(igReply.calls[0].url, /\/comment-1\/replies$/);
+  assert.equal(igReply.calls[0].body.message, "Thanks for asking!");
 
   // Instagram now supports the same real moderation actions as Facebook
   // (hide, unhide, delete) — only liking a comment has no Meta API endpoint.

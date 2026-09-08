@@ -186,16 +186,14 @@ export default function TestimonialManager() {
       return setError("Choose an MP4, WEBM, or MOV video up to 75 MB.");
     try {
       setSaving(true);
-      const data = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const asset = await uploadTestimonialVideo({ file: data });
+      const asset = await uploadTestimonialVideo(file);
       setDraft((current) => ({ ...current, videoUrl: asset.url, avatarUrl: "" }));
     } catch (err) {
-      setError(err.response?.data?.error || "Unable to upload testimonial video.");
+      setError(
+        err.response?.data?.error?.message ||
+          err.response?.data?.error ||
+          "Unable to upload testimonial video.",
+      );
     } finally {
       setSaving(false);
     }

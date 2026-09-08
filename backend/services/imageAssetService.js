@@ -52,8 +52,20 @@ async function uploadVideo({ file, folder }, http = axios) {
   const upload = await http.post(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, body, { maxBodyLength: 102 * 1024 * 1024 });
   return { url: upload.data.secure_url, publicId: upload.data.public_id, width: upload.data.width, height: upload.data.height, duration: upload.data.duration };
 }
+function createVideoUploadSignature({ folder }) {
+  const { cloudName, apiKey, apiSecret } = credentials();
+  const timestamp = Math.floor(Date.now() / 1000);
+  return {
+    cloudName,
+    apiKey,
+    timestamp,
+    folder,
+    signature: signature({ folder, timestamp }, apiSecret),
+    maxBytes: MAX_VIDEO_BYTES,
+  };
+}
 async function removeImage(publicId, http = axios) {
   if (!publicId) return { removed: false }; const { cloudName, apiKey, apiSecret } = credentials(); const timestamp = Math.floor(Date.now() / 1000); const body = new URLSearchParams({ public_id: publicId, timestamp: String(timestamp), api_key: apiKey, signature: signature({ public_id: publicId, timestamp }, apiSecret) });
   await http.post(`https://api.cloudinary.com/v1_1/${cloudName}/image/destroy`, body, { headers: { "Content-Type": "application/x-www-form-urlencoded" } }); return { removed: true };
 }
-module.exports = { ALLOWED_TYPES, ALLOWED_VIDEO_TYPES, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, credentials, removeImage, uploadGeneratedSvg, uploadImage, uploadVideo, validateDataImage, validateDataVideo };
+module.exports = { ALLOWED_TYPES, ALLOWED_VIDEO_TYPES, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES, createVideoUploadSignature, credentials, removeImage, uploadGeneratedSvg, uploadImage, uploadVideo, validateDataImage, validateDataVideo };

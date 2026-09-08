@@ -11,7 +11,6 @@ function actionKey() {
 
 export default function FacebookCommentActions({
   thread,
-  alreadyReplied = false,
   onChanged,
 }) {
   const [body, setBody] = useState(""),
@@ -61,25 +60,18 @@ export default function FacebookCommentActions({
         </h3>
         <p>
           {instagram
-            ? "Sent as an approved private reply (a DM), since Instagram has no public reply-to-comment API."
+            ? "Posts a public reply beneath this Instagram comment."
             : "These are manual Page actions. Automatic replies remain disabled."}
         </p>
       </header>
-      {alreadyReplied ? (
-        <p className="facebook-comment-actions__note">
-          You've already sent a private reply to this comment. Instagram
-          only allows one private reply per comment and will reject a
-          second one — this isn't something Lead Porch can override.
-        </p>
-      ) : (
-        <form
+      <form
           onSubmit={(e) => {
             e.preventDefault();
             run("reply", { body });
           }}
         >
           <label>
-            {instagram ? "Private reply" : "Public reply"}
+            Public reply
             <textarea
               maxLength="2000"
               rows="3"
@@ -97,10 +89,9 @@ export default function FacebookCommentActions({
             I approve sending this exact reply
           </label>
           <button disabled={Boolean(busy) || !approved || !body.trim()}>
-            {instagram ? "Send private reply" : "Post public reply"}
+            Post public reply
           </button>
         </form>
-      )}
       <div
         className="facebook-comment-actions__toolbar"
         aria-label={`${instagram ? "Instagram" : "Facebook"} comment moderation`}

@@ -344,7 +344,8 @@ function when(value) {
 function CommentGroups({ threads, destinations, onReload }) {
   const [expandedId, setExpandedId] = useState(null);
   const deleteReply = async (thread, reply) => {
-    if (!window.confirm("Delete this reply from Facebook and Lead Porch? This cannot be undone.")) return;
+    const providerName = platformNames[thread.channel] || thread.channel;
+    if (!window.confirm(`Delete this reply from ${providerName} and Lead Porch? This cannot be undone.`)) return;
     try {
       await mutateSocialWorkspace(
         `inbox/${thread._id}/messages/${reply._id}/delete`,
@@ -352,7 +353,7 @@ function CommentGroups({ threads, destinations, onReload }) {
       );
       onReload();
     } catch (err) {
-      window.alert(err.response?.data?.error || "Facebook could not confirm this deletion. The reply was not removed from Lead Porch.");
+      window.alert(err.response?.data?.error || `${providerName} could not confirm this deletion. The reply was not removed from Lead Porch.`);
     }
   };
   // Deletes the commenter's original comment from the platform itself
@@ -522,17 +523,14 @@ function CommentGroups({ threads, destinations, onReload }) {
                           </strong>
                           <p>{reply.body}</p>
                         </div>
-                        {provider === "facebook" ? (
-                          <button type="button" className="social-comment-delete-icon social-comment-reply-delete" onClick={() => deleteReply(thread, reply)} title="Delete this reply from Facebook and Lead Porch" aria-label="Delete Facebook reply">
+                        <button type="button" className="social-comment-delete-icon social-comment-reply-delete" onClick={() => deleteReply(thread, reply)} title={`Delete this reply from ${platformNames[provider]} and Lead Porch`} aria-label={`Delete ${platformNames[provider]} reply`}>
                             <FaRegTrashCan aria-hidden="true" />
                           </button>
-                        ) : null}
                       </div>
                     ))}
                     <div className="social-composer-dock">
                       <SocialReplyComposer
                         thread={thread}
-                        hasConfirmedReply={hasConfirmedReply}
                         onSent={onReload}
                       />
                     </div>

@@ -35,6 +35,16 @@ router.post("/testimonial-media", admin, async (req, res) => {
     res.status(error.status || 400).json({ error: error.message });
   }
 });
+router.post("/testimonial-media-signature", admin, async (req, res) => {
+  try {
+    const data = media.createVideoUploadSignature({
+      folder: `growth-operator/testimonials/${req.auth.workspaceId}`,
+    });
+    res.json({ success: true, data });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message });
+  }
+});
 router.get("/config", admin, async (req, res) => {
   const config = await WorkspaceConfig.findOne({
     workspaceId: req.auth.workspaceId,

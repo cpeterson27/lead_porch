@@ -644,7 +644,7 @@ router.post(
     if (existing.metadata?.publicCommentReply) {
       if (req.body.approved !== true)
         return res.status(400).json({
-          error: "Explicit approval is required to delete this Facebook reply",
+          error: "Explicit approval is required to delete this social reply",
         });
       const result = await pageEngagement.perform({
         workspaceId: req.auth.workspaceId,

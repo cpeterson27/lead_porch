@@ -16,7 +16,6 @@ export default function SocialReplyComposer({
   onSent,
   initialBody = "",
   initialAnalysis = null,
-  hasConfirmedReply = false,
 }) {
   const [body, setBody] = useState(initialBody),
     [approved, setApproved] = useState(false),
@@ -103,7 +102,6 @@ export default function SocialReplyComposer({
         {aiPanel}
         <FacebookCommentActions
           thread={thread}
-          alreadyReplied={thread.channel === "instagram" && hasConfirmedReply}
           onChanged={onSent}
         />
       </>

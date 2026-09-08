@@ -282,10 +282,28 @@ export const uploadProgramVideo = (values) =>
   api
     .post("/public-management/program-media", values)
     .then((res) => res.data.data);
-export const uploadTestimonialVideo = (values) =>
-  api
-    .post("/public-management/testimonial-media", values)
+export const uploadTestimonialVideo = async (file) => {
+  const signed = await api
+    .post("/public-management/testimonial-media-signature")
     .then((res) => res.data.data);
+  const body = new FormData();
+  body.append("file", file);
+  body.append("api_key", signed.apiKey);
+  body.append("timestamp", String(signed.timestamp));
+  body.append("folder", signed.folder);
+  body.append("signature", signed.signature);
+  const upload = await axios.post(
+    `https://api.cloudinary.com/v1_1/${signed.cloudName}/video/upload`,
+    body,
+  );
+  return {
+    url: upload.data.secure_url,
+    publicId: upload.data.public_id,
+    width: upload.data.width,
+    height: upload.data.height,
+    duration: upload.data.duration,
+  };
+};
 export const fetchWorkspaceMedia = () =>
   api.get("/social-workspace/media").then((res) => res.data);
 export const fetchManagedProfiles = () =>

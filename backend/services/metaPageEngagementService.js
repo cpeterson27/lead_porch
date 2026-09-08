@@ -88,10 +88,6 @@ async function perform(
     );
   let reply = null;
   if (action === "delete_reply") {
-    if (provider !== "facebook")
-      throw new Error(
-        "Instagram does not provide an API to unsend a private reply. Delete the original Instagram comment to reset this conversation.",
-      );
     reply = await models.ConversationMessage.findOne({
       _id: messageId,
       workspaceId,
@@ -101,7 +97,7 @@ async function perform(
       "metadata.publicCommentReply": true,
     }).lean();
     if (!reply?.providerMessageId)
-      throw new Error("Facebook reply context is unavailable");
+      throw new Error(`${provider === "instagram" ? "Instagram" : "Facebook"} reply context is unavailable`);
   }
   const assetId = clean(thread.metadata?.assetId, 255),
     commentId = clean(thread.metadata?.commentId, 500);
@@ -157,7 +153,7 @@ async function perform(
     delete: `${provider === "instagram" ? "Instagram" : "Facebook"} comment deleted`,
     like: `${provider === "instagram" ? "Instagram" : "Facebook"} comment liked`,
     unlike: `${provider === "instagram" ? "Instagram" : "Facebook"} comment reaction removed`,
-    delete_reply: "Facebook reply deleted",
+    delete_reply: `${provider === "instagram" ? "Instagram" : "Facebook"} reply deleted`,
   }[action];
   const reserved = await reserve(models, {
     workspaceId,
@@ -191,24 +187,14 @@ async function perform(
   try {
     let response;
     if (provider === "instagram") {
-      // A Page-linked Instagram Business Account has no /messages edge of its
-      // own — Meta rejects it with "(#3) Application does not have the
-      // capability to make this API call." The private reply must target the
-      // parent Page's edge instead, on graph.facebook.com, exactly like the
-      // DM send path in metaMessagingAdapter.js. A standalone Instagram Login
-      // asset (no parentId) sends via its own id on graph.instagram.com.
       const apiHost =
         connection.provider === "instagram"
           ? "graph.instagram.com"
           : "graph.facebook.com";
       if (action === "reply") {
-        const sendTargetId = asset.parentId || assetId;
         response = await models.http.post(
-          `https://${apiHost}/${version}/${sendTargetId}/messages`,
-          {
-            recipient: { comment_id: commentId },
-            message: { text: clean(body) },
-          },
+          `https://${apiHost}/${version}/${commentId}/replies`,
+          { message: clean(body) },
           { params: { access_token: token }, timeout: 15000 },
         );
       } else if (["hide", "unhide"].includes(action)) {
@@ -222,6 +208,11 @@ async function perform(
       } else if (action === "delete") {
         response = await models.http.delete(
           `https://${apiHost}/${version}/${commentId}`,
+          { params: { access_token: token }, timeout: 15000 },
+        );
+      } else if (action === "delete_reply") {
+        response = await models.http.delete(
+          `https://${apiHost}/${version}/${reply.providerMessageId}`,
           { params: { access_token: token }, timeout: 15000 },
         );
       }
@@ -259,14 +250,11 @@ async function perform(
         { params: { access_token: token }, timeout: 15000 },
       );
     // Facebook's comment-reply endpoint confirms success with an "id"; the
-    // Instagram private-reply-via-messages endpoint instead confirms with a
-    // "message_id" — treating only "id" as success made every Instagram
-    // reply look like it failed even after Meta had already sent it.
+    // Both public comment-reply endpoints confirm creation with an "id".
     if (
       response?.data?.success === false ||
       (action === "reply" &&
-        !response?.data?.id &&
-        !response?.data?.message_id)
+        !response?.data?.id)
     )
       throw new Error("Meta did not confirm the action");
     if (action === "reply")
@@ -281,7 +269,7 @@ async function perform(
         },
         message: {
           providerMessageId: String(
-            response.data.id || response.data.message_id,
+            response.data.id,
           ),
           direction: "outbound",
           body: clean(body),
@@ -293,6 +281,7 @@ async function perform(
             assetId,
             senderType: "human",
             publicCommentReply: true,
+            privateReply: false,
             parentCommentId: commentId,
           },
         },
