@@ -119,13 +119,22 @@ async function instagramInsights(
   try {
     const [profile, insight] = await Promise.all([
       http.get(`https://graph.facebook.com/${version}/${asset.id}`, {
-        params: { fields: "followers_count,media_count", access_token: token },
+        params: {
+          fields: "followers_count,media_count,username",
+          access_token: token,
+        },
         timeout: 15000,
       }),
       http.get(`https://graph.facebook.com/${version}/${asset.id}/insights`, {
         params: {
           metric: "reach,profile_views",
           period: "day",
+          // Meta now rejects profile_views without this — it used to return
+          // a per-day "values" array like reach did, but requires opting
+          // into the newer "total_value" shape or the whole request 400s.
+          // metricValue() below already reads total_value.value, so no
+          // parsing change is needed to support it.
+          metric_type: "total_value",
           access_token: token,
         },
         timeout: 15000,
@@ -135,7 +144,7 @@ async function instagramInsights(
     return {
       provider: "instagram",
       assetId: asset.id,
-      assetName: asset.name,
+      assetName: profile.data?.username ? `@${profile.data.username}` : asset.name,
       status: "available",
       followers: profile.data?.followers_count ?? null,
       mediaCount: profile.data?.media_count ?? null,
