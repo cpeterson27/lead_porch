@@ -768,4 +768,163 @@
     padding: 6px 9px;
     font-size: 0.75rem;
   }
+
+  .social-analytics-secondary {
+    grid-template-columns: 1fr;
+  }
+
+  .social-platform-compare {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ── Social CTA analytics ────────────────────────────────────────────────── */
+.social-funnel {
+  display: grid;
+  gap: 18px;
+  margin-top: 10px;
+}
+
+.social-funnel__row {
+  display: grid;
+  gap: 6px;
+}
+
+.social-funnel__label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.social-funnel__label span {
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  text-transform: capitalize;
+}
+
+.social-funnel__label strong {
+  font-size: 1.3rem;
+  font-weight: 760;
+  color: var(--color-text);
+}
+
+.social-funnel__rate {
+  color: var(--color-text-subtle);
+  font-size: 0.72rem;
+}
+
+.social-cta-highlight {
+  background: var(--color-brand-soft);
+  border: 1px solid var(--color-brand);
+  border-radius: var(--radius-xl);
+  padding: 18px 20px;
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.social-cta-highlight strong {
+  font-size: 1.05rem;
+  color: var(--color-brand);
+}
+
+.social-cta-highlight p {
+  margin: 0;
+  color: var(--color-text);
+  font-size: 0.9rem;
+}
+
+.social-cta-highlight span {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.social-cta-panel .analytics-table {
+  margin-top: 16px;
+}
+
+.social-platform-compare {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin-top: 10px;
+}
+
+.social-platform-card {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+  padding: 16px 18px;
+  display: grid;
+  gap: 12px;
+}
+
+.social-platform-card--facebook {
+  border-top: 3px solid #1877f2;
+}
+
+.social-platform-card--instagram {
+  border-top: 3px solid #dd2a7b;
+}
+
+.social-platform-card header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.95rem;
+}
+
+.social-platform-card--facebook header {
+  color: #1877f2;
+}
+
+.social-platform-card--instagram header {
+  color: #dd2a7b;
+}
+
+.social-platform-card dl {
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.social-platform-card dl > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.social-platform-card dt {
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.social-platform-card dd {
+  margin: 0;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.social-analytics-secondary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.social-panel--secondary {
+  padding: 16px 18px;
+}
+
+.social-panel--secondary h3 {
+  font-size: 0.85rem;
+  margin-bottom: 8px;
+}
+
+.social-panel--secondary p {
+  font-size: 0.78rem;
+}
+
+.social-panel--secondary table {
+  font-size: 0.82rem;
 }

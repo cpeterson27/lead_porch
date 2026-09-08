@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { FaFacebookF, FaInstagram } from "react-icons/fa6";
 import { Link, NavLink, useParams, useSearchParams } from "react-router-dom";
 import SocialLeads from "./SocialLeads.jsx";
 import Content from "./Content.jsx";
@@ -21,6 +22,7 @@ import {
   fetchContentBriefs,
   cancelSocialContent,
   scheduleSocialContent,
+  fetchGrowthAnalytics,
 } from "../services/api.js";
 import "./SocialWorkspace.css";
 
@@ -39,6 +41,20 @@ const sections = [
 const human = (value) => String(value || "").replaceAll("_", " ");
 const date = (value) =>
   value ? new Date(value).toLocaleString() : "Not recorded";
+const currency = (value) =>
+  Number(value || 0).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
+const STAGE_LABELS = {
+  interactions: "Interactions",
+  conversations: "Conversations",
+  leads: "Leads",
+  applications: "Applications",
+  calls_booked: "Booked calls",
+  enrollments: "Enrollments",
+};
+const PLATFORM_ICONS = { facebook: FaFacebookF, instagram: FaInstagram };
 export default function SocialWorkspace({ connectionsOnly = false, section: sectionProp }) {
   const { section: sectionParam = "overview" } = useParams();
   const section = sectionProp || sectionParam;
@@ -53,7 +69,9 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
     [detail, setDetail] = useState(null),
     [busy, setBusy] = useState(false),
     [pendingDeleteId, setPendingDeleteId] = useState(null),
-    [deleting, setDeleting] = useState(false);
+    [deleting, setDeleting] = useState(false),
+    [growth, setGrowth] = useState(null),
+    [growthError, setGrowthError] = useState("");
   const oauthStatus = connectionsOnly ? params.get("status") : "";
   const oauthProvider = params.get("social") || "social account";
   const providerName = oauthProvider === "meta" ? "Facebook + Instagram" : oauthProvider === "linkedin" ? "LinkedIn" : oauthProvider === "instagram" ? "Instagram" : oauthProvider === "x" ? "X" : "Social account";
@@ -105,6 +123,23 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
       active = false;
     };
   }, [section, filter, provider, connectionsOnly]);
+  useEffect(() => {
+    if (section !== "analytics") return undefined;
+    let active = true;
+    fetchGrowthAnalytics()
+      .then((value) => {
+        if (active) {
+          setGrowth(value);
+          setGrowthError("");
+        }
+      })
+      .catch(() => {
+        if (active) setGrowthError("CTA performance data could not be loaded.");
+      });
+    return () => {
+      active = false;
+    };
+  }, [section]);
   // Live inbox updates: the backend pushes a notice over Server-Sent Events
   // the instant a new message is saved, so the list and any open conversation
   // refresh immediately rather than on a fixed polling interval (which
@@ -288,78 +323,268 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
 
       {section === "analytics" && data?.rows ? (
         <>
-          <div className="social-panel">
-            <h2>Known social attribution</h2>
-            <p>{data.attributionNote}</p>
-            <div style={{ overflowX: "auto" }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Provider</th>
-                    <th>Interactions</th>
-                    <th>Contacts</th>
-                    <th>Tracked clicks</th>
-                    <th>Applications</th>
-                    <th>Linked enrollments</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.rows.map((row) => (
-                    <tr key={row.provider}>
-                      <th>{row.provider}</th>
-                      <td>{row.interactions}</td>
-                      <td>{row.identifiableContacts}</td>
-                      <td>{row.trackedClicks}</td>
-                      <td>{row.attributedApplications}</td>
-                      <td>{row.linkedEnrollments}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          <div className="social-panel">
-            <h2>Connected account insights</h2>
-            <p>{data.metricsNote}</p>
-            {data.providerInsights?.assets?.length ? (
+          {growth ? (
+            (() => {
+              const stageValue = (key) =>
+                growth.socialFunnel.stages.find((row) => row.key === key)
+                  ?.value ?? 0;
+              const maxStage = Math.max(
+                1,
+                ...growth.socialFunnel.stages.map((row) => row.value),
+              );
+              const kpis = [
+                { key: "interactions", label: "Interactions", value: stageValue("interactions") },
+                { key: "conversations", label: "Conversations", value: stageValue("conversations") },
+                { key: "leads", label: "Leads", value: stageValue("leads") },
+                { key: "applications", label: "Applications", value: stageValue("applications") },
+                { key: "calls_booked", label: "Booked calls", value: stageValue("calls_booked") },
+                { key: "enrollments", label: "Enrollments", value: stageValue("enrollments") },
+                { key: "revenue", label: "Revenue", value: currency(growth.socialFunnel.revenue) },
+              ];
+              const ctas = [...(growth.socialFunnel.byCta || [])].sort(
+                (a, b) =>
+                  b.interactionToLeadRate - a.interactionToLeadRate ||
+                  b.leads - a.leads,
+              );
+              const [topCta, ...restCta] = ctas;
+              const platforms = (growth.attribution.social || []).filter(
+                (row) => row.source === "facebook" || row.source === "instagram",
+              );
+              return (
+                <>
+                  <div className="social-stat-grid">
+                    {kpis.map((kpi) => (
+                      <article key={kpi.key}>
+                        <strong>{kpi.value}</strong>
+                        <span>{kpi.label}</span>
+                      </article>
+                    ))}
+                  </div>
+
+                  <div className="social-panel social-funnel-panel">
+                    <h3>Social funnel</h3>
+                    <p>
+                      How a CTA keyword trigger turns into a conversation, a
+                      lead, an application, a booked call, and an enrollment —
+                      from real CRM and comment/DM activity.
+                    </p>
+                    <div className="social-funnel">
+                      {growth.socialFunnel.stages.map((stage, index) => (
+                        <div className="social-funnel__row" key={stage.key}>
+                          <div className="social-funnel__label">
+                            <span>{STAGE_LABELS[stage.key] || human(stage.key)}</span>
+                            <strong>{stage.value}</strong>
+                          </div>
+                          <div className="progress-bar">
+                            <div
+                              className="progress-bar__fill"
+                              style={{ width: `${(stage.value / maxStage) * 100}%` }}
+                            />
+                          </div>
+                          {index > 0 ? (
+                            <span className="social-funnel__rate">
+                              {growth.socialFunnel.conversions[index - 1].rate}%
+                              of {(STAGE_LABELS[growth.socialFunnel.stages[index - 1].key] || "").toLowerCase()}
+                            </span>
+                          ) : null}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="social-panel social-cta-panel">
+                    <h3>CTA performance</h3>
+                    {topCta ? (
+                      <>
+                        <div className="social-cta-highlight">
+                          <strong>
+                            “{topCta.label}” is your highest-converting CTA
+                          </strong>
+                          <p>
+                            {topCta.interactions} interactions →{" "}
+                            {topCta.conversations} conversations →{" "}
+                            {topCta.leads} leads → {topCta.applications}{" "}
+                            applications
+                          </p>
+                          <span>
+                            {topCta.interactionToLeadRate}%
+                            interaction-to-lead conversion
+                          </span>
+                        </div>
+                        {restCta.length ? (
+                          <div style={{ overflowX: "auto" }}>
+                            <table className="analytics-table">
+                              <thead>
+                                <tr>
+                                  <th>CTA</th>
+                                  <th>Platform</th>
+                                  <th>Interactions</th>
+                                  <th>Conversations</th>
+                                  <th>Leads</th>
+                                  <th>Applications</th>
+                                  <th>Sales</th>
+                                  <th>Revenue</th>
+                                  <th>Conversion</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {restCta.map((cta) => (
+                                  <tr key={cta.automationId}>
+                                    <th>{cta.label}</th>
+                                    <td>{human(cta.provider)}</td>
+                                    <td>{cta.interactions}</td>
+                                    <td>{cta.conversations}</td>
+                                    <td>{cta.leads}</td>
+                                    <td>{cta.applications}</td>
+                                    <td>{cta.sales}</td>
+                                    <td>{currency(cta.revenue)}</td>
+                                    <td>{cta.interactionToLeadRate}%</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        ) : null}
+                      </>
+                    ) : (
+                      <p>
+                        No CTA keyword interactions recorded yet. Set up a
+                        comment or DM keyword automation to start tracking CTA
+                        performance.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="social-panel">
+                    <h3>Facebook vs Instagram</h3>
+                    {platforms.length ? (
+                      <div className="social-platform-compare">
+                        {platforms.map((row) => {
+                          const Icon = PLATFORM_ICONS[row.source];
+                          return (
+                            <article
+                              key={row.source}
+                              className={`social-platform-card social-platform-card--${row.source}`}
+                            >
+                              <header>
+                                {Icon ? <Icon /> : null}
+                                <strong>{human(row.source)}</strong>
+                              </header>
+                              <dl>
+                                <div>
+                                  <dt>Leads</dt>
+                                  <dd>{row.leads}</dd>
+                                </div>
+                                <div>
+                                  <dt>Applications</dt>
+                                  <dd>{row.applications}</dd>
+                                </div>
+                                <div>
+                                  <dt>Sales</dt>
+                                  <dd>{row.sales}</dd>
+                                </div>
+                                <div>
+                                  <dt>Revenue</dt>
+                                  <dd>{currency(row.revenue)}</dd>
+                                </div>
+                                <div>
+                                  <dt>Conversion</dt>
+                                  <dd>{row.conversionRate}%</dd>
+                                </div>
+                              </dl>
+                            </article>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <p>No Facebook or Instagram leads recorded yet.</p>
+                    )}
+                  </div>
+                </>
+              );
+            })()
+          ) : growthError ? (
+            <p role="alert" className="form-error">
+              {growthError}
+            </p>
+          ) : (
+            <p>Loading CTA performance…</p>
+          )}
+
+          <div className="social-analytics-secondary">
+            <div className="social-panel social-panel--secondary">
+              <h3>Known social attribution</h3>
+              <p>{data.attributionNote}</p>
               <div style={{ overflowX: "auto" }}>
                 <table>
                   <thead>
                     <tr>
-                      <th>Account</th>
-                      <th>Followers</th>
-                      <th>Reach</th>
-                      <th>Engagements</th>
-                      <th>Profile views</th>
-                      <th>Status</th>
+                      <th>Provider</th>
+                      <th>Interactions</th>
+                      <th>Contacts</th>
+                      <th>Tracked clicks</th>
+                      <th>Applications</th>
+                      <th>Linked enrollments</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {data.providerInsights.assets.map((row) => (
-                      <tr key={`${row.provider}:${row.assetId}`}>
-                        <th>{row.assetName || row.provider}</th>
-                        <td>{row.followers ?? "—"}</td>
-                        <td>{row.reach ?? "—"}</td>
-                        <td>{row.engagements ?? "—"}</td>
-                        <td>{row.profileViews ?? "—"}</td>
-                        <td>
-                          {row.status === "available"
-                            ? "Available"
-                            : row.status === "permission_required"
-                              ? "Permission required"
-                              : "Unavailable"}
-                        </td>
+                    {data.rows.map((row) => (
+                      <tr key={row.provider}>
+                        <th>{row.provider}</th>
+                        <td>{row.interactions}</td>
+                        <td>{row.identifiableContacts}</td>
+                        <td>{row.trackedClicks}</td>
+                        <td>{row.attributedApplications}</td>
+                        <td>{row.linkedEnrollments}</td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
-            ) : (
-              <p>
-                No selected Facebook or Instagram account insights are available
-                yet.
-              </p>
-            )}
+            </div>
+            <div className="social-panel social-panel--secondary">
+              <h3>Connected account insights</h3>
+              <p>{data.metricsNote}</p>
+              {data.providerInsights?.assets?.length ? (
+                <div style={{ overflowX: "auto" }}>
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Account</th>
+                        <th>Followers</th>
+                        <th>Reach</th>
+                        <th>Engagements</th>
+                        <th>Profile views</th>
+                        <th>Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {data.providerInsights.assets.map((row) => (
+                        <tr key={`${row.provider}:${row.assetId}`}>
+                          <th>{row.assetName || row.provider}</th>
+                          <td>{row.followers ?? "—"}</td>
+                          <td>{row.reach ?? "—"}</td>
+                          <td>{row.engagements ?? "—"}</td>
+                          <td>{row.profileViews ?? "—"}</td>
+                          <td>
+                            {row.status === "available"
+                              ? "Available"
+                              : row.status === "permission_required"
+                                ? "Permission required"
+                                : "Unavailable"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p>
+                  No selected Facebook or Instagram account insights are
+                  available yet.
+                </p>
+              )}
+            </div>
           </div>
         </>
       ) : null}
