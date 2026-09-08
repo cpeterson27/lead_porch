@@ -3,16 +3,18 @@ const PROVIDERS=["facebook","instagram","linkedin","x","tiktok"];function clean(
 async function matrix(workspaceId,models=deps){const rows=await models.SocialConnection.find({workspaceId,provider:{$in:["meta","instagram","linkedin","x"]}}).lean(),byProvider=new Map(rows.map(row=>[row.provider,row]));return PROVIDERS.map(provider=>{
   let connection;
   if(provider==="instagram"){
-    // A Facebook-Login-linked Instagram Business account (via the "meta"
-    // connection) is the real business account for most workspaces and
-    // should always win over a standalone Instagram Login connection, which
-    // only exists here because a personal account was connected by mistake
-    // — falling back to it silently caused posts meant for the business
-    // account to publish to the wrong, personal Instagram instead.
     const metaConnection=byProvider.get("meta");
     const metaHasInstagramAsset=require("./socialConnectionHealth").usable(metaConnection)&&metaConnection?.assets?.some(row=>row.type==="instagram_business"&&metaConnection.selectedAssetIds?.map(String).includes(String(row.id)));
     const standalone=byProvider.get("instagram");
-    connection=metaHasInstagramAsset?metaConnection:(require("./socialConnectionHealth").usable(standalone)&&standalone?.selectedAssetIds?.length?standalone:metaConnection);
+    const selectedAsset=(row)=>row?.assets?.find(asset=>asset.type==="instagram_business"&&row.selectedAssetIds?.map(String).includes(String(asset.id)));
+    const metaAsset=selectedAsset(metaConnection),standaloneAsset=selectedAsset(standalone);
+    const sameBusinessAccount=Boolean(metaAsset?.username&&standaloneAsset?.username&&String(metaAsset.username).toLowerCase()===String(standaloneAsset.username).toLowerCase());
+    // Instagram Login supports the complete publish/manage lifecycle. Prefer
+    // it only when it is connected to the same business username selected
+    // through Meta; otherwise a stale personal login could receive a post
+    // intended for the business account.
+    const usableStandalone=require("./socialConnectionHealth").usable(standalone)&&standaloneAsset;
+    connection=usableStandalone&&(!metaHasInstagramAsset||sameBusinessAccount)?standalone:metaConnection;
   }else connection=byProvider.get(connectionProvider(provider));
   const type=provider==="facebook"?"facebook_page":provider==="instagram"?"instagram_business":provider==="linkedin"?"linkedin_organization":provider==="x"?"x_account":"";const selected=new Set(connection?.selectedAssetIds?.map(String)||[]),asset=connection?.assets?.find(row=>row.type===type&&selected.has(String(row.id)));return capability(provider,connection,asset)})}
 function normalizeUrl(value,max=2000){const trimmed=clean(value,max);if(!trimmed)return"";if(/^https?:\/\//i.test(trimmed))return trimmed;if(/^[\w-]+(\.[\w-]+)+(\/.*)?$/.test(trimmed))return`https://${trimmed}`;return""}

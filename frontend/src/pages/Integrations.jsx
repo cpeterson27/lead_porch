@@ -277,6 +277,9 @@ export default function Integrations() {
             const isEventbrite = provider.id === "eventbrite";
             const socialProvider = provider.id === "facebook" ? "meta" : ["linkedin", "instagram"].includes(provider.id) ? provider.id : "";
             const socialConnection = socialProvider ? socialConnections[socialProvider] : null;
+            const selectedInstagramAsset = provider.id === "instagram" ? socialConnection?.assets?.find((asset) => asset.type === "instagram_business" && (socialConnection.selectedAssetIds || []).includes(asset.id)) : null;
+            const selectedMetaInstagramAsset = provider.id === "instagram" ? socialConnections.meta?.assets?.find((asset) => asset.type === "instagram_business" && (socialConnections.meta.selectedAssetIds || []).includes(asset.id)) : null;
+            const instagramAccountMismatch = Boolean(selectedInstagramAsset?.username && selectedMetaInstagramAsset?.username && selectedInstagramAsset.username.toLowerCase() !== selectedMetaInstagramAsset.username.toLowerCase());
             const status = socialProvider ? (socialConnection?.connected ? "connected" : socialConnection?.configured ? "configuration_required" : "planned") : isEventbrite && eventbriteReady ? "connected" : provider.status;
             return (
               <article className="crm-connection-card integration-provider-card" key={provider.id}>
@@ -284,6 +287,7 @@ export default function Integrations() {
                 <p>{providerSummary(provider, eventbriteReady)}</p>
                 <p className="integration-capabilities">{provider.capabilities?.join(" · ") || "No capabilities reported"}</p>
                 {provider.limitation ? <p className="integration-limitation"><strong>Important:</strong> {provider.limitation}</p> : null}
+                {instagramAccountMismatch ? <p className="integration-limitation"><strong>Reconnect required:</strong> Instagram Login is connected to @{selectedInstagramAsset.username}, but Lead Porch publishes to @{selectedMetaInstagramAsset.username}. Disconnect Instagram below, sign into @{selectedMetaInstagramAsset.username}, and reconnect it so new posts can be managed and deleted from Lead Porch.</p> : null}
                 <div className="crm-connection-actions">
                   {isEventbrite ? (
                     <Button onClick={() => navigate("/integrations/eventbrite")}>{eventbriteReady ? "Manage setup" : "Set up Eventbrite"}</Button>
