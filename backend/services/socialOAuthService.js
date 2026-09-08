@@ -950,8 +950,10 @@ async function selectAssets(workspaceId, provider, assetIds, http = axios) {
       conflicts.includes(String(asset.id)),
     );
     const canTransferInstagram =
-      provider === "instagram" &&
-      other.provider === "meta" &&
+      new Set([provider, other.provider]).size === 2 &&
+      [provider, other.provider].every((value) =>
+        ["meta", "instagram"].includes(value),
+      ) &&
       conflicts.length > 0 &&
       directAssets.length === conflicts.length &&
       otherAssets.length === conflicts.length &&
@@ -961,9 +963,9 @@ async function selectAssets(workspaceId, provider, assetIds, http = axios) {
       throw new Error(
         "This account is already selected through another connection. Deselect it there first; direct Instagram is recommended for Instagram.",
       );
-    // Activating the same Instagram account through Instagram Login is an
-    // intentional ownership handoff. Release only that Instagram asset from
-    // Meta while leaving its parent Facebook Page selected and operational.
+    // Switching the same Instagram business account between Meta and direct
+    // Instagram Login is an intentional ownership handoff. Only Instagram is
+    // transferred; the linked Facebook Page remains selected and operational.
     releasedConnection = await SocialConnection.findOne({
       _id: other._id,
       workspaceId,
@@ -976,11 +978,12 @@ async function selectAssets(workspaceId, provider, assetIds, http = axios) {
       releasedConnection.webhookSubscriptions || []
     ).filter((row) => !conflicts.includes(String(row.assetId)));
     await releasedConnection.save();
-    await removeMetaSubscriptions(
-      { ...other, credentialsEncrypted: releasedConnection.credentialsEncrypted },
-      conflicts,
-      http,
-    );
+    if (other.provider === "meta")
+      await removeMetaSubscriptions(
+        { ...other, credentialsEncrypted: releasedConnection.credentialsEncrypted },
+        conflicts,
+        http,
+      );
   }
   const removed = (connection.selectedAssetIds || [])
     .map(String)

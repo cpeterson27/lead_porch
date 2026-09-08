@@ -137,7 +137,6 @@ function ChannelRow({
               type="checkbox"
               className="social-checkbox"
               checked={isChecked}
-              disabled={ownedElsewhere}
               onChange={(event) => choose(asset, event.target.checked)}
             />
             <AssetAvatar asset={asset} />
@@ -148,7 +147,7 @@ function ChannelRow({
                   identity.secondary,
                   ownedElsewhere
                     ? asset.type === "instagram_business"
-                      ? "Active via Instagram Login — no additional selection is needed here"
+                      ? "Active via Instagram Login — select here to switch it back to Facebook"
                       : "Already connected through another method"
                     : isChecked
                       ? "Active for Lead Porch"
@@ -169,7 +168,7 @@ function ChannelRow({
           {manageableAssets.some(
             (asset) => asset.type === "instagram_business" && elsewhere.has(asset.id),
           )
-            ? "Your linked Instagram account is already active through Instagram Login. Keep the Facebook Page selected here; there is nothing else to activate in this list."
+            ? "Your linked Instagram account is active through Instagram Login. Select it here if you want to switch management back to the Facebook connection."
             : "Selecting a linked Instagram account also connects its Facebook Page automatically."}
         </p>
       )}

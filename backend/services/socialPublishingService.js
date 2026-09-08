@@ -70,7 +70,12 @@ async function deletePublished({workspaceId,item},models=deps){
   for(const publication of publications){
     try{
       if(!["facebook","instagram"].includes(publication.provider))throw new Error(`${publication.provider} post deletion is not integrated`);
-      const connection=models===deps
+      let connection;
+      if(models===deps&&publication.provider==="instagram"){
+        const direct=await models.SocialConnection.findOne({workspaceId,provider:"instagram","assets.id":String(publication.assetId),status:"connected"}).select("+credentialsEncrypted");
+        connection=require("./socialConnectionHealth").usable(direct)?direct:null;
+      }
+      if(!connection)connection=models===deps
         ?await require("./conversations/metaMessagingAdapter").connectionForAsset(publication.assetId,null,workspaceId)
         :await models.SocialConnection.findOne({workspaceId,provider:{$in:["meta","instagram"]},selectedAssetIds:String(publication.assetId),status:"connected"}).select("+credentialsEncrypted");
       const asset=connection?.assets?.find(row=>String(row.id)===String(publication.assetId));
