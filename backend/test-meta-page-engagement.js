@@ -92,7 +92,9 @@ function fixtures(scopes = ["pages_manage_engagement"], channel = "facebook") {
         return {
           data: url.endsWith("/comments")
             ? { id: "reply-1" }
-            : { success: true },
+            : url.endsWith("/messages")
+              ? { recipient_id: "person-1", message_id: "msg-1" }
+              : { success: true },
         };
       },
       delete: async (url, options) => {
@@ -185,6 +187,23 @@ async function run() {
       ),
     /permission is required/,
   );
+
+  // Instagram's private-reply-via-messages endpoint confirms success with a
+  // "message_id" field, not the "id" field Facebook's comment-reply returns —
+  // treating only "id" as success previously made every real, successfully
+  // sent Instagram reply report back as a failure.
+  const igReply = fixtures(["instagram_manage_comments"], "instagram");
+  const igReplyResult = await service.perform(
+    {
+      ...base,
+      action: "reply",
+      body: "Thanks for asking!",
+      idempotencyKey: "ig_reply_action_0001",
+    },
+    igReply.models,
+  );
+  assert.equal(igReplyResult.status, "confirmed");
+  assert.equal(igReply.messages[0].message.providerMessageId, "msg-1");
 
   // Instagram now supports the same real moderation actions as Facebook
   // (hide, unhide, delete) — only liking a comment has no Meta API endpoint.

@@ -224,9 +224,15 @@ async function perform(
         `https://graph.facebook.com/${version}/${commentId}/likes`,
         { params: { access_token: token }, timeout: 15000 },
       );
+    // Facebook's comment-reply endpoint confirms success with an "id"; the
+    // Instagram private-reply-via-messages endpoint instead confirms with a
+    // "message_id" — treating only "id" as success made every Instagram
+    // reply look like it failed even after Meta had already sent it.
     if (
       response?.data?.success === false ||
-      (action === "reply" && !response?.data?.id)
+      (action === "reply" &&
+        !response?.data?.id &&
+        !response?.data?.message_id)
     )
       throw new Error("Meta did not confirm the action");
     if (action === "reply")
