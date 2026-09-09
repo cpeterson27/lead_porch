@@ -167,4 +167,4 @@ async function deletePublished({workspaceId,item},models=deps){
   return{deleted,warnings};
 }
 async function runDue({now=new Date(),limit=20}={},models=deps){if(process.env.SOCIAL_PUBLISHING_ENABLED!=="true")return[];const completed=[];for(let i=0;i<limit;i+=1){const item=await models.ContentBrief.findOneAndUpdate({type:"social",status:"scheduled","social.requestedPublishAt":{$lte:now}},{$set:{status:"publishing"}},{new:true,sort:{"social.requestedPublishAt":1}});if(!item)break;completed.push(await runWithWorkspace(item.workspaceId,()=>processItem(item,models)))}return completed}
-module.exports={capability,createDraft,deletePublished,edit,matrix,processItem,publishDestination,publishNow,runDue,safeInput,transition};
+module.exports={capability,createDraft,deletePublished,edit,matrix,normalizeUrl,processItem,publishDestination,publishNow,runDue,safeInput,transition};

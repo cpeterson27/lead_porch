@@ -19,6 +19,7 @@ const {
   normalizedKeywords,
   normalizedLabels,
 } = require("../services/socialLeadAutomationService");
+const { normalizeUrl } = require("../services/socialPublishingService");
 
 const router = express.Router();
 const adminOnly = requireCapability("social.manage");
@@ -272,6 +273,11 @@ router.post("/automations", async (req, res) => {
     !(await Campaign.exists({ _id: req.body.campaignId }))
   )
     return res.status(400).json({ error: "Campaign is not in this workspace" });
+  // A bare domain like "leadporch.co" (no https://) is exactly what someone naturally types into a
+  // "button link" field — the post's own CTA URL already tolerates this via normalizeUrl(); this field
+  // must too, or the same kind of input works in one field and fails in the other for no visible reason.
+  if (req.body.cta?.destination)
+    req.body.cta.destination = normalizeUrl(req.body.cta.destination);
   if (
     req.body.cta?.destination &&
     !(await isAllowedDestination(
@@ -348,6 +354,8 @@ router.patch("/automations/:id", async (req, res) => {
     !(await Campaign.exists({ _id: req.body.campaignId }))
   )
     return res.status(400).json({ error: "Campaign is not in this workspace" });
+  if (req.body.cta?.destination)
+    req.body.cta.destination = normalizeUrl(req.body.cta.destination);
   if (
     req.body.cta?.destination &&
     !(await isAllowedDestination(
