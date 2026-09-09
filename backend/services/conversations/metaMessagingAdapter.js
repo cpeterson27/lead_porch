@@ -152,7 +152,10 @@ class MetaMessagingAdapter extends ConversationChannelAdapter {
       : await axios.post(`https://${host}/${version}/${sendTargetId}/messages`, { recipient: { comment_id: commentId }, message: { text: String(body) } }, { params: { access_token: token }, timeout: 15000 });
     const messageId = response.data?.message_id || response.data?.id;
     if (!messageId) throw new Error("Provider message outcome is unknown");
-    return ingestProviderMessage({ thread: { channel: thread.channel, provider: "meta", providerThreadId: thread.providerThreadId, participants: thread.participants, contactIds: thread.contactIds, metadata: thread.metadata }, message: { providerMessageId: String(messageId), direction: "outbound", body: String(body), sender: { address: String(assetId) }, contactId: thread.contactIds?.[0], deliveryStatus: "sent", metadata: { senderType, commentId, privateReply: true } } });
+    // A comment thread that actually received a private reply is a real DM-channel exchange, not just
+    // public comment activity — flagging it here lets the Inbox list include it alongside true DM
+    // threads, in addition to it still showing under the post's own Comments panel.
+    return ingestProviderMessage({ thread: { channel: thread.channel, provider: "meta", providerThreadId: thread.providerThreadId, participants: thread.participants, contactIds: thread.contactIds, metadata: { ...thread.metadata, hasPrivateReply: true } }, message: { providerMessageId: String(messageId), direction: "outbound", body: String(body), sender: { address: String(assetId) }, contactId: thread.contactIds?.[0], deliveryStatus: "sent", metadata: { senderType, commentId, privateReply: true } } });
   }
 }
 

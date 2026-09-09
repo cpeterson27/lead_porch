@@ -602,6 +602,7 @@ async function ingestSocialEvent(event, options = {}) {
             assetId: event.assetId,
             socialOrigin: true,
             contentId: event.contentId || "",
+            contentBriefId: event.contentBriefId || null,
             interactionType:
               event.eventType === "comment_received"
                 ? "comment"

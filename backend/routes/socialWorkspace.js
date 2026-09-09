@@ -292,6 +292,30 @@ router.get(
     });
   }),
 );
+// A conversation's metadata.contentBriefId is the raw post it was attributed to at ingest time (see
+// ingestSocialEvent) — resolving it to a title here is how "who and what post" shows up in the Inbox
+// without every caller re-doing this lookup itself.
+async function attachPostTitles(threads) {
+  const list = Array.isArray(threads) ? threads : [threads];
+  const ids = [
+    ...new Set(list.map((row) => row.metadata?.contentBriefId).filter(Boolean).map(String)),
+  ];
+  const briefMap = ids.length
+    ? new Map(
+        (await ContentBrief.find({ _id: { $in: ids } }).select("title").lean()).map((row) => [
+          String(row._id),
+          row.title,
+        ]),
+      )
+    : new Map();
+  const enriched = list.map((row) => ({
+    ...row,
+    postTitle: row.metadata?.contentBriefId
+      ? briefMap.get(String(row.metadata.contentBriefId)) || null
+      : null,
+  }));
+  return Array.isArray(threads) ? enriched : enriched[0];
+}
 router.get(
   "/inbox",
   wrap(async (req, res) => {
@@ -306,17 +330,25 @@ router.get(
     if (req.query.filter === "assigned") query.assignedTo = req.auth.user._id;
     // Comments and mentions are replies to a specific public post, not a
     // direct-message conversation — they get their own section (?type=
-    // comments) so the inbox itself only ever shows real DM threads.
-    query["metadata.interactionType"] =
-      req.query.type === "comments"
-        ? { $in: ["comment", "mention"] }
-        : { $nin: ["comment", "mention"] };
+    // comments) so the inbox itself only ever shows real DM threads. The one
+    // exception: a comment that actually received a private reply is a real
+    // DM-channel exchange (it shows up in the recipient's own DM inbox), so
+    // it belongs in the main list too, in addition to the post's Comments
+    // panel — not instead of it.
+    if (req.query.type === "comments") {
+      query["metadata.interactionType"] = { $in: ["comment", "mention"] };
+    } else {
+      query.$or = [
+        { "metadata.interactionType": { $nin: ["comment", "mention"] } },
+        { "metadata.hasPrivateReply": true },
+      ];
+    }
     const data = await ConversationThread.find(query)
       .populate("contactIds", "name")
       .sort({ lastMessageAt: -1 })
       .limit(200)
       .lean();
-    res.json(data);
+    res.json(await attachPostTitles(data));
   }),
 );
 router.get("/inbox/stream", (req, res) => {
@@ -391,7 +423,7 @@ router.get(
       }
     }
     res.json({
-      thread,
+      thread: await attachPostTitles(thread),
       messages,
       identity,
       socialAi: await socialAiService.latest(req.auth.workspaceId, thread._id),

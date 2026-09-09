@@ -832,6 +832,7 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                     <small>
                       {row.channel} · {date(row.lastMessageAt)} ·{" "}
                       {row.unreadCount} unread
+                      {row.postTitle ? ` · From: ${row.postTitle}` : ""}
                     </small>
                   </button>
                 ))}
@@ -881,6 +882,23 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                               message senders.
                             </span>
                           )}
+                          {detail.thread.metadata?.postContext ? (
+                            <p className="social-conversation-origin">
+                              From your post:{" "}
+                              <a
+                                href={detail.thread.metadata.postContext.permalink}
+                                target="_blank"
+                                rel="noreferrer"
+                              >
+                                {detail.thread.metadata.postContext.text ||
+                                  "View post"}
+                              </a>
+                            </p>
+                          ) : detail.thread.postTitle ? (
+                            <p className="social-conversation-origin">
+                              From your post: {detail.thread.postTitle}
+                            </p>
+                          ) : null}
                         </div>
                       </header>
                       <div className="social-message-stream">

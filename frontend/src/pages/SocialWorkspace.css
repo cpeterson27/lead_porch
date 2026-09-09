@@ -403,6 +403,22 @@
   font-style: italic;
 }
 
+.social-conversation-origin {
+  margin: 4px 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+}
+
+.social-conversation-origin a {
+  color: #007aff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.social-conversation-origin a:hover {
+  text-decoration: underline;
+}
+
 .social-message-stream {
   flex: 1;
   min-height: 280px;
