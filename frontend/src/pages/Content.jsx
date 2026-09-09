@@ -1421,11 +1421,34 @@ export default function Content() {
         }
       >
         <p>
-          This permanently removes "{deleteTarget?.title}" from Lead Porch,
-          Facebook, Instagram, and every published destination. If any
-          platform cannot confirm deletion, Lead Porch keeps the record so
-          you can retry.
+          This permanently removes "{deleteTarget?.title}" from Lead Porch.
         </p>
+        {(deleteTarget?.social?.publications || []).some(
+          (pub) => pub.provider === "facebook" && pub.status === "published",
+        ) ? (
+          <p>Lead Porch will also try to delete the Facebook copy automatically.</p>
+        ) : null}
+        {(deleteTarget?.social?.publications || [])
+          .filter((pub) => pub.provider === "instagram" && pub.status === "published")
+          .map((pub) => (
+            <p key={pub.assetId} className="social-publishing-safety" role="status">
+              Meta does not allow Instagram posts to be deleted through this
+              connection at all, for any app — this is a permanent
+              restriction on Meta's side, not something Lead Porch can work
+              around. The post will stay live on Instagram after you delete
+              it here.
+              {pub.publicUrl ? (
+                <>
+                  {" "}
+                  <a href={pub.publicUrl} target="_blank" rel="noreferrer">
+                    Open it on Instagram
+                  </a>{" "}
+                  to delete it there yourself, if you want it gone from both
+                  places.
+                </>
+              ) : null}
+            </p>
+          ))}
         {error ? (
           <p className="form-error" role="alert">
             {error}
