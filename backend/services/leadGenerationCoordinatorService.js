@@ -44,6 +44,7 @@ const peopleDataLabsService = require("./peopleDataLabsService");
 const apolloService = require("./apolloService");
 const agentExecutionService = require("./agentExecutionService");
 const auditService = require("./auditService");
+const workspaceSelfExclusionService = require("./workspaceSelfExclusionService");
 
 const clean = (value, length) => String(value || "").trim().slice(0, length);
 const MAX_REQUESTED_COUNT = 25;
@@ -460,7 +461,12 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
     ? ["vertex", "openai_web_search", "pdl_person_search", "apollo_person_search"]
     : search.sources;
   const sourceErrors = [];
-  let created = 0, merged = 0, withConflicts = 0, excludedForFreshness = 0;
+  let created = 0, merged = 0, withConflicts = 0, excludedForFreshness = 0, excludedForSelfMatch = 0;
+  // Same server-side self-match exclusion vertexGroundingDiscoveryService.js
+  // applies for Vertex/OpenAI — fetched once here and applied to every
+  // PDL/Apollo candidate before it's ever merged into the review queue.
+  const selfSignals = await (dependencies.getWorkspaceSelfSignals || workspaceSelfExclusionService.getWorkspaceSelfSignals)({ workspaceId }, dependencies);
+  const isSelfMatchCheck = dependencies.isSelfMatch || workspaceSelfExclusionService.isSelfMatch;
 
   const includesVertex = effectiveSources.includes("vertex");
   const includesOpenai = effectiveSources.includes("openai_web_search");
@@ -472,6 +478,7 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
       created += outcome.created;
       merged += outcome.merged;
       excludedForFreshness += outcome.excludedForFreshness || 0;
+      excludedForSelfMatch += outcome.excludedForSelfMatch || 0;
       if (outcome.sourceErrors?.length) sourceErrors.push(...outcome.sourceErrors);
     } catch (error) {
       sourceErrors.push({ source: includesVertex && includesOpenai ? "vertex+openai_web_search" : groundingSourceLabel(includesVertex), code: error.code || "GROUNDING_SEARCH_FAILED", message: error.message });
@@ -484,8 +491,10 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
       if (!sql) throw Object.assign(new Error("The ICP has no criteria PDL can search on (titles, locations, or industries required)"), { code: "PDL_ICP_EMPTY" });
       const outcome = await pdl.searchPeople({ workspaceId, userId, sql, size: search.requestedCount, correlationId });
       for (const person of outcome.people) {
+        const candidate = normalizePdlCandidate(person);
+        if (isSelfMatchCheck(candidate, selfSignals).isSelf) { excludedForSelfMatch += 1; continue; }
         // eslint-disable-next-line no-await-in-loop
-        const result = await mergeIcpMatchCandidate({ workspaceId, userId, searchId: search._id, correlationId, candidate: normalizePdlCandidate(person) });
+        const result = await mergeIcpMatchCandidate({ workspaceId, userId, searchId: search._id, correlationId, candidate }, dependencies);
         if (result.created) created += 1; else merged += 1;
         if (result.row.conflicts?.length) withConflicts += 1;
       }
@@ -500,8 +509,10 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
       if (!Object.keys(filters).length) throw Object.assign(new Error("The ICP has no criteria Apollo can search on (titles, locations, seniority, or keywords required)"), { code: "APOLLO_ICP_EMPTY" });
       const outcome = await apollo.searchPeople({ workspaceId, userId, filters, perPage: search.requestedCount, correlationId });
       for (const person of outcome.people) {
+        const candidate = normalizeApolloCandidate(person);
+        if (isSelfMatchCheck(candidate, selfSignals).isSelf) { excludedForSelfMatch += 1; continue; }
         // eslint-disable-next-line no-await-in-loop
-        const result = await mergeIcpMatchCandidate({ workspaceId, userId, searchId: search._id, correlationId, candidate: normalizeApolloCandidate(person) });
+        const result = await mergeIcpMatchCandidate({ workspaceId, userId, searchId: search._id, correlationId, candidate }, dependencies);
         if (result.created) created += 1; else merged += 1;
         if (result.row.conflicts?.length) withConflicts += 1;
       }
@@ -512,7 +523,7 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
 
   const allFailed = sourceErrors.length >= effectiveSources.length && created === 0 && merged === 0;
   search.status = allFailed ? "failed" : "completed";
-  search.runSummary = { created, merged, withConflicts, excludedForFreshness, sourceErrors };
+  search.runSummary = { created, merged, withConflicts, excludedForFreshness, excludedForSelfMatch, sourceErrors };
   await search.save();
 
   await auditService.record({ workspaceId, actorUserId: userId, action: "provider.request", targetType: "DiscoverySearch", targetId: search._id, after: { status: search.status, created, merged }, provider: "lead_generation_coordinator", success: !allFailed });

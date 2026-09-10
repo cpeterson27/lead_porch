@@ -67,6 +67,7 @@ const peopleDataLabsService = require("./peopleDataLabsService");
 const agentExecutionService = require("./agentExecutionService");
 const { ingestContacts } = require("./contactIngestionService");
 const auditService = require("./auditService");
+const workspaceSelfExclusionService = require("./workspaceSelfExclusionService");
 const clean = (value, length) => String(value || "").trim().slice(0, length);
 
 const MAX_RANK_BATCH = 20;
@@ -184,15 +185,22 @@ async function search({ workspaceId, userId, auth, query, resultTypes, source = 
     throw error;
   }
 
-  const merged = mergeAcrossSources(sourcedResults);
+  const mergedResults = mergeAcrossSources(sourcedResults);
+  // SERVER-SIDE self-match exclusion — before anything else, so a self-
+  // match never occupies one of the limited MAX_INITIAL_PEOPLE slots. The
+  // workspace owner, its team, its own business, and its own domain are
+  // never real prospects, regardless of which provider (or how many
+  // independent providers) reported them.
+  const selfSignals = await (dependencies.getWorkspaceSelfSignals || workspaceSelfExclusionService.getWorkspaceSelfSignals)({ workspaceId }, dependencies);
+  const { kept: nonSelfResults, excludedCount: excludedForSelfMatch } = (dependencies.excludeSelfMatches || workspaceSelfExclusionService.excludeSelfMatches)(mergedResults, selfSignals);
   // SERVER-SIDE freshness validation — independent of provider prompt
   // compliance. A "person" result without a verifiable evidenceDate, or
   // dated older than PERSON_FRESHNESS_DAYS, is excluded before it ever
   // reaches the review queue. Non-person types are unaffected.
   const cutoffDate = new Date(Date.now() - PERSON_FRESHNESS_DAYS * 24 * 60 * 60 * 1000);
   const isFreshPerson = (row) => row.type !== "person" || (row.evidenceDate instanceof Date && row.evidenceDate >= cutoffDate);
-  const excludedForFreshness = merged.filter((row) => !isFreshPerson(row)).length;
-  const freshResults = merged.filter(isFreshPerson);
+  const excludedForFreshness = nonSelfResults.filter((row) => !isFreshPerson(row)).length;
+  const freshResults = nonSelfResults.filter(isFreshPerson);
   // Hard cap regardless of provider prompt compliance — "the initial
   // request" for people stays at MAX_INITIAL_PEOPLE no matter how many
   // sources contributed or how many each returned.
@@ -227,7 +235,7 @@ async function search({ workspaceId, userId, auth, query, resultTypes, source = 
     created += 1;
   }
 
-  return { created, merged: mergedCount, total: combinedResults.length, source: selectedSource, groundingCitations, sourceErrors, excludedForFreshness, personFreshnessDays: PERSON_FRESHNESS_DAYS };
+  return { created, merged: mergedCount, total: combinedResults.length, source: selectedSource, groundingCitations, sourceErrors, excludedForFreshness, excludedForSelfMatch, personFreshnessDays: PERSON_FRESHNESS_DAYS };
 }
 
 async function listResults({ workspaceId, status, type }, dependencies = {}) {

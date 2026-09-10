@@ -53,6 +53,7 @@ const discoverySearchSchema = new mongoose.Schema({
     merged: { type: Number, default: 0 },
     withConflicts: { type: Number, default: 0 },
     excludedForFreshness: { type: Number, default: 0 },
+    excludedForSelfMatch: { type: Number, default: 0 },
     sourceErrors: { type: mongoose.Schema.Types.Mixed, default: [] },
   },
   monitorSuggestionId: { type: mongoose.Schema.Types.ObjectId, ref: "LeadMonitorSuggestion", default: null },

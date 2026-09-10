@@ -498,8 +498,9 @@ export default function Discovery() {
       const response = await approveLeadGenerationSearch(leadGenProposal._id, { icp: icpOverride, requestedCount: leadGenRequestedCount, sources: leadGenSelectedSources });
       const summary = response.data.runSummary || {};
       const staleNote = summary.excludedForFreshness ? ` ${summary.excludedForFreshness} excluded for missing/stale evidence.` : "";
+      const selfMatchNote = summary.excludedForSelfMatch ? ` ${summary.excludedForSelfMatch} excluded as a self-match (workspace owner/team/business).` : "";
       const errorNote = summary.sourceErrors?.length ? ` ${summary.sourceErrors.length} source(s) reported an issue.` : "";
-      setNotice(`Search ${response.data.status}: ${summary.created || 0} new, ${summary.merged || 0} merged, ${summary.withConflicts || 0} flagged with conflicts.${staleNote}${errorNote}`);
+      setNotice(`Search ${response.data.status}: ${summary.created || 0} new, ${summary.merged || 0} merged, ${summary.withConflicts || 0} flagged with conflicts.${staleNote}${selfMatchNote}${errorNote}`);
       setLeadGenProposal(response.data);
       setGroundingResultsStatus("pending_review");
       await loadGroundingResults("pending_review");
@@ -567,7 +568,8 @@ export default function Discovery() {
     try {
       const response = await runVertexGroundingDiscoverySearch({ query: groundingQuery, resultTypes: groundingTypes, source: groundingSource });
       const staleNote = response.data.excludedForFreshness ? ` ${response.data.excludedForFreshness} person result(s) were excluded for missing or stale (older than ${response.data.personFreshnessDays} days) evidence.` : "";
-      setNotice(`Public-web search (${response.data.source}) found ${response.data.total} result(s): ${response.data.created} new, ${response.data.merged} merged into existing pending results.${staleNote}`);
+      const selfMatchNote = response.data.excludedForSelfMatch ? ` ${response.data.excludedForSelfMatch} excluded as a self-match (workspace owner/team/business).` : "";
+      setNotice(`Public-web search (${response.data.source}) found ${response.data.total} result(s): ${response.data.created} new, ${response.data.merged} merged into existing pending results.${staleNote}${selfMatchNote}`);
       setGroundingSourceErrors(response.data.sourceErrors || []);
       await loadGroundingResults("pending_review");
       setGroundingResultsStatus("pending_review");
