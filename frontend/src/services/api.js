@@ -1489,8 +1489,13 @@ export const fetchVertexConfig = () =>
   api.get("/ai/vertex/config").then((res) => res.data);
 export const updateVertexConfig = (payload) =>
   api.patch("/ai/vertex/config", payload).then((res) => res.data);
+// Grounding-specific timeout, longer than the (unset, no-timeout) default
+// api client — Vertex + Google Search grounding legitimately takes longer
+// than a typical request; the backend's own outbound call is capped at 75s
+// (services/vertexGroundingService.js), so 90s here leaves room for the
+// backend's own clear, sanitized timeout error to surface first.
 export const runVertexGrounding = (payload) =>
-  api.post("/ai/vertex/grounding", payload).then((res) => res.data);
+  api.post("/ai/vertex/grounding", payload, { timeout: 90000 }).then((res) => res.data);
 export const runVertexAgentSearch = (payload) =>
   api.post("/ai/vertex/agent-search", payload).then((res) => res.data);
 export const purgeVertexAgentSearchIndex = () =>

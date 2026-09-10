@@ -276,3 +276,14 @@
   display: flex;
   gap: 8px;
 }
+
+.ai-controls-try-it-error {
+  width: 100%;
+  margin: 0;
+}
+
+.ai-controls-grounding-citations {
+  width: 100%;
+  margin-top: 6px;
+  font-size: 0.8rem;
+}

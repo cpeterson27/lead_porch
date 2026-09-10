@@ -98,7 +98,12 @@ function createAiRouter(dependencies = {}) {
       const data = await vertex.groundedSearch({ workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, query: req.body?.query, resultTypes: req.body?.resultTypes, correlationId: req.headers["x-request-id"] || "" });
       return res.json({ success: true, data });
     } catch (error) {
-      return res.status(error.code ? 400 : 502).json({ error: error.message || "Vertex grounding failed", code: error.code || "VERTEX_GROUNDING_FAILED" });
+      // vertexGroundingService.groundedSearch() already sanitizes any real
+      // provider/network failure (never a raw axios/Google error message)
+      // and sets httpStatus on it — respect that when present; our own
+      // hand-thrown config/capability errors (VERTEX_DISABLED etc.) have no
+      // httpStatus and keep the existing 400/502 split.
+      return res.status(error.httpStatus || (error.code ? 400 : 502)).json({ error: error.message || "Vertex grounding failed", code: error.code || "VERTEX_GROUNDING_FAILED" });
     }
   });
 

@@ -31,6 +31,14 @@ const { RESULT_TYPES, extractJsonBlock, deduplicateAndCorroborate, normalizeGrou
 
 const CIRCUIT = "vertex_grounding";
 const clean = (value, length) => String(value || "").trim().slice(0, length);
+// A health check should fail fast to stay useful as a health indicator, but
+// a real grounded search legitimately takes longer than a typical API call
+// — Vertex has to run Google Search grounding AND Gemini synthesis before
+// responding. Confirmed live: a successful grounded call (10 real
+// citations) took longer than the previous 20s timeout, which was cutting
+// genuinely-succeeding requests off as if they had failed.
+const HEALTH_CHECK_TIMEOUT_MS = 20000;
+const GROUNDING_TIMEOUT_MS = 75000;
 
 function masterEnabled() {
   return process.env.VERTEX_ENABLED === "true" && googleAuthService.configured();
@@ -70,9 +78,26 @@ function endpoint() {
   return `https://${location()}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location()}/publishers/google/models/${model()}:generateContent`;
 }
 
-async function client(http = axios, dependencies = {}) {
+async function client(http = axios, dependencies = {}, timeoutMs = HEALTH_CHECK_TIMEOUT_MS) {
   const token = await (dependencies.getAccessToken || googleAuthService.getAccessToken)();
-  return { post: (body) => http.post(endpoint(), body, { headers: { Authorization: `Bearer ${token}` }, timeout: 20000 }) };
+  return { post: (body) => http.post(endpoint(), body, { headers: { Authorization: `Bearer ${token}` }, timeout: timeoutMs }) };
+}
+
+/**
+ * Never leak a raw axios/Google error (which can include internal request
+ * details, or axios's own literal "timeout of Nms exceeded" text) straight
+ * to the client. Our own hand-thrown errors already have a clean VERTEX_*
+ * code and message (see disabledError() above) and pass through unchanged;
+ * anything else — a real network/provider failure — gets mapped to a safe,
+ * friendly message and an HTTP status the route can use directly.
+ */
+function sanitizeProviderError(error) {
+  if (String(error?.code || "").startsWith("VERTEX_")) return error;
+  const category = categorize(error);
+  if (category === "timeout") return Object.assign(new Error("Vertex grounding is taking longer than usual and did not finish in time. Please try again in a moment."), { code: "VERTEX_GROUNDING_TIMEOUT", httpStatus: 504 });
+  if (category === "authentication") return Object.assign(new Error("Vertex AI authentication failed. Contact your platform administrator."), { code: "VERTEX_AUTH_FAILED", httpStatus: 502 });
+  if (category === "rate_limit") return Object.assign(new Error("Vertex AI rate limit reached. Please try again in a moment."), { code: "VERTEX_RATE_LIMITED", httpStatus: 429 });
+  return Object.assign(new Error("Vertex grounding could not complete right now. Please try again."), { code: "VERTEX_GROUNDING_FAILED", httpStatus: 502 });
 }
 
 function normalizeUsage(response = {}) {
@@ -118,8 +143,12 @@ async function groundedSearch({ workspaceId, userId = null, agent = "research", 
     // Vertex's REST tool key is camelCase ("googleSearch"), unlike the Gemini
     // Developer API's snake_case ("google_search") used in geminiService.js
     // — a real, documented difference between the two APIs, not a typo.
-    const httpClient = dependencies.httpClient || await client(dependencies.http, dependencies);
-    const response = await withResilience(CIRCUIT, () => httpClient.post({ contents: [{ role: "user", parts: [{ text: prompt }] }], tools: [{ googleSearch: {} }] }));
+    const httpClient = dependencies.httpClient || await client(dependencies.http, dependencies, GROUNDING_TIMEOUT_MS);
+    // maxRetries: 0 — a slow grounded response is not a flaky failure worth
+    // retrying; retrying would silently multiply the wait (up to 3x with the
+    // shared default) past the ceiling the frontend and this timeout are
+    // both tuned around.
+    const response = await withResilience(CIRCUIT, () => httpClient.post({ contents: [{ role: "user", parts: [{ text: prompt }] }], tools: [{ googleSearch: {} }] }), { maxRetries: 0 });
     const data = response.data;
     const candidate = data?.candidates?.[0];
     const text = candidate?.content?.parts?.map((part) => part.text).join("") || "";
@@ -142,7 +171,7 @@ async function groundedSearch({ workspaceId, userId = null, agent = "research", 
     return { results: deduplicateAndCorroborate(results), groundingCitations, rawText: parsed ? "" : clean(text, 4000) };
   } catch (error) {
     await logUsage({ workspaceId, userId, agent, feature, error, latencyMs: Date.now() - started, correlationId }, dependencies.models);
-    throw error;
+    throw sanitizeProviderError(error);
   }
 }
 

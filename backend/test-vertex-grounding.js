@@ -105,16 +105,29 @@ async function testGroundedSearchUsesCamelCaseToolAndParsesCitations(models) {
   void capturedUrl; void capturedHeaders;
 }
 
-async function testErrorPathIsLoggedAndCategorized(models) {
+/**
+ * A provider error's raw text (here, a bare "Forbidden" — real Google error
+ * bodies can be considerably more detailed) must never reach the client
+ * as-is; the usage ledger still keeps the true category for diagnostics.
+ */
+async function testErrorPathIsSanitizedForTheClientButFullyLoggedInternally(models) {
   const vertex = freshService();
   const workspaceId = new mongoose.Types.ObjectId();
   await models.vertexConfigService.save(workspaceId, { groundingEnabled: true }, models.WorkspaceConfig);
   const httpClient = { post: async () => { const error = new Error("Forbidden"); error.response = { status: 403 }; throw error; } };
-  await assert.rejects(() => vertex.groundedSearch({ workspaceId, query: "q" }, { httpClient, getAccessToken: fakeAuth.getAccessToken }), /Forbidden/);
+  await assert.rejects(
+    () => vertex.groundedSearch({ workspaceId, query: "q" }, { httpClient, getAccessToken: fakeAuth.getAccessToken }),
+    (error) => {
+      assert.ok(!error.message.includes("Forbidden"), "the raw provider error text must never reach the client");
+      assert.equal(error.code, "VERTEX_AUTH_FAILED");
+      assert.equal(error.httpStatus, 502);
+      return true;
+    },
+  );
   const usage = await models.AiUsageRecord.find({ workspaceId, provider: "vertex" }).lean();
   assert.equal(usage.length, 1);
   assert.equal(usage[0].success, false);
-  assert.equal(usage[0].errorCategory, "authentication");
+  assert.equal(usage[0].errorCategory, "authentication", "the usage ledger must still record the TRUE category, even though the thrown error is sanitized");
 
   await models.WorkspaceConfig.deleteMany({ workspaceId });
   await models.AiUsageRecord.deleteMany({ workspaceId });
@@ -170,6 +183,102 @@ async function testEndpointUrlUsesTheConfiguredModel(models) {
   await models.AiUsageRecord.deleteMany({ workspaceId });
 }
 
+/**
+ * Regression for a real production bug: the outbound Vertex call was
+ * hardcoded to a 20-second axios timeout, which was shorter than normal
+ * Vertex + Google Search grounding latency — a request that would have
+ * succeeded was being killed and reported as failed. Rather than literally
+ * sleeping 20+ real seconds in this suite (slow, and re-tests axios's own
+ * timeout mechanism rather than our configuration of it), this asserts the
+ * actual timeout value passed to the HTTP client directly — the same
+ * mechanism that would have caught the original bug before it ever reached
+ * a live Vertex project.
+ */
+async function testGroundingUsesALongerTimeoutThanTheOriginal20sBug(models) {
+  configureEnv();
+  const vertex = freshService();
+  const workspaceId = new mongoose.Types.ObjectId();
+  await models.vertexConfigService.save(workspaceId, { groundingEnabled: true }, models.WorkspaceConfig);
+
+  let capturedTimeout;
+  const http = {
+    post: async (url, body, options) => {
+      capturedTimeout = options.timeout;
+      return { data: { candidates: [{ content: { parts: [{ text: "```json\n[]\n```" }] } }] } };
+    },
+  };
+  await vertex.groundedSearch({ workspaceId, query: "q" }, { http, getAccessToken: fakeAuth.getAccessToken });
+  assert.ok(capturedTimeout > 20000, `the grounding timeout must exceed the original broken 20000ms; got ${capturedTimeout}`);
+  assert.ok(capturedTimeout >= 60000 && capturedTimeout <= 90000, `the grounding timeout should be in the 60-90s range normal Vertex + Google Search latency needs; got ${capturedTimeout}`);
+
+  await models.WorkspaceConfig.deleteMany({ workspaceId });
+  await models.AiUsageRecord.deleteMany({ workspaceId });
+}
+
+/** A slow-but-real response (simulated here as an immediate resolve, since only the configured timeout — proven above — determines how long axios actually waits) must still succeed and render normally, not be treated as a failure. */
+async function testASlowButSuccessfulResponseStillReturnsResultsAndCitations(models) {
+  configureEnv();
+  const vertex = freshService();
+  const workspaceId = new mongoose.Types.ObjectId();
+  await models.vertexConfigService.save(workspaceId, { groundingEnabled: true }, models.WorkspaceConfig);
+
+  const rawJson = JSON.stringify([{ type: "organization", name: "Slow REIA", organizationDomain: "slowreia.org", summary: "Took a while but found it.", evidenceUrls: ["https://slowreia.org/about"] }]);
+  const httpClient = {
+    post: async () => {
+      // Simulate real latency without actually spending real wall-clock
+      // seconds in this suite — the timeout value itself is what's under
+      // test above; this proves the SUCCESS PATH still parses correctly
+      // after any delay, long or short.
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      return { data: { candidates: [{ content: { parts: [{ text: `\`\`\`json\n${rawJson}\n\`\`\`` }] }, groundingMetadata: { groundingChunks: [{ web: { uri: "https://slowreia.org/events", title: "Slow REIA Events" } }] } }] } };
+    },
+  };
+  const result = await vertex.groundedSearch({ workspaceId, query: "slow real estate investor associations" }, { httpClient });
+  assert.equal(result.results.length, 1);
+  assert.equal(result.results[0].name, "Slow REIA");
+  assert.deepEqual(result.groundingCitations, [{ url: "https://slowreia.org/events", title: "Slow REIA Events" }]);
+
+  await models.WorkspaceConfig.deleteMany({ workspaceId });
+  await models.AiUsageRecord.deleteMany({ workspaceId });
+}
+
+/** A real timeout must be sanitized before it reaches the client — never the raw axios "timeout of Nms exceeded" text — and must not be silently retried into a multi-minute wait. */
+async function testTimeoutIsSanitizedAndNeverRetried(models) {
+  configureEnv();
+  const vertex = freshService();
+  const workspaceId = new mongoose.Types.ObjectId();
+  await models.vertexConfigService.save(workspaceId, { groundingEnabled: true }, models.WorkspaceConfig);
+
+  let callCount = 0;
+  const httpClient = {
+    post: async () => {
+      callCount += 1;
+      const error = new Error("timeout of 75000ms exceeded");
+      error.code = "ECONNABORTED";
+      throw error;
+    },
+  };
+  await assert.rejects(
+    () => vertex.groundedSearch({ workspaceId, query: "q" }, { httpClient }),
+    (error) => {
+      assert.equal(error.code, "VERTEX_GROUNDING_TIMEOUT");
+      assert.equal(error.httpStatus, 504);
+      assert.ok(!error.message.includes("timeout of 75000ms exceeded"), "the raw axios timeout message must never reach the client");
+      assert.ok(/taking longer than usual/i.test(error.message), "must show a friendly, human-readable explanation");
+      return true;
+    },
+  );
+  assert.equal(callCount, 1, "a timeout must not be retried — retrying would silently multiply the wait past the configured ceiling");
+
+  const usage = await models.AiUsageRecord.find({ workspaceId, provider: "vertex", feature: "vertex_grounded_search" }).lean();
+  assert.equal(usage.length, 1);
+  assert.equal(usage[0].success, false);
+  assert.equal(usage[0].errorCategory, "timeout", "the usage ledger keeps the TRUE error category for diagnostics, even though the thrown error is sanitized for the client");
+
+  await models.WorkspaceConfig.deleteMany({ workspaceId });
+  await models.AiUsageRecord.deleteMany({ workspaceId });
+}
+
 async function run() {
   await mongoose.connect(process.env.MONGO_URI);
   const WorkspaceConfig = require("./models/WorkspaceConfig");
@@ -183,10 +292,16 @@ async function run() {
     await testWorkspaceOptInAndBudget(models);
     await testGroundedSearchUsesCamelCaseToolAndParsesCitations(models);
     require("./services/providerResilience").resetCircuits();
-    await testErrorPathIsLoggedAndCategorized(models);
+    await testErrorPathIsSanitizedForTheClientButFullyLoggedInternally(models);
     testDefaultModelIsTheUnsuffixedAliasNotTheBrokenVersionedOne();
     require("./services/providerResilience").resetCircuits();
     await testEndpointUrlUsesTheConfiguredModel(models);
+    require("./services/providerResilience").resetCircuits();
+    await testGroundingUsesALongerTimeoutThanTheOriginal20sBug(models);
+    require("./services/providerResilience").resetCircuits();
+    await testASlowButSuccessfulResponseStillReturnsResultsAndCitations(models);
+    require("./services/providerResilience").resetCircuits();
+    await testTimeoutIsSanitizedAndNeverRetried(models);
   } finally {
     if (originalEnabled === undefined) delete process.env.VERTEX_ENABLED; else process.env.VERTEX_ENABLED = originalEnabled;
     if (originalCredsJson === undefined) delete process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON; else process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON = originalCredsJson;
@@ -199,7 +314,7 @@ async function run() {
 }
 
 run()
-  .then(() => console.log("Vertex grounding: disabled-by-default zero-requests, two-tier capability gating, workspace budget, camelCase googleSearch tool key (vs. Developer API's snake_case), citation parsing/evidence filtering, error categorization, and the confirmed-live-fixed default model (\"gemini-2.5-flash\", not the 404ing \"gemini-2.5-flash-002\") all passed."))
+  .then(() => console.log("Vertex grounding: disabled-by-default zero-requests, two-tier capability gating, workspace budget, camelCase googleSearch tool key (vs. Developer API's snake_case), citation parsing/evidence filtering, sanitized-but-fully-logged error handling, the confirmed-live-fixed default model (\"gemini-2.5-flash\", not the 404ing \"gemini-2.5-flash-002\"), the fixed 60-90s grounding timeout (not the original broken 20s), a slow-but-successful response still rendering results and citations, and a real timeout being sanitized and never retried, all passed."))
   .catch((error) => {
     console.error(error);
     process.exitCode = 1;

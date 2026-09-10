@@ -72,6 +72,7 @@ export default function AiAcquisitionControls() {
   const [groundingQuery, setGroundingQuery] = useState("");
   const [groundingResult, setGroundingResult] = useState(null);
   const [groundingBusy, setGroundingBusy] = useState(false);
+  const [groundingError, setGroundingError] = useState("");
   const [agentSearchQuery, setAgentSearchQuery] = useState("");
   const [agentSearchResult, setAgentSearchResult] = useState(null);
   const [agentSearchBusy, setAgentSearchBusy] = useState(false);
@@ -142,15 +143,25 @@ export default function AiAcquisitionControls() {
   };
 
   const tryGrounding = async () => {
-    if (!groundingQuery.trim()) return;
+    if (!groundingQuery.trim() || groundingBusy) return;
     setGroundingBusy(true);
-    setError("");
+    setGroundingError("");
     setGroundingResult(null);
     try {
       const res = await runVertexGrounding({ query: groundingQuery });
       setGroundingResult(res.data);
     } catch (err) {
-      setError(err.response?.data?.error || "Vertex grounding request failed.");
+      // The backend already sanitizes real provider/timeout failures before
+      // they reach here (services/vertexGroundingService.js) — a message on
+      // the response body is safe to show as-is. A response-less error means
+      // even OUR OWN 90s client-side timeout gave up without the backend
+      // replying at all (e.g. a hung connection), which needs its own
+      // friendly text since there is no server message to show.
+      const message = err.response?.data?.error
+        || (err.code === "ECONNABORTED"
+          ? "This is taking longer than expected. Vertex grounding can take up to a minute or so for complex queries — please try again."
+          : "Vertex grounding request failed. Please try again.");
+      setGroundingError(message);
     } finally {
       setGroundingBusy(false);
     }
@@ -417,18 +428,33 @@ export default function AiAcquisitionControls() {
             <div className="ai-controls-try-it">
               <label>
                 Try Vertex Grounding
-                <input type="text" value={groundingQuery} onChange={(e) => setGroundingQuery(e.target.value)} placeholder="e.g. real estate investor meetups near Denver" />
+                <input type="text" value={groundingQuery} onChange={(e) => setGroundingQuery(e.target.value)} placeholder="e.g. real estate investor meetups near Denver" disabled={groundingBusy} />
               </label>
-              <Button size="sm" variant="outline" loading={groundingBusy} onClick={tryGrounding}>Search</Button>
+              <Button size="sm" variant="outline" loading={groundingBusy} disabled={groundingBusy} onClick={tryGrounding}>
+                {groundingBusy ? "Searching (can take up to a minute)…" : "Search"}
+              </Button>
+              {groundingError ? <p className="form-error ai-controls-try-it-error">{groundingError}</p> : null}
               {groundingResult ? (
-                <ul className="ai-controls-try-it-results">
-                  {groundingResult.results?.length ? groundingResult.results.map((row, index) => (
-                    <li key={index}>
-                      <strong>{row.name}</strong> ({row.type}, {row.confidence}) — {row.summary}
-                      <div className="ai-controls-citations">{row.evidenceUrls?.map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}</div>
-                    </li>
-                  )) : <li>No confident, citable results.</li>}
-                </ul>
+                <>
+                  <ul className="ai-controls-try-it-results">
+                    {groundingResult.results?.length ? groundingResult.results.map((row, index) => (
+                      <li key={index}>
+                        <strong>{row.name}</strong> ({row.type}, {row.confidence}) — {row.summary}
+                        <div className="ai-controls-citations">{row.evidenceUrls?.map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}</div>
+                      </li>
+                    )) : <li>No confident, citable results.</li>}
+                  </ul>
+                  {groundingResult.groundingCitations?.length ? (
+                    <div className="ai-controls-grounding-citations">
+                      <strong>Grounded on:</strong>
+                      <div className="ai-controls-citations">
+                        {groundingResult.groundingCitations.map((citation, index) => (
+                          <a key={`${citation.url}-${index}`} href={citation.url} target="_blank" rel="noreferrer">{citation.title || citation.url}</a>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
+                </>
               ) : null}
             </div>
           ) : null}

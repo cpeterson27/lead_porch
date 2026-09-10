@@ -32,6 +32,7 @@
     "test:automation-analytics-ui": "node test-automation-analytics-ui.js",
     "test:closer-queue-ui": "node test-closer-queue-ui.js",
     "test:vertex-agent-search-danger-zone": "node test-vertex-agent-search-danger-zone.js",
+    "test:vertex-grounding-timeout": "node test-vertex-grounding-timeout.js",
     "test:social-ai-inbox-ui": "node test-social-ai-inbox-ui.js",
     "test:social-automation-controls-ui": "node test-social-automation-controls-ui.js",
     "preview": "vite preview"
