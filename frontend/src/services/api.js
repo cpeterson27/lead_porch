@@ -1157,8 +1157,8 @@ export const fetchLeadGenerationProgramSearchSuggestions = (noteId) =>
   api.get(`/lead-generation/programs/${noteId}/search-suggestions`).then((res) => res.data);
 export const proposeLeadGenerationSearch = (payload) =>
   api.post("/lead-generation/searches/propose", payload, { timeout: 60000 }).then((res) => res.data);
-export const approveLeadGenerationSearch = (searchId) =>
-  api.post(`/lead-generation/searches/${searchId}/approve`, {}, { timeout: 90000 }).then((res) => res.data);
+export const approveLeadGenerationSearch = (searchId, overrides = {}) =>
+  api.post(`/lead-generation/searches/${searchId}/approve`, overrides, { timeout: 90000 }).then((res) => res.data);
 export const fetchLeadGenerationSearch = (searchId) =>
   api.get(`/lead-generation/searches/${searchId}`).then((res) => res.data);
 export const enrichVertexGroundingResultWithApollo = (id) =>

@@ -32,6 +32,7 @@ const discoverySearchSchema = new mongoose.Schema({
     keywords: { type: [String], default: [] },
     seniority: { type: [String], default: [] },
     companySizeRange: { type: String, default: "", trim: true, maxlength: 80 },
+    exclusions: { type: [String], default: [] },
     notes: { type: String, default: "", trim: true, maxlength: 1000 },
   },
   sources: { type: [String], enum: SOURCES, default: ["all"] },

@@ -49,7 +49,8 @@ router.post("/searches/propose", async (req, res) => {
     const data = await leadGenerationCoordinatorService.proposeSearch({
       workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, auth: req.auth,
       naturalLanguageRequest: req.body?.naturalLanguageRequest, programNoteId: req.body?.programNoteId,
-      sources: req.body?.sources, freshnessDays: req.body?.freshnessDays, correlationId: req.headers["x-request-id"] || "",
+      sources: req.body?.sources, freshnessDays: req.body?.freshnessDays, requestedCount: req.body?.requestedCount,
+      correlationId: req.headers["x-request-id"] || "",
     });
     return res.json({ success: true, data });
   } catch (error) {
@@ -80,7 +81,9 @@ router.get("/searches", async (req, res) => {
 router.post("/searches/:id/approve", async (req, res) => {
   try {
     const data = await leadGenerationCoordinatorService.approveAndRunSearch({
-      workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, auth: req.auth, searchId: req.params.id, correlationId: req.headers["x-request-id"] || "",
+      workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, auth: req.auth, searchId: req.params.id,
+      icp: req.body?.icp, requestedCount: req.body?.requestedCount, sources: req.body?.sources,
+      correlationId: req.headers["x-request-id"] || "",
     });
     return res.json({ success: true, data });
   } catch (error) {

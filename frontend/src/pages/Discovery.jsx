@@ -89,6 +89,10 @@ const LEADGEN_PROVIDERS = [
   ["pdl_person_search", "PDL Person Search"],
   ["apollo_person_search", "Apollo People Search"],
 ];
+const LEADGEN_COUNT_OPTIONS = [5, 10, 25];
+const EMPTY_ICP_DRAFT = { titles: "", industries: "", locations: "", keywords: "", seniority: "", companySizeRange: "", exclusions: "" };
+const icpArrayToDraftString = (values) => (values || []).join(", ");
+const icpDraftStringToArray = (value) => String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
 
 const displayText = (value) => String(value || "")
   .replace(/<[^>]*>/g, " ")
@@ -284,6 +288,8 @@ export default function Discovery() {
   const [suggestedSearches, setSuggestedSearches] = useState([]);
   const [leadGenProviderAvailability, setLeadGenProviderAvailability] = useState(null);
   const [leadGenSelectedSources, setLeadGenSelectedSources] = useState([]);
+  const [leadGenRequestedCount, setLeadGenRequestedCount] = useState(10);
+  const [leadGenIcpDraft, setLeadGenIcpDraft] = useState(EMPTY_ICP_DRAFT);
   const [leadGenPrograms, setLeadGenPrograms] = useState([]);
   // "" = nothing chosen yet (the required default); "all" = the "All
   // programs" pill; otherwise a specific program's noteId.
@@ -413,14 +419,25 @@ export default function Discovery() {
     }
   };
 
+  // Changing sources/count after a plan was already proposed would make the
+  // shown credit estimate stale, so either invalidates the current proposal
+  // rather than silently leaving a mismatched estimate on screen — the
+  // owner just clicks "Ask Jarvis" again for a fresh, accurate one.
   const toggleLeadGenSource = (key) => {
     setLeadGenSelectedSources((current) => current.includes(key) ? current.filter((source) => source !== key) : [...current, key]);
+    setLeadGenProposal(null);
+  };
+
+  const selectLeadGenCount = (count) => {
+    setLeadGenRequestedCount(count);
+    setLeadGenProposal(null);
   };
 
   const selectLeadGenProgram = async (program) => {
     setSelectedProgramPillKey(program.noteId);
     setSelectedProgramNoteId(program.noteId);
     setProgramSearchSuggestions([]);
+    setLeadGenProposal(null);
     setProgramSuggestionsLoading(true);
     try {
       const response = await fetchLeadGenerationProgramSearchSuggestions(program.noteId);
@@ -436,6 +453,7 @@ export default function Discovery() {
     setSelectedProgramPillKey("all");
     setSelectedProgramNoteId("");
     setProgramSearchSuggestions([]);
+    setLeadGenProposal(null);
   };
 
   const proposeLeadGenSearch = async () => {
@@ -444,8 +462,18 @@ export default function Discovery() {
     setLeadGenError("");
     setMonitorSuggestion(null);
     try {
-      const response = await proposeLeadGenerationSearch({ naturalLanguageRequest: leadGenRequest, programNoteId: selectedProgramNoteId || undefined, sources: leadGenSelectedSources });
+      const response = await proposeLeadGenerationSearch({
+        naturalLanguageRequest: leadGenRequest, programNoteId: selectedProgramNoteId || undefined,
+        sources: leadGenSelectedSources, requestedCount: leadGenRequestedCount,
+      });
       setLeadGenProposal(response.data);
+      const icp = response.data.icp || {};
+      setLeadGenIcpDraft({
+        titles: icpArrayToDraftString(icp.titles), industries: icpArrayToDraftString(icp.industries),
+        locations: icpArrayToDraftString(icp.locations), keywords: icpArrayToDraftString(icp.keywords),
+        seniority: icpArrayToDraftString(icp.seniority), companySizeRange: icp.companySizeRange || "",
+        exclusions: icpArrayToDraftString(icp.exclusions),
+      });
     } catch (err) {
       setLeadGenError(err.response?.data?.error || "Unable to propose this search.");
       setLeadGenProposal(null);
@@ -454,12 +482,20 @@ export default function Discovery() {
     }
   };
 
+  const updateLeadGenIcpDraft = (field, value) => setLeadGenIcpDraft((current) => ({ ...current, [field]: value }));
+
   const approveLeadGenSearch = async () => {
     if (!leadGenProposal?._id || leadGenApproveBusy) return;
     setLeadGenApproveBusy(true);
     setLeadGenError("");
     try {
-      const response = await approveLeadGenerationSearch(leadGenProposal._id);
+      const icpOverride = {
+        titles: icpDraftStringToArray(leadGenIcpDraft.titles), industries: icpDraftStringToArray(leadGenIcpDraft.industries),
+        locations: icpDraftStringToArray(leadGenIcpDraft.locations), keywords: icpDraftStringToArray(leadGenIcpDraft.keywords),
+        seniority: icpDraftStringToArray(leadGenIcpDraft.seniority), companySizeRange: leadGenIcpDraft.companySizeRange,
+        exclusions: icpDraftStringToArray(leadGenIcpDraft.exclusions),
+      };
+      const response = await approveLeadGenerationSearch(leadGenProposal._id, { icp: icpOverride, requestedCount: leadGenRequestedCount, sources: leadGenSelectedSources });
       const summary = response.data.runSummary || {};
       const staleNote = summary.excludedForFreshness ? ` ${summary.excludedForFreshness} excluded for missing/stale evidence.` : "";
       const errorNote = summary.sourceErrors?.length ? ` ${summary.sourceErrors.length} source(s) reported an issue.` : "";
@@ -474,7 +510,7 @@ export default function Discovery() {
     }
   };
 
-  const discardLeadGenProposal = () => { setLeadGenProposal(null); setLeadGenError(""); };
+  const discardLeadGenProposal = () => { setLeadGenProposal(null); setLeadGenIcpDraft(EMPTY_ICP_DRAFT); setLeadGenError(""); };
 
   const enrichGroundingResultWithApollo = async (id) => {
     if (apolloEnrichBusyId) return;
@@ -1251,81 +1287,90 @@ export default function Discovery() {
 
       <DashboardCard title="Ask Jarvis to find buyers">
         <p className="people-preview-intro">
-          Jarvis reads your approved Offers &amp; Programs, turns a request like{" "}
-          <em>&quot;Find 10 likely buyers for this program&quot;</em> into an editable ICP and search plan,
-          and shows exactly what it will search, with which providers, and the estimated credit use —
-          <strong> before anything is spent.</strong> Vertex and OpenAI Web Search look for verifiable
-          public buyer-intent evidence from the last 90 days; PDL Person Search and Apollo People Search
-          actively match your program&apos;s ideal-customer profile. Nothing is ever spent, imported, or
-          sent without your explicit approval at each step.
+          Pick a program, choose your sources, and tell Jarvis who to find. Vertex and OpenAI Web Search look
+          for verifiable public buyer-intent evidence from the last 90 days; PDL Person Search and Apollo
+          People Search actively match your program&apos;s ideal-customer profile.
+          <strong> Nothing is spent until you approve the plan Jarvis shows you.</strong>
         </p>
-        {leadGenPrograms.length ? (
-          <div className="leadgen-program-selector">
-            <span>Choose an approved program ({leadGenPrograms.length})</span>
-            <div className="leadgen-program-pills">
-              <button
-                type="button"
-                className={`leadgen-program-pill${selectedProgramPillKey === "all" ? " is-selected" : ""}`}
-                aria-pressed={selectedProgramPillKey === "all"}
-                onClick={selectAllPrograms}
-              >
-                All programs
+
+        <div className="leadgen-field-group">
+          <span className="leadgen-field-label">Program {leadGenPrograms.length ? `(${leadGenPrograms.length} approved)` : ""}</span>
+          <div className="leadgen-pill-row" role="group" aria-label="Choose an approved program">
+            <button type="button" className={`leadgen-pill${selectedProgramPillKey === "all" ? " is-selected" : ""}`} aria-pressed={selectedProgramPillKey === "all"} onClick={selectAllPrograms}>
+              All programs
+            </button>
+            {leadGenPrograms.map((program) => (
+              <button key={program.noteId} type="button" className={`leadgen-pill${selectedProgramPillKey === program.noteId ? " is-selected" : ""}`} aria-pressed={selectedProgramPillKey === program.noteId} onClick={() => selectLeadGenProgram(program)}>
+                {program.title}
               </button>
-              {leadGenPrograms.map((program) => (
-                <button
-                  key={program.noteId}
-                  type="button"
-                  className={`leadgen-program-pill${selectedProgramPillKey === program.noteId ? " is-selected" : ""}`}
-                  aria-pressed={selectedProgramPillKey === program.noteId}
-                  onClick={() => selectLeadGenProgram(program)}
-                >
-                  {program.title}
-                </button>
-              ))}
-            </div>
-            {selectedProgramNoteId ? (
-              <div className="grounding-suggested-searches">
-                <span>Up to 5 suggested searches for this program — edit any before proposing</span>
-                {programSuggestionsLoading ? <small>Loading suggestions…</small> : (
-                  <div className="grounding-suggested-searches__buttons">
-                    {programSearchSuggestions.map((suggestion) => (
-                      <Button key={suggestion.query} size="sm" variant="outline" onClick={() => setLeadGenRequest(suggestion.query)}>
-                        {suggestion.query}
-                      </Button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ) : null}
+            ))}
           </div>
-        ) : null}
-        <fieldset className="leadgen-provider-fieldset">
-          <legend>Sources to use for this search</legend>
-          {LEADGEN_PROVIDERS.map(([key, label]) => {
-            const availability = leadGenProviderAvailability?.[key];
-            const isAvailable = Boolean(availability?.available);
-            return (
-              <label key={key} className={`leadgen-provider-checkbox${isAvailable ? "" : " is-unavailable"}`} title={isAvailable ? "" : availability?.reason || "Not currently available"}>
-                <input
-                  type="checkbox"
-                  checked={leadGenSelectedSources.includes(key)}
+          {selectedProgramNoteId ? (
+            <div className="grounding-suggested-searches">
+              <span>Up to 5 suggested searches for this program — edit any before asking Jarvis</span>
+              {programSuggestionsLoading ? <small>Loading suggestions…</small> : (
+                <div className="grounding-suggested-searches__buttons">
+                  {programSearchSuggestions.map((suggestion) => (
+                    <Button key={suggestion.query} size="sm" variant="outline" onClick={() => setLeadGenRequest(suggestion.query)}>
+                      {suggestion.query}
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="leadgen-field-group">
+          <span className="leadgen-field-label">Sources</span>
+          <div className="leadgen-pill-row" role="group" aria-label="Choose sourcing providers">
+            {LEADGEN_PROVIDERS.map(([key, label]) => {
+              const availability = leadGenProviderAvailability?.[key];
+              const isAvailable = Boolean(availability?.available);
+              const isSelected = leadGenSelectedSources.includes(key);
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  className={`leadgen-pill${isSelected ? " is-selected" : ""}${isAvailable ? "" : " is-disabled"}`}
+                  aria-pressed={isSelected}
                   disabled={!isAvailable || leadGenProposeBusy}
-                  onChange={() => toggleLeadGenSource(key)}
-                />
-                {label}
-                {!isAvailable ? <small>{availability?.reason || "Not currently available"}</small> : null}
-              </label>
-            );
-          })}
-        </fieldset>
+                  title={isAvailable ? "" : (availability?.reason || "Not currently available")}
+                  onClick={() => toggleLeadGenSource(key)}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          {LEADGEN_PROVIDERS.some(([key]) => !leadGenProviderAvailability?.[key]?.available) ? (
+            <small className="leadgen-provider-reasons">
+              {LEADGEN_PROVIDERS.filter(([key]) => !leadGenProviderAvailability?.[key]?.available).map(([key, label]) => (
+                <span key={key}>{label} — {leadGenProviderAvailability?.[key]?.reason || "Not currently available"}</span>
+              ))}
+            </small>
+          ) : null}
+        </div>
+
+        <div className="leadgen-field-group">
+          <span className="leadgen-field-label">How many people</span>
+          <div className="leadgen-pill-row" role="group" aria-label="Choose how many people to find">
+            {LEADGEN_COUNT_OPTIONS.map((count) => (
+              <button key={count} type="button" className={`leadgen-pill${leadGenRequestedCount === count ? " is-selected" : ""}`} aria-pressed={leadGenRequestedCount === count} onClick={() => selectLeadGenCount(count)}>
+                {count}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="people-search-launcher">
           <label>
             <span>What should Jarvis find?</span>
-            <textarea value={leadGenRequest} onChange={(event) => setLeadGenRequest(event.target.value)} placeholder='e.g. "Find 10 likely buyers for our Multifamily Bootcamp"' disabled={leadGenProposeBusy} />
+            <textarea value={leadGenRequest} onChange={(event) => setLeadGenRequest(event.target.value)} placeholder='e.g. "Find likely buyers for our Multifamily Bootcamp"' disabled={leadGenProposeBusy} />
           </label>
           <div>
             <Button disabled={!leadGenRequest.trim() || !leadGenSelectedSources.length} loading={leadGenProposeBusy} onClick={proposeLeadGenSearch}>
-              {leadGenProposeBusy ? "Planning…" : "Propose search"}
+              {leadGenProposeBusy ? "Planning…" : "Ask Jarvis"}
             </Button>
           </div>
           {!leadGenSelectedSources.length ? <p className="form-error">Select at least one available source above.</p> : null}
@@ -1333,13 +1378,31 @@ export default function Discovery() {
         </div>
 
         {leadGenProposal ? (
-          <div className="leadgen-proposal">
-            <h4>{leadGenProposal.status === "proposed" ? "Proposed plan — nothing spent yet" : `Search ${leadGenProposal.status}`}</h4>
-            <dl>
-              <dt>Program</dt><dd>{leadGenProposal.programName || "(not specified)"}</dd>
-              <dt>ICP</dt><dd>{[...(leadGenProposal.icp?.titles || []), ...(leadGenProposal.icp?.industries || [])].join(", ") || "(broad)"}{leadGenProposal.icp?.locations?.length ? ` · ${leadGenProposal.icp.locations.join(", ")}` : ""}</dd>
-              <dt>Sources</dt><dd>{leadGenProposal.sources.join(", ")}</dd>
+          <section className="leadgen-review-panel" role="region" aria-labelledby="leadgen-review-heading" aria-live="polite">
+            <h4 id="leadgen-review-heading">{leadGenProposal.status === "proposed" ? "Review before running — nothing spent yet" : `Search ${leadGenProposal.status}`}</h4>
+
+            {leadGenProposal.status === "proposed" ? (
+              <div className="leadgen-review-grid">
+                <label><span>Program</span><input type="text" value={leadGenProposal.programName || "(not specified)"} readOnly /></label>
+                <label><span>Titles</span><input type="text" value={leadGenIcpDraft.titles} onChange={(event) => updateLeadGenIcpDraft("titles", event.target.value)} placeholder="comma-separated" /></label>
+                <label><span>Industries</span><input type="text" value={leadGenIcpDraft.industries} onChange={(event) => updateLeadGenIcpDraft("industries", event.target.value)} placeholder="comma-separated" /></label>
+                <label><span>Locations</span><input type="text" value={leadGenIcpDraft.locations} onChange={(event) => updateLeadGenIcpDraft("locations", event.target.value)} placeholder="comma-separated" /></label>
+                <label><span>Keywords</span><input type="text" value={leadGenIcpDraft.keywords} onChange={(event) => updateLeadGenIcpDraft("keywords", event.target.value)} placeholder="comma-separated" /></label>
+                <label><span>Seniority</span><input type="text" value={leadGenIcpDraft.seniority} onChange={(event) => updateLeadGenIcpDraft("seniority", event.target.value)} placeholder="comma-separated" /></label>
+                <label><span>Company size</span><input type="text" value={leadGenIcpDraft.companySizeRange} onChange={(event) => updateLeadGenIcpDraft("companySizeRange", event.target.value)} /></label>
+                <label><span>Exclusions</span><input type="text" value={leadGenIcpDraft.exclusions} onChange={(event) => updateLeadGenIcpDraft("exclusions", event.target.value)} placeholder="comma-separated, e.g. current customers" /></label>
+              </div>
+            ) : (
+              <dl className="leadgen-review-grid">
+                <dt>Program</dt><dd>{leadGenProposal.programName || "(not specified)"}</dd>
+                <dt>Titles</dt><dd>{leadGenProposal.icp?.titles?.join(", ") || "(broad)"}</dd>
+                <dt>Exclusions</dt><dd>{leadGenProposal.icp?.exclusions?.join(", ") || "None"}</dd>
+              </dl>
+            )}
+
+            <dl className="leadgen-review-summary">
               <dt>Freshness</dt><dd>Public-web evidence within {leadGenProposal.freshnessDays} days</dd>
+              <dt>Sources</dt><dd>{leadGenProposal.sources.join(", ")}</dd>
               <dt>Requested count</dt><dd>Up to {leadGenProposal.requestedCount} people</dd>
               <dt>Estimated credit use</dt>
               <dd>
@@ -1348,10 +1411,12 @@ export default function Discovery() {
                 {leadGenProposal.estimatedCreditUse?.vertex || ""} {leadGenProposal.estimatedCreditUse?.openai || ""}
                 <br /><small>{leadGenProposal.estimatedCreditUse?.note}</small>
               </dd>
+              <dt>Destination</dt><dd>Review queue below — nothing is imported into the CRM automatically.</dd>
             </dl>
+
             {leadGenProposal.status === "proposed" ? (
-              <div>
-                <Button loading={leadGenApproveBusy} onClick={approveLeadGenSearch}>Approve &amp; run</Button>
+              <div className="leadgen-review-actions">
+                <Button loading={leadGenApproveBusy} onClick={approveLeadGenSearch}>Approve &amp; find people</Button>
                 <Button variant="outline" onClick={discardLeadGenProposal}>Discard</Button>
               </div>
             ) : (
@@ -1371,72 +1436,79 @@ export default function Discovery() {
                 )}
               </div>
             )}
-          </div>
+          </section>
         ) : null}
       </DashboardCard>
 
-      <DashboardCard title="Public-web research (optional discovery sources)">
-        <p className="people-preview-intro">
-          <strong>Vertex AI and OpenAI Web Search actively search the public web</strong> for
-          real, citable results — each result carries a real source URL and, for people, a
-          verified evidence date. <strong>Up to 5 new people per search.</strong> Nothing else
-          runs automatically: PDL enrichment, CRM import, monitors, and outreach all require your
-          own explicit action, every time — this search alone never enriches, imports, contacts,
-          or monitors anyone. Every result waits in the review queue below until you decide.
-        </p>
-        {suggestedSearches.length ? (
-          <div className="grounding-suggested-searches">
-            <span>Suggested searches from your approved Offers &amp; Programs</span>
-            <div className="grounding-suggested-searches__buttons">
-              {suggestedSearches.map((suggestion) => (
-                <Button key={suggestion.noteId} size="sm" variant="outline" onClick={() => applySuggestedSearch(suggestion)}>
-                  {suggestion.title}
-                </Button>
-              ))}
+      <details className="leadgen-advanced-search">
+        <summary>Advanced manual search</summary>
+        <div className="leadgen-advanced-search__body">
+          <p className="people-preview-intro">
+            Search the public web directly with your own query and source choice — the same Vertex/OpenAI
+            pipeline Jarvis uses above, without the guided ICP planning step. <strong>Up to 5 new people per
+            search.</strong> PDL enrichment, CRM import, monitors, and outreach still all require your own
+            explicit action below, every time.
+          </p>
+          {suggestedSearches.length ? (
+            <div className="grounding-suggested-searches">
+              <span>Suggested searches from your approved Offers &amp; Programs</span>
+              <div className="grounding-suggested-searches__buttons">
+                {suggestedSearches.map((suggestion) => (
+                  <Button key={suggestion.noteId} size="sm" variant="outline" onClick={() => applySuggestedSearch(suggestion)}>
+                    {suggestion.title}
+                  </Button>
+                ))}
+              </div>
+              <small>Clicking a suggestion fills in the search box below — edit it freely before searching.</small>
             </div>
-            <small>Clicking a suggestion fills in the search box below — edit it freely before searching.</small>
+          ) : null}
+          <div className="people-search-launcher">
+            <label>
+              <span>What should the public web be searched for?</span>
+              <textarea value={groundingQuery} onChange={(event) => setGroundingQuery(event.target.value)} placeholder="e.g. real estate investor associations and their named organizers near Austin, Texas" disabled={groundingBusy} />
+            </label>
+            <label>
+              <span>Source</span>
+              <select value={groundingSource} onChange={(event) => setGroundingSource(event.target.value)} disabled={groundingBusy}>
+                <option value="both">Both (Vertex + OpenAI Web Search)</option>
+                <option value="vertex">Vertex Grounding only</option>
+                <option value="openai_web_search">OpenAI Web Search only</option>
+              </select>
+            </label>
+            <fieldset className="grounding-type-fieldset">
+              <legend>Result types</legend>
+              {["person", "organization", "event", "community"].map((type) => (
+                <label key={type} className="grounding-type-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={groundingTypes.includes(type)}
+                    disabled={groundingBusy}
+                    onChange={(event) => setGroundingTypes((current) => event.target.checked ? [...current, type] : current.filter((row) => row !== type))}
+                  />
+                  {type}
+                </label>
+              ))}
+            </fieldset>
+            <div>
+              <Button disabled={!groundingQuery.trim() || !groundingTypes.length} loading={groundingBusy} onClick={runGroundingSearch}>
+                {groundingBusy ? "Searching (can take up to a minute)…" : "Search public web"}
+              </Button>
+            </div>
+            {groundingError ? <p className="form-error">{groundingError}</p> : null}
+            {groundingSourceErrors.length ? groundingSourceErrors.map((sourceError) => (
+              <p key={sourceError.source} className="form-error">
+                {sourceError.source === "vertex_grounding" ? "Vertex Grounding" : "OpenAI Web Search"} unavailable: {sourceError.message}
+              </p>
+            )) : null}
           </div>
-        ) : null}
-        <div className="people-search-launcher">
-          <label>
-            <span>What should the public web be searched for?</span>
-            <textarea value={groundingQuery} onChange={(event) => setGroundingQuery(event.target.value)} placeholder="e.g. real estate investor associations and their named organizers near Austin, Texas" disabled={groundingBusy} />
-          </label>
-          <label>
-            <span>Source</span>
-            <select value={groundingSource} onChange={(event) => setGroundingSource(event.target.value)} disabled={groundingBusy}>
-              <option value="both">Both (Vertex + OpenAI Web Search)</option>
-              <option value="vertex">Vertex Grounding only</option>
-              <option value="openai_web_search">OpenAI Web Search only</option>
-            </select>
-          </label>
-          <fieldset className="grounding-type-fieldset">
-            <legend>Result types</legend>
-            {["person", "organization", "event", "community"].map((type) => (
-              <label key={type} className="grounding-type-checkbox">
-                <input
-                  type="checkbox"
-                  checked={groundingTypes.includes(type)}
-                  disabled={groundingBusy}
-                  onChange={(event) => setGroundingTypes((current) => event.target.checked ? [...current, type] : current.filter((row) => row !== type))}
-                />
-                {type}
-              </label>
-            ))}
-          </fieldset>
-          <div>
-            <Button disabled={!groundingQuery.trim() || !groundingTypes.length} loading={groundingBusy} onClick={runGroundingSearch}>
-              {groundingBusy ? "Searching (can take up to a minute)…" : "Search public web"}
-            </Button>
-          </div>
-          {groundingError ? <p className="form-error">{groundingError}</p> : null}
-          {groundingSourceErrors.length ? groundingSourceErrors.map((sourceError) => (
-            <p key={sourceError.source} className="form-error">
-              {sourceError.source === "vertex_grounding" ? "Vertex Grounding" : "OpenAI Web Search"} unavailable: {sourceError.message}
-            </p>
-          )) : null}
         </div>
+      </details>
 
+      <DashboardCard title="Review queue">
+        <p className="people-preview-intro">
+          Every person Jarvis or the advanced manual search finds lands here first. Nothing enters the CRM,
+          a monitor, or outreach without your explicit action below.
+        </p>
         <div className="discovery-review-filters">
           {["pending_review", "saved", "dismissed"].map((status) => (
             <Button key={status} size="sm" variant={groundingResultsStatus === status ? "primary" : "outline"} onClick={() => { setGroundingResultsStatus(status); setSelectedGroundingIds([]); loadGroundingResults(status); }}>
@@ -1445,14 +1517,15 @@ export default function Discovery() {
           ))}
           <Button size="sm" variant="outline" loading={groundingResultsLoading} onClick={() => loadGroundingResults()}>Refresh</Button>
           {groundingResultsStatus === "pending_review" ? (
-            <>
+            <div className="leadgen-bulk-qualify">
+              <span>Qualify:</span>
               <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} loading={rankBusy} onClick={rankSelectedGroundingResults}>
                 Rank {selectedGroundingIds.length || ""} selected for program fit (OpenAI/Jarvis)
               </Button>
               <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} loading={qualifyBusy} onClick={qualifySelectedGroundingResults}>
                 Qualify &amp; recommend {selectedGroundingIds.length || ""} selected (Jarvis)
               </Button>
-            </>
+            </div>
           ) : null}
         </div>
 
@@ -1493,14 +1566,19 @@ export default function Discovery() {
                   ) : null}
                 </div>
                 {result.status === "pending_review" ? (
-                  <div>
-                    {result.type === "person" && !result.pdlEnrichment?.attempted ? (
-                      <Button size="sm" variant="outline" loading={pdlEnrichBusyId === result._id} disabled={Boolean(pdlEnrichBusyId) && pdlEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithPdl(result._id)}>Enrich via PDL</Button>
+                  <div className="leadgen-row-actions">
+                    {(result.type === "person" && (!result.pdlEnrichment?.attempted || !result.apolloEnrichment?.attempted)) ? (
+                      <div className="leadgen-row-actions__group">
+                        <span>Enrich:</span>
+                        {!result.pdlEnrichment?.attempted ? (
+                          <Button size="sm" variant="outline" loading={pdlEnrichBusyId === result._id} disabled={Boolean(pdlEnrichBusyId) && pdlEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithPdl(result._id)}>PDL</Button>
+                        ) : null}
+                        {!result.apolloEnrichment?.attempted ? (
+                          <Button size="sm" variant="outline" loading={apolloEnrichBusyId === result._id} disabled={Boolean(apolloEnrichBusyId) && apolloEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithApollo(result._id)}>Apollo</Button>
+                        ) : null}
+                      </div>
                     ) : null}
-                    {result.type === "person" && !result.apolloEnrichment?.attempted ? (
-                      <Button size="sm" variant="outline" loading={apolloEnrichBusyId === result._id} disabled={Boolean(apolloEnrichBusyId) && apolloEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithApollo(result._id)}>Enrich via Apollo</Button>
-                    ) : null}
-                    <Button size="sm" onClick={() => saveGroundingResult(result._id)}>Save with attribution</Button>
+                    <Button size="sm" onClick={() => saveGroundingResult(result._id)}>Save</Button>
                     <Button size="sm" variant="outline" onClick={() => dismissGroundingResult(result._id)}>Dismiss</Button>
                   </div>
                 ) : <span className="people-preview-footnote">{result.status === "saved" ? "Saved" : "Dismissed"}</span>}
@@ -1516,7 +1594,7 @@ export default function Discovery() {
               </div>
             </article>
           ))}
-        </div> : <div className="table-state table-state--empty">No {groundingResultsStatus.replace("_", " ")} public-web research results yet.</div>}
+        </div> : <div className="table-state table-state--empty">No {groundingResultsStatus.replace("_", " ")} results in the review queue yet.</div>}
       </DashboardCard>
     </div> : null}
 

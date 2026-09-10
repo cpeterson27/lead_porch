@@ -93,8 +93,9 @@ const ICP_RESPONSE_SCHEMA = {
         keywords: { type: "array", items: { type: "string" } },
         seniority: { type: "array", items: { type: "string" } },
         companySizeRange: { type: "string" },
+        exclusions: { type: "array", items: { type: "string" }, description: "Kinds of people to explicitly exclude (e.g. current customers, competitors, students) — only what the program details or the owner's request actually imply, never invented." },
       },
-      required: ["titles", "industries", "locations", "keywords", "seniority", "companySizeRange"],
+      required: ["titles", "industries", "locations", "keywords", "seniority", "companySizeRange", "exclusions"],
       additionalProperties: false,
     },
     reasoning: { type: "string", description: "Briefly explain the ICP you derived and any capping/assumptions made." },
@@ -206,6 +207,26 @@ async function getSearchSuggestionsForProgram({ workspaceId, programNoteId }, de
 }
 
 /**
+ * Shared sanitization for an ICP object, whether freshly parsed by the LLM
+ * (proposeSearch) or edited by the owner in the review panel and sent as
+ * an override just before running (approveAndRunSearch) — same limits,
+ * same trimming, so an edited ICP is held to exactly the same rules as a
+ * freshly-generated one.
+ */
+function sanitizeIcp(rawIcp = {}, reasoningNotes = "") {
+  return {
+    titles: (rawIcp.titles || []).slice(0, 20).map((v) => clean(v, 120)),
+    industries: (rawIcp.industries || []).slice(0, 20).map((v) => clean(v, 120)),
+    locations: (rawIcp.locations || []).slice(0, 20).map((v) => clean(v, 120)),
+    keywords: (rawIcp.keywords || []).slice(0, 20).map((v) => clean(v, 120)),
+    seniority: (rawIcp.seniority || []).slice(0, 10).map((v) => clean(v, 60)),
+    companySizeRange: clean(rawIcp.companySizeRange, 80),
+    exclusions: (rawIcp.exclusions || []).slice(0, 20).map((v) => clean(v, 120)),
+    notes: clean(reasoningNotes || rawIcp.notes, 1000),
+  };
+}
+
+/**
  * Parses a natural-language request (+ the approved program note, if any)
  * into an editable ICP and creates a DiscoverySearch with status
  * "proposed". Makes exactly one LLM call (via the existing agent system,
@@ -213,7 +234,7 @@ async function getSearchSuggestionsForProgram({ workspaceId, programNoteId }, de
  * interaction) and ZERO discovery-provider calls — nothing is spent
  * against Vertex/OpenAI/PDL/Apollo at this step.
  */
-async function proposeSearch({ workspaceId, userId, auth, naturalLanguageRequest, programNoteId, sources, freshnessDays, correlationId = "" }, dependencies = {}) {
+async function proposeSearch({ workspaceId, userId, auth, naturalLanguageRequest, programNoteId, sources, freshnessDays, requestedCount: requestedCountOverride, correlationId = "" }, dependencies = {}) {
   const Model = dependencies.DiscoverySearch || DiscoverySearch;
   const NoteModel = dependencies.JarvisMemoryNote || JarvisMemoryNote;
   const runAgent = dependencies.runAgent || agentExecutionService.runAgent;
@@ -249,7 +270,10 @@ async function proposeSearch({ workspaceId, userId, auth, naturalLanguageRequest
   });
 
   const parsed = result.output;
-  const requestedCount = Math.max(1, Math.min(MAX_REQUESTED_COUNT, Number(parsed.requestedCount) || DEFAULT_REQUESTED_COUNT));
+  // An explicit count (the Discovery UI's 5/10/25 pills) always wins over
+  // the LLM's own guess from the free-text request — the pill is a
+  // deliberate owner choice, not a hint to second-guess.
+  const requestedCount = Math.max(1, Math.min(MAX_REQUESTED_COUNT, Number(requestedCountOverride) || Number(parsed.requestedCount) || DEFAULT_REQUESTED_COUNT));
   const safeFreshnessDays = Math.max(1, Math.min(365, Number(freshnessDays) || 90));
 
   const includesPdl = effectiveSources.includes("pdl_person_search");
@@ -267,15 +291,7 @@ async function proposeSearch({ workspaceId, userId, auth, naturalLanguageRequest
     naturalLanguageRequest: clean(naturalLanguageRequest, 2000),
     programNoteId: programNote ? programNoteId : null,
     programName: clean(parsed.programName || cleanProgramTitle(programNote?.title) || "", 200),
-    icp: {
-      titles: (parsed.icp?.titles || []).slice(0, 20).map((v) => clean(v, 120)),
-      industries: (parsed.icp?.industries || []).slice(0, 20).map((v) => clean(v, 120)),
-      locations: (parsed.icp?.locations || []).slice(0, 20).map((v) => clean(v, 120)),
-      keywords: (parsed.icp?.keywords || []).slice(0, 20).map((v) => clean(v, 120)),
-      seniority: (parsed.icp?.seniority || []).slice(0, 10).map((v) => clean(v, 60)),
-      companySizeRange: clean(parsed.icp?.companySizeRange, 80),
-      notes: clean(parsed.reasoning, 1000),
-    },
+    icp: sanitizeIcp(parsed.icp, parsed.reasoning),
     sources: effectiveSources,
     freshnessDays: safeFreshnessDays,
     requestedCount,
@@ -417,7 +433,7 @@ async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlati
  * A single source's failure is recorded in runSummary.sourceErrors rather
  * than failing the whole run, unless every selected source fails.
  */
-async function approveAndRunSearch({ workspaceId, userId, auth, searchId, correlationId = "" }, dependencies = {}) {
+async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, requestedCount, sources, correlationId = "" }, dependencies = {}) {
   const Model = dependencies.DiscoverySearch || DiscoverySearch;
   const vertexDiscovery = dependencies.vertexGroundingDiscoveryService || vertexGroundingDiscoveryService;
   const pdl = dependencies.peopleDataLabsService || peopleDataLabsService;
@@ -426,6 +442,14 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, correl
   const search = await Model.findOne({ _id: searchId, workspaceId });
   if (!search) { const error = new Error("Discovery search not found"); error.code = "DISCOVERY_SEARCH_NOT_FOUND"; throw error; }
   if (search.status !== "proposed") { const error = new Error("This search has already been approved or run"); error.code = "DISCOVERY_SEARCH_ALREADY_RUN"; throw error; }
+
+  // Everything below is OPTIONAL — the owner may approve the plan exactly
+  // as proposed. When present, these are the review panel's live edits
+  // (ICP/exclusions, the 5/10/25 count pill, the provider pills) applied
+  // right before running, sanitized identically to a freshly-parsed plan.
+  if (icp && typeof icp === "object") search.icp = sanitizeIcp(icp, icp.notes || search.icp?.notes);
+  if (requestedCount != null) search.requestedCount = Math.max(1, Math.min(MAX_REQUESTED_COUNT, Number(requestedCount) || search.requestedCount));
+  if (Array.isArray(sources) && sources.length) search.sources = sources.filter((source) => ALL_SOURCE_KEYS.includes(source));
 
   search.status = "running";
   search.approvedByUserId = userId;

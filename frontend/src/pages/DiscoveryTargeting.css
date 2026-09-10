@@ -528,107 +528,217 @@
   margin-right: 6px;
 }
 
-.leadgen-proposal {
-  border: 1px solid #ded7ca;
-  border-radius: 10px;
-  padding: 1rem;
-  margin: 1rem 0;
-  background: #faf8f3;
-}
-
-.leadgen-proposal dl {
-  display: grid;
-  grid-template-columns: max-content 1fr;
-  gap: 0.35rem 0.75rem;
-  margin: 0.5rem 0 1rem;
-}
-
-.leadgen-proposal dt {
-  font-weight: 700;
-  color: #263f36;
-}
-
-.leadgen-proposal dd {
-  margin: 0;
-}
-
 .leadgen-monitor-suggestion {
   border-top: 1px solid #ded7ca;
   margin-top: 0.75rem;
   padding-top: 0.75rem;
 }
 
-.leadgen-program-selector {
+/* Shared pill control — program, provider, and count selectors all use this
+   one consistent, Apple-style rounded control instead of three different
+   widgets. No transition/animation: state changes instantly. */
+.leadgen-field-group {
   display: grid;
   gap: 0.5rem;
-  margin-bottom: 1rem;
+  margin-bottom: 1.1rem;
 }
 
-.leadgen-program-selector > span {
+.leadgen-field-label {
   color: #263f36;
   font-size: 0.8rem;
   font-weight: 800;
 }
 
-.leadgen-program-pills {
+.leadgen-pill-row {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
 }
 
-.leadgen-program-pill {
+.leadgen-pill {
   border: 1px solid #ccd7d2;
   background: #fff;
   color: #263f36;
   font: inherit;
   font-size: 0.85rem;
   font-weight: 600;
-  padding: 0.5rem 1rem;
+  padding: 0.5rem 1.1rem;
   border-radius: 999px;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
-.leadgen-program-pill:hover {
+.leadgen-pill:hover:not(:disabled) {
   border-color: #173f36;
 }
 
-.leadgen-program-pill.is-selected {
+.leadgen-pill:focus-visible {
+  outline: 2px solid #173f36;
+  outline-offset: 2px;
+}
+
+.leadgen-pill.is-selected {
   background: #173f36;
   border-color: #173f36;
   color: #fff;
 }
 
-.leadgen-provider-fieldset {
+.leadgen-pill.is-disabled,
+.leadgen-pill:disabled {
+  background: #f4f1ea;
+  color: #9aa39c;
+  border-color: #e4ded1;
+  cursor: not-allowed;
+}
+
+.leadgen-provider-reasons {
   display: flex;
-  flex-wrap: wrap;
-  gap: 10px 18px;
-  border: none;
-  padding: 0;
+  flex-direction: column;
+  gap: 2px;
+  color: #b3261e;
+}
+
+/* The in-page review panel — an accessible, clearly bordered region, not a modal. */
+.leadgen-review-panel {
+  border: 1px solid #ded7ca;
+  border-radius: 12px;
+  padding: 1.1rem;
+  margin: 1rem 0;
+  background: #faf8f3;
+}
+
+.leadgen-review-panel h4 {
+  margin: 0 0 0.75rem;
+}
+
+.leadgen-review-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.6rem 1rem;
   margin: 0 0 1rem;
 }
 
-.leadgen-provider-fieldset legend {
+.leadgen-review-grid label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.leadgen-review-grid label span {
   font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--color-text-subtle, #68736f);
-  margin-bottom: 6px;
-  width: 100%;
+  font-weight: 700;
+  color: #263f36;
 }
 
-.leadgen-provider-checkbox {
+.leadgen-review-grid input {
+  border: 1px solid #ccd7d2;
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  font: inherit;
+}
+
+.leadgen-review-grid input[readonly] {
+  background: #f4f1ea;
+  color: #68736f;
+}
+
+.leadgen-review-grid dt {
+  font-weight: 700;
+  color: #263f36;
+}
+
+.leadgen-review-summary {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.4rem 0.75rem;
+  margin: 0 0 1rem;
+}
+
+.leadgen-review-summary dt {
+  font-weight: 700;
+  color: #263f36;
+}
+
+.leadgen-review-summary dd {
+  margin: 0;
+}
+
+.leadgen-review-actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+/* Advanced manual search — a plain, native disclosure (keyboard-operable by
+   default) kept visually secondary to the guided Jarvis flow above it. */
+.leadgen-advanced-search {
+  border: 1px solid #ded7ca;
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+  background: #fff;
+}
+
+.leadgen-advanced-search summary {
+  cursor: pointer;
+  padding: 0.85rem 1.1rem;
+  font-weight: 700;
+  color: #263f36;
+  list-style: none;
+}
+
+.leadgen-advanced-search summary::-webkit-details-marker {
+  display: none;
+}
+
+.leadgen-advanced-search summary::before {
+  content: "▸";
+  display: inline-block;
+  margin-right: 0.5rem;
+  color: #68736f;
+}
+
+.leadgen-advanced-search[open] summary::before {
+  content: "▾";
+}
+
+.leadgen-advanced-search__body {
+  padding: 0 1.1rem 1.1rem;
+}
+
+.leadgen-bulk-qualify {
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
-  font-weight: 500;
+  gap: 0.5rem;
 }
 
-.leadgen-provider-checkbox.is-unavailable {
-  color: var(--color-text-subtle, #68736f);
+.leadgen-bulk-qualify > span {
+  font-weight: 700;
+  color: #263f36;
+  font-size: 0.8rem;
 }
 
-.leadgen-provider-checkbox small {
-  color: #b3261e;
-  font-weight: 400;
+.leadgen-row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.leadgen-row-actions__group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.leadgen-row-actions__group > span {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #68736f;
+}
+
+@media (max-width: 640px) {
+  .leadgen-review-grid,
+  .leadgen-review-summary {
+    grid-template-columns: 1fr;
+  }
 }
