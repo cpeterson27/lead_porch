@@ -40,6 +40,10 @@ import {
   summarizeWeeklyDiscoveryFindings,
   fetchMonitorPerformance,
   fetchDiscoveryStrategyRecommendations,
+  runVertexGroundingDiscoverySearch,
+  fetchVertexGroundingResults,
+  saveVertexGroundingResult,
+  dismissVertexGroundingResult,
 } from "../services/api.js";
 import "./Discovery.css";
 import { draftFromMonitorPreset, sourcesFromMonitorPreset } from "../utils/researchMonitorPreset.js";
@@ -254,6 +258,13 @@ export default function Discovery() {
   const [qualitySaving, setQualitySaving] = useState(false);
   const [qualityDraft, setQualityDraft] = useState({ query: "", keywords: "", negativeKeywords: "", feedUrls: "" });
   const [peopleSearchPrompt, setPeopleSearchPrompt] = useState("Find 20 named owners, founders, executives, or multifamily principals at real U.S. organizations using public leadership evidence. Treat professional role as identity evidence only, not buyer intent. Keep every result staged for review.");
+  const [groundingQuery, setGroundingQuery] = useState("");
+  const [groundingTypes, setGroundingTypes] = useState(["person", "organization"]);
+  const [groundingBusy, setGroundingBusy] = useState(false);
+  const [groundingError, setGroundingError] = useState("");
+  const [groundingResults, setGroundingResults] = useState([]);
+  const [groundingResultsLoading, setGroundingResultsLoading] = useState(false);
+  const [groundingResultsStatus, setGroundingResultsStatus] = useState("pending_review");
   const [draftSignal, setDraftSignal] = useState(null);
   const [draftCampaignId, setDraftCampaignId] = useState("");
   const [draftEditor, setDraftEditor] = useState(null);
@@ -312,6 +323,62 @@ export default function Discovery() {
       setHistoryLoading(false);
     }
   };
+
+  const loadGroundingResults = async (status = groundingResultsStatus) => {
+    setGroundingResultsLoading(true);
+    try {
+      const response = await fetchVertexGroundingResults({ status });
+      setGroundingResults(response.data || []);
+    } catch {
+      setNotice("Unable to load Vertex Grounding results.");
+    } finally {
+      setGroundingResultsLoading(false);
+    }
+  };
+
+  const runGroundingSearch = async () => {
+    if (!groundingQuery.trim() || groundingBusy || !groundingTypes.length) return;
+    setGroundingBusy(true);
+    setGroundingError("");
+    try {
+      const response = await runVertexGroundingDiscoverySearch({ query: groundingQuery, resultTypes: groundingTypes });
+      setNotice(`Vertex Grounding found ${response.data.total} result(s): ${response.data.created} new, ${response.data.merged} merged into existing pending results.`);
+      await loadGroundingResults("pending_review");
+      setGroundingResultsStatus("pending_review");
+    } catch (err) {
+      const message = err.response?.data?.error
+        || (err.code === "ECONNABORTED" ? "This is taking longer than expected. Vertex Grounding can take up to a minute — please try again." : "Vertex Grounding search failed.");
+      setGroundingError(message);
+    } finally {
+      setGroundingBusy(false);
+    }
+  };
+
+  const saveGroundingResult = async (id) => {
+    try {
+      await saveVertexGroundingResult(id);
+      setNotice("Saved with source attribution.");
+      loadGroundingResults();
+    } catch (err) {
+      setNotice(err.response?.data?.error || "Unable to save that result.");
+    }
+  };
+
+  const dismissGroundingResult = async (id) => {
+    try {
+      await dismissVertexGroundingResult(id);
+      loadGroundingResults();
+    } catch (err) {
+      setNotice(err.response?.data?.error || "Unable to dismiss that result.");
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab !== "people") return undefined;
+    const timer = window.setTimeout(() => loadGroundingResults(), 0);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab]);
 
   const loadPeoplePreviews = async () => {
     try {
@@ -951,6 +1018,79 @@ export default function Discovery() {
             {preview.status !== "imported" ? <p className="people-preview-footnote">Staged only—these people have not been added to Contacts. Import remains a separate confirmed step.</p> : <p className="people-preview-footnote is-imported">Imported as needs-review prospects. Open Prospect review below to qualify them.</p>}
           </article>;
         })}</div> : <div className="table-state table-state--empty">No staged people previews yet. Ask Jarvis to find public-web decision-makers; the preview will appear here automatically.</div>}
+      </DashboardCard>
+
+      <DashboardCard title="Vertex AI Grounding (optional public-web source)">
+        <p className="people-preview-intro">
+          A separate, optional source from the Jarvis research above — real Google Search grounding
+          via Vertex AI, with a real citation for every result. Apollo/PDL remain the structured
+          people/company providers and OpenAI/Jarvis still handles planning and qualification;
+          this only adds another way to discover candidates. Nothing here becomes a lead
+          automatically — every result waits for your explicit review below.
+        </p>
+        <div className="people-search-launcher">
+          <label>
+            <span>What should Vertex search the public web for?</span>
+            <textarea value={groundingQuery} onChange={(event) => setGroundingQuery(event.target.value)} placeholder="e.g. real estate investor associations and their named organizers near Austin, Texas" disabled={groundingBusy} />
+          </label>
+          <fieldset className="grounding-type-fieldset">
+            <legend>Result types</legend>
+            {["person", "organization", "event", "community"].map((type) => (
+              <label key={type} className="grounding-type-checkbox">
+                <input
+                  type="checkbox"
+                  checked={groundingTypes.includes(type)}
+                  disabled={groundingBusy}
+                  onChange={(event) => setGroundingTypes((current) => event.target.checked ? [...current, type] : current.filter((row) => row !== type))}
+                />
+                {type}
+              </label>
+            ))}
+          </fieldset>
+          <div>
+            <Button disabled={!groundingQuery.trim() || !groundingTypes.length} loading={groundingBusy} onClick={runGroundingSearch}>
+              {groundingBusy ? "Searching (can take up to a minute)…" : "Search with Vertex Grounding"}
+            </Button>
+          </div>
+          {groundingError ? <p className="form-error">{groundingError}</p> : null}
+        </div>
+
+        <div className="discovery-review-filters">
+          {["pending_review", "saved", "dismissed"].map((status) => (
+            <Button key={status} size="sm" variant={groundingResultsStatus === status ? "primary" : "outline"} onClick={() => { setGroundingResultsStatus(status); loadGroundingResults(status); }}>
+              {status.replace("_", " ")}
+            </Button>
+          ))}
+          <Button size="sm" variant="outline" loading={groundingResultsLoading} onClick={() => loadGroundingResults()}>Refresh</Button>
+        </div>
+
+        {groundingResults.length ? <div className="people-preview-list">
+          {groundingResults.map((result) => (
+            <article key={result._id} className={`people-preview-batch is-${result.status}`}>
+              <header>
+                <div>
+                  <span>{result.type} · {result.confidence.replace("_", " ")}</span>
+                  <strong>{result.name}</strong>
+                  <small>{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
+                </div>
+                {result.status === "pending_review" ? (
+                  <div>
+                    <Button size="sm" onClick={() => saveGroundingResult(result._id)}>Save with attribution</Button>
+                    <Button size="sm" variant="outline" onClick={() => dismissGroundingResult(result._id)}>Dismiss</Button>
+                  </div>
+                ) : <span className="people-preview-footnote">{result.status === "saved" ? "Saved" : "Dismissed"}</span>}
+              </header>
+              <div className="people-preview-evidence">
+                <small>Summary</small>
+                <p>{result.summary || "No summary provided."}</p>
+                <small>Citations</small>
+                <div className="grounding-citations">
+                  {(result.evidenceUrls || []).map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}
+                </div>
+              </div>
+            </article>
+          ))}
+        </div> : <div className="table-state table-state--empty">No {groundingResultsStatus.replace("_", " ")} Vertex Grounding results yet.</div>}
       </DashboardCard>
     </div> : null}
 

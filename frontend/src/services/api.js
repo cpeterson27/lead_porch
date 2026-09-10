@@ -1127,6 +1127,18 @@ export const fetchPeopleResearchPreviews = (limit = 20) =>
     .get("/audience/research/people-previews", { params: { limit } })
     .then((res) => res.data);
 
+// Vertex AI Grounding — optional public-web research source for Discovery.
+// Its own longer timeout, same reasoning as runVertexGrounding: not a
+// change to the shared client's default.
+export const runVertexGroundingDiscoverySearch = (payload) =>
+  api.post("/audience/research/vertex-grounding/search", payload, { timeout: 90000 }).then((res) => res.data);
+export const fetchVertexGroundingResults = (params = {}) =>
+  api.get("/audience/research/vertex-grounding/results", { params }).then((res) => res.data);
+export const saveVertexGroundingResult = (id) =>
+  api.post(`/audience/research/vertex-grounding/results/${id}/save`).then((res) => res.data);
+export const dismissVertexGroundingResult = (id) =>
+  api.post(`/audience/research/vertex-grounding/results/${id}/dismiss`).then((res) => res.data);
+
 export const startExternalMarketResearch = (payload) =>
   api.post("/audience/research/run", payload).then((res) => res.data);
 

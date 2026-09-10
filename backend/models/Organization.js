@@ -35,7 +35,7 @@ const organizationSchema = new mongoose.Schema(
 
     source: {
       type: String,
-      enum: ["manual", "import", "eventbrite", "meetup", "public_web", "legacy"],
+      enum: ["manual", "import", "eventbrite", "meetup", "public_web", "vertex_grounding", "legacy"],
       required: true,
       default: "manual",
     },

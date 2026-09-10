@@ -33,6 +33,7 @@ const leadQualificationService = require("../services/leadQualificationService")
 const biggerPocketsPolicy = require("../services/biggerPocketsEngagementPolicy");
 const agentExecutionService = require("../services/agentExecutionService");
 const searchQualityService = require("../services/searchQualityService");
+const vertexGroundingDiscoveryService = require("../services/vertexGroundingDiscoveryService");
 
 const router = express.Router();
 const MONITOR_SOURCE_DEFAULTS = {
@@ -625,6 +626,49 @@ router.get("/research/people-previews", async (req, res) => {
     return res.json({ success: true, previews });
   } catch (_error) {
     return res.status(500).json({ success: false, error: "Unable to load staged people research." });
+  }
+});
+
+/**
+ * Vertex AI Grounding as an OPTIONAL public-web research source for
+ * Discovery — entirely separate from Apollo/PDL (structured people/company
+ * providers, untouched) and OpenAI/Jarvis (planning/qualification,
+ * untouched). Every result lands in a review queue with citations; nothing
+ * here becomes a lead without an explicit, separate save.
+ */
+router.post("/research/vertex-grounding/search", async (req, res) => {
+  try {
+    const data = await vertexGroundingDiscoveryService.search({
+      workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, auth: req.auth,
+      query: req.body?.query, resultTypes: req.body?.resultTypes, correlationId: req.headers["x-request-id"] || "",
+    });
+    return res.json({ success: true, data });
+  } catch (error) {
+    return res.status(error.httpStatus || (error.code ? 400 : 502)).json({ success: false, error: error.message || "Vertex grounding search failed", code: error.code || "VERTEX_GROUNDING_DISCOVERY_FAILED" });
+  }
+});
+router.get("/research/vertex-grounding/results", async (req, res) => {
+  try {
+    const data = await vertexGroundingDiscoveryService.listResults({ workspaceId: req.auth.workspaceId, status: req.query.status, type: req.query.type });
+    return res.json({ success: true, data });
+  } catch (_error) {
+    return res.status(500).json({ success: false, error: "Unable to load Vertex Grounding results." });
+  }
+});
+router.post("/research/vertex-grounding/results/:id/save", async (req, res) => {
+  try {
+    const data = await vertexGroundingDiscoveryService.saveResult({ workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, resultId: req.params.id });
+    return res.json({ success: true, data });
+  } catch (error) {
+    return res.status(error.code === "GROUNDING_RESULT_NOT_FOUND" ? 404 : 400).json({ success: false, error: error.message, code: error.code });
+  }
+});
+router.post("/research/vertex-grounding/results/:id/dismiss", async (req, res) => {
+  try {
+    const data = await vertexGroundingDiscoveryService.dismissResult({ workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, resultId: req.params.id });
+    return res.json({ success: true, data });
+  } catch (error) {
+    return res.status(error.code === "GROUNDING_RESULT_NOT_FOUND" ? 404 : 400).json({ success: false, error: error.message, code: error.code });
   }
 });
 
