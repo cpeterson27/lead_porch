@@ -214,3 +214,6 @@
 .social-receipts__time{color:#8e8e93;font-size:.74rem;white-space:nowrap}
 .social-receipts__link{font-size:.74rem;font-weight:600;white-space:nowrap}
 @media(max-width:560px){.social-post-performance__stat{min-width:100%}}
+.social-ai-result__meta{margin:.35rem 0 0;font-size:.75rem;color:#5c5c66;font-weight:600}
+.social-ai-result__objections{margin:.35rem 0 0;padding-left:1.1rem;font-size:.78rem}
+.social-ai-result__objections li{margin-bottom:.15rem}

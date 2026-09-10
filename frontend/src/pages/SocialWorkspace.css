@@ -629,6 +629,22 @@
   margin: 10px 0 14px;
 }
 
+.social-ai-instruction {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  font-size: 0.76rem;
+  color: var(--color-text-muted, #68716b);
+}
+
+.social-ai-instruction input {
+  padding: 9px 11px;
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  border-radius: 10px;
+  font: inherit;
+  font-size: 0.86rem;
+}
+
 .social-composer-dock textarea {
   width: 100%;
   min-height: 74px;

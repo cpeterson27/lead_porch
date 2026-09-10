@@ -117,9 +117,19 @@ function fixtures(scopes = ["pages_manage_engagement"], channel = "facebook") {
         calls.push({ method: "delete", url, options });
         return { data: { success: true } };
       },
+      get: async (url, options) => {
+        calls.push({ method: "get", url, options });
+        return { data: { id: "comment-1" } };
+      },
     },
   };
   return { models, activities, calls, messages };
+}
+
+function missingObjectError() {
+  const error = new Error("Request failed");
+  error.response = { status: 400, data: { error: { code: 100, error_subcode: 33, message: "Unsupported delete request. Object with ID 'comment-1' does not exist, cannot be loaded due to missing permission, or does not support this operation." } } };
+  return error;
 }
 
 async function run() {
@@ -282,8 +292,56 @@ async function run() {
       messages: data.messages,
     }).includes("fixture-page-token"),
   );
+  // A delete retried after the comment is already gone from Meta's side must
+  // not surface as a failure: a second, independent GET confirming the
+  // object is missing is real provider confirmation of the desired end
+  // state, so the action should report confirmed rather than error.
+  const alreadyGone = fixtures();
+  alreadyGone.models.http.delete = async (url, options) => {
+    alreadyGone.calls.push({ method: "delete", url, options });
+    throw missingObjectError();
+  };
+  alreadyGone.models.http.get = async (url, options) => {
+    alreadyGone.calls.push({ method: "get", url, options });
+    throw missingObjectError();
+  };
+  const alreadyGoneResult = await service.perform(
+    { ...base, action: "delete", idempotencyKey: "already_gone_action_1" },
+    alreadyGone.models,
+  );
+  assert.equal(alreadyGoneResult.status, "confirmed");
+  assert.equal(
+    alreadyGone.activities[alreadyGone.activities.length - 1].metadata.outcome,
+    "confirmed",
+  );
+  assert(
+    alreadyGone.calls.some((row) => row.method === "get"),
+    "an already-gone delete must be independently re-verified before being treated as confirmed",
+  );
+
+  // The same "does not exist" wording covers a real permission problem, not
+  // only an already-deleted object — the verification GET must be able to
+  // find the comment still there, and in that case the failure must stand.
+  const stillThere = fixtures();
+  stillThere.models.http.delete = async (url, options) => {
+    stillThere.calls.push({ method: "delete", url, options });
+    throw missingObjectError();
+  };
+  await assert.rejects(
+    () =>
+      service.perform(
+        { ...base, action: "delete", idempotencyKey: "genuine_failure_action_1" },
+        stillThere.models,
+      ),
+    /Meta rejected this action/,
+  );
+  assert.equal(
+    stillThere.activities[stillThere.activities.length - 1].metadata.outcome,
+    "failed",
+  );
+
   console.log(
-    "Meta Page engagement passed: reply, hide/unhide, delete, Page like/unlike, audit history, idempotency, permission gating, workspace isolation, and safety switches (mocked).",
+    "Meta Page engagement passed: reply, hide/unhide, delete, Page like/unlike, audit history, idempotency, permission gating, workspace isolation, already-deleted idempotency, and safety switches (mocked).",
   );
 }
 run().catch((error) => {

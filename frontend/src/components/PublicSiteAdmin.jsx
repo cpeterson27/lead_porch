@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Button from "./Button.jsx";
 import WorkspaceBrandingEditor from "./WorkspaceBrandingEditor.jsx";
@@ -19,7 +19,7 @@ import {
   updateProgramPublicPresentation,
   updatePublicManagementConfig,
   uploadEventImage,
-  uploadProgramVideo,
+  uploadHomepageVideo as uploadHomepageVideoAsset,
 } from "../services/api.js";
 import "./PublicSiteAdmin.css";
 
@@ -88,6 +88,75 @@ const metrics = (value) =>
         : { value: row.slice(0, i).trim(), label: row.slice(i + 1).trim() };
     })
     .filter(Boolean);
+
+function HomepageVideoCoverPicker({ videoUrl, coverUrl, onCapture }) {
+  const videoRef = useRef(null);
+  const [duration, setDuration] = useState(0);
+  const [time, setTime] = useState(0);
+  const [capturing, setCapturing] = useState(false);
+  const [error, setError] = useState("");
+  const capture = async () => {
+    const video = videoRef.current;
+    if (!video?.videoWidth) return setError("Wait for the video preview to load, then try again.");
+    try {
+      setCapturing(true);
+      setError("");
+      const canvas = document.createElement("canvas");
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = await new Promise((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (!blob) return reject(new Error("Could not capture this frame"));
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(blob);
+        }, "image/jpeg", 0.9);
+      });
+      await onCapture(dataUrl);
+    } catch {
+      setError("Could not capture this frame. Try a different spot in the video.");
+    } finally {
+      setCapturing(false);
+    }
+  };
+  return (
+    <div className="testimonial-cover-picker homepage-cover-picker">
+      <video
+        ref={videoRef}
+        className="testimonial-cover-picker__video"
+        src={videoUrl}
+        crossOrigin="anonymous"
+        preload="metadata"
+        muted
+        onLoadedMetadata={(event) => setDuration(event.currentTarget.duration || 0)}
+        onTimeUpdate={(event) => setTime(event.currentTarget.currentTime || 0)}
+      />
+      <input
+        type="range"
+        className="testimonial-cover-picker__scrubber"
+        min="0"
+        max={duration || 0}
+        step="0.05"
+        value={time}
+        aria-label="Choose homepage video cover frame"
+        onChange={(event) => {
+          const value = Number(event.target.value);
+          setTime(value);
+          if (videoRef.current) videoRef.current.currentTime = value;
+        }}
+      />
+      <div className="testimonial-cover-picker__actions">
+        <Button type="button" size="sm" loading={capturing} onClick={capture}>
+          Use this frame as the cover photo
+        </Button>
+        {coverUrl ? <img className="testimonial-cover-picker__result" src={coverUrl} alt="Chosen homepage cover frame" /> : null}
+      </div>
+      {error ? <p className="form-error">{error}</p> : null}
+    </div>
+  );
+}
 
 export default function PublicSiteAdmin({ section = "website" }) {
   const [tab, setTab] = useState(section === "team" ? "team" : "brand"),
@@ -238,16 +307,30 @@ export default function PublicSiteAdmin({ section = "website" }) {
     try {
       setUploading("introVideoUrl");
       setError("");
-      const asset = await uploadProgramVideo({
-        file: await fileData(file),
-        filename: file.name,
-      });
+      const asset = await uploadHomepageVideoAsset(file);
       patchPublic("introVideoUrl", asset.url);
       setMessage("Homepage video uploaded. Save to publish the change.");
     } catch (err) {
       setError(
         err.response?.data?.error || "Unable to upload the homepage video.",
       );
+    } finally {
+      setUploading("");
+    }
+  };
+  const captureHomepageCover = async (dataUrl) => {
+    try {
+      setUploading("introVideoPosterUrl");
+      setError("");
+      const asset = await uploadEventImage({
+        file: dataUrl,
+        filename: "homepage-video-cover.jpg",
+      });
+      patchPublic("introVideoPosterUrl", asset.url);
+      setMessage("Homepage cover frame selected. Save to publish the change.");
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to save the homepage cover frame.");
+      throw err;
     } finally {
       setUploading("");
     }
@@ -826,6 +909,22 @@ export default function PublicSiteAdmin({ section = "website" }) {
                 </label>
               </div>
             </article>
+            {config.publicSite.introVideoUrl ? (
+              <article className="homepage-cover-picker-card">
+                <div>
+                  <h4>Choose a cover frame</h4>
+                  <p>
+                    Scrub through the uploaded video and select the exact frame
+                    visitors see before pressing play.
+                  </p>
+                  <HomepageVideoCoverPicker
+                    videoUrl={config.publicSite.introVideoUrl}
+                    coverUrl={config.publicSite.introVideoPosterUrl}
+                    onCapture={captureHomepageCover}
+                  />
+                </div>
+              </article>
+            ) : null}
           </div>
           <div className="public-admin__grid">
             <label>

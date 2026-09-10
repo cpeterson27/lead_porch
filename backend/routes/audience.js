@@ -13,6 +13,8 @@ const InAppNotification = require("../models/InAppNotification");
 const IntentEmailDraft = require("../models/IntentEmailDraft");
 const Campaign = require("../models/Campaign");
 const Outreach = require("../models/Outreach");
+const CoachingProgram = require("../models/CoachingProgram");
+const leadDiscoveryTaxonomy = require("../services/leadDiscoveryTaxonomy");
 
 const {
   discoverAudienceSources,
@@ -22,13 +24,15 @@ const { previewOrganizationImport, importOrganizations } = require("../services/
 const { compileMarketQuestion } = require("../services/marketResearchService");
 const { sourceStatus } = require("../services/businessDataSourceService");
 const { runMarketResearchJob } = require("../services/externalMarketResearchService");
-const { deduplicateSignals, requestResearchMonitorRun, runResearchMonitor, scoreSignal, signalEligibility } = require("../services/researchMonitorService");
+const { classifySignalBucket, deduplicateSignals, requestResearchMonitorRun, runResearchMonitor, scoreSignal, signalEligibility } = require("../services/researchMonitorService");
 const { ensureLinks, generateIntentEmailDraft } = require("../services/intentEmailDraftService");
 const { researchAudienceForSignal } = require("../services/researchAudienceTemplates");
 const { researchPublicWebsite } = require("../services/publicWebsiteResearchService");
 const { RESEARCH_MONITOR_PRESETS } = require("../services/researchMonitorPresets");
 const leadQualificationService = require("../services/leadQualificationService");
 const biggerPocketsPolicy = require("../services/biggerPocketsEngagementPolicy");
+const agentExecutionService = require("../services/agentExecutionService");
+const searchQualityService = require("../services/searchQualityService");
 
 const router = express.Router();
 const MONITOR_SOURCE_DEFAULTS = {
@@ -69,6 +73,19 @@ router.get("/research/monitors", async (req, res) => {
 });
 
 router.get("/research/monitor-presets", (_req, res) => res.json({ success: true, presets: RESEARCH_MONITOR_PRESETS }));
+
+/**
+ * GET /audience/research/monitor-performance
+ * Search-quality feedback loop: measures each monitor by real downstream
+ * outcomes (opportunities, enrollments, won revenue) instead of raw result
+ * volume, and produces deterministic, evidence-based improvement
+ * recommendations. No OpenAI call — this works without any AI budget.
+ */
+router.get("/research/monitor-performance", async (req, res) => {
+  const performance = await searchQualityService.getMonitorPerformance(req.auth.workspaceId);
+  const recommendations = searchQualityService.recommendationsFor(performance);
+  return res.json({ success: true, performance, recommendations });
+});
 
 router.post("/research/monitors", async (req, res) => {
   try {
@@ -163,12 +180,88 @@ router.delete("/research/notifications", async (req, res) => {
   return res.json({ success: true, deleted: result.deletedCount || 0 });
 });
 
+/**
+ * POST /audience/research/weekly-brief
+ * Research Agent: read this week's real Discovery signals (public evidence
+ * only) and turn them into a written brief. Read-only — proposes nothing,
+ * changes nothing. Deterministic short-circuit when there is nothing to
+ * summarize, so this never spends an OpenAI call on an empty week.
+ */
+router.post("/research/weekly-brief", async (req, res) => {
+  const days = Math.min(30, Math.max(1, Number(req.body?.days) || 7));
+  const signalCount = await IntentSignal.countDocuments({ workspaceId: req.auth.workspaceId, discoveredAt: { $gte: new Date(Date.now() - days * 86400000) } });
+  if (!signalCount) {
+    return res.json({ success: true, data: { summary: `No Discovery signals were found in the last ${days} days.`, topFindings: [], recommendedFollowUps: [] }, signalCount: 0 });
+  }
+  try {
+    const result = await agentExecutionService.runAgent({
+      workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, auth: req.auth, agent: "research", task: "summarize_weekly_discovery_findings",
+      input: { days },
+      operationalContext: `Base every claim strictly on the supplied Discovery signals. Do not invent organizations, people, or intent beyond what is in the data. If a signal's evidence is weak or ambiguous, say so rather than overstating confidence. Summarize the last ${days} days of Discovery findings into a written brief for the workspace owner.`,
+      correlationId: `research-weekly-brief:${req.auth.workspaceId}`,
+      options: {
+        tools: [{ toolId: "research.list_recent_signals", input: { days, limit: 50 } }],
+        responseSchema: { type: "object", properties: { summary: { type: "string" }, topFindings: { type: "array", items: { type: "object", properties: { title: { type: "string" }, why: { type: "string" } }, required: ["title", "why"], additionalProperties: false } }, recommendedFollowUps: { type: "array", items: { type: "string" } } }, required: ["summary", "topFindings", "recommendedFollowUps"], additionalProperties: false },
+        schemaName: "discovery_weekly_brief",
+      },
+    });
+    return res.json({ success: true, data: result.output, metadata: result.metadata, signalCount });
+  } catch (err) {
+    const isBillingLimit = err.status === 429 || err.statusCode === 429;
+    const status = isBillingLimit ? 429 : ["AGENT_CAPABILITY_FORBIDDEN", "AGENT_WORKSPACE_FORBIDDEN"].includes(err.code) ? 403 : ["AGENT_UNKNOWN", "AGENT_STRUCTURED_OUTPUT_FORBIDDEN", "AGENT_TEXT_OUTPUT_FORBIDDEN"].includes(err.code) ? 400 : 500;
+    return res.status(status).json({ success: false, error: isBillingLimit ? "OpenAI credits are empty. Add API credits to use the AI weekly brief." : err.message, code: err.code || "RESEARCH_AGENT_BRIEF_FAILED" });
+  }
+});
+
+/**
+ * POST /audience/research/strategy-recommendations
+ * Research Agent: read every monitor's real performance (leads, enrollments,
+ * won revenue) plus the workspace's real active programs, and recommend
+ * concrete new focused searches, monitors to pause or narrow, and program
+ * coverage gaps. Read-only — proposes nothing, changes nothing.
+ */
+router.post("/research/strategy-recommendations", async (req, res) => {
+  const programs = await CoachingProgram.find({ workspaceId: req.auth.workspaceId, status: "active" }).select("name internalSummary").lean();
+  try {
+    const result = await agentExecutionService.runAgent({
+      workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, auth: req.auth, agent: "research", task: "recommend_discovery_strategy",
+      input: { programs: programs.map((p) => ({ name: p.name, summary: p.internalSummary })) },
+      operationalContext: "Base every recommendation strictly on the supplied monitor performance data and the real active program list. Do not invent monitors, numbers, or outcomes. Recommend specific, focused search queries (not broad keyword dumps) tied to a specific program's real language. Flag any active program with no dedicated monitor as a coverage gap. Never propose creating or changing a monitor automatically — only suggest.",
+      correlationId: `discovery-strategy:${req.auth.workspaceId}`,
+      options: {
+        tools: [{ toolId: "research.get_monitor_performance", input: {} }, { toolId: "research.list_recent_signals", input: { days: 14, limit: 50 } }],
+        responseSchema: {
+          type: "object",
+          properties: {
+            summary: { type: "string" },
+            coverageGaps: { type: "array", items: { type: "string" } },
+            monitorsToReview: { type: "array", items: { type: "object", properties: { monitorName: { type: "string" }, issue: { type: "string" }, recommendation: { type: "string" } }, required: ["monitorName", "issue", "recommendation"], additionalProperties: false } },
+            suggestedSearches: { type: "array", items: { type: "object", properties: { program: { type: "string" }, query: { type: "string" }, rationale: { type: "string" } }, required: ["program", "query", "rationale"], additionalProperties: false } },
+          },
+          required: ["summary", "coverageGaps", "monitorsToReview", "suggestedSearches"],
+          additionalProperties: false,
+        },
+        schemaName: "discovery_strategy_recommendations",
+      },
+    });
+    return res.json({ success: true, data: result.output, metadata: result.metadata });
+  } catch (err) {
+    const isBillingLimit = err.status === 429 || err.statusCode === 429;
+    const status = isBillingLimit ? 429 : ["AGENT_CAPABILITY_FORBIDDEN", "AGENT_WORKSPACE_FORBIDDEN"].includes(err.code) ? 403 : ["AGENT_UNKNOWN", "AGENT_STRUCTURED_OUTPUT_FORBIDDEN", "AGENT_TEXT_OUTPUT_FORBIDDEN"].includes(err.code) ? 400 : 500;
+    return res.status(status).json({ success: false, error: isBillingLimit ? "OpenAI credits are empty. Add API credits to use AI strategy recommendations." : err.message, code: err.code || "RESEARCH_AGENT_STRATEGY_FAILED" });
+  }
+});
+
 router.get("/research/signals", async (req, res) => {
   const limit = Math.min(250, Math.max(1, Number(req.query.limit) || 100));
   const filter = { workspaceId: req.auth.workspaceId };
   if (req.query.monitorId) filter.monitorId = req.query.monitorId;
   if (req.query.status) filter.status = req.query.status;
+  if (req.query.bucket) filter.bucket = req.query.bucket;
   const signals = await IntentSignal.find(filter).sort({ score: -1, publishedAt: -1, discoveredAt: -1 }).limit(limit).lean();
+  const programProfiles = leadDiscoveryTaxonomy.buildProgramProfiles(await CoachingProgram.find({ workspaceId: req.auth.workspaceId, status: "active" }).select("name internalSummary publicPresentation.summary status").lean());
+  const [liveLeadCount, watchlistCount, communityOpportunityCount, rejectedCount] = await Promise.all(["live_lead", "watchlist", "community_opportunity", "rejected"].map((bucket) => IntentSignal.countDocuments({ workspaceId: req.auth.workspaceId, bucket })));
+  const bucketSummary = { live_lead: liveLeadCount, watchlist: watchlistCount, community_opportunity: communityOpportunityCount, rejected: rejectedCount };
   const stalePlatformIdentities = signals.filter((signal) => invalidPlatformIdentityName(signal.authorName));
   if (stalePlatformIdentities.length) await Promise.all(stalePlatformIdentities.map(async (signal) => {
     signal.authorName = "";
@@ -180,12 +273,33 @@ router.get("/research/signals", async (req, res) => {
   }));
   const monitorIds = [...new Set(signals.map((signal) => String(signal.monitorId || "")).filter(Boolean))];
   const monitorMap = new Map((await ResearchMonitor.find({ _id: { $in: monitorIds } }).lean()).map((monitor) => [String(monitor._id), monitor]));
-  const assessed = signals.map((signal) => { const monitor = monitorMap.get(String(signal.monitorId)); return { signal, eligibility: signalEligibility(signal, monitor), ranking: monitor ? scoreSignal(signal, monitor) : null }; });
+  const assessed = signals.map((signal) => {
+    const monitor = monitorMap.get(String(signal.monitorId));
+    const eligibility = signalEligibility(signal, monitor, programProfiles);
+    const ranking = monitor ? scoreSignal(signal, monitor, programProfiles) : null;
+    const { bucket, rejectionReason } = monitor ? classifySignalBucket({ signal, monitor, eligibility, ranking }) : { bucket: signal.bucket || "live_lead", rejectionReason: signal.rejectionReason || "" };
+    return { signal, eligibility, ranking, bucket, rejectionReason };
+  });
+  // Watchlist / Community Opportunities / Rejected are separate discovery-track result areas,
+  // not part of the "accepted live lead" pipeline below (which assumes buyer-intent eligibility).
+  // Serve them directly so a rejected signal's reason is actually visible, not filtered away.
+  if (["watchlist", "community_opportunity", "rejected"].includes(req.query.bucket)) {
+    await Promise.all(assessed.map(({ signal, eligibility, bucket, rejectionReason }) => (signal.bucket !== bucket || signal.rejectionReason !== rejectionReason)
+      ? IntentSignal.updateOne({ _id: signal._id }, { $set: { bucket, rejectionReason, audienceEligible: bucket !== "rejected", audienceRejectionReason: bucket === "rejected" ? (eligibility.reason || "") : "" } })
+      : Promise.resolve()));
+    const trackSignals = assessed.map(({ signal, ranking, bucket, rejectionReason }) => {
+      const monitor = monitorMap.get(String(signal.monitorId));
+      return { ...signal, ...(ranking ? { score: ranking.score, scoreReasons: ranking.reasons, dimensions: ranking.dimensions } : {}), bucket, rejectionReason, monitorName: monitor?.name || "Unknown monitor", monitorType: monitor?.monitorType || "" };
+    });
+    return res.json({ success: true, signals: trackSignals, bucketSummary, summary: { total: trackSignals.length } });
+  }
   const rejected = assessed.filter((item) => !item.eligibility.eligible || (item.ranking && item.ranking.score < 45));
-  if (rejected.length) await Promise.all(rejected.map(({ signal, eligibility }) => IntentSignal.updateOne({ _id: signal._id }, { $set: { audienceEligible: false, audienceRejectionReason: eligibility.reason, status: "dismissed", classification: "irrelevant", classificationReason: eligibility.reason } })));
+  if (rejected.length) await Promise.all(rejected.map(({ signal, eligibility, bucket, rejectionReason }) => IntentSignal.updateOne({ _id: signal._id }, { $set: { audienceEligible: false, audienceRejectionReason: eligibility.reason, status: "dismissed", classification: "irrelevant", classificationReason: eligibility.reason, bucket, rejectionReason } })));
+  const rebucketed = assessed.filter((item) => item.eligibility.eligible && item.signal.bucket !== item.bucket);
+  if (rebucketed.length) await Promise.all(rebucketed.map(({ signal, bucket, rejectionReason }) => IntentSignal.updateOne({ _id: signal._id }, { $set: { bucket, rejectionReason } })));
   const accepted = assessed.filter((item) => item.eligibility.eligible && (!item.ranking || item.ranking.score >= 45) && item.signal.audienceEligible !== false);
   if (accepted.length) await Promise.all(accepted.filter((item) => item.ranking && (item.signal.score !== item.ranking.score || JSON.stringify(item.signal.scoreReasons || []) !== JSON.stringify(item.ranking.reasons))).map(({ signal, ranking }) => IntentSignal.updateOne({ _id: signal._id }, { $set: { score: ranking.score, scoreReasons: ranking.reasons } })));
-  const acceptedSignals = deduplicateSignals(accepted.map(({ signal, ranking }) => ranking ? { ...signal, score: ranking.score, scoreReasons: ranking.reasons } : signal));
+  const acceptedSignals = deduplicateSignals(accepted.map(({ signal, ranking, bucket, rejectionReason }) => ({ ...signal, ...(ranking ? { score: ranking.score, scoreReasons: ranking.reasons } : {}), bucket, rejectionReason })));
   const drafts = await IntentEmailDraft.find({ workspaceId: req.auth.workspaceId, signalId: { $in: acceptedSignals.map((signal) => signal._id) } }).sort({ updatedAt: -1 }).lean();
   const draftsBySignal = new Map();
   drafts.forEach((draft) => { const key = String(draft.signalId); draftsBySignal.set(key, [...(draftsBySignal.get(key) || []), draft]); });
@@ -218,7 +332,7 @@ router.get("/research/signals", async (req, res) => {
     if (["create_draft", "review_draft", "ready_in_outreach"].includes(signal.nextStep)) counts.contactReady += 1;
     return counts;
   }, { total: 0, person: 0, community_partner: 0, organization: 0, intent_signal: 0, public_engagement: 0, new: 0, qualified: 0, converted: 0, needsIdentity: 0, needsEmailVerification: 0, contactReady: 0 });
-  return res.json({ success: true, signals: categorizedSignals, summary, automaticallyRejected: rejected.length });
+  return res.json({ success: true, signals: categorizedSignals, summary, bucketSummary, automaticallyRejected: rejected.length });
 });
 
 router.patch("/research/signals/:signalId", async (req, res) => {

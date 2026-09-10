@@ -32,6 +32,8 @@ const communicationSegmentService = require("../services/communicationSegmentSer
 const coachingCommunicationService = require("../services/coachingCommunicationService");
 const coachingSchedulingService = require("../services/coachingSchedulingService");
 const workspaceMemberService = require("../services/workspaceMemberService");
+const agentExecutionService = require("../services/agentExecutionService");
+const coachingSuccessPatternsService = require("../services/coachingSuccessPatternsService");
 const { authenticatedUserId, isAdminRole } = require("../authorization/accessPolicy");
 const { hasRole } = require("../authorization/capabilities");
 const { requireCapability } = require("../middleware/auth");
@@ -70,6 +72,8 @@ const defaultDependencies = {
   coachingCommunicationService,
   coachingSchedulingService,
   workspaceMemberService,
+  agentExecutionService,
+  coachingSuccessPatternsService,
 };
 
 const CONTACT_FIELDS = "name firstName lastName email phone title company organizationId status tags";
@@ -764,6 +768,89 @@ function createCoachingRouter(overrides = {}) {
     const allowedEnrollmentIds = access ? new Set(access.enrollmentIds.map(String)) : null;
     const visibleActivities = allowedEnrollmentIds ? coachingActivities.filter((item) => !item.metadata?.enrollmentId || allowedEnrollmentIds.has(String(item.metadata.enrollmentId))) : coachingActivities;
     return res.json({ success: true, data: { contact, enrollments, coachAssignments, coachingNotes, coachingHandoffs, coachingActivities: visibleActivities, communicationMessages } });
+  }));
+
+  /**
+   * POST /coaching/students/:contactId/ai-summary
+   * Coaching Agent: read this student's enrollment(s), coach assignment(s),
+   * recent notes, and recent activity, and produce a session-prep brief.
+   * Read-only — proposes nothing, changes nothing.
+   */
+  router.post("/students/:contactId/ai-summary", asyncRoute(async (req, res) => {
+    if (!validId(req.params.contactId)) return res.status(400).json({ success: false, error: "Invalid student Contact", code: "ID_INVALID" });
+    const access = isAdminRole(req.auth.role) ? null : await deps.coachingAuthorization.resolveCoachingAccess(req);
+    if (access && !access.contactIds.some((id) => String(id) === String(req.params.contactId))) {
+      return res.status(404).json({ success: false, error: "Coaching student not found", code: "STUDENT_NOT_FOUND" });
+    }
+    const contact = await deps.Contact.findOne({ _id: req.params.contactId, workspaceId: req.auth.workspaceId }).select(CONTACT_FIELDS).lean();
+    if (!contact) return res.status(404).json({ success: false, error: "Coaching student not found", code: "STUDENT_NOT_FOUND" });
+    const enrollmentFilter = { workspaceId: req.auth.workspaceId, contactId: contact._id };
+    const assignmentFilter = { workspaceId: req.auth.workspaceId, contactId: contact._id };
+    if (access) { enrollmentFilter._id = { $in: access.enrollmentIds }; assignmentFilter._id = { $in: access.assignmentIds }; }
+    const [enrollments, coachAssignments, coachingNotes] = await Promise.all([
+      deps.Enrollment.find(enrollmentFilter).populate("coachingProgramId", "name").select("coachingProgramId status startsAt expectedEndAt completedAt currentStageKey").sort({ startsAt: -1 }).limit(10).lean(),
+      deps.CoachAssignment.find(assignmentFilter).populate("coachProfileId", "displayName").select("coachProfileId status stageKey startsAt endsAt").sort({ startsAt: -1 }).limit(10).lean(),
+      deps.CoachingNote.find({ workspaceId: req.auth.workspaceId, contactId: contact._id, ...(access ? { enrollmentId: { $in: access.enrollmentIds } } : {}) }).select("body createdAt authorCoachProfileId").populate("authorCoachProfileId", "displayName").sort({ createdAt: -1 }).limit(10).lean(),
+    ]);
+    const context = {
+      student: { displayName: contact.name, status: contact.status },
+      enrollments: enrollments.map((item) => ({ program: item.coachingProgramId?.name || "Unknown program", status: item.status, currentStageKey: item.currentStageKey, startsAt: item.startsAt, expectedEndAt: item.expectedEndAt, completedAt: item.completedAt })),
+      coachAssignments: coachAssignments.map((item) => ({ coach: item.coachProfileId?.displayName || "Unassigned", status: item.status, stageKey: item.stageKey })),
+      recentNotes: coachingNotes.map((item) => ({ author: item.authorCoachProfileId?.displayName || "Coach", at: item.createdAt, note: String(item.body || "").slice(0, 1000) })),
+    };
+    try {
+      const result = await deps.agentExecutionService.runAgent({
+        workspaceId: req.auth.workspaceId, userId: authenticatedUserId(req), auth: req.auth, agent: "coaching", task: "summarize_student",
+        input: {},
+        operationalContext: `Base every claim strictly on the supplied student context. Do not invent progress, sessions, or facts absent from the data. If notes or enrollments are empty, say so plainly rather than speculating. Student context: ${JSON.stringify(context)}`,
+        correlationId: `coaching-summary:${contact._id}`,
+        options: {
+          responseSchema: { type: "object", properties: { summary: { type: "string" }, currentStanding: { type: "string" }, suggestedFocusAreas: { type: "array", items: { type: "string" } }, riskFlags: { type: "array", items: { type: "string" } } }, required: ["summary", "currentStanding", "suggestedFocusAreas", "riskFlags"], additionalProperties: false },
+          schemaName: "student_summary",
+        },
+      });
+      return res.json({ success: true, data: result.output, metadata: result.metadata });
+    } catch (err) {
+      const isBillingLimit = err.status === 429 || err.statusCode === 429;
+      const status = isBillingLimit ? 429 : ["AGENT_CAPABILITY_FORBIDDEN", "AGENT_WORKSPACE_FORBIDDEN"].includes(err.code) ? 403 : ["AGENT_UNKNOWN", "AGENT_STRUCTURED_OUTPUT_FORBIDDEN", "AGENT_TEXT_OUTPUT_FORBIDDEN"].includes(err.code) ? 400 : 500;
+      return res.status(status).json({ success: false, error: isBillingLimit ? "OpenAI credits are empty. Add API credits to use AI session-prep summaries." : err.message, code: err.code || "COACHING_AGENT_SUMMARY_FAILED" });
+    }
+  }));
+
+  /**
+   * GET /coaching/success-patterns
+   * Aggregated, anonymized enrollment outcome patterns (completion rates, common
+   * drop-off stages, per-program breakdown). Never individual student data.
+   */
+  router.get("/success-patterns", requireAdmin, asyncRoute(async (req, res) => {
+    const patterns = await deps.coachingSuccessPatternsService.getSuccessPatterns(req.auth.workspaceId);
+    return res.json({ success: true, data: patterns });
+  }));
+
+  /**
+   * POST /coaching/success-patterns/summarize
+   * Coaching Agent: turn the same aggregated, anonymized patterns into a
+   * written brief. Read-only — proposes nothing, changes nothing.
+   */
+  router.post("/success-patterns/summarize", requireAdmin, asyncRoute(async (req, res) => {
+    try {
+      const result = await deps.agentExecutionService.runAgent({
+        workspaceId: req.auth.workspaceId, userId: authenticatedUserId(req), auth: req.auth, agent: "coaching", task: "summarize_success_patterns",
+        input: {},
+        operationalContext: "Base every claim strictly on the supplied aggregated, anonymized enrollment data. Do not invent students, names, or specifics beyond the aggregate counts. Never speculate about a specific individual.",
+        correlationId: `coaching-success-patterns:${req.auth.workspaceId}`,
+        options: {
+          tools: [{ toolId: "coaching.get_success_patterns", input: {} }],
+          responseSchema: { type: "object", properties: { summary: { type: "string" }, strengths: { type: "array", items: { type: "string" } }, riskAreas: { type: "array", items: { type: "string" } } }, required: ["summary", "strengths", "riskAreas"], additionalProperties: false },
+          schemaName: "coaching_success_patterns_summary",
+        },
+      });
+      return res.json({ success: true, data: result.output, metadata: result.metadata });
+    } catch (err) {
+      const isBillingLimit = err.status === 429 || err.statusCode === 429;
+      const status = isBillingLimit ? 429 : ["AGENT_CAPABILITY_FORBIDDEN", "AGENT_WORKSPACE_FORBIDDEN"].includes(err.code) ? 403 : ["AGENT_UNKNOWN", "AGENT_STRUCTURED_OUTPUT_FORBIDDEN", "AGENT_TEXT_OUTPUT_FORBIDDEN"].includes(err.code) ? 400 : 500;
+      return res.status(status).json({ success: false, error: isBillingLimit ? "OpenAI credits are empty. Add API credits to use the AI summary." : err.message, code: err.code || "COACHING_AGENT_SUCCESS_PATTERNS_FAILED" });
+    }
   }));
 
   return router;

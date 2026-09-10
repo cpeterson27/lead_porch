@@ -1,406 +1,194 @@
 /**
  * Test script for Organization Relationship Management Layer
- * Tests all 3 endpoints and integration with discovery flow
+ * Tests all 3 endpoints (GET relationship, PATCH relationship, GET by-status)
+ * via in-process, authenticated, workspace-scoped route invocation.
  */
 
-const http = require("http");
+require("dotenv").config();
+const assert = require("node:assert/strict");
+const mongoose = require("mongoose");
+const router = require("./routes/organizationRelationships");
+const { runWithWorkspace } = require("./tenancy/workspaceContext");
+const Audience = require("./models/Audience");
+const Organization = require("./models/Organization");
+const OrganizationRelationship = require("./models/OrganizationRelationship");
+const CrmActivity = require("./models/CrmActivity");
 
-const BASE_URL = "http://localhost:5001/api";
+function fakeRes() {
+  const res = { statusCode: 200, body: null };
+  res.status = (code) => { res.statusCode = code; return res; };
+  res.json = (data) => { res.body = data; return res; };
+  return res;
+}
 
-function makeRequest(method, path, options = {}) {
-  return new Promise((resolve, reject) => {
-    const url = new URL(path, BASE_URL);
-    const urlObj = new URL(url);
-
-    const requestOptions = {
-      method,
-      hostname: urlObj.hostname,
-      port: urlObj.port,
-      path: urlObj.pathname + urlObj.search,
-      headers: {
-        "Content-Type": "application/json",
-        ...options.headers,
-      },
-    };
-
-    const req = http.request(requestOptions, (res) => {
-      let data = "";
-
-      res.on("data", (chunk) => {
-        data += chunk;
-      });
-
-      res.on("end", () => {
-        try {
-          const parsed = JSON.parse(data);
-          resolve({
-            status: res.statusCode,
-            headers: res.headers,
-            body: parsed,
-          });
-        } catch (e) {
-          resolve({
-            status: res.statusCode,
-            headers: res.headers,
-            body: data,
-          });
-        }
-      });
-    });
-
-    req.on("error", reject);
-
-    if (options.body) {
-      req.write(JSON.stringify(options.body));
+// This router relies entirely on the automatic tenancy plugin (workspace
+// scoping via AsyncLocalStorage), never reading req.auth.workspaceId
+// directly in its queries — so route invocation must run inside
+// runWithWorkspace for scoping to apply at all, matching what requireAuth
+// does for every real request.
+async function runRoute(path, method, req) {
+  return runWithWorkspace(req.auth.workspaceId, async () => {
+    const res = fakeRes();
+    const layer = router.stack.find((l) => l.route && l.route.path === path && l.route.methods[method]);
+    for (const routeLayer of layer.route.stack) {
+      let calledNext = false, nextError = null;
+      await routeLayer.handle(req, res, (error) => { calledNext = true; nextError = error; });
+      if (nextError) throw nextError;
+      if (!calledNext) break;
     }
-
-    req.end();
+    return res;
   });
 }
 
-async function runTests() {
-  console.log("========================================");
-  console.log("Organization Relationship Layer Tests");
-  console.log("========================================\n");
+async function run() {
+  await mongoose.connect(process.env.MONGO_URI);
+  const workspaceId = new mongoose.Types.ObjectId();
+  const auth = { workspaceId: String(workspaceId), user: { _id: String(new mongoose.Types.ObjectId()) }, effectivePermissions: [] };
 
-  let passCount = 0;
-  let failCount = 0;
+  const audience = await runWithWorkspace(workspaceId, () => Audience.create({ name: "Test Relationship Audience" }));
+  const organization = await runWithWorkspace(workspaceId, () => Organization.create({ name: "Test Relationship Org" }));
+  const relationship = await runWithWorkspace(workspaceId, () => OrganizationRelationship.create({
+    organizationId: organization._id,
+    audienceId: audience._id,
+    status: "new",
+  }));
 
-  // Setup: Fetch test data
-  console.log("Setting up test data...\n");
-  let audienceId = null;
-  let organizationId = null;
+  let passed = 0, failed = 0;
+  async function test(name, fn) {
+    try { await fn(); console.log(`✓ ${name}`); passed++; }
+    catch (error) { console.error(`✗ ${name}`); console.error(`  ${error.message}`); failed++; }
+  }
 
   try {
-    // Get an audience with organizations
-    const audiencesRes = await makeRequest("GET", `${BASE_URL}/audience`);
-    if (
-      audiencesRes.status === 200 &&
-      audiencesRes.body.audiences &&
-      audiencesRes.body.audiences.length > 0
-    ) {
-      audienceId = audiencesRes.body.audiences[0]._id;
-      console.log(`✓ Found audience: ${audienceId}`);
+    await test("GET /organizations/:id/relationship?audienceId=... returns the relationship", async () => {
+      const res = await runRoute("/:organizationId/relationship", "get", {
+        auth, params: { organizationId: String(organization._id) }, query: { audienceId: String(audience._id) },
+      });
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.body.success, true);
+      assert.equal(res.body.organization.name, "Test Relationship Org");
+      assert.equal(res.body.audience.name, "Test Relationship Audience");
+      assert.equal(res.body.relationship.status, "new");
+    });
 
-      // Get organizations for this audience
-      const orgsRes = await makeRequest(
-        "GET",
-        `${BASE_URL}/audience/${audienceId}/organizations/prioritized?limit=1`,
-      );
-      if (
-        orgsRes.status === 200 &&
-        orgsRes.body.organizations &&
-        orgsRes.body.organizations.length > 0
-      ) {
-        organizationId = orgsRes.body.organizations[0]._id;
-        console.log(`✓ Found organization: ${organizationId}\n`);
-      }
-    }
-  } catch (err) {
-    console.log(`❌ Setup failed: ${err.message}\n`);
-    process.exit(1);
+    await test("GET /organizations/:id/relationship (no audience filter) returns all relationships", async () => {
+      const res = await runRoute("/:organizationId/relationship", "get", {
+        auth, params: { organizationId: String(organization._id) }, query: {},
+      });
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.body.success, true);
+      assert(Array.isArray(res.body.relationships));
+      assert.equal(res.body.relationships.length, 1);
+      assert.equal(res.body.relationships[0].audienceName, "Test Relationship Audience");
+    });
+
+    await test("PATCH /organizations/:id/relationship updates status to reviewing", async () => {
+      const res = await runRoute("/:organizationId/relationship", "patch", {
+        auth, params: { organizationId: String(organization._id) },
+        body: { audienceId: String(audience._id), status: "reviewing", notes: "Initial review started" },
+      });
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.body.success, true);
+      assert.equal(res.body.relationship.status, "reviewing");
+      assert.equal(res.body.relationship.notes, "Initial review started");
+      const activity = await runWithWorkspace(workspaceId, () => CrmActivity.findOne({ organizationId: organization._id, type: "status_change" }).lean());
+      assert(activity, "a CrmActivity record must be created for the status change");
+      assert.match(activity.body, /new → reviewing/);
+    });
+
+    await test("PATCH /organizations/:id/relationship updates status to qualified", async () => {
+      const res = await runRoute("/:organizationId/relationship", "patch", {
+        auth, params: { organizationId: String(organization._id) },
+        body: { audienceId: String(audience._id), status: "qualified", notes: "Excellent fit" },
+      });
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.body.relationship.status, "qualified");
+      assert.equal(res.body.relationship.notes, "Excellent fit");
+    });
+
+    await test("PATCH with invalid status returns 400", async () => {
+      const res = await runRoute("/:organizationId/relationship", "patch", {
+        auth, params: { organizationId: String(organization._id) },
+        body: { audienceId: String(audience._id), status: "invalid_status", notes: "This should fail" },
+      });
+      assert.equal(res.statusCode, 400);
+      assert.equal(res.body.success, false);
+    });
+
+    await test("GET with invalid organization ID returns 404", async () => {
+      const res = await runRoute("/:organizationId/relationship", "get", {
+        auth, params: { organizationId: "invalid123" }, query: { audienceId: String(audience._id) },
+      });
+      assert.equal(res.statusCode, 404);
+      assert.equal(res.body.success, false);
+    });
+
+    await test("GET /organizations/by-status/:audienceId?status=qualified returns matching organizations", async () => {
+      const res = await runRoute("/by-status/:audienceId", "get", {
+        auth, params: { audienceId: String(audience._id) }, query: { status: "qualified", limit: "10" },
+      });
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.body.success, true);
+      assert(Array.isArray(res.body.organizations));
+      assert.equal(res.body.organizations.length, 1);
+      assert.equal(res.body.organizations[0].organization.name, "Test Relationship Org");
+      assert.equal(res.body.pagination.totalResults, 1);
+      assert.equal(res.body.summary.byStatus.qualified, 1);
+    });
+
+    await test("GET /organizations/by-status/:audienceId (no filter) returns all statuses", async () => {
+      const res = await runRoute("/by-status/:audienceId", "get", {
+        auth, params: { audienceId: String(audience._id) }, query: { limit: "5", page: "1" },
+      });
+      assert.equal(res.statusCode, 200);
+      assert.equal(res.body.success, true);
+      assert.equal(res.body.pagination.totalResults, 1);
+      assert.equal(res.body.summary.byStatus.qualified, 1);
+    });
+
+    await test("GET /organizations/by-status with invalid status filter returns 400", async () => {
+      const res = await runRoute("/by-status/:audienceId", "get", {
+        auth, params: { audienceId: String(audience._id) }, query: { status: "bad_status" },
+      });
+      assert.equal(res.statusCode, 400);
+      assert.equal(res.body.success, false);
+    });
+
+    await test("GET /organizations/by-status with invalid audience ID returns 404", async () => {
+      const res = await runRoute("/by-status/:audienceId", "get", {
+        auth, params: { audienceId: "invalid123" }, query: {},
+      });
+      assert.equal(res.statusCode, 404);
+      assert.equal(res.body.success, false);
+    });
+
+    await test("Workspace isolation: a relationship in a foreign workspace is invisible", async () => {
+      const foreignWorkspaceId = new mongoose.Types.ObjectId();
+      const res = await runRoute("/:organizationId/relationship", "get", {
+        auth: { ...auth, workspaceId: String(foreignWorkspaceId) },
+        params: { organizationId: String(organization._id) },
+        query: { audienceId: String(audience._id) },
+      });
+      assert.equal(res.statusCode, 404, "a foreign workspace must not see another workspace's organization");
+    });
+  } finally {
+    await runWithWorkspace(workspaceId, async () => {
+      await OrganizationRelationship.deleteMany({ workspaceId });
+      await Organization.deleteMany({ workspaceId });
+      await Audience.deleteMany({ workspaceId });
+      await CrmActivity.deleteMany({ workspaceId });
+    });
+    await mongoose.disconnect();
   }
 
-  if (!audienceId || !organizationId) {
-    console.log("❌ Could not find test data.\n");
-    process.exit(1);
-  }
-
-  // TEST 1: Get Organization Relationship (by org + audience)
-  console.log("TEST 1: GET /organizations/:id/relationship?audienceId=...");
-  try {
-    const res = await makeRequest(
-      "GET",
-      `${BASE_URL}/organizations/${organizationId}/relationship?audienceId=${audienceId}`,
-    );
-
-    if (res.status === 200 && res.body.success && res.body.relationship) {
-      console.log("✓ PASS: Relationship retrieved");
-      console.log(`  - Organization: ${res.body.organization.name}`);
-      console.log(`  - Audience: ${res.body.audience.name}`);
-      console.log(`  - Status: ${res.body.relationship.status}`);
-      console.log(`  - Created: ${res.body.relationship.createdAt}`);
-      passCount++;
-    } else {
-      console.log(`❌ FAIL: Status ${res.status}, response:`, res.body);
-      failCount++;
-    }
-  } catch (err) {
-    console.log(`❌ FAIL: ${err.message}`);
-    failCount++;
-  }
-  console.log("");
-
-  // TEST 2: Get All Relationships for Organization (no audienceId filter)
-  console.log(
-    "TEST 2: GET /organizations/:id/relationship (no audience filter)",
-  );
-  try {
-    const res = await makeRequest(
-      "GET",
-      `${BASE_URL}/organizations/${organizationId}/relationship`,
-    );
-
-    if (
-      res.status === 200 &&
-      res.body.success &&
-      Array.isArray(res.body.relationships)
-    ) {
-      console.log("✓ PASS: All relationships retrieved");
-      console.log(`  - Organization: ${res.body.organization.name}`);
-      console.log(`  - Relationships: ${res.body.relationships.length}`);
-      if (res.body.relationships.length > 0) {
-        console.log(
-          `  - Sample statuses: ${res.body.relationships.map((r) => r.status).join(", ")}`,
-        );
-      }
-      passCount++;
-    } else {
-      console.log(`❌ FAIL: Status ${res.status}`);
-      failCount++;
-    }
-  } catch (err) {
-    console.log(`❌ FAIL: ${err.message}`);
-    failCount++;
-  }
-  console.log("");
-
-  // TEST 3: Update Relationship Status to "reviewing"
-  console.log(
-    "TEST 3: PATCH /organizations/:id/relationship (status: reviewing)",
-  );
-  try {
-    const res = await makeRequest(
-      "PATCH",
-      `${BASE_URL}/organizations/${organizationId}/relationship`,
-      {
-        body: {
-          audienceId,
-          status: "reviewing",
-          notes: "Initial review started",
-        },
-      },
-    );
-
-    if (res.status === 200 && res.body.success && res.body.relationship) {
-      console.log("✓ PASS: Relationship status updated");
-      console.log(`  - Old status: new`);
-      console.log(`  - New status: ${res.body.relationship.status}`);
-      console.log(`  - Notes: ${res.body.relationship.notes}`);
-      console.log(`  - Changed at: ${res.body.relationship.lastChangedAt}`);
-      passCount++;
-    } else {
-      console.log(`❌ FAIL: Status ${res.status}`);
-      failCount++;
-    }
-  } catch (err) {
-    console.log(`❌ FAIL: ${err.message}`);
-    failCount++;
-  }
-  console.log("");
-
-  // TEST 4: Update to "qualified"
-  console.log(
-    "TEST 4: PATCH /organizations/:id/relationship (status: qualified)",
-  );
-  try {
-    const res = await makeRequest(
-      "PATCH",
-      `${BASE_URL}/organizations/${organizationId}/relationship`,
-      {
-        body: {
-          audienceId,
-          status: "qualified",
-          notes: "Excellent fit for multifamily investor audience",
-        },
-      },
-    );
-
-    if (res.status === 200 && res.body.success) {
-      console.log("✓ PASS: Status updated to qualified");
-      console.log(`  - Status: ${res.body.relationship.status}`);
-      console.log(`  - Notes: ${res.body.relationship.notes}`);
-      passCount++;
-    } else {
-      console.log(`❌ FAIL: Status ${res.status}`);
-      failCount++;
-    }
-  } catch (err) {
-    console.log(`❌ FAIL: ${err.message}`);
-    failCount++;
-  }
-  console.log("");
-
-  // TEST 5: Invalid status (should fail)
-  console.log("TEST 5: PATCH with invalid status (should return 400)");
-  try {
-    const res = await makeRequest(
-      "PATCH",
-      `${BASE_URL}/organizations/${organizationId}/relationship`,
-      {
-        body: {
-          audienceId,
-          status: "invalid_status",
-          notes: "This should fail",
-        },
-      },
-    );
-
-    if (res.status === 400 && !res.body.success) {
-      console.log("✓ PASS: Invalid status correctly rejected");
-      console.log(`  - Error: ${res.body.error}`);
-      passCount++;
-    } else {
-      console.log(`❌ FAIL: Expected 400, got ${res.status}`);
-      failCount++;
-    }
-  } catch (err) {
-    console.log(`❌ FAIL: ${err.message}`);
-    failCount++;
-  }
-  console.log("");
-
-  // TEST 6: Invalid organization ID (should return 404)
-  console.log("TEST 6: GET with invalid org ID (should return 404)");
-  try {
-    const res = await makeRequest(
-      "GET",
-      `${BASE_URL}/organizations/invalid123/relationship?audienceId=${audienceId}`,
-    );
-
-    if (res.status === 404 && !res.body.success) {
-      console.log("✓ PASS: Invalid org ID correctly rejected");
-      console.log(`  - Error: ${res.body.error}`);
-      passCount++;
-    } else {
-      console.log(`❌ FAIL: Expected 404, got ${res.status}`);
-      failCount++;
-    }
-  } catch (err) {
-    console.log(`❌ FAIL: ${err.message}`);
-    failCount++;
-  }
-  console.log("");
-
-  // TEST 7: Get organizations by status
-  console.log(
-    "TEST 7: GET /organizations/by-status/:audienceId?status=qualified",
-  );
-  try {
-    const res = await makeRequest(
-      "GET",
-      `${BASE_URL}/organizations/by-status/${audienceId}?status=qualified&limit=10`,
-    );
-
-    if (
-      res.status === 200 &&
-      res.body.success &&
-      Array.isArray(res.body.organizations)
-    ) {
-      console.log("✓ PASS: Organizations by status retrieved");
-      console.log(`  - Audience: ${res.body.audience.name}`);
-      console.log(`  - Filter: status=qualified`);
-      console.log(`  - Results: ${res.body.organizations.length}`);
-      console.log(`  - Total: ${res.body.pagination.totalResults}`);
-      console.log(`  - Summary by status:`, res.body.summary.byStatus);
-      passCount++;
-    } else {
-      console.log(`❌ FAIL: Status ${res.status}`);
-      failCount++;
-    }
-  } catch (err) {
-    console.log(`❌ FAIL: ${err.message}`);
-    failCount++;
-  }
-  console.log("");
-
-  // TEST 8: Get organizations with all statuses
-  console.log("TEST 8: GET /organizations/by-status/:audienceId (no filter)");
-  try {
-    const res = await makeRequest(
-      "GET",
-      `${BASE_URL}/organizations/by-status/${audienceId}?limit=5&page=1`,
-    );
-
-    if (res.status === 200 && res.body.success) {
-      console.log("✓ PASS: Organizations retrieved (all statuses)");
-      console.log(`  - Total: ${res.body.pagination.totalResults}`);
-      console.log(`  - Returned: ${res.body.organizations.length}`);
-      console.log(`  - Status distribution:`, res.body.summary.byStatus);
-      passCount++;
-    } else {
-      console.log(`❌ FAIL: Status ${res.status}`);
-      failCount++;
-    }
-  } catch (err) {
-    console.log(`❌ FAIL: ${err.message}`);
-    failCount++;
-  }
-  console.log("");
-
-  // TEST 9: Invalid status filter
-  console.log(
-    "TEST 9: GET /organizations/by-status with invalid status filter",
-  );
-  try {
-    const res = await makeRequest(
-      "GET",
-      `${BASE_URL}/organizations/by-status/${audienceId}?status=bad_status`,
-    );
-
-    if (res.status === 400 && !res.body.success) {
-      console.log("✓ PASS: Invalid status filter correctly rejected");
-      console.log(`  - Error: ${res.body.error}`);
-      passCount++;
-    } else {
-      console.log(`❌ FAIL: Expected 400, got ${res.status}`);
-      failCount++;
-    }
-  } catch (err) {
-    console.log(`❌ FAIL: ${err.message}`);
-    failCount++;
-  }
-  console.log("");
-
-  // TEST 10: Invalid audience ID for by-status
-  console.log("TEST 10: GET /organizations/by-status with invalid audience ID");
-  try {
-    const res = await makeRequest(
-      "GET",
-      `${BASE_URL}/organizations/by-status/invalid123`,
-    );
-
-    if (res.status === 404 && !res.body.success) {
-      console.log("✓ PASS: Invalid audience ID correctly rejected");
-      console.log(`  - Error: ${res.body.error}`);
-      passCount++;
-    } else {
-      console.log(`❌ FAIL: Expected 404, got ${res.status}`);
-      failCount++;
-    }
-  } catch (err) {
-    console.log(`❌ FAIL: ${err.message}`);
-    failCount++;
-  }
-  console.log("");
-
-  // Summary
-  console.log("========================================");
+  console.log("\n========================================");
   console.log("Test Summary");
   console.log("========================================");
-  console.log(`✓ Passed: ${passCount}`);
-  console.log(`❌ Failed: ${failCount}`);
-  console.log(`Total: ${passCount + failCount}`);
-  console.log("");
-
-  if (failCount === 0) {
-    console.log("🎉 ALL TESTS PASSED!");
-    process.exit(0);
-  } else {
-    console.log("⚠️  Some tests failed");
-    process.exit(1);
-  }
+  console.log(`✓ Passed: ${passed}`);
+  console.log(`✗ Failed: ${failed}`);
+  console.log(`Total: ${passed + failed}`);
+  if (failed > 0) { console.log("\n⚠️  Some tests failed"); process.exitCode = 1; }
+  else console.log("\n🎉 ALL TESTS PASSED!");
 }
 
-// Run tests with delay
-setTimeout(runTests, 1000);
+run().catch((error) => { console.error(error); process.exitCode = 1; });

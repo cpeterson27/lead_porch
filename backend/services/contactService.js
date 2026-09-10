@@ -42,6 +42,20 @@ class ContactService {
 
 
   /**
+   * Whether a contact with this email already carries this source.
+   * Contacts are unified globally by email (see upsertContact), but a
+   * single contact can accumulate multiple sources in its `sources`
+   * array — so "duplicate" here means "this source already recorded
+   * this email," not "this email exists at all."
+   */
+  async isDuplicate(email, source) {
+    if (!email || !source) return false;
+    const normalizedEmail = email.toLowerCase().trim();
+    const contact = await Contact.findOne({ email: normalizedEmail, sources: source });
+    return Boolean(contact);
+  }
+
+  /**
    * Create or update contact
    *
    * Duplicate rule:
@@ -732,6 +746,8 @@ class ContactService {
 
     let updated = 0;
 
+    let duplicates = 0;
+
 
 
 
@@ -824,7 +840,13 @@ class ContactService {
 
         if (existing) {
 
-          updated++;
+          const alreadySynced =
+            (existing.sources || []).includes(source) &&
+            (!externalContact.externalId ||
+              existing.externalIds?.[source] === externalContact.externalId);
+
+          if (alreadySynced) duplicates++;
+          else updated++;
 
         } else {
 
@@ -859,7 +881,7 @@ class ContactService {
 
       updated,
 
-      duplicates: 0,
+      duplicates,
 
     };
 
@@ -877,11 +899,26 @@ class ContactService {
 
   async getStats() {
 
+    const total = await Contact.countDocuments();
+
+    const bySourceRows = await Contact.aggregate([
+      { $unwind: { path: "$sources", preserveNullAndEmptyArrays: true } },
+      { $group: { _id: { $ifNull: ["$sources", "unknown"] }, count: { $sum: 1 } } },
+    ]);
+    const byStatusRows = await Contact.aggregate([
+      { $group: { _id: { $ifNull: ["$status", "unknown"] }, count: { $sum: 1 } } },
+    ]);
+
+    const bySource = {};
+    for (const row of bySourceRows) bySource[row._id] = row.count;
+    const byStatus = {};
+    for (const row of byStatusRows) byStatus[row._id] = row.count;
 
     return {
 
-      total:
-        await Contact.countDocuments(),
+      total,
+      bySource,
+      byStatus,
 
     };
 

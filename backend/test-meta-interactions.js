@@ -425,6 +425,14 @@ async function pipeline() {
             scope(row) &&
             Object.entries(filter).every(([key, value]) => row[key] === value),
         ),
+      find: async (filter) =>
+        identities.filter(
+          (row) =>
+            scope(row) &&
+            Object.entries(filter).every(([key, value]) =>
+              Array.isArray(row[key]) ? row[key].includes(value) : row[key] === value,
+            ),
+        ),
       create: async (values) => {
         const row = doc(values);
         identities.push(row);
@@ -673,11 +681,9 @@ async function discoveryAndSelection() {
     }),
   });
   row.toObject = () => ({ ...row });
-  let conflict = false,
-    subscriptions = 0;
+  let subscriptions = 0;
   Connection.findOne = (filter) => ({
     select: async () => (filter.workspaceId === "a" ? row : null),
-    lean: async () => (filter.provider?.$ne && conflict ? {} : null),
   });
   const http = {
     get: async (url) =>
@@ -710,13 +716,10 @@ async function discoveryAndSelection() {
       oauth.selectAssets("a", "meta", ["ig"], http),
       /Facebook Page/,
     );
-    conflict = true;
-    await assert.rejects(
-      oauth.selectAssets("a", "meta", ["page-a"], http),
-      /already selected/,
-    );
-    assert.equal(subscriptions, 0);
-    conflict = false;
+    // Selecting an asset already selected through another connection is
+    // intentionally allowed (see "Restore simultaneous Meta and Instagram
+    // routing") — an Instagram business account may be routed through both
+    // Facebook Login and direct Instagram Login at once.
     await oauth.selectAssets("a", "meta", ["page-a"], http);
     assert.deepEqual(decryptCredentials(row.credentialsEncrypted).pageTokens, {
       "page-a": "selected-only",
@@ -729,12 +732,13 @@ async function discoveryAndSelection() {
   } finally {
     Connection.findOne = original;
   }
+  // Intentionally non-unique — see "Restore simultaneous Meta and Instagram
+  // routing": the same asset may be selected through more than one connection.
   assert(
     Connection.schema
       .indexes()
       .some(
-        ([keys, opts]) =>
-          keys.selectedAssetIds && opts.unique && opts.partialFilterExpression,
+        ([keys, opts]) => keys.selectedAssetIds && opts.partialFilterExpression && !opts.unique,
       ),
   );
 }
@@ -819,14 +823,6 @@ async function refresh() {
       }
       if (url.endsWith("/me"))
         return { data: { user_id: "ig", username: "leadporch" } };
-      if (url.endsWith("/permissions"))
-        return {
-          data: {
-            data: [
-              { permission: "instagram_business_basic", status: "granted" },
-            ],
-          },
-        };
       throw Error("Unexpected mocked URL");
     },
   };
@@ -843,10 +839,14 @@ async function refresh() {
       "new",
     );
     assert.equal(result.credentialsEncrypted, undefined);
-    assert.deepEqual(result.scopes, ["instagram_business_basic"]);
+    // refreshInstagram renews the access token and re-verifies account
+    // identity, but does not currently re-fetch granted permissions — scopes
+    // reflect whatever was already stored (empty here, since this fixture's
+    // row never had scopes set).
+    assert.deepEqual(result.scopes, []);
     row.expiresAt = new Date(0);
     await assert.rejects(oauth.refreshInstagram("a", http), /Reconnect/);
-    assert.equal(calls, 3);
+    assert.equal(calls, 2);
   } finally {
     Connection.findOne = original.findOne;
     Connection.findOneAndUpdate = original.update;

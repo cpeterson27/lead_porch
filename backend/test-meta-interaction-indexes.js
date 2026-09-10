@@ -20,7 +20,7 @@ function fixture(rows = {}, indexes = {}, failCollection = null) {
           assert.deepEqual(pipeline, malformed ? malformedPipeline(target) : duplicatesPipeline(target));
           const groups = new Map();
           if (!malformed) for (const row of rows[name] || []) {
-            const values = target.field === "selectedAssetIds" ? [...new Set(row.selectedAssetIds || [])] : typeof row.eventKey === "string" ? [row.eventKey] : [];
+            const values = typeof row.eventKey === "string" ? [row.eventKey] : [];
             for (const value of values) {
               const key = JSON.stringify([row.workspaceId, value]);
               groups.set(key, [...(groups.get(key) || []), row]);
@@ -30,7 +30,7 @@ function fixture(rows = {}, indexes = {}, failCollection = null) {
           return { toArray: async () => [{ total: duplicates.length ? [{ count: duplicates.length }] : [], sample: duplicates.slice(0, 20) }] };
         },
         createIndex: async (key, options) => {
-          assert.equal(reads.length, 4, "Both collection preflights must finish before any create");
+          assert.equal(reads.length, 2, "The collection preflight must finish before any create");
           creates.push(name);
           if (name === failCollection) throw Object.assign(Error("Sensitive duplicate key"), { code: 11000 });
           stored[name].push({ key, ...options });
@@ -41,21 +41,23 @@ function fixture(rows = {}, indexes = {}, failCollection = null) {
   };
 }
 async function run() {
-  const [social, activity] = definitions;
-  assert.equal(social.options.name, "workspace_selected_social_asset");
-  assert.deepEqual(social.options.partialFilterExpression, { "selectedAssetIds.0": { $exists: true } });
+  // SocialConnection's selectedAssetIds index is intentionally non-unique
+  // (see "Restore simultaneous Meta and Instagram routing") and self-heals
+  // in config/database.js on every connect, so it is no longer a target of
+  // this opt-in migration — only CrmActivity's socialEventKey index is.
+  assert.equal(definitions.length, 1);
+  const [activity] = definitions;
   assert.deepEqual(activity.options.partialFilterExpression, { "metadata.socialEventKey": { $type: "string" } });
   const rows = {
-    [social.collection]: [{ _id: "a", workspaceId: "w", selectedAssetIds: ["asset", "asset"] }, { _id: "b", workspaceId: "other", selectedAssetIds: ["asset"] }],
     [activity.collection]: [{ _id: "c", workspaceId: "w", eventKey: "event" }, { _id: "d", workspaceId: "other", eventKey: "event" }],
   };
   let db = fixture(rows);
   assert.equal((await migrate(db)).ready, true); assert.equal(db.creates.length, 0, "Preflight never creates");
   db = fixture(rows);
   let result = await migrate(db, { apply: true });
-  assert.equal(result.ready, true); assert.equal(db.creates.length, 2);
+  assert.equal(result.ready, true); assert.equal(db.creates.length, 1);
   result = await migrate(db, { apply: true });
-  assert.equal(result.ready, true); assert.equal(db.creates.length, 2, "Repeated apply makes no changes");
+  assert.equal(result.ready, true); assert.equal(db.creates.length, 1, "Repeated apply makes no changes");
   assert(result.indexes.every(row => row.result === "unchanged"));
   assert(Object.values(db.stored).every(list => list.some(index => index.name === "unrelated")));
   for (const target of definitions) {
@@ -69,12 +71,10 @@ async function run() {
   }
   db = fixture({}, Object.fromEntries(definitions.map(target => [target.collection, [{ key: target.key, ...target.options }]])));
   assert.equal((await migrate(db, { apply: true })).ready, true); assert.equal(db.creates.length, 0);
-  db = fixture({}, { [social.collection]: [{ key: social.key, name: social.options.name, unique: false }] });
-  assert.equal((await migrate(db, { apply: true })).ready, false); assert.equal(db.creates.length, 0);
   db = fixture({}, {}, activity.collection);
   result = await migrate(db, { apply: true });
-  assert.equal(result.ready, false); assert.equal(result.indexes[0].result, "created_and_verified"); assert.equal(result.indexes[1].result, "failed");
+  assert.equal(result.ready, false); assert.equal(result.indexes[0].result, "failed");
   assert(!JSON.stringify(result).includes("Sensitive duplicate key"));
-  console.log("Meta index migration tests passed: read-only preflight, both duplicate types, same-document multikey repeats, workspace separation, existing indexes, repeated apply, conflicting index options, unrelated-index preservation and post-preflight creation failure.");
+  console.log("Meta index migration tests passed: read-only preflight, duplicate detection, workspace separation, existing indexes, repeated apply, unrelated-index preservation and creation failure.");
 }
 run().catch(error => { console.error(error); process.exitCode = 1; });

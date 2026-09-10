@@ -28,9 +28,21 @@ function memoryModel(initial = []) {
     async bulkWrite(operations) {
       for (const { updateOne } of operations) {
         const index = rows.findIndex((row) => matches(row, updateOne.filter));
-        if (index >= 0) rows[index] = { ...rows[index], ...updateOne.update.$set };
-        else rows.push({ ...updateOne.update.$set });
+        if (index >= 0) {
+          rows[index] = { ...rows[index], ...updateOne.update.$set };
+          if (updateOne.update.$push?.versions) {
+            const existingVersions = rows[index].versions || [];
+            rows[index].versions = [...existingVersions, ...updateOne.update.$push.versions.$each].slice(-20);
+          }
+        } else {
+          rows.push({ versions: [], ...updateOne.update.$set });
+        }
       }
+    },
+    async updateMany(filter, update) {
+      let modifiedCount = 0;
+      for (const row of rows) if (matches(row, filter)) { Object.assign(row, update.$set); modifiedCount += 1; }
+      return { modifiedCount };
     },
     async deleteMany(filter) {
       let deletedCount = 0;
@@ -50,28 +62,56 @@ async function run() {
   assert.equal(syncAuth.configuredCredentials({ JARVIS_MEMORY_SYNC_SECRET: "global-secret-that-is-long-enough", JARVIS_MEMORY_SYNC_WORKSPACE_ID: workspaceA })[0].workspaceId, workspaceA);
 
   const Model = memoryModel([
-    { workspaceId: workspaceA, source: "obsidian_bridge", category: "sops", path: "07 SOPs/old.md", content: "old", contentHash: "old" },
-    { workspaceId: workspaceB, source: "obsidian_bridge", category: "sops", path: "07 SOPs/private.md", content: "workspace b private", contentHash: "private" },
-    { workspaceId: workspaceA, source: "approved_memory", category: "decisions", path: "08 Decisions/approved.md", content: "keep approved", contentHash: "approved" },
+    { workspaceId: workspaceA, source: "obsidian_bridge", category: "sops", path: "07 SOPs/old.md", content: "old", contentHash: "old", status: "approved", pendingRemoval: false, version: 1, versions: [] },
+    { workspaceId: workspaceB, source: "obsidian_bridge", category: "sops", path: "07 SOPs/private.md", content: "workspace b private", contentHash: "private", status: "approved", pendingRemoval: false, version: 1, versions: [] },
+    { workspaceId: workspaceA, source: "approved_memory", category: "decisions", path: "08 Decisions/approved.md", content: "keep approved", contentHash: "approved", status: "approved", pendingRemoval: false, version: 1, versions: [] },
   ]);
   const note = { path: "07 SOPs/sales.md", content: "Always verify operational facts.", updatedAt: "2026-08-27T12:00:00.000Z" };
   const first = await memoryService.syncCloudNotes(workspaceA, [note], { JarvisMemoryNote: Model });
   assert.equal(first.createdOrUpdatedCount, 1);
-  assert.equal(first.removedCount, 1);
+  // The core safety fix: a path missing from the sync is flagged for human
+  // review, never silently deleted — and a brand-new synced note always
+  // lands as a draft, never immediately live/approved knowledge.
+  assert.equal(first.flaggedForRemovalCount, 1);
+  assert.equal(first.draftsAwaitingReviewCount, 1);
+  const oldNoteRow = Model.rows.find((row) => row.workspaceId === workspaceA && row.path === "07 SOPs/old.md");
+  assert.ok(oldNoteRow, "a note missing from the sync must still exist, not be deleted");
+  assert.equal(oldNoteRow.pendingRemoval, true);
+  const findNewNoteRow = () => Model.rows.find((row) => row.workspaceId === workspaceA && row.path === note.path);
+  assert.equal(findNewNoteRow().status, "draft", "a newly synced note must land as a draft, never immediately approved");
   assert(Model.rows.some((row) => row.workspaceId === workspaceB && row.path === "07 SOPs/private.md"));
   assert(Model.rows.some((row) => row.workspaceId === workspaceA && row.source === "approved_memory"));
   const repeated = await memoryService.syncCloudNotes(workspaceA, [note], { JarvisMemoryNote: Model });
   assert.equal(repeated.createdOrUpdatedCount, 0);
   assert.equal(repeated.unchangedCount, 1);
+
+  // A draft is never served to agents, even when it clearly matches the query.
+  const beforeApproval = await memoryService.retrieveCloudNotes("verify operational facts", { workspaceId: workspaceA }, Model);
+  assert(!beforeApproval.sources.includes("07 SOPs/sales.md"), "an unreviewed draft must never be retrieved as approved knowledge");
+
+  // A human approves it (see the dedicated approveNote/rejectNote/archiveNote
+  // coverage in test-knowledge-center.js) — only then is it retrievable.
+  findNewNoteRow().status = "approved";
+  findNewNoteRow().approvedAt = new Date();
+
   const changed = await memoryService.syncCloudNotes(workspaceA, [{ ...note, content: "Updated approved SOP." }], { JarvisMemoryNote: Model });
   assert.equal(changed.createdOrUpdatedCount, 1);
-  assert.equal(Model.rows.find((row) => row.workspaceId === workspaceA && row.path === note.path).content, "Updated approved SOP.");
+  assert.equal(findNewNoteRow().content, "Updated approved SOP.");
+  // Editing the content of an already-approved note must return it to draft
+  // for re-review — an Obsidian change can never silently overwrite
+  // previously-approved knowledge.
+  assert.equal(findNewNoteRow().status, "draft", "changing an approved note's content must send it back to draft for re-review");
+  assert.equal(findNewNoteRow().versions.length, 1, "the prior approved content must be preserved in version history");
+  assert.equal(findNewNoteRow().versions[0].content, "Always verify operational facts.");
   await assert.rejects(() => memoryService.syncCloudNotes(workspaceA, [{ path: "01 Inbox/private.md", content: "no" }], { JarvisMemoryNote: Model }), /invalid approved note/);
   await assert.rejects(() => memoryService.syncCloudNotes(workspaceA, [{ path: "../secret.md", content: "no" }], { JarvisMemoryNote: Model }), /invalid approved note/);
 
+  // Re-approve the edited content, then confirm retrieval and workspace isolation.
+  findNewNoteRow().status = "approved";
   const cloudA = await memoryService.retrieveCloudNotes("updated sop", { workspaceId: workspaceA }, Model);
   assert(cloudA.sources.includes("07 SOPs/sales.md"));
   assert(!cloudA.context.includes("workspace b private"));
+  assert(cloudA.citations.some((citation) => citation.path === "07 SOPs/sales.md"), "retrieval must include structured citations, not just raw paths");
   let knowledgeArgs;
   const knowledge = await knowledgeService.retrieveKnowledge({ workspaceId: workspaceA, query: "ICP", agent: "social", categories: ["contacts-icp"], limit: 2 }, { jarvisMemoryService: { async retrieveRelevantNotes(query, options) { knowledgeArgs = { query, options }; return { available: true, sources: ["03 Contacts & ICP/ICP.md"], context: "Approved ICP" }; } } });
   assert.equal(knowledgeArgs.options.workspaceId, workspaceA);

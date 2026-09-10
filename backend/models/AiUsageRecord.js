@@ -7,7 +7,7 @@ const aiUsageRecordSchema = new mongoose.Schema({
   principal: { type: String, default: "", maxlength: 80, index: true },
   agent: { type: String, enum: ["jarvis", "lead", "social", "sales", "content", "coaching", "research", "system"], required: true, index: true },
   feature: { type: String, required: true, trim: true, maxlength: 160 },
-  provider: { type: String, enum: ["openai"], default: "openai", required: true },
+  provider: { type: String, enum: ["openai", "gemini", "vertex"], default: "openai", required: true },
   model: { type: String, required: true, trim: true, maxlength: 160, index: true },
   endpoint: { type: String, required: true, trim: true, maxlength: 80 },
   inputTokens: { type: Number, default: null, min: 0 },

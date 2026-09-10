@@ -44,6 +44,7 @@ import {
   confirmJarvisContactFieldUpdate,
   generateLinkedinContactDraft,
   updateLinkedinContactOutreach,
+  researchContactWithAi,
 } from "../services/api.js";
 import useInitiative from "../context/useInitiative.js";
 
@@ -582,6 +583,9 @@ export default function Contacts() {
   const [detailTab, setDetailTab] = useState("overview");
   const [detailEmailHistory, setDetailEmailHistory] = useState([]);
   const [detailHistoryLoading, setDetailHistoryLoading] = useState(false);
+  const [aiResearch, setAiResearch] = useState(null);
+  const [aiResearchBusy, setAiResearchBusy] = useState(false);
+  const [aiResearchError, setAiResearchError] = useState("");
   const [editingContact, setEditingContact] = useState(null);
   const [contactEditMode, setContactEditMode] = useState("full");
   const [searchTerm, setSearchTerm] = useState(
@@ -648,7 +652,23 @@ export default function Contacts() {
     setLinkedinDraft(contact.linkedinOutreach?.draft || "");
     setLinkedinTone(contact.linkedinOutreach?.tone || "warm_direct");
     setLinkedinNotice("");
+    setAiResearch(null);
+    setAiResearchError("");
   }
+  const runAiResearch = async () => {
+    if (!detailContact?._id || aiResearchBusy) return;
+    setAiResearchBusy(true);
+    setAiResearchError("");
+    try {
+      setAiResearch(await researchContactWithAi(detailContact._id));
+    } catch (err) {
+      setAiResearchError(
+        err.response?.data?.message || "AI research could not be completed.",
+      );
+    } finally {
+      setAiResearchBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!routeContactId) return;
@@ -4088,6 +4108,58 @@ export default function Contacts() {
               </dl>
               {detailContact.notes ? <div className="contact-research-notes"><strong>Research and relationship notes</strong><p>{detailContact.notes}</p></div> : null}
               <Button variant="outline" onClick={() => navigate(`/operators/jarvis?prompt=${encodeURIComponent(`Research ${contactDisplayName(detailContact)} using public evidence. Do not guess missing identity or contact information.`)}`)}>Research with Lead Porch</Button>
+              <div className="contact-ai-research">
+                <header>
+                  <span>AI research (Lead Agent)</span>
+                  <small>
+                    Reads this contact's real CRM record, activity, and
+                    opportunities — nothing invented, nothing changed.
+                  </small>
+                </header>
+                <Button
+                  variant="outline"
+                  loading={aiResearchBusy}
+                  onClick={runAiResearch}
+                >
+                  {aiResearch ? "Refresh AI research" : "Research with AI"}
+                </Button>
+                {aiResearchError ? (
+                  <p className="form-error" role="alert">
+                    {aiResearchError}
+                  </p>
+                ) : null}
+                {aiResearch ? (
+                  <div className="contact-ai-research__result">
+                    <p>{aiResearch.summary}</p>
+                    {aiResearch.keySignals?.length ? (
+                      <>
+                        <strong>Key signals</strong>
+                        <ul>
+                          {aiResearch.keySignals.map((signal, index) => (
+                            <li key={index}>{signal}</li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : null}
+                    {aiResearch.recommendedApproach ? (
+                      <>
+                        <strong>Recommended approach</strong>
+                        <p>{aiResearch.recommendedApproach}</p>
+                      </>
+                    ) : null}
+                    {aiResearch.riskFlags?.length ? (
+                      <>
+                        <strong>Risk flags</strong>
+                        <ul>
+                          {aiResearch.riskFlags.map((flag, index) => (
+                            <li key={index}>{flag}</li>
+                          ))}
+                        </ul>
+                      </>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             </section> : null}
             {detailTab === "details" ? contactDetailGroups.map(([group, fields]) => {
               const rows = fields.map(([field, label]) => [

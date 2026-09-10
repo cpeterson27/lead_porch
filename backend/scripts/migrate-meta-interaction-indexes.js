@@ -3,8 +3,12 @@ const mongoose = require("mongoose");
 const { isDeepStrictEqual } = require("node:util");
 
 function targets() {
+  // SocialConnection's `selectedAssetIds` index is intentionally NOT unique
+  // (an Instagram business account may be selected through both Facebook
+  // Login and Instagram Login — see "Restore simultaneous Meta and Instagram
+  // routing"), and its lifecycle is now self-healing on every connect in
+  // config/database.js, so it is not a target of this opt-in migration.
   const definitions = [
-    [require("../models/SocialConnection"), { workspaceId: 1, selectedAssetIds: 1 }, "selectedAssetIds"],
     [require("../models/CrmActivity"), { workspaceId: 1, "metadata.socialEventKey": 1 }, "metadata.socialEventKey"],
   ];
   return definitions.map(([model, key, field]) => {

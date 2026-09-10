@@ -48,9 +48,11 @@ async function runTests() {
     console.log("Total: 11");
     console.log("\n🎉 ALL TESTS PASSED!");
 
+    await Contact.deleteMany({});
     process.exit(0);
   } catch (error) {
     console.error("\n❌ TEST FAILED:", error.message);
+    await Contact.deleteMany({}).catch(() => {});
     process.exit(1);
   }
 }
@@ -102,8 +104,8 @@ async function setupTestData() {
       lastName: "Developer",
       email: "john@techstartup.com",
       company: "Tech Startup Inc",
-      source: "monday",
-      externalId: "monday-001",
+      sources: ["monday"],
+      externalIds: { monday: "monday-001" },
       tags: ["monday"],
       status: "active",
     },
@@ -113,8 +115,8 @@ async function setupTestData() {
       lastName: "Manager",
       email: "jane@enterprise.com",
       company: "Enterprise Solutions",
-      source: "eventbrite",
-      externalId: "eventbrite-001",
+      sources: ["eventbrite"],
+      externalIds: { eventbrite: "eventbrite-001" },
       tags: ["eventbrite"],
       status: "active",
     },
@@ -124,7 +126,7 @@ async function setupTestData() {
       lastName: "Sales",
       email: "bob@growth.com",
       company: "Growth Partners",
-      source: "manual",
+      sources: ["manual"],
       tags: ["manual"],
       status: "inactive",
     },

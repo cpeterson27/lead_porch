@@ -19,7 +19,8 @@ const {
   normalizedKeywords,
   normalizedLabels,
 } = require("../services/socialLeadAutomationService");
-const { normalizeUrl } = require("../services/socialPublishingService");
+const { normalizeUrl, matrix: publishingMatrix } = require("../services/socialPublishingService");
+const agentExecutionService = require("../services/agentExecutionService");
 
 const router = express.Router();
 const adminOnly = requireCapability("social.manage");
@@ -89,6 +90,63 @@ const CAPABILITIES = {
 router.use((req, res, next) =>
   req.path.startsWith("/t/") ? next() : adminOnly(req, res, next),
 );
+
+/**
+ * POST /social-automation/recommend
+ * Content Agent recommends a complete campaign-automation plan grounded in
+ * the real post/campaign; Social Agent's own real capability matrix then
+ * validates whether the recommended platform/trigger is actually
+ * executable today. This never creates or activates anything — the human
+ * reviews the recommendation and uses the existing, separate
+ * POST /social-automation/automations to activate it.
+ */
+router.post("/recommend", adminOnly, async (req, res) => {
+  const { contentBriefId, provider, assetId } = req.body || {};
+  if (!provider || !["facebook", "instagram"].includes(provider)) return res.status(400).json({ success: false, error: "Choose facebook or instagram" });
+  const brief = contentBriefId ? await ContentBrief.findOne({ _id: contentBriefId, workspaceId: req.auth.workspaceId }).lean() : null;
+  try {
+    const result = await agentExecutionService.runAgent({
+      workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, auth: req.auth, agent: "content", task: "recommend_campaign_automation",
+      input: { provider, post: brief ? { title: brief.title, body: brief.body } : null },
+      operationalContext: `Recommend one complete, safe campaign automation for a ${provider} comment-keyword trigger. Base it strictly on the supplied post and workspace analytics — do not invent programs, offers, or numbers not present in the data. The automation may only ever: acknowledge publicly, send an approved private reply, create/update a CRM contact, record source, tag/score the contact, and stop. It must never send unapproved outreach, never guess private information, and must include real stop conditions (response received, registration, conversion, opt-out, cooldown, frequency limit).`,
+      correlationId: `automation-recommend:${req.auth.workspaceId}`,
+      options: {
+        tools: [{ toolId: "growth.analytics", input: {} }],
+        responseSchema: {
+          type: "object",
+          properties: {
+            triggerType: { type: "string", enum: ["comment_keyword", "comment_any", "dm_keyword"] },
+            keywords: { type: "array", items: { type: "string" } },
+            publicAcknowledgement: { type: "string" },
+            privateMessage: { type: "string" },
+            crmActions: { type: "object", properties: { createOrUpdateContact: { type: "boolean" }, tags: { type: "array", items: { type: "string" } }, qualificationSignals: { type: "array", items: { type: "string" } } }, required: ["createOrUpdateContact", "tags", "qualificationSignals"], additionalProperties: false },
+            followUp: { type: "string" },
+            exclusions: { type: "array", items: { type: "string" } },
+            cooldownMinutes: { type: "number" },
+            dailyLimit: { type: "number" },
+            stopConditions: { type: "array", items: { type: "string", enum: ["response_received", "registration", "conversion", "opt_out", "cooldown", "frequency_limit"] } },
+            optOutHandling: { type: "string" },
+            humanHandoff: { type: "string" },
+            rationale: { type: "string" },
+          },
+          required: ["triggerType", "keywords", "publicAcknowledgement", "privateMessage", "crmActions", "followUp", "exclusions", "cooldownMinutes", "dailyLimit", "stopConditions", "optOutHandling", "humanHandoff", "rationale"],
+          additionalProperties: false,
+        },
+        schemaName: "campaign_automation_recommendation",
+      },
+    });
+    const matrix = await publishingMatrix(req.auth.workspaceId);
+    const capabilityRow = matrix.find((row) => row.provider === provider);
+    const validation = !capabilityRow || capabilityRow.status !== "api"
+      ? { status: "not_executable", reason: capabilityRow?.reason || "No authorized connection for this provider" }
+      : { status: "executable", reason: capabilityRow.reason, asset: capabilityRow.asset };
+    return res.json({ success: true, data: { recommendation: result.output, validation, provider, assetId: assetId || capabilityRow?.asset?.id || "" }, metadata: result.metadata });
+  } catch (err) {
+    const isBillingLimit = err.status === 429 || err.statusCode === 429;
+    const status = isBillingLimit ? 429 : ["AGENT_CAPABILITY_FORBIDDEN", "AGENT_WORKSPACE_FORBIDDEN"].includes(err.code) ? 403 : ["AGENT_UNKNOWN", "AGENT_STRUCTURED_OUTPUT_FORBIDDEN", "AGENT_TEXT_OUTPUT_FORBIDDEN"].includes(err.code) ? 400 : 500;
+    return res.status(status).json({ success: false, error: isBillingLimit ? "OpenAI credits are empty. Add API credits to use AI automation recommendations." : err.message, code: err.code || "AUTOMATION_RECOMMENDATION_FAILED" });
+  }
+});
 
 router.get("/overview", async (_req, res) => {
   const [connections, automationCount, leadCount, recentEvents] =

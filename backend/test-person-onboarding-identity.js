@@ -8,7 +8,7 @@ async function fixture(kind, existing = false, foreign = false) {
   let creates = 0, invitations = 0;
   const models = {
     User: { findOne: async () => existing ? user : null, create: async data => { creates++; return Object.assign(user, data); } },
-    WorkspaceMembership: { findOne: async filter => { assert.equal(filter.workspaceId,"w1"); return existing && !foreign ? member : null; }, findOneAndUpdate: async (filter, update) => Object.assign(member, update.$set) },
+    WorkspaceMembership: { findOne: async filter => { assert.equal(filter.workspaceId,"w1"); return existing && !foreign ? member : null; }, findOneAndUpdate: async (filter, update) => Object.assign(member, update.$set), exists: async () => foreign },
     WorkspaceInvitation: { findOneAndUpdate: async (filter, update) => { invitations++; assert.equal(filter.workspaceId,"w1"); return doc(update.$set); } },
     CoachProfile: { findOne: () => query(null), findOneAndUpdate: async (filter, update) => { assert.equal(filter.workspaceId,"w1"); assert.equal(filter.userId,"u1"); return doc(update.$set); } },
     AmbassadorProfile: { findOne: () => query(null), findOneAndUpdate: async (filter, update) => { assert.equal(filter.workspaceId,"w1"); assert.equal(filter.userId,"u1"); return doc(update.$set); } },

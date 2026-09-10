@@ -214,9 +214,49 @@ async function fetchFeed(url, source, label, limit) {
   })).filter(Boolean);
 }
 
-async function searchRedditRss(monitor, limit, operations = { fetchFeed }) {
-  const query = booleanQueryFor(monitor);
-  const key = query.toLowerCase();
+// Multiple focused searches instead of one giant keyword-joined query. Each
+// chunk is small enough that Reddit's search actually returns relevant,
+// on-topic results rather than a noisy union of 20+ unrelated terms.
+function redditQueryChunks(monitor) {
+  const quoted = (term) => /\s/.test(term) ? `"${term}"` : term;
+  const categoryGroups = (monitor.intentCategories || []).map((category) => (category.phrases || []).map(clean).filter(Boolean)).filter((group) => group.length);
+  if (categoryGroups.length) return categoryGroups.slice(0, 6).map((group) => group.slice(0, 3).map(quoted).join(" OR "));
+  const keywords = (monitor.keywords || []).map(clean).filter(Boolean);
+  if (!keywords.length) return [booleanQueryFor(monitor)].filter(Boolean);
+  const chunkSize = 2;
+  const chunks = [];
+  for (let i = 0; i < keywords.length; i += chunkSize) chunks.push(keywords.slice(i, i + chunkSize).map(quoted).join(" OR "));
+  return chunks.slice(0, 6);
+}
+
+// Full post context (title + selftext, not a truncated RSS snippet) via
+// Reddit's public, unauthenticated search.json endpoint — same access level
+// as the RSS feed, just structurally complete.
+async function fetchRedditSearchJson(url, source, label, limit) {
+  await safeUrl(url);
+  const response = await axios.get(url, { timeout: REQUEST_TIMEOUT, maxContentLength: 5 * 1024 * 1024, headers: { Accept: "application/json", "User-Agent": USER_AGENT } });
+  const children = response.data?.data?.children || [];
+  return children.slice(0, limit).map((child) => {
+    const post = child.data || {};
+    const permalink = post.permalink ? `https://www.reddit.com${post.permalink}` : post.url;
+    const fullText = [post.title, post.selftext].filter(Boolean).join("\n\n");
+    return normalizeSignal(source, {
+      sourceId: post.id || post.name || permalink,
+      sourceUrl: permalink,
+      title: post.title,
+      excerpt: fullText || post.title,
+      authorName: post.author && post.author !== "[deleted]" ? `u/${post.author}` : "",
+      authorUrl: post.author && post.author !== "[deleted]" ? `https://www.reddit.com/user/${post.author}` : "",
+      publishedAt: post.created_utc ? post.created_utc * 1000 : null,
+      evidenceLabel: label,
+      raw: { subreddit: post.subreddit, numComments: post.num_comments, over18: post.over_18, isSelf: post.is_self, score: post.score, linkFlairText: post.link_flair_text },
+    });
+  }).filter(Boolean);
+}
+
+async function searchRedditRss(monitor, limit, operations = { fetchFeed: fetchRedditSearchJson }) {
+  const chunks = redditQueryChunks(monitor);
+  const key = chunks.join("|").toLowerCase();
   const cached = redditCache.get(key);
   if (cached && cached.expiresAt > Date.now()) return cached.signals.slice(0, limit);
   if (redditCooldownUntil > Date.now()) {
@@ -227,23 +267,29 @@ async function searchRedditRss(monitor, limit, operations = { fetchFeed }) {
   }
   if (redditInFlight.has(key)) return (await redditInFlight.get(key)).slice(0, limit);
   const request = (async () => {
-    const waitMs = Math.max(0, REDDIT_MIN_REQUEST_GAP_MS - (Date.now() - redditLastRequestAt));
-    if (waitMs) await new Promise((resolve) => setTimeout(resolve, waitMs));
-    redditLastRequestAt = Date.now();
-    const url = `https://www.reddit.com/search.rss?q=${encodeURIComponent(query)}&sort=new&t=month`;
-    try {
-      const signals = await operations.fetchFeed(url, "reddit_rss", "Public Reddit search feed", limit);
-      const unique = [...new Map(signals.map((signal) => [signal.sourceUrl || signal.sourceId, signal])).values()];
-      redditCache.set(key, { expiresAt: Date.now() + REDDIT_CACHE_MS, signals: unique });
-      return unique;
-    } catch (error) {
-      if (error.response?.status === 429) {
-        const retrySeconds = Number(error.response?.headers?.["retry-after"] || 0);
-        redditCooldownUntil = Date.now() + Math.max(REDDIT_DEFAULT_BACKOFF_MS, retrySeconds * 1000);
-        error.retryAt = new Date(redditCooldownUntil);
+    const collected = [];
+    for (const chunkQuery of chunks) {
+      if (redditCooldownUntil > Date.now()) break;
+      const waitMs = Math.max(0, REDDIT_MIN_REQUEST_GAP_MS - (Date.now() - redditLastRequestAt));
+      if (waitMs) await new Promise((resolve) => setTimeout(resolve, waitMs));
+      redditLastRequestAt = Date.now();
+      const url = `https://www.reddit.com/search.json?q=${encodeURIComponent(chunkQuery)}&sort=new&t=month&limit=${Math.min(25, limit)}`;
+      try {
+        const signals = await operations.fetchFeed(url, "reddit_rss", "Public Reddit search (full post context)", limit);
+        collected.push(...signals);
+      } catch (error) {
+        if (error.response?.status === 429) {
+          const retrySeconds = Number(error.response?.headers?.["retry-after"] || 0);
+          redditCooldownUntil = Date.now() + Math.max(REDDIT_DEFAULT_BACKOFF_MS, retrySeconds * 1000);
+          error.retryAt = new Date(redditCooldownUntil);
+        }
+        if (!collected.length && chunkQuery === chunks[0]) throw error;
+        break;
       }
-      throw error;
     }
+    const unique = [...new Map(collected.map((signal) => [signal.sourceUrl || signal.sourceId, signal])).values()];
+    redditCache.set(key, { expiresAt: Date.now() + REDDIT_CACHE_MS, signals: unique });
+    return unique;
   })();
   redditInFlight.set(key, request);
   try { return (await request).slice(0, limit); }
@@ -711,4 +757,4 @@ async function collectMonitorSignals(monitor) {
   };
 }
 
-module.exports = { bingQueriesFor, booleanQueryFor, canonicalSourceUrl, collectMonitorSignals, crawlConfiguredSite, explicitOrganizerCandidates, extractXmlItems, indexedPostDate, isBiggerPocketsForumTopicUrl, isCommunityPartnerMonitor, isInvestorProfileMonitor, normalizeSignal, parseSecFormD, queryFor, roundRobinSignals, searchBingWeb, searchConfiguredFeeds, searchMeetupPublic, searchRedditRss, resetRedditPublicState, termsFor };
+module.exports = { bingQueriesFor, booleanQueryFor, canonicalSourceUrl, collectMonitorSignals, crawlConfiguredSite, explicitOrganizerCandidates, extractXmlItems, fetchRedditSearchJson, indexedPostDate, isBiggerPocketsForumTopicUrl, isCommunityPartnerMonitor, isInvestorProfileMonitor, normalizeSignal, parseSecFormD, queryFor, redditQueryChunks, roundRobinSignals, searchBingWeb, searchConfiguredFeeds, searchMeetupPublic, searchRedditRss, resetRedditPublicState, termsFor };

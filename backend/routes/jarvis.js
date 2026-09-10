@@ -15,6 +15,7 @@ const jarvisMemoryService = require("../services/jarvisMemoryService");
 const jarvisConversationService = require("../services/jarvisConversationService");
 const jarvisMemoryCaptureService = require("../services/jarvisMemoryCaptureService");
 const jarvisVaultSyncAuthService = require("../services/jarvisVaultSyncAuthService");
+const vaultCredentialService = require("../services/vaultCredentialService");
 const jarvisProfileService = require("../services/jarvisProfileService");
 const developmentRequestService = require("../services/developmentRequestService");
 const { compileMarketQuestion } = require("../services/marketResearchService");
@@ -29,13 +30,47 @@ const router = express.Router();
 // Public only to the vault bridge: the bearer credential itself resolves the
 // workspace. A workspaceId supplied in the JSON body is never trusted.
 router.post("/memory/sync", async (req, res) => {
+  const bearer = String(req.get("authorization") || "").replace(/^Bearer\s+/i, "").trim();
+  // Legacy env-based credentials keep working; a database-backed, owner-created
+  // credential (see /memory/vault-credentials below) is tried second.
+  let bridge = jarvisVaultSyncAuthService.resolveWorkspace({ authorization: req.get("authorization") });
+  if (!bridge) bridge = await vaultCredentialService.resolveWorkspaceFromSecret(bearer).catch(() => null);
+  if (!bridge) return res.status(401).json({ success: false, error: "Unauthorized vault bridge" });
   try {
-    const bridge = jarvisVaultSyncAuthService.resolveWorkspace({ authorization: req.get("authorization") });
-    if (!bridge) return res.status(401).json({ success: false, error: "Unauthorized vault bridge" });
     const result = await jarvisMemoryService.syncCloudNotes(bridge.workspaceId, req.body?.notes);
+    if (bridge.credentialId) await vaultCredentialService.recordSyncResult({ workspaceId: bridge.workspaceId, credentialId: bridge.credentialId, success: true, message: "Sync completed", stats: result });
     return res.json({ success: true, data: result });
   } catch (error) {
+    if (bridge.credentialId) await vaultCredentialService.recordSyncResult({ workspaceId: bridge.workspaceId, credentialId: bridge.credentialId, success: false, message: error.message || "Vault sync failed" });
     return res.status(error.statusCode || 500).json({ success: false, error: error.statusCode ? error.message : "Vault sync failed" });
+  }
+});
+
+/**
+ * Owner-facing, self-service Obsidian vault-bridge credentials. Clients
+ * never need to touch server environment variables — create/revoke a
+ * credential here, then paste the shown secret into the vault bridge's own
+ * .env once. The plaintext secret is only ever shown at creation time.
+ */
+router.get("/memory/vault-credentials", requireRole("owner", "admin"), async (req, res) => {
+  try {
+    return res.json({ success: true, data: await vaultCredentialService.listCredentials({ workspaceId: req.auth.workspaceId }) });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: "Vault credentials could not be loaded" });
+  }
+});
+router.post("/memory/vault-credentials", requireRole("owner", "admin"), async (req, res) => {
+  try {
+    return res.json({ success: true, data: await vaultCredentialService.createCredential({ workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, label: req.body?.label }) });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message || "Vault credential could not be created", code: error.code });
+  }
+});
+router.delete("/memory/vault-credentials/:id", requireRole("owner", "admin"), async (req, res) => {
+  try {
+    return res.json({ success: true, data: await vaultCredentialService.revokeCredential({ workspaceId: req.auth.workspaceId, credentialId: req.params.id, userId: req.auth.user?._id }) });
+  } catch (error) {
+    return res.status(error.code === "VAULT_CREDENTIAL_NOT_FOUND" ? 404 : 500).json({ success: false, error: error.message || "Vault credential could not be revoked" });
   }
 });
 
@@ -196,7 +231,7 @@ router.post("/chat", async (req, res) => {
       });
     }
 
-    const result = await jarvisService.processQuery(message, { workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, conversationId: req.body?.conversationId || null, correlationId: req.get("x-request-id") || "" });
+    const result = await jarvisService.processQuery(message, { workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, auth: req.auth, conversationId: req.body?.conversationId || null, correlationId: req.get("x-request-id") || "" });
 
     res.json({
       success: true,
@@ -472,6 +507,55 @@ router.post("/memory/prepare", requireRole("owner", "admin"), async (req, res) =
 router.post("/memory/:id/confirm", requireRole("owner", "admin"), async (req, res) => {
   try { return res.json({ success: true, data: await jarvisMemoryCaptureService.confirm({ workspaceId: req.auth.workspaceId, userId: req.auth.userId, approvalId: req.params.id, confirmationPhrase: req.body?.confirmationPhrase }) }); }
   catch (error) { return res.status(error.code === "MEMORY_APPROVAL_NOT_FOUND" ? 404 : 400).json({ error: error.message, code: error.code }); }
+});
+
+/**
+ * Knowledge Center: browse, review, and version-manage every knowledge note
+ * for this workspace (both Obsidian-synced drafts and notes authored
+ * directly in the app). Never exposes another workspace's notes.
+ */
+router.get("/memory/notes", requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const notes = await jarvisMemoryService.listNotes({ workspaceId: req.auth.workspaceId, status: req.query.status, category: req.query.category, search: req.query.search, includeArchived: req.query.includeArchived === "true" });
+    return res.json({ success: true, data: notes });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: "Knowledge notes could not be loaded" });
+  }
+});
+router.get("/memory/notes/:id", requireRole("owner", "admin"), async (req, res) => {
+  try {
+    return res.json({ success: true, data: await jarvisMemoryService.getNote({ workspaceId: req.auth.workspaceId, noteId: req.params.id }) });
+  } catch (error) {
+    return res.status(error.code === "MEMORY_NOTE_NOT_FOUND" ? 404 : 500).json({ success: false, error: error.message });
+  }
+});
+router.post("/memory/notes/:id/approve", requireRole("owner", "admin"), async (req, res) => {
+  try {
+    return res.json({ success: true, data: await jarvisMemoryService.approveNote({ workspaceId: req.auth.workspaceId, noteId: req.params.id, userId: req.auth.userId, effectiveDate: req.body?.effectiveDate, reviewDate: req.body?.reviewDate, ownerLabel: req.body?.ownerLabel }) });
+  } catch (error) {
+    return res.status(error.code === "MEMORY_NOTE_NOT_FOUND" ? 404 : 400).json({ success: false, error: error.message, code: error.code });
+  }
+});
+router.post("/memory/notes/:id/reject", requireRole("owner", "admin"), async (req, res) => {
+  try {
+    return res.json({ success: true, data: await jarvisMemoryService.rejectNote({ workspaceId: req.auth.workspaceId, noteId: req.params.id, userId: req.auth.userId, reason: req.body?.reason }) });
+  } catch (error) {
+    return res.status(error.code === "MEMORY_NOTE_NOT_FOUND" ? 404 : 400).json({ success: false, error: error.message, code: error.code });
+  }
+});
+router.post("/memory/notes/:id/archive", requireRole("owner", "admin"), async (req, res) => {
+  try {
+    return res.json({ success: true, data: await jarvisMemoryService.archiveNote({ workspaceId: req.auth.workspaceId, noteId: req.params.id, userId: req.auth.userId }) });
+  } catch (error) {
+    return res.status(error.code === "MEMORY_NOTE_NOT_FOUND" ? 404 : 400).json({ success: false, error: error.message, code: error.code });
+  }
+});
+router.post("/memory/notes/:id/restore-version", requireRole("owner", "admin"), async (req, res) => {
+  try {
+    return res.json({ success: true, data: await jarvisMemoryService.restoreVersion({ workspaceId: req.auth.workspaceId, noteId: req.params.id, userId: req.auth.userId, version: req.body?.version }) });
+  } catch (error) {
+    return res.status(["MEMORY_NOTE_NOT_FOUND", "MEMORY_VERSION_NOT_FOUND"].includes(error.code) ? 404 : 400).json({ success: false, error: error.message, code: error.code });
+  }
 });
 
 /**
@@ -785,7 +869,7 @@ router.post("/voice", async (req, res) => {
     }
 
     // Process transcript with Jarvis chat logic
-    const jarvisResponse = await jarvisService.processQuery(transcript, { workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, correlationId: req.get("x-request-id") || "" });
+    const jarvisResponse = await jarvisService.processQuery(transcript, { workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, auth: req.auth, correlationId: req.get("x-request-id") || "" });
 
     res.json({
       success: true,

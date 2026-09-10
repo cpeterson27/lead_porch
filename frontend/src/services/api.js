@@ -83,6 +83,14 @@ export const selectMeetupGroups = (groupUrlnames) =>
 
 export const fetchSocialAutomationOverview = () =>
   api.get("/social-automation/overview").then((res) => res.data.data);
+export const recommendSocialAutomation = (values) =>
+  api.post("/social-automation/recommend", values).then((res) => res.data.data);
+export const generatePlatformMediaVariants = (contentId, mediaIndex, values) =>
+  api.post(`/content/${contentId}/media/${mediaIndex}/variants`, values).then((res) => res.data.data);
+export const replacePlatformMediaVariant = (contentId, mediaIndex, provider, values) =>
+  api.patch(`/content/${contentId}/media/${mediaIndex}/variants/${provider}`, values).then((res) => res.data.data);
+export const generateAiImage = (values) =>
+  api.post("/content/generate-image", values).then((res) => res.data.data);
 export const fetchSocialAutomations = (contentBriefId) =>
   api
     .get("/social-automation/automations", {
@@ -308,6 +316,28 @@ export const uploadTestimonialVideo = async (file) => {
     duration: upload.data.duration,
   };
 };
+export const uploadHomepageVideo = async (file) => {
+  const signed = await api
+    .post("/public-management/homepage-media-signature")
+    .then((res) => res.data.data);
+  const body = new FormData();
+  body.append("file", file);
+  body.append("api_key", signed.apiKey);
+  body.append("timestamp", String(signed.timestamp));
+  body.append("folder", signed.folder);
+  body.append("signature", signed.signature);
+  const upload = await axios.post(
+    `https://api.cloudinary.com/v1_1/${signed.cloudName}/video/upload`,
+    body,
+  );
+  return {
+    url: upload.data.secure_url,
+    publicId: upload.data.public_id,
+    width: upload.data.width,
+    height: upload.data.height,
+    duration: upload.data.duration,
+  };
+};
 export const fetchWorkspaceMedia = () =>
   api.get("/social-workspace/media").then((res) => res.data);
 export const fetchManagedProfiles = () =>
@@ -359,6 +389,12 @@ export const fetchMyAmbassadorReferrals = () =>
   api.get("/ambassadors/me/referrals").then((res) => res.data.data);
 export const fetchMyAmbassadorPayouts = () =>
   api.get("/ambassadors/me/payouts").then((res) => res.data.data);
+export const submitMyAmbassadorReferral = (payload) =>
+  api.post("/ambassadors/me/referrals", payload).then((res) => res.data.data);
+export const addMyReferralFollowUpNote = (attributionId, payload) =>
+  api.post(`/ambassadors/me/referrals/${attributionId}/notes`, payload).then((res) => res.data.data);
+export const fileMyReferralDispute = (attributionId, reason) =>
+  api.post(`/ambassadors/me/referrals/${attributionId}/dispute`, { reason }).then((res) => res.data.data);
 export const fetchAmbassadors = () =>
   api.get("/ambassadors").then((res) => res.data.data);
 export const fetchAmbassadorWelcomeTemplate = () =>
@@ -563,6 +599,12 @@ export const transitionCoachAssignment = (assignmentId, values) =>
     .then((res) => res.data.data);
 export const fetchCoachingStudent = (contactId) =>
   api.get(`/coaching/students/${contactId}`).then((res) => res.data.data);
+export const summarizeCoachingStudentWithAi = (contactId) =>
+  api.post(`/coaching/students/${contactId}/ai-summary`).then((res) => res.data.data);
+export const fetchCoachingSuccessPatterns = () =>
+  api.get("/coaching/success-patterns").then((res) => res.data.data);
+export const summarizeCoachingSuccessPatterns = () =>
+  api.post("/coaching/success-patterns/summarize").then((res) => res.data.data);
 export const fetchCoachingNotes = (contactId, params = {}) =>
   api
     .get(`/coaching/students/${contactId}/notes`, { params })
@@ -1023,6 +1065,15 @@ export const runResearchMonitor = (monitorId) =>
 export const fetchIntentSignals = (params = {}) =>
   api.get("/audience/research/signals", { params }).then((res) => res.data);
 
+export const summarizeWeeklyDiscoveryFindings = (days) =>
+  api.post("/audience/research/weekly-brief", { days }).then((res) => res.data);
+
+export const fetchMonitorPerformance = () =>
+  api.get("/audience/research/monitor-performance").then((res) => res.data);
+
+export const fetchDiscoveryStrategyRecommendations = () =>
+  api.post("/audience/research/strategy-recommendations").then((res) => res.data);
+
 export const updateIntentSignal = (signalId, status) =>
   api
     .patch(`/audience/research/signals/${signalId}`, { status })
@@ -1151,6 +1202,12 @@ export const updateLinkedinContactOutreach = (contactId, data) =>
   api
     .patch(`/contacts/${contactId}/linkedin-outreach`, data)
     .then((res) => res.data);
+export const researchContactWithAi = (contactId) =>
+  api.post(`/contacts/${contactId}/ai-research`).then((res) => res.data.data);
+export const fetchPipelineHealth = () =>
+  api.get("/system-agent/pipeline-health").then((res) => res.data.data);
+export const synthesizePipelineHealth = () =>
+  api.post("/system-agent/pipeline-health/synthesize").then((res) => res.data.data);
 export const extractBusinessCard = (image) =>
   api
     .post("/contacts/business-card/extract", { image })
@@ -1409,5 +1466,85 @@ export const executeGrowthOperatorAction = (operatorId, opportunityId) =>
   api
     .post(`/growth-operators/${operatorId}/actions/${opportunityId}/execute`)
     .then((res) => res.data);
+
+// AI & Acquisition Controls (owner/admin only; some also require platform owner)
+export const fetchAiConfig = () => api.get("/ai/config").then((res) => res.data);
+export const updateAiConfig = (payload) =>
+  api.patch("/ai/config", payload).then((res) => res.data);
+export const fetchAiUsageSummary = () =>
+  api.get("/ai/usage/summary").then((res) => res.data);
+export const fetchGeminiConfig = () =>
+  api.get("/ai/gemini/config").then((res) => res.data);
+export const updateGeminiConfig = (payload) =>
+  api.patch("/ai/gemini/config", payload).then((res) => res.data);
+export const fetchProvidersHealth = () =>
+  api.get("/ai/providers/health").then((res) => res.data);
+export const pauseAllAiAndAcquisition = () =>
+  api.post("/ai/pause-all").then((res) => res.data);
+export const fetchPlatformProviderAvailability = () =>
+  api.get("/platform/providers").then((res) => res.data);
+export const updatePlatformProviderAvailability = (payload) =>
+  api.patch("/platform/providers", payload).then((res) => res.data);
+export const fetchVertexConfig = () =>
+  api.get("/ai/vertex/config").then((res) => res.data);
+export const updateVertexConfig = (payload) =>
+  api.patch("/ai/vertex/config", payload).then((res) => res.data);
+export const runVertexGrounding = (payload) =>
+  api.post("/ai/vertex/grounding", payload).then((res) => res.data);
+export const runVertexAgentSearch = (payload) =>
+  api.post("/ai/vertex/agent-search", payload).then((res) => res.data);
+export const purgeVertexAgentSearchIndex = () =>
+  api.post("/ai/vertex/agent-search/purge").then((res) => res.data);
+
+// Knowledge Center
+export const fetchKnowledgeNotes = (params = {}) =>
+  api.get("/jarvis/memory/notes", { params }).then((res) => res.data);
+export const fetchKnowledgeNote = (id) =>
+  api.get(`/jarvis/memory/notes/${id}`).then((res) => res.data);
+export const approveKnowledgeNote = (id, payload = {}) =>
+  api.post(`/jarvis/memory/notes/${id}/approve`, payload).then((res) => res.data);
+export const rejectKnowledgeNote = (id, reason) =>
+  api.post(`/jarvis/memory/notes/${id}/reject`, { reason }).then((res) => res.data);
+export const archiveKnowledgeNote = (id) =>
+  api.post(`/jarvis/memory/notes/${id}/archive`).then((res) => res.data);
+export const restoreKnowledgeNoteVersion = (id, version) =>
+  api.post(`/jarvis/memory/notes/${id}/restore-version`, { version }).then((res) => res.data);
+export const prepareKnowledgeMemory = (payload) =>
+  api.post("/jarvis/memory/prepare", payload).then((res) => res.data);
+export const confirmKnowledgeMemory = (approvalId, confirmationPhrase) =>
+  api.post(`/jarvis/memory/${approvalId}/confirm`, { confirmationPhrase }).then((res) => res.data);
+export const fetchVaultCredentials = () =>
+  api.get("/jarvis/memory/vault-credentials").then((res) => res.data);
+export const createVaultCredential = (label) =>
+  api.post("/jarvis/memory/vault-credentials", { label }).then((res) => res.data);
+export const revokeVaultCredential = (id) =>
+  api.delete(`/jarvis/memory/vault-credentials/${id}`).then((res) => res.data);
+
+// Ambassador Resource Center
+export const fetchAmbassadorResourcesAdmin = (params = {}) =>
+  api.get("/ambassadors/resources", { params }).then((res) => res.data);
+export const createAmbassadorResource = (payload) =>
+  api.post("/ambassadors/resources", payload).then((res) => res.data);
+export const updateAmbassadorResource = (id, changes) =>
+  api.patch(`/ambassadors/resources/${id}`, changes).then((res) => res.data);
+export const addAmbassadorResourceVersion = (id, payload) =>
+  api.post(`/ambassadors/resources/${id}/versions`, payload).then((res) => res.data);
+export const setAmbassadorResourceJarvisApproval = (id, approved) =>
+  api.patch(`/ambassadors/resources/${id}/jarvis-approval`, { approved }).then((res) => res.data);
+export const archiveAmbassadorResource = (id) =>
+  api.post(`/ambassadors/resources/${id}/archive`).then((res) => res.data);
+export const fetchAmbassadorResourceHistory = (id) =>
+  api.get(`/ambassadors/resources/${id}/history`).then((res) => res.data);
+export const fetchMyAmbassadorResources = (search = "") =>
+  api.get("/ambassadors/me/resources", { params: { search } }).then((res) => res.data);
+export const downloadMyAmbassadorResource = (id) =>
+  api.post(`/ambassadors/me/resources/${id}/download`, null, { responseType: "blob" });
+export const acknowledgeMyAmbassadorResource = (id) =>
+  api.post(`/ambassadors/me/resources/${id}/acknowledge`).then((res) => res.data);
+
+// Audit log
+export const fetchAuditLog = (params = {}) =>
+  api.get("/audit", { params }).then((res) => res.data.data);
+export const getAuditLogExportUrl = () => `${api.defaults.baseURL}/audit/export`;
 
 export default api;

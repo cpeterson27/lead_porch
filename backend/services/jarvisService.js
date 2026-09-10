@@ -86,6 +86,36 @@ class JarvisService {
       result = await this.handleGeneralQuery(message);
     }
 
+    // Jarvis coordinates: for questions squarely inside a specialized agent's
+    // domain that Jarvis's own deterministic handlers can't ground with real
+    // tool access (Lead research, Content drafting), delegate to that agent
+    // and attach its grounded answer alongside Jarvis's own verified summary.
+    // This never replaces the deterministic answer above — only adds to it.
+    const specializedAgent = executionContext.auth && executionContext.workspaceId
+      ? jarvisAgentCoordinator.selectSpecializedAgent(message)
+      : null;
+    if (llmService.isEnabled() && ["lead", "content"].includes(specializedAgent)) {
+      try {
+        const delegated = await jarvisAgentCoordinator.runSpecialized({
+          task: message,
+          agent: specializedAgent,
+          workspaceId: executionContext.workspaceId,
+          userId: executionContext.userId,
+          auth: executionContext.auth,
+          correlationId: executionContext.correlationId,
+          options: {
+            tools: specializedAgent === "content"
+              ? [{ toolId: "content.list_briefs", input: { limit: 10 } }, { toolId: "growth.analytics", input: {} }]
+              : [{ toolId: "crm.search_contacts", input: { limit: 10 } }, { toolId: "crm.list_opportunities", input: { limit: 10 } }],
+          },
+        });
+        result.delegatedAgent = { agent: specializedAgent, answer: delegated.output };
+        activity.push({ label: `Consulted the ${specializedAgent === "content" ? "Content" : "Lead"} Agent`, status: "complete" });
+      } catch (error) {
+        activity.push({ label: `${specializedAgent === "content" ? "Content" : "Lead"} Agent unavailable`, status: "warning" });
+      }
+    }
+
     if (llmService.isEnabled()) {
       try {
         const answer = await llmService.chat({
@@ -400,11 +430,12 @@ class JarvisService {
     try {
       const total = await Contact.countDocuments();
 
-      // Count by source
+      // Count by source (Contact stores multiple sources per contact in `sources`)
       const bySource = await Contact.aggregate([
+        { $unwind: { path: "$sources", preserveNullAndEmptyArrays: true } },
         {
           $group: {
-            _id: "$source",
+            _id: "$sources",
             count: { $sum: 1 },
           },
         },

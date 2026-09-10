@@ -21,6 +21,9 @@ import {
   fetchCoachingEnrollments,
   fetchCoachingPrograms,
   fetchCoachingStudent,
+  summarizeCoachingStudentWithAi,
+  fetchCoachingSuccessPatterns,
+  summarizeCoachingSuccessPatterns,
   fetchContacts,
   saveAssignmentHandoff,
   fetchReferralIdentities, updateReferralIdentity, fetchCoachingReferrals, createCoachingReferral, fetchCommissionRules, saveCommissionRule, fetchCoachingCommissions, updateCommissionStatus,
@@ -102,14 +105,28 @@ function SummaryCards({ enrollments, assignments, coaches, programs }) {
 export function CoachingDashboard() {
   const [state, setState] = useState({ enrollments: [], assignments: [], coaches: [], programs: [] });
   const [notice, setNotice] = useState(null);
+  const [patterns, setPatterns] = useState(null);
+  const [patternsSummary, setPatternsSummary] = useState(null);
+  const [patternsSummaryBusy, setPatternsSummaryBusy] = useState(false);
+  const [patternsSummaryError, setPatternsSummaryError] = useState("");
   useEffect(() => { Promise.all([fetchCoachingEnrollments({ limit: 200 }), fetchCoachAssignments({ limit: 200 }), fetchCoaches(), fetchCoachingPrograms()])
     .then(([enrollments, assignments, coaches, programs]) => setState({ enrollments, assignments, coaches, programs }))
     .catch((error) => setNotice({ type: "error", message: errorMessage(error) })); }, []);
+  useEffect(() => { fetchCoachingSuccessPatterns().then(setPatterns).catch(() => setPatterns(null)); }, []);
+  const runPatternsSummary = async () => { setPatternsSummaryBusy(true); setPatternsSummaryError(""); try { setPatternsSummary(await summarizeCoachingSuccessPatterns()); } catch (error) { setPatternsSummaryError(errorMessage(error)); } finally { setPatternsSummaryBusy(false); } };
   const recent = state.assignments.slice(0, 6);
   return <div className="coaching-page"><PageHeader eyebrow="Coaching CRM" title="Coaching dashboard" description="Operate programs, students, coaches, enrollments, and stage assignments from one workspace." />
     <CoachingNav active="dashboard" /><Notice value={notice} /><SummaryCards {...state} />
     <section className="coaching-panel"><div className="coaching-panel__heading"><div><p className="workspace-eyebrow">Assignment activity</p><h2>Current and upcoming coaching work</h2></div><Link to="/coaching/assignments">View all</Link></div>
       {recent.length ? <div className="coaching-list">{recent.map((assignment) => <AssignmentRow key={assignment._id} assignment={assignment} />)}</div> : <EmptyState icon={<FiClipboard />} title="No coach assignments yet" description="Start by enrolling a student in a program. Then choose the coach who will guide them." action={<Link className="btn btn--primary btn--md" to="/coaching/enrollments?new=1">Enroll in program</Link>} />}
+    </section>
+    <section className="coaching-panel"><div className="coaching-panel__heading"><div><p className="workspace-eyebrow">Coaching Agent</p><h2>Aggregated, anonymized success patterns</h2></div><Button size="sm" variant="outline" disabled={patternsSummaryBusy || !patterns?.totalEnrollments} onClick={runPatternsSummary}>{patternsSummaryBusy ? "Summarizing…" : "Summarize with AI"}</Button></div>
+      {!patterns ? <p className="coaching-muted">Loading…</p> : !patterns.totalEnrollments ? <p className="coaching-muted">No enrollment history yet.</p> : <>
+        <div className="coaching-summary"><div className="coaching-summary__card"><strong>{patterns.completionRate}%</strong><span>Completion rate</span></div><div className="coaching-summary__card"><strong>{patterns.avgCompletionDays ?? "—"}</strong><span>Avg. days to complete</span></div><div className="coaching-summary__card"><strong>{patterns.active}</strong><span>Active enrollments</span></div><div className="coaching-summary__card"><strong>{patterns.cancelled}</strong><span>Cancelled</span></div></div>
+        {patterns.commonCancelStages?.length ? <p className="coaching-muted">Most common cancellation stage: <strong>{human(patterns.commonCancelStages[0].key)}</strong> ({patterns.commonCancelStages[0].count})</p> : null}
+      </>}
+      {patternsSummaryError ? <p className="coaching-notice coaching-notice--error">{patternsSummaryError}</p> : null}
+      {patternsSummary ? <div className="coaching-ai-summary__result"><p>{patternsSummary.summary}</p>{patternsSummary.strengths?.length ? <><strong>Strengths</strong><ul>{patternsSummary.strengths.map((item) => <li key={item}>{item}</li>)}</ul></> : null}{patternsSummary.riskAreas?.length ? <><strong>Risk areas</strong><ul>{patternsSummary.riskAreas.map((item) => <li key={item}>{item}</li>)}</ul></> : null}</div> : null}
     </section>
   </div>;
 }
@@ -135,13 +152,20 @@ export function CoachingStudents() {
 
 export function CoachingStudentDetail() {
   const { contactId } = useParams(); const [student, setStudent] = useState(null); const [notice, setNotice] = useState(null);
-  useEffect(() => { fetchCoachingStudent(contactId).then(setStudent).catch((error) => setNotice({ type: "error", message: errorMessage(error) })); }, [contactId]);
+  const [aiSummary, setAiSummary] = useState(null); const [aiSummaryBusy, setAiSummaryBusy] = useState(false); const [aiSummaryError, setAiSummaryError] = useState("");
+  useEffect(() => { fetchCoachingStudent(contactId).then((data) => { setStudent(data); setAiSummary(null); setAiSummaryError(""); }).catch((error) => setNotice({ type: "error", message: errorMessage(error) })); }, [contactId]);
   if (!student) return <div className="coaching-page"><PageHeader eyebrow="Coaching CRM" title="Student" description="Loading authorized coaching record…" /><CoachingNav active="students" /><Notice value={notice} /></div>;
   const provision = async (enrollmentId) => { try { await requestSkoolAccess(enrollmentId, true); setNotice({ type: "success", message: "Skool access workflow queued. Refresh to see adapter status." }); } catch (error) { setNotice({ type: "error", message: errorMessage(error) }); } };
+  const runAiSummary = async () => { setAiSummaryBusy(true); setAiSummaryError(""); try { setAiSummary(await summarizeCoachingStudentWithAi(contactId)); } catch (error) { setAiSummaryError(errorMessage(error)); } finally { setAiSummaryBusy(false); } };
   return <div className="coaching-page"><PageHeader eyebrow="Coaching student" title={labelOfContact(student.contact)} description={`${student.contact.email || "No email"}${student.contact.phone ? ` · ${student.contact.phone}` : ""}`} actions={<><Link className="btn btn--primary btn--md" to={`/coaching/enrollments?new=1&contactId=${encodeURIComponent(contactId)}`}>Enroll in program</Link><Link className="btn btn--outline btn--md" to="/coaching/students">Back to students</Link></>} /><CoachingNav active="students" /><Notice value={notice} />
     <div className="coaching-detail-grid"><section className="coaching-panel"><h2>Contact</h2><dl className="coaching-details"><div><dt>Name</dt><dd>{labelOfContact(student.contact)}</dd></div><div><dt>Email</dt><dd>{student.contact.email || "Not set"}</dd></div><div><dt>Phone</dt><dd>{student.contact.phone || "Not set"}</dd></div><div><dt>Lifecycle</dt><dd>{human(student.contact.status)}</dd></div></dl></section>
       <section className="coaching-panel"><h2>Enrollments & Skool</h2>{student.enrollments.length ? student.enrollments.map((item) => <article className="coaching-record" key={item._id}><div><strong>{item.coachingProgramId?.name}</strong><span>{dateLabel(item.startsAt)} – {dateLabel(item.expectedEndAt)}</span></div><StatusBadge tone={tone(item.status)}>{human(item.status)}</StatusBadge><p>Stage: {human(item.currentStageKey)}</p><p>Skool: {human(item.externalRefs?.skoolStatus || "not_invited")}</p>{item.coachingProgramId?.skoolMapping?.groupUrl ? <a href={item.coachingProgramId.skoolMapping.groupUrl} target="_blank" rel="noreferrer">Open Skool group</a> : null}{item.coachingProgramId?.skoolMapping?.enabled ? <Button size="sm" variant="outline" onClick={() => provision(item._id)}>Provision / retry access</Button> : <p className="coaching-muted">Map this program to Skool first.</p>}</article>) : <p className="coaching-muted">No authorized enrollments.</p>}</section>
       <section className="coaching-panel coaching-panel--wide"><h2>Assignment history</h2>{student.coachAssignments.length ? <div className="coaching-list">{student.coachAssignments.map((item) => <AssignmentRow key={item._id} assignment={item} compact />)}</div> : <p className="coaching-muted">No assignments have been recorded.</p>}</section>
+      <section className="coaching-panel coaching-panel--wide coaching-ai-summary"><h2>Coaching Agent: session-prep summary</h2><p className="coaching-muted">AI assistance only, grounded in this student's real enrollments, coach assignments, and notes. Nothing is sent or changed automatically.</p>
+        <Button size="sm" variant="outline" disabled={aiSummaryBusy} onClick={runAiSummary}>{aiSummaryBusy ? "Summarizing…" : "Summarize with AI"}</Button>
+        {aiSummaryError ? <p className="coaching-notice coaching-notice--error">{aiSummaryError}</p> : null}
+        {aiSummary ? <div className="coaching-ai-summary__result"><p>{aiSummary.summary}</p><p><strong>Current standing:</strong> {aiSummary.currentStanding}</p>{aiSummary.suggestedFocusAreas?.length ? <><strong>Suggested focus areas</strong><ul>{aiSummary.suggestedFocusAreas.map((item) => <li key={item}>{item}</li>)}</ul></> : null}{aiSummary.riskFlags?.length ? <><strong>Risk flags</strong><ul>{aiSummary.riskFlags.map((item) => <li key={item}>{item}</li>)}</ul></> : null}</div> : null}
+      </section>
     </div>
     <CoachingHistory student={student} />
   </div>;

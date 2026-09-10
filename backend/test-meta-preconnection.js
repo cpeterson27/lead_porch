@@ -9,6 +9,9 @@ process.env.META_APP_SECRET = "provider-secret-never-log";
 process.env.META_REDIRECT_URI = "https://api.example.test/api/social/meta/oauth/callback";
 process.env.META_GRAPH_API_VERSION = "v23.0";
 process.env.FACEBOOK_LOGIN_CONFIG_ID = "123456789";
+process.env.INSTAGRAM_APP_ID = "ig-app-123";
+process.env.INSTAGRAM_APP_SECRET = "provider-secret-never-log";
+process.env.INSTAGRAM_REDIRECT_URI = "https://api.example.test/api/social/instagram/oauth/callback";
 
 const oauth = require("./services/socialOAuthService");
 const { encryptCredentials } = require("./utils/credentialEncryption");
@@ -115,25 +118,46 @@ function reviewerSurfaceChecks() {
 }
 
 async function subscriptionChecks() {
-  const posts = [];
-  const connection = document({
+  // A Page-linked Instagram Business Account has no subscribed_apps edge of
+  // its own — Meta only exposes it on the Page, so a Facebook Page and its
+  // linked Instagram asset are provisioned together in ONE combined call
+  // (see provisionMetaSubscriptions). Its only contribution ("messages") is
+  // already part of the Page's own field set, so the combined call is
+  // identical to the Page's field list.
+  const grouped = [];
+  const pageLinkedConnection = document({
     credentialsEncrypted: encryptCredentials({ accessToken: "user-token", pageTokens: { "page-1": "page-token" } }),
     assets: [{ id: "page-1", type: "facebook_page" }, { id: "ig-1", parentId: "page-1", type: "instagram_business" }],
   });
-  const http = {
-    async post(url, body, options) { posts.push({ url, fields: options.params.subscribed_fields }); return { data: { success: true } }; },
-    async get(url) {
-      const fields = url.includes("ig-1") ? oauth.subscriptionFields({ type: "instagram_business" }) : oauth.subscriptionFields({ type: "facebook_page" });
-      return { data: { data: [{ id: "meta-app-123", subscribed_fields: fields }] } };
-    },
+  const groupedHttp = {
+    async post(url, body, options) { grouped.push({ url, fields: options.params.subscribed_fields }); return { data: { success: true } }; },
+    async get() { return { data: { data: [{ id: "meta-app-123", subscribed_fields: oauth.subscriptionFields({ type: "facebook_page" }) }] } }; },
   };
-  const result = await oauth.provisionMetaSubscriptions(connection, ["page-1", "ig-1"], http);
-  assert.equal(result.every((row) => row.status === "subscribed"), true);
-  assert.equal(posts[0].fields, oauth.subscriptionFields({ type: "facebook_page" }).join(","));
-  assert.equal(posts[1].fields, oauth.subscriptionFields({ type: "instagram_business" }).join(","));
-  for (const field of ["messaging_optins", "message_reactions", "message_reads", "message_edits", "message_deliveries", "mention", "messaging_customer_information", "messaging_in_thread_lead_form_submit"]) assert(posts[0].fields.includes(field));
-  for (const field of ["live_comments", "message_edit", "message_reactions", "messaging_seen"]) assert(posts[1].fields.includes(field));
-  assert.equal(posts[1].fields.includes("messaging_optins"), false, "Do not provision an Instagram field not selected in the reviewed Meta configuration");
+  const groupedResult = await oauth.provisionMetaSubscriptions(pageLinkedConnection, ["page-1", "ig-1"], groupedHttp);
+  assert.equal(groupedResult.every((row) => row.status === "subscribed"), true);
+  assert.equal(grouped.length, 1, "A Page and its linked Instagram asset share one subscription call");
+  assert.equal(grouped[0].fields, oauth.subscriptionFields({ type: "facebook_page" }).join(","));
+  for (const field of ["messaging_optins", "message_reactions", "message_reads", "message_edits", "message_deliveries", "mention", "messaging_customer_information", "messaging_in_thread_lead_form_submit"]) assert(grouped[0].fields.includes(field));
+
+  // A standalone, direct-Instagram-Login asset (no linked Facebook Page) has
+  // its own subscribed_apps edge on graph.instagram.com, authorized with its
+  // own top-level access token rather than a Page token — provisioned via
+  // provisionInstagramSubscriptions, the direct-Instagram-Login counterpart
+  // to provisionMetaSubscriptions.
+  const standalone = [];
+  const standaloneConnection = document({
+    credentialsEncrypted: encryptCredentials({ accessToken: "ig-user-token" }),
+    assets: [{ id: "ig-standalone", type: "instagram_business" }],
+  });
+  const standaloneHttp = {
+    async post(url, body, options) { standalone.push({ url, fields: options.params.subscribed_fields }); return { data: { success: true } }; },
+    async get() { return { data: { data: [{ id: "ig-scoped-app-id", subscribed_fields: oauth.subscriptionFields({ type: "instagram_business" }) }] } }; },
+  };
+  const standaloneResult = await oauth.provisionInstagramSubscriptions(standaloneConnection, ["ig-standalone"], standaloneHttp);
+  assert.equal(standaloneResult.every((row) => row.status === "subscribed"), true);
+  assert.equal(standalone[0].fields, oauth.subscriptionFields({ type: "instagram_business" }).join(","));
+  for (const field of ["live_comments", "message_edit", "message_reactions", "messaging_seen"]) assert(standalone[0].fields.includes(field));
+  assert.equal(standalone[0].fields.includes("messaging_optins"), false, "Do not provision a Facebook Page field not part of the reviewed standalone Instagram configuration");
 }
 
 async function convergenceChecks() {
@@ -159,7 +183,7 @@ async function raceCheck() {
   const winnerContact = document({ _id: "contact-winner" }); let deleted = ""; let identityReads = 0;
   const models = {
     Contact: { async create(values) { return document({ _id: "contact-loser", ...values }); }, async findById(id) { return id === "contact-winner" ? winnerContact : null; }, async deleteOne(filter) { deleted = filter._id; } },
-    SocialIdentity: { async findOne() { identityReads += 1; return identityReads === 1 ? null : winner; }, async create() { const error = new Error("duplicate"); error.code = 11000; throw error; } },
+    SocialIdentity: { async findOne() { identityReads += 1; return identityReads === 1 ? null : winner; }, async find() { return []; }, async create() { const error = new Error("duplicate"); error.code = 11000; throw error; } },
   };
   const result = await resolveIdentity({ provider: "instagram", assetId: "ig-1", providerUserId: "user-1" }, models);
   assert.equal(result.identity._id, "identity-winner");
@@ -185,7 +209,16 @@ function loggingAndSafetyChecks() {
   assert.equal(route.includes("error.response?.data"), false);
   assert.ok(route.includes("/social/accounts?"), "OAuth callback returns to Connected Accounts with status preserved");
   assert.equal(route.includes('requireRole("owner", "admin")'), false);
-  for (const operation of ['router.get("/:provider/oauth/start", requireCapability("social.manage")', 'router.patch("/:provider/assets", requireCapability("social.manage")', 'router.post("/instagram/oauth/refresh", requireCapability("social.manage")', 'router.post("/:provider/oauth/disconnect", requireCapability("social.manage")']) assert.ok(route.includes(operation));
+  // Formatting-tolerant: each route definition and its requireCapability gate
+  // may be on the same line or wrapped across lines, but both must appear
+  // within a short span of each other.
+  for (const [method, routePath] of [["get", "/:provider/oauth/start"], ["patch", "/:provider/assets"], ["post", "/instagram/oauth/refresh"], ["post", "/:provider/oauth/disconnect"]]) {
+    const anchor = route.indexOf(`router.${method}(\n  "${routePath}"`);
+    const inline = route.indexOf(`router.${method}("${routePath}"`);
+    const start = anchor !== -1 ? anchor : inline;
+    assert.notEqual(start, -1, `${method.toUpperCase()} ${routePath} route not found`);
+    assert.ok(route.slice(start, start + 200).includes('requireCapability("social.manage")'), `${method.toUpperCase()} ${routePath} must require social.manage`);
+  }
   assert.ok(webhook.includes("deliverMetaReply"));
   assert.ok(fs.readFileSync(path.join(__dirname, "services/metaAutomationReplyService.js"), "utf8").includes('META_AUTOMATIC_REPLIES_ENABLED !== "true"'));
   assert.ok(publishing.includes('SOCIAL_PUBLISHING_ENABLED!=="true"'));

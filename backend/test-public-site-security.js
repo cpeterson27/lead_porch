@@ -85,14 +85,14 @@ const publicRoute = fs.readFileSync(
     "utf8",
   ),
   server = fs.readFileSync(require.resolve("./server"), "utf8");
-assert(publicRoute.includes('"publicPresentation.status":"published"'));
-assert(publicRoute.includes('status:"approved"'));
+assert(publicRoute.includes('"publicPresentation.status": "published"'));
+assert(publicRoute.includes('status: "approved"'));
 const siteService = fs.readFileSync(
   require.resolve("./services/publicSiteService"),
   "utf8",
 );
 assert(/status:\s*"approved",\s*featured:\s*true/.test(siteService));
-assert(publicRoute.includes('status:"published"'));
+assert(publicRoute.includes('status: "published"'));
 assert(publicRoute.includes("profileProjection"));
 assert(/userId:\s*req\.auth\.user\._id,\s*status:\s*"active"/.test(management));
 assert(/workspaceId:\s*req\.auth\.workspaceId,\s*userId:\s*req\.body\.userId,\s*status:\s*"active"/.test(management));

@@ -6,6 +6,7 @@
 const MarketingCampaign = require("../models/MarketingCampaign");
 const IntegrationConnection = require("../models/IntegrationConnection");
 const ResendAdapter = require("./integrations/email/ResendAdapter");
+const { checkSendEligibility } = require("./email");
 
 class MarketingCampaignExecutionService {
   /**
@@ -127,8 +128,20 @@ class MarketingCampaignExecutionService {
 
       const fromEmail = process.env.EMAIL_FROM || "noreply@example.com";
 
+      // Never send campaign email to a suppressed, unverified, or
+      // non-consenting address — checkSendEligibility is the same gate
+      // services/email.js uses for individual outreach.
+      const eligibility = await Promise.all(
+        recipients.map(async (to) => ({ to, result: await checkSendEligibility(to, { emailTopic: campaign.communication?.topic }) })),
+      );
+      const eligible = eligibility.filter((row) => row.result.eligible);
+      const blocked = eligibility.filter((row) => !row.result.eligible).map((row) => ({ to: row.to, reason: row.result.message }));
+      if (!eligible.length) {
+        throw new Error("No recipients are eligible for campaign email (suppressed, unverified, or not opted in).");
+      }
+
       // Build email array
-      const emails = recipients.map((to) => ({
+      const emails = eligible.map(({ to }) => ({
         from: fromEmail,
         to,
         subject: campaign.content.subject,
@@ -140,7 +153,7 @@ class MarketingCampaignExecutionService {
 
       // Update campaign
       campaign.status = "active";
-      campaign.metrics.sent = (campaign.metrics.sent || 0) + recipients.length;
+      campaign.metrics.sent = (campaign.metrics.sent || 0) + eligible.length;
       campaign.startedAt = new Date();
 
       campaign.integrations.email = {
@@ -154,11 +167,12 @@ class MarketingCampaignExecutionService {
       return {
         success: true,
         campaignId: campaign._id,
-        recipientCount: recipients.length,
+        recipientCount: eligible.length,
         sentCount: batchResult.results.length,
         sentAt: new Date(),
         results: batchResult.results,
-        message: `Campaign sent to ${recipients.length} recipients`,
+        blocked,
+        message: `Campaign sent to ${eligible.length} recipients${blocked.length ? `, ${blocked.length} blocked (suppressed/unverified/not opted in)` : ""}`,
       };
     } catch (error) {
       console.error(
@@ -363,11 +377,23 @@ class MarketingCampaignExecutionService {
       const fromEmail = process.env.EMAIL_FROM || "noreply@example.com";
 
       // Extract valid emails from contacts
-      const validContacts = contacts.filter(
+      const candidateContacts = contacts.filter(
         (c) => c.email && typeof c.email === "string",
       );
-      if (validContacts.length === 0) {
+      if (candidateContacts.length === 0) {
         throw new Error("No valid email addresses in contacts");
+      }
+
+      // Never send campaign email to a suppressed, unverified, or
+      // non-consenting contact — checkSendEligibility is the same gate
+      // services/email.js uses for individual outreach.
+      const eligibility = await Promise.all(
+        candidateContacts.map(async (contact) => ({ contact, result: await checkSendEligibility(contact.email, { contactId: contact._id, emailTopic: campaign.communication?.topic }) })),
+      );
+      const validContacts = eligibility.filter((row) => row.result.eligible).map((row) => row.contact);
+      const blocked = eligibility.filter((row) => !row.result.eligible).map((row) => ({ email: row.contact.email, reason: row.result.message }));
+      if (validContacts.length === 0) {
+        throw new Error("No contacts are eligible for campaign email (suppressed, unverified, or not opted in).");
       }
 
       // Build email array with contact data
@@ -406,7 +432,8 @@ class MarketingCampaignExecutionService {
           messageId: r.messageId,
           contact: validContacts[batchResult.results.indexOf(r)],
         })),
-        message: `Campaign sent to ${validContacts.length} contacts`,
+        blocked,
+        message: `Campaign sent to ${validContacts.length} contacts${blocked.length ? `, ${blocked.length} blocked (suppressed/unverified/not opted in)` : ""}`,
       };
     } catch (error) {
       console.error(

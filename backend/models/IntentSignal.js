@@ -41,11 +41,46 @@ const intentSignalSchema = new mongoose.Schema({
     url: { type: String, required: true },
     observedAt: { type: Date, default: Date.now },
   }],
+  // Discovery-track bucket. Distinct from `status` (CRM review lifecycle):
+  // this is where the result belongs in the discovery UI.
+  bucket: { type: String, enum: ["live_lead", "watchlist", "community_opportunity", "rejected"], default: "live_lead", index: true },
+  rejectionReason: {
+    type: String,
+    enum: ["", "seller_or_promoter", "vendor_lender_agent_recruiter", "wrong_industry", "too_experienced", "no_coaching_intent", "generic_discussion", "homework_or_hypothetical", "old_content", "wrong_location", "no_current_need", "not_a_person", "bot_or_automated", "other"],
+    default: "",
+  },
+  // Explicit, inspectable gate + multi-dimensional score. Every field here
+  // must be derivable from `evidence`/`raw` — never an unexplained number.
+  scoreBreakdown: {
+    firstPersonEvidence: { type: Boolean, default: false },
+    currentNeed: { type: Boolean, default: false },
+    programMatch: { type: String, default: "" },
+    learningIntent: { type: Number, default: 0, min: 0, max: 100 },
+    experienceStage: { type: String, enum: ["", "aspiring", "beginner", "intermediate", "experienced"], default: "" },
+    urgency: { type: Number, default: 0, min: 0, max: 100 },
+    readiness: { type: Number, default: 0, min: 0, max: 100 },
+    recency: { type: Number, default: 0, min: 0, max: 100 },
+    evidenceQuality: { type: Number, default: 0, min: 0, max: 100 },
+    identityConfidence: { type: Number, default: 0, min: 0, max: 100 },
+    contactability: { type: Number, default: 0, min: 0, max: 100 },
+    exclusionRisk: { type: Number, default: 0, min: 0, max: 100 },
+  },
+  // Populated only for community_opportunity signals.
+  communityProfile: {
+    platform: { type: String, default: "" },
+    audienceFit: { type: String, default: "" },
+    location: { type: String, default: "" },
+    activityEvidence: { type: String, default: "" },
+    organizerEvidence: { type: String, default: "" },
+    promotionRules: { type: String, default: "" },
+    recommendedApproach: { type: String, default: "" },
+  },
   raw: { type: mongoose.Schema.Types.Mixed, default: {} },
 }, { timestamps: true });
 
 intentSignalSchema.index({ workspaceId: 1, source: 1, sourceId: 1 }, { unique: true });
 intentSignalSchema.index({ workspaceId: 1, status: 1, score: -1, publishedAt: -1 });
+intentSignalSchema.index({ workspaceId: 1, bucket: 1, score: -1, discoveredAt: -1 });
 
 intentSignalSchema.plugin(workspacePlugin);
 module.exports = mongoose.model("IntentSignal", intentSignalSchema);

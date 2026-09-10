@@ -16,6 +16,7 @@ const CoachingApplication = require("../models/CoachingApplication");
 const Enrollment = require("../models/Enrollment");
 const TrackedLink = require("../models/TrackedLink");
 const llm = require("../services/llmService");
+const agentExecutionService = require("../services/agentExecutionService");
 const media = require("../services/imageAssetService");
 const distribution = require("../services/ambassadorContentService");
 const oauth = require("../services/socialOAuthService");
@@ -830,11 +831,17 @@ router.post(
       .select("name description")
       .limit(40)
       .lean();
-    const body = await llm.chat({
-      message: `${req.body.action}. Instructions: ${String(req.body.instructions || "").slice(0, 3000)}. Produce editable social copy only; do not claim publication. Do not invent business facts. The workspace is the school/business; offerings are courses/programs and events are separate. Content is independent; never assume a course/event relationship.`,
-      context: JSON.stringify({ workspace: config, offerings, source }),
-      profile: { name: "Jarvis" },
+    // Routed through the real Content Agent (not a raw llm.chat() call) so
+    // drafting is grounded in real workspace analytics and active campaigns,
+    // and usage is correctly attributed to the content agent.
+    const contentAgentResult = await agentExecutionService.runAgent({
+      workspaceId, userId: req.auth.user._id, auth: req.auth, agent: "content", task: req.body.action,
+      input: { instructions: String(req.body.instructions || "").slice(0, 3000), source, offerings: offerings.map((item) => ({ name: item.name, description: item.description })) },
+      operationalContext: `${req.body.action}. Produce editable social copy only; do not claim publication. Do not invent business facts. The workspace is the school/business; offerings are courses/programs and events are separate. Content is independent; never assume a course/event relationship. Workspace: ${JSON.stringify(config)}`,
+      correlationId: req.get("x-request-id") || "",
+      options: { tools: [{ toolId: "growth.analytics", input: {} }, { toolId: "growth.list_campaigns", input: { limit: 10 } }, ...(req.auth.effectivePermissions?.some((p) => ["coaching.view", "coaching.view_assigned"].includes(p)) ? [{ toolId: "coaching.get_success_patterns", input: {} }] : [])] },
     });
+    const body = contentAgentResult.output;
     if (req.body.action === "Generate platform variants") {
       const variants = [];
       for (const provider of ["instagram", "facebook", "linkedin", "x"]) {

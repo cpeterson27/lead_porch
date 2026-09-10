@@ -1,0 +1,220 @@
+.ai-controls-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px;
+  max-width: 980px;
+}
+
+.ai-controls-header .page-eyebrow {
+  display: inline-block;
+  margin: 0 0 6px;
+  color: var(--color-text-subtle);
+  font-size: 0.68rem;
+  font-weight: 780;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.ai-controls-header h1 {
+  margin: 0 0 8px;
+}
+
+.ai-controls-header p {
+  color: var(--color-text-subtle);
+  max-width: 720px;
+}
+
+.form-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--color-danger-soft, #fdecea);
+  border: 1px solid var(--color-danger, #d64545);
+  border-radius: 8px;
+  color: var(--color-danger, #d64545);
+  margin: 0;
+}
+
+.discovery-notice {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--color-success-soft, #eaf7ee);
+  border: 1px solid var(--color-success, #2e9e5b);
+  border-radius: 8px;
+  color: var(--color-success, #2e9e5b);
+  margin: 0;
+}
+
+.ai-controls-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  font-weight: 600;
+}
+
+.ai-controls-toggle--inline {
+  margin-bottom: 0;
+  font-weight: 500;
+}
+
+.ai-controls-page label {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 0.85rem;
+  color: var(--color-text-subtle);
+}
+
+.ai-controls-page label input[type="number"],
+.ai-controls-page label input[type="text"] {
+  display: block;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border, #d8dce1);
+  border-radius: 6px;
+  width: 220px;
+}
+
+.ai-controls-agents {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  border: none;
+  padding: 0;
+  margin: 0 0 16px;
+}
+
+.ai-controls-agents legend {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-subtle);
+  margin-bottom: 8px;
+}
+
+.ai-controls-agents label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-weight: 500;
+}
+
+.ai-controls-usage {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.provider-status-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.provider-status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-border, #eef0f3);
+}
+
+.provider-status-row:last-child {
+  border-bottom: none;
+}
+
+.provider-status-pill {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.provider-status-pill--on {
+  background: var(--color-success-soft, #eaf7ee);
+  color: var(--color-success, #2e9e5b);
+}
+
+.provider-status-pill--off {
+  background: var(--color-surface-muted, #f1f2f4);
+  color: var(--color-text-subtle);
+}
+
+.provider-status-pill--warn {
+  background: var(--color-warning-soft, #fff4e5);
+  color: var(--color-warning, #b06a00);
+}
+
+.ai-controls-monitor-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ai-controls-monitor-table th,
+.ai-controls-monitor-table td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--color-border, #eef0f3);
+  font-size: 0.85rem;
+}
+
+.ai-controls-platform-card {
+  border: 1px dashed var(--color-warning, #b06a00);
+}
+
+.ai-controls-try-it {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 14px;
+  margin-top: 10px;
+  border: 1px dashed var(--color-border, #d8dce1);
+  border-radius: 8px;
+}
+
+.ai-controls-try-it label {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.ai-controls-try-it label input[type="text"] {
+  width: 100%;
+  max-width: 480px;
+}
+
+.ai-controls-try-it-results {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+}
+
+.ai-controls-try-it-results li {
+  padding: 10px;
+  background: var(--color-surface-muted, #f7f8fa);
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.ai-controls-citations {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 6px;
+  font-size: 0.75rem;
+}
+
+.ai-controls-citations a {
+  color: var(--color-primary, #2f6fed);
+  word-break: break-all;
+}

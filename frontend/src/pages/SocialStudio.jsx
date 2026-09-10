@@ -60,6 +60,7 @@ export default function SocialStudio() {
     name: "",
     triggerType: "comment_keyword",
     keywords: "",
+    qualification: "",
     responseTemplate: "",
     ctaLabel: "",
     ctaDestination: "",
@@ -153,26 +154,35 @@ export default function SocialStudio() {
       setSavedId(contentBriefId);
     }
     if (postAutomation.configured) {
-      if (!metaDestinations.length)
+      // Story replies are an Instagram-only concept — Facebook has no equivalent, and the backend
+      // rejects the combination outright, so a mixed-destination post only gets the automation on the
+      // destinations that actually support it.
+      const eligibleDestinations =
+        postAutomation.triggerType === "story_reply"
+          ? metaDestinations.filter((row) => row.provider === "instagram")
+          : metaDestinations;
+      if (!eligibleDestinations.length)
         throw new Error(
-          "Choose at least one connected Facebook or Instagram destination for this automation.",
+          postAutomation.triggerType === "story_reply"
+            ? "Story reply automations require a connected Instagram destination."
+            : "Choose at least one connected Facebook or Instagram destination for this automation.",
         );
       if (!postAutomation.name.trim())
         throw new Error("Enter an internal automation name.");
       if (
-        postAutomation.triggerType === "comment_keyword" &&
+        ["comment_keyword", "dm_keyword"].includes(postAutomation.triggerType) &&
         !postAutomation.keywords.trim()
       )
         throw new Error(
-          "Enter at least one comment keyword that should trigger this automation.",
+          "Enter at least one keyword that should trigger this automation.",
         );
       const saved = new Set(automationSavedDestinations);
-      for (const destination of metaDestinations) {
+      for (const destination of eligibleDestinations) {
         const destinationKey = `${destination.provider}:${destination.assetId}`;
         if (saved.has(destinationKey)) continue;
         await createSocialAutomation({
           name:
-            metaDestinations.length > 1
+            eligibleDestinations.length > 1
               ? `${postAutomation.name.trim()} — ${destination.provider}`
               : postAutomation.name.trim(),
           provider: destination.provider,
@@ -180,13 +190,14 @@ export default function SocialStudio() {
           contentBriefId,
           contentId: "",
           triggerType: postAutomation.triggerType,
-          keywords:
-            postAutomation.triggerType === "comment_keyword"
-              ? postAutomation.keywords
-                  .split(",")
-                  .map((item) => item.trim())
-                  .filter(Boolean)
-              : [],
+          keywords: ["comment_keyword", "dm_keyword"].includes(
+            postAutomation.triggerType,
+          )
+            ? postAutomation.keywords
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean)
+            : [],
           responseTemplate: postAutomation.responseTemplate,
           cta: {
             label: postAutomation.ctaLabel,
@@ -194,7 +205,10 @@ export default function SocialStudio() {
           },
           campaignId: postAutomation.campaignId || null,
           tags: postAutomation.tags,
-          qualification: [],
+          qualification: postAutomation.qualification
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean),
           enabled: postAutomation.enabledWhenPublished,
         });
         saved.add(destinationKey);
@@ -274,7 +288,7 @@ export default function SocialStudio() {
     !postAutomation.configured ||
     (metaDestinations.length > 0 &&
       Boolean(postAutomation.name.trim()) &&
-      (postAutomation.triggerType !== "comment_keyword" ||
+      (!["comment_keyword", "dm_keyword"].includes(postAutomation.triggerType) ||
         Boolean(postAutomation.keywords.trim())));
   return (
     <section className="social-panel social-studio">
@@ -548,6 +562,8 @@ export default function SocialStudio() {
         onChange={setPostAutomation}
         campaigns={campaigns}
         onError={setError}
+        contentBriefId={savedId}
+        provider={metaDestinations[0]?.provider}
       />
       <details>
         <summary>Caption preview</summary>

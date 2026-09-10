@@ -50,7 +50,10 @@ const publicManagementRouter = require("./routes/publicManagement");
 const meetupRouter = require("./routes/meetup");
 const platformRouter = require("./routes/platform");
 const aiRouter = require("./routes/ai");
+const auditRouter = require("./routes/audit");
 const paymentsRouter = require("./routes/payments");
+const systemAgentRouter = require("./routes/systemAgent");
+const providersRouter = require("./routes/providers");
 const { requireAuth } = require("./middleware/auth");
 const { restrictNewRoleSurface } = require("./middleware/authorization");
 const { startResearchMonitorRunner } = require("./services/researchMonitorService");
@@ -233,12 +236,15 @@ connectDatabase(mongoUri)
     app.use("/api/workspace", workspaceRouter);
     app.use("/api/platform", platformRouter);
     app.use("/api/ai", aiRouter);
+    app.use("/api/audit", auditRouter);
     app.use("/api/payments", paymentsRouter);
     app.use("/api/unsubscribe", unsubscribeRouter);
     app.use("/api/business-index", businessIndexRouter);
     app.use("/api/mcp-access-tokens", mcpAccessRouter);
     app.use("/api/social", socialRouter);
     app.use("/api/privacy-requests", privacyRequestsRouter);
+    app.use("/api/system-agent", systemAgentRouter);
+    app.use("/api/providers", providersRouter);
 
     app.get("/api/health", (req, res) => {
       res.json({

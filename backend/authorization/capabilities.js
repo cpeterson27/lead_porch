@@ -8,7 +8,7 @@ const CAPABILITIES = Object.freeze([
   "ambassadors.view_own", "ambassadors.view", "ambassadors.manage", "community.view_ambassador",
   "calendar.manage_own", "calendar.manage_workspace", "zoom.manage_own", "zoom.manage_workspace",
   "discovery.manage", "outreach.manage", "campaigns.manage", "social.manage", "automations.manage", "analytics.view", "jarvis.manage",
-  "integrations.manage", "payments.view", "payments.manage", "workspace.manage",
+  "integrations.manage", "payments.view", "payments.manage", "workspace.manage", "system.monitor",
 ]);
 
 const ALL = new Set(CAPABILITIES);

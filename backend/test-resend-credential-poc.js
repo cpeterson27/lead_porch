@@ -1,6 +1,9 @@
+require("dotenv").config();
 const assert = require("assert");
 const crypto = require("crypto");
+const mongoose = require("mongoose");
 
+const Contact = require("./models/Contact");
 const IntegrationConnection = require("./models/IntegrationConnection");
 const integrationHub = require("./services/integrationHub");
 const ResendAdapter = require("./services/integrations/email/ResendAdapter");
@@ -35,6 +38,21 @@ function mockConnection(connection) {
 
 async function run() {
   try {
+    await mongoose.connect(process.env.MONGO_URI);
+    // Campaign email requires a real CRM contact for the recipient.
+    await Contact.deleteMany({ email: "recipient@example.com" });
+    await Contact.create({
+      name: "Test Recipient",
+      email: "recipient@example.com",
+      sources: ["manual"],
+      status: "active",
+      emailStatus: "verified",
+      emailPreferences: {
+        marketingStatus: "subscribed",
+        consentAt: new Date(),
+        topics: { eventInvitations: true },
+      },
+    });
     const encryptionKey = crypto.randomBytes(32).toString("base64");
     setEnvironment("INTEGRATION_CREDENTIAL_ENCRYPTION_KEY", encryptionKey);
 
@@ -161,6 +179,8 @@ async function run() {
       "INTEGRATION_CREDENTIAL_ENCRYPTION_KEY",
       originalEnvironment.encryptionKey,
     );
+    await Contact.deleteMany({ email: "recipient@example.com" });
+    await mongoose.disconnect();
   }
 }
 

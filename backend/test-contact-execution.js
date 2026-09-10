@@ -46,9 +46,11 @@ async function runTests() {
     console.log("Total: 11");
     console.log("\n🎉 ALL TESTS PASSED!");
 
+    await Contact.deleteMany({ _id: { $in: testContactIds } });
     process.exit(0);
   } catch (error) {
     console.error("\n❌ TEST FAILED:", error.message);
+    await Contact.deleteMany({ _id: { $in: testContactIds } }).catch(() => {});
     process.exit(1);
   }
 }
@@ -210,6 +212,13 @@ async function testSendTestCampaign() {
   if (contacts.length === 0) {
     throw new Error("No contacts available for campaign");
   }
+
+  // Bulk campaign sends are gated by checkSendEligibility (suppression,
+  // verified email, marketing opt-in) — make these two compliant recipients.
+  await Contact.updateMany(
+    { _id: { $in: contacts.slice(0, 2).map((c) => c._id) } },
+    { $set: { emailStatus: "verified", emailPreferences: { marketingStatus: "subscribed", consentAt: new Date() } } },
+  );
 
   // Map to contact format for execution
   const campaignContacts = contacts.slice(0, 2).map((c) => ({

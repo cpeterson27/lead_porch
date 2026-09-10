@@ -208,10 +208,9 @@ IntegrationConnectionSchema.index(
   { workspaceId: 1, provider: 1, accountScope: 1, ownerUserId: 1 },
   { unique: true },
 );
-IntegrationConnectionSchema.pre("validate", function validateAccountScope(next) {
-  if (this.accountScope === "user" && (!this.ownerUserId || !this.coachProfileId)) return next(new Error("User-scoped connections require an owner and coach profile"));
+IntegrationConnectionSchema.pre("validate", function validateAccountScope() {
+  if (this.accountScope === "user" && (!this.ownerUserId || !this.coachProfileId)) throw new Error("User-scoped connections require an owner and coach profile");
   if (this.accountScope === "workspace") { this.ownerUserId = null; this.coachProfileId = null; }
-  return next();
 });
 IntegrationConnectionSchema.plugin(workspacePlugin);
 

@@ -1,0 +1,62 @@
+.audit-log-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px;
+  max-width: 1080px;
+}
+
+.audit-log-header .page-eyebrow {
+  display: inline-block;
+  margin: 0 0 6px;
+  color: var(--color-text-subtle);
+  font-size: 0.68rem;
+  font-weight: 780;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.audit-log-header h1 {
+  margin: 0 0 8px;
+}
+
+.audit-log-header p {
+  color: var(--color-text-subtle);
+  max-width: 760px;
+}
+
+.audit-log-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.audit-log-filters input,
+.audit-log-filters select {
+  padding: 8px 10px;
+  border: 1px solid var(--color-border, #d8dce1);
+  border-radius: 6px;
+}
+
+.audit-log-filters input {
+  flex: 1;
+  min-width: 220px;
+}
+
+.audit-log-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.audit-log-table th,
+.audit-log-table td {
+  text-align: left;
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--color-border, #eef0f3);
+  font-size: 0.85rem;
+  vertical-align: middle;
+}
+
+.audit-log-row--failed {
+  background: var(--color-danger-soft, #fdecea);
+}

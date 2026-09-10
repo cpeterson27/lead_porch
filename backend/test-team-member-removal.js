@@ -6,7 +6,11 @@ const membership = (values) => ({ role: values.roles[0], status: "suspended", ..
 
 async function run() {
   const routeSource = fs.readFileSync("./routes/workspace.js", "utf8");
-  assert(routeSource.includes('router.delete("/members/:id", requireRole("owner", "admin"), requireCapability("team.manage")'), "Removal must require an Owner/Admin role and existing team capability");
+  const deleteMembersRoute = routeSource.indexOf('router.delete(\n  "/members/:id"');
+  assert.notEqual(deleteMembersRoute, -1, "DELETE /members/:id route not found");
+  const deleteMembersRouteBody = routeSource.slice(deleteMembersRoute, deleteMembersRoute + 200);
+  assert(deleteMembersRouteBody.includes('requireRole("owner", "admin")'), "Removal must require an Owner/Admin role");
+  assert(deleteMembersRouteBody.includes('requireCapability("team.manage")'), "Removal must require existing team capability");
   let target = membership({ _id: "member-1", workspaceId: "workspace-1", userId: "user-1", roles: ["member"] });
   let revokedFilter, revokedUpdate;
   const models = {

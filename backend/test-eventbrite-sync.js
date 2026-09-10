@@ -54,6 +54,10 @@ async function runTests() {
 }
 
 async function setupTestData() {
+  // Fixture emails are re-used across runs; without this, a second run sees
+  // them as already-existing contacts and create/duplicate counts drift.
+  await Contact.deleteMany({ email: /@eventbritetest\.com$/ });
+
   // Create test audience
   const audience = await Audience.create({
     name: "Test Eventbrite Audience",
@@ -245,9 +249,13 @@ async function testEventbriteAttendeeSync() {
   );
 
   // Test 2: Verify contacts in database
-  const savedContacts = await contactService.getContacts({
-    source: "eventbrite",
-  });
+  // Scoped to this fixture's own domain rather than the bare "eventbrite"
+  // source filter — the dev database is shared across test files, and other
+  // suites can legitimately create their own "eventbrite"-sourced contacts
+  // under different emails.
+  const savedContacts = (
+    await contactService.getContacts({ source: "eventbrite" })
+  ).filter((c) => c.email.endsWith("@eventbritetest.com"));
   if (savedContacts.length !== 3) {
     throw new Error(
       `Expected 3 contacts in database, got ${savedContacts.length}`,
@@ -259,7 +267,7 @@ async function testEventbriteAttendeeSync() {
 
   // Test 3: Verify contact details
   const johnContact = savedContacts.find(
-    (c) => c.externalId === "eventbrite-sync-001",
+    (c) => c.externalIds?.eventbrite === "eventbrite-sync-001",
   );
   if (!johnContact) {
     throw new Error("Contact with externalId not found");
@@ -334,13 +342,16 @@ async function testDuplicatePreventionEventbrite() {
     manualContact,
   ]);
 
-  if (syncResult3.created !== 1) {
+  // Contacts are unified globally by email (see contactService.upsertContact's
+  // "Duplicate rule: email only"), so a second source for an existing email
+  // merges into the same contact — it's an update, not a new contact.
+  if (syncResult3.updated !== 1) {
     throw new Error(
-      `Expected manual source contact created, got ${syncResult3.created}`,
+      `Expected manual source merged into existing contact, got updated=${syncResult3.updated}`,
     );
   }
   console.log(
-    "✓ Same email different source - Created contact from manual source",
+    "✓ Same email different source - Merged into existing contact, added manual source",
   );
 }
 

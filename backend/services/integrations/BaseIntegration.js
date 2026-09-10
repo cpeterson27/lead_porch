@@ -73,6 +73,22 @@ class BaseIntegration {
   }
 
   /**
+   * Extract field value from data by trying multiple possible keys.
+   * Shared by adapters that map loosely-shaped provider payloads
+   * (varying column/field names) into contact records.
+   * @param {Object} data - Data object
+   * @param {Array} possibleKeys - Array of possible keys to try
+   * @returns {String|null} Field value or null
+   */
+  extractFieldValue(data, possibleKeys) {
+    if (!data || typeof data !== "object") return null;
+    for (const key of possibleKeys) {
+      if (data[key]) return data[key];
+    }
+    return null;
+  }
+
+  /**
    * Get version info
    * @returns {String} Semantic version
    */

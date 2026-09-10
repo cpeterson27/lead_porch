@@ -5,6 +5,7 @@ const WorkspaceConfig = require("../models/WorkspaceConfig");
 const SocialConnection = require("../models/SocialConnection");
 const { requirePlatformOwner } = require("../middleware/auth");
 const workspaceProvisioningService = require("../services/workspaceProvisioningService");
+const platformConfigService = require("../services/platformConfigService");
 
 const router = express.Router();
 const PROVIDERS = ["facebook", "instagram", "linkedin", "tiktok", "x"];
@@ -191,6 +192,23 @@ router.patch(
     }
   },
 );
+
+/**
+ * Global provider availability — layered on top of the server environment
+ * variables that hold real credentials and master enable flags. This can
+ * only turn an already-configured provider OFF platform-wide; it can never
+ * turn on a provider with no real credentials.
+ */
+router.get("/providers", requirePlatformOwner, async (_req, res) => {
+  res.json({ success: true, data: await platformConfigService.get() });
+});
+router.patch("/providers", requirePlatformOwner, async (req, res) => {
+  try {
+    res.json({ success: true, data: await platformConfigService.save(req.body || {}, req.auth?.user?._id || req.auth?.userId || null) });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "Provider availability could not be saved", code: "PLATFORM_PROVIDERS_SAVE_FAILED" });
+  }
+});
 
 module.exports = router;
 module.exports.connectionSummary = connectionSummary;

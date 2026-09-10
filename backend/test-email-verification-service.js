@@ -10,13 +10,14 @@ assert.deepStrictEqual(
   ["test@example.com"],
 );
 
+const normalized = normalizeVerificationResult({
+  email: "PERSON@EXAMPLE.COM",
+  state: "deliverable",
+  score: "0.98",
+  accept_all: false,
+});
 assert.deepStrictEqual(
-  normalizeVerificationResult({
-    email: "PERSON@EXAMPLE.COM",
-    state: "deliverable",
-    score: "0.98",
-    accept_all: false,
-  }),
+  { email: normalized.email, state: normalized.state, reason: normalized.reason, score: normalized.score, didYouMean: normalized.didYouMean, acceptAll: normalized.acceptAll, disposable: normalized.disposable, role: normalized.role },
   {
     email: "person@example.com",
     state: "deliverable",
@@ -28,6 +29,9 @@ assert.deepStrictEqual(
     role: false,
   },
 );
+// Provider-neutral canonical layer: a real Emailable "deliverable" result is independently verified.
+assert.strictEqual(normalized.canonicalState, "independently_verified");
+assert.ok(normalized.verifiedAt instanceof Date);
 
 const partial = normalizeBatch({
   id: "batch-1",

@@ -98,6 +98,38 @@ async function run() {
     assert.equal(bareDomainPostRes.statusCode, 201, "a bare domain CTA destination must be accepted on create too");
     assert.equal(bareDomainPostRes.body.data.cta.destination, "https://elliescoaching.com");
     await SocialAutomation.deleteOne({ _id: bareDomainPostRes.body.data._id });
+
+    // DM-keyword triggers and qualification signals — newly exposed in the UI — must actually work.
+    const dmKeywordReq = { auth: { workspaceId: String(wsA), userId: String(actor) }, body: { provider: "instagram", assetId: "assetA", name: "DM keyword test", triggerType: "dm_keyword", keywords: ["pricing"], qualification: ["ready-to-buy"] } };
+    const dmKeywordRes = fakeRes();
+    await runWithWorkspace(String(wsA), () =>
+      postLayer.route.stack[0].handle(dmKeywordReq, dmKeywordRes, (error) => {
+        if (error) throw error;
+      }),
+    );
+    assert.equal(dmKeywordRes.statusCode, 201, "a dm_keyword automation must be creatable");
+    assert.deepEqual(dmKeywordRes.body.data.qualification, ["ready-to-buy"]);
+    await SocialAutomation.deleteOne({ _id: dmKeywordRes.body.data._id });
+
+    // Story replies only exist on Instagram — Facebook must be rejected, Instagram must succeed.
+    const storyOnFacebookReq = { auth: { workspaceId: String(wsA), userId: String(actor) }, body: { provider: "facebook", assetId: "page1", name: "Story on Facebook", triggerType: "story_reply" } };
+    const storyOnFacebookRes = fakeRes();
+    await runWithWorkspace(String(wsA), () =>
+      postLayer.route.stack[0].handle(storyOnFacebookReq, storyOnFacebookRes, (error) => {
+        if (error) throw error;
+      }),
+    );
+    assert.equal(storyOnFacebookRes.statusCode, 400, "story_reply is Instagram-only and must be rejected for Facebook");
+
+    const storyOnInstagramReq = { auth: { workspaceId: String(wsA), userId: String(actor) }, body: { provider: "instagram", assetId: "assetA", name: "Story on Instagram", triggerType: "story_reply" } };
+    const storyOnInstagramRes = fakeRes();
+    await runWithWorkspace(String(wsA), () =>
+      postLayer.route.stack[0].handle(storyOnInstagramReq, storyOnInstagramRes, (error) => {
+        if (error) throw error;
+      }),
+    );
+    assert.equal(storyOnInstagramRes.statusCode, 201, "story_reply must be accepted for Instagram");
+    await SocialAutomation.deleteOne({ _id: storyOnInstagramRes.body.data._id });
   } finally {
     await SocialAutomation.deleteMany({ _id: { $in: [docA._id, docB._id] } });
     await SocialConnection.deleteOne({ _id: connectionA._id });

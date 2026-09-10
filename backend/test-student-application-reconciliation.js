@@ -24,7 +24,7 @@ async function run() {
     WorkspaceConfig: { findOne: () => query({ publicApplication: { enabled: true } }) },
     WorkspaceMembership: { findOne: () => query(null) },
     CoachingApplication: { findOne: () => query(null), create: async (values) => { createdApplication = values; Object.assign(application, values); return application; } },
-    SalesOpportunity: { create: async (values) => { createdOpportunity = { _id: "opportunity-1", ...values }; return createdOpportunity; } },
+    SalesOpportunity: { findOne: () => query(null), create: async (values) => { createdOpportunity = { _id: "opportunity-1", ...values }; return createdOpportunity; } },
     CommunicationConsent: { findOneAndUpdate: async () => { throw new Error("SMS consent was not selected"); } },
     CrmActivity: { create: async () => { activities += 1; } },
     TrackedLink: { findOne: () => query(null) },
@@ -41,7 +41,7 @@ async function run() {
   const publicRoute = fs.readFileSync("./routes/publicSite.js", "utf8");
   const managementRoute = fs.readFileSync("./routes/publicManagement.js", "utf8");
   assert(publicRoute.includes("applicationService.publicConfig(config)"));
-  assert(managementRoute.includes("applicationService.publicConfig(config)") && managementRoute.includes("$set:{publicApplication:values}"));
+  assert(managementRoute.includes("applicationService.publicConfig(config)") && managementRoute.includes("$set: { publicApplication: values }"));
   for (const source of [fs.readFileSync("./services/publicApplicationService.js", "utf8"), publicRoute]) {
     assert(!source.includes('require("../models/Enrollment")')); assert(!source.includes("CoachAssignment.create"));
   }

@@ -20,6 +20,7 @@ import TeamAccess from "../components/TeamAccess.jsx";
 import ApplicationNotificationSettings from "../components/ApplicationNotificationSettings.jsx";
 import WebsiteBrandManager from "../components/WebsiteBrandManager.jsx";
 import ApplicationRouting from "../components/ApplicationRouting.jsx";
+import ApplicationImageSettings from "../components/ApplicationImageSettings.jsx";
 import LaunchReadiness from "../components/LaunchReadiness.jsx";
 import PrivacyRequests from "../components/PrivacyRequests.jsx";
 import InvitationTemplates from "../components/InvitationTemplates.jsx";
@@ -885,6 +886,7 @@ export default function Settings() {
         ) : activeSection === "applications" ? (
           <div className="settings-applications-stack">
             <ApplicationRouting />
+            <ApplicationImageSettings />
             <ApplicationNotificationSettings />
           </div>
 

@@ -37,6 +37,9 @@ import {
   updateIntentEmailDraft,
   transferIntentEmailDraft,
   updateContact,
+  summarizeWeeklyDiscoveryFindings,
+  fetchMonitorPerformance,
+  fetchDiscoveryStrategyRecommendations,
 } from "../services/api.js";
 import "./Discovery.css";
 import { draftFromMonitorPreset, sourcesFromMonitorPreset } from "../utils/researchMonitorPreset.js";
@@ -181,6 +184,11 @@ export default function Discovery() {
   const [openPeoplePreviewId, setOpenPeoplePreviewId] = useState("");
   const [monitors, setMonitors] = useState([]);
   const [intentSignals, setIntentSignals] = useState([]);
+  const [discoveryTrack, setDiscoveryTrack] = useState("live_lead");
+  const [bucketSummary, setBucketSummary] = useState({ live_lead: 0, watchlist: 0, community_opportunity: 0, rejected: 0 });
+  const [trackSignals, setTrackSignals] = useState([]);
+  const [trackLoading, setTrackLoading] = useState(false);
+  const [trackError, setTrackError] = useState("");
   const [signalSummary, setSignalSummary] = useState({ total: 0, person: 0, community_partner: 0, organization: 0, intent_signal: 0, public_engagement: 0, needsIdentity: 0, contactReady: 0 });
   const [monitorSaving, setMonitorSaving] = useState(false);
   const [monitorRunningId, setMonitorRunningId] = useState("");
@@ -194,6 +202,54 @@ export default function Discovery() {
   const [showMonitorSetup, setShowMonitorSetup] = useState(false);
   const [leadView, setLeadView] = useState("new");
   const [opportunityView, setOpportunityView] = useState("all");
+  const [monitorPerformance, setMonitorPerformance] = useState(null);
+  const [monitorPerformanceLoading, setMonitorPerformanceLoading] = useState(false);
+  useEffect(() => {
+    if (activeTab !== "monitoring") return;
+    let active = true;
+    fetchMonitorPerformance()
+      .then((data) => { if (active) { setMonitorPerformance(data); setMonitorPerformanceLoading(false); } })
+      .catch(() => { if (active) { setMonitorPerformance(null); setMonitorPerformanceLoading(false); } });
+    return () => { active = false; };
+  }, [activeTab]);
+  const [strategy, setStrategy] = useState(null);
+  const [strategyBusy, setStrategyBusy] = useState(false);
+  const [strategyError, setStrategyError] = useState("");
+  const [weeklyBrief, setWeeklyBrief] = useState(null);
+  const [weeklyBriefBusy, setWeeklyBriefBusy] = useState(false);
+  const [weeklyBriefError, setWeeklyBriefError] = useState("");
+  const runWeeklyBrief = async () => {
+    setWeeklyBriefBusy(true);
+    setWeeklyBriefError("");
+    try {
+      setWeeklyBrief(await summarizeWeeklyDiscoveryFindings());
+    } catch (error) {
+      setWeeklyBriefError(error?.response?.data?.error || "Could not generate the weekly Discovery brief.");
+    } finally {
+      setWeeklyBriefBusy(false);
+    }
+  };
+  const loadMonitorPerformance = async () => {
+    setMonitorPerformanceLoading(true);
+    try {
+      setMonitorPerformance(await fetchMonitorPerformance());
+    } catch {
+      setMonitorPerformance(null);
+    } finally {
+      setMonitorPerformanceLoading(false);
+    }
+  };
+  const runStrategyRecommendations = async () => {
+    setStrategyBusy(true);
+    setStrategyError("");
+    try {
+      setStrategy(await fetchDiscoveryStrategyRecommendations());
+    } catch (error) {
+      setStrategyError(error?.response?.data?.error || "Could not generate strategy recommendations.");
+    } finally {
+      setStrategyBusy(false);
+    }
+  };
   const [qualityEditingId, setQualityEditingId] = useState("");
   const [qualitySaving, setQualitySaving] = useState(false);
   const [qualityDraft, setQualityDraft] = useState({ query: "", keywords: "", negativeKeywords: "", feedUrls: "" });
@@ -275,6 +331,7 @@ export default function Discovery() {
       setMonitors(monitorResponse.monitors || []);
       setIntentSignals(signalResponse.signals || []);
       setSignalSummary(signalResponse.summary || { total: 0, person: 0, community_partner: 0, organization: 0, intent_signal: 0, needsIdentity: 0, contactReady: 0 });
+      setBucketSummary(signalResponse.bucketSummary || { live_lead: 0, watchlist: 0, community_opportunity: 0, rejected: 0 });
       const focusedSignalId = String(searchParams.get("signalId") || "");
       if (focusedSignalId) {
         const focusedSignal = (signalResponse.signals || []).find((item) => String(item._id) === focusedSignalId);
@@ -285,6 +342,22 @@ export default function Discovery() {
       setNotifications(notificationResponse.notifications || []);
     } catch {
       setNotice("Unable to load automatic intent monitoring.");
+    }
+  };
+
+  const loadDiscoveryTrack = async (track) => {
+    setDiscoveryTrack(track);
+    if (track === "live_lead") return;
+    setTrackLoading(true);
+    setTrackError("");
+    try {
+      const response = await fetchIntentSignals({ bucket: track, limit: 150 });
+      setTrackSignals(response.signals || []);
+      if (response.bucketSummary) setBucketSummary(response.bucketSummary);
+    } catch {
+      setTrackError("Unable to load this discovery track.");
+    } finally {
+      setTrackLoading(false);
     }
   };
 
@@ -774,6 +847,17 @@ export default function Discovery() {
     </DashboardCard></> : null}
 
     {activeTab === "monitoring" ? <><section className="monitoring-guide"><div><span>Runs automatically</span><h2>Monitor specific public signals—not social inboxes</h2><p>Lead Porch checks open-web evidence. Individual student leads require a specific multifamily discussion plus a current learning, problem, or buying signal. Public group metadata is routed to Community Partner discovery. Nothing is contacted or added to CRM automatically.</p></div><ol><li><strong>1</strong><span><b>Search</b>Checks supported public discussions or community metadata while your browser is closed.</span></li><li><strong>2</strong><span><b>Qualify</b>Separates real intent from titles, directories, filings, and promotions.</span></li><li><strong>3</strong><span><b>You decide</b>Review exact evidence and approve one candidate at a time.</span></li></ol></section>
+    <DashboardCard title="Search quality — measured by enrollments and revenue, not raw volume" action={<div className="lead-view-tabs"><Button variant="outline" size="sm" loading={monitorPerformanceLoading} onClick={loadMonitorPerformance}>Refresh</Button><Button size="sm" disabled={strategyBusy} onClick={runStrategyRecommendations}>{strategyBusy ? "Analyzing…" : "Get AI strategy recommendations"}</Button></div>}>
+      {!monitorPerformance ? <p>Loading monitor performance…</p> : <div className="monitor-performance-table"><table><thead><tr><th>Monitor</th><th>Candidates</th><th>Live leads</th><th>Rejected</th><th>Enrolled</th><th>Won revenue</th></tr></thead><tbody>{monitorPerformance.performance.map((row) => <tr key={row.monitorId}><td>{row.name}{!row.enabled ? <small> (disabled)</small> : null}</td><td>{row.totalCandidates}</td><td>{row.buckets.live_lead}</td><td>{row.rejectionRate}%</td><td>{row.enrolled}</td><td>${row.wonRevenue.toLocaleString()}</td></tr>)}</tbody></table></div>}
+      {monitorPerformance?.recommendations?.length ? <div className="monitor-recommendations"><strong>Recommendations</strong><ul>{monitorPerformance.recommendations.map((rec, index) => <li key={index}><b>{rec.monitorName}:</b> {rec.detail}</li>)}</ul></div> : null}
+      {strategyError ? <p className="form-error" role="alert">{strategyError}</p> : null}
+      {strategy ? <div className="discovery-strategy-result">
+        <p>{strategy.summary}</p>
+        {strategy.coverageGaps?.length ? <><strong>Coverage gaps</strong><ul>{strategy.coverageGaps.map((gap, index) => <li key={index}>{gap}</li>)}</ul></> : null}
+        {strategy.monitorsToReview?.length ? <><strong>Monitors to review</strong><ul>{strategy.monitorsToReview.map((item, index) => <li key={index}><b>{item.monitorName}</b> — {item.issue}: {item.recommendation}</li>)}</ul></> : null}
+        {strategy.suggestedSearches?.length ? <><strong>Suggested new searches</strong><ul>{strategy.suggestedSearches.map((item, index) => <li key={index}><b>{item.program}:</b> {item.query} — {item.rationale}</li>)}</ul></> : null}
+      </div> : null}
+    </DashboardCard>
 
     <DashboardCard title="Your active monitors" action={<div className="monitor-header-actions"><Button variant="outline" onClick={loadAutomaticResearch}>Refresh</Button><Button onClick={() => setShowMonitorSetup((value) => !value)}>{showMonitorSetup ? "Close setup" : "Create a monitor"}</Button></div>}>
       {showMonitorSetup ? <section className="monitor-setup-panel"><header><span>New monitor</span><h3>Choose the evidence Lead Porch should find</h3><p>Start with the Ellie student-intent, qualified-investor, or community-partner preset. Each uses a different source strategy.</p></header>{monitorPresets.map((preset) => <button className="monitor-preset" type="button" key={preset.id} onClick={() => applyMonitorPreset(preset)}><span>Purpose-built starting point</span><strong>{preset.name}</strong><small>{preset.monitorType === "investor_profile" ? "Find multifamily-relevant professionals or self-described investors; titles alone never qualify" : preset.monitorType === "community_partner" ? "Find public community organizations and organizers—not individual members" : "Find specific public multifamily questions, problems, or learning requests"}</small></button>)}<div className="intent-monitor-builder">
@@ -799,6 +883,27 @@ export default function Discovery() {
     <details className="activity-drawer"><summary>View monitoring activity</summary><p className="activity-help">This is an optional audit trail. Source retries are informational; you do not need to fix them.</p><div className="monitor-timeline">{monitorActivity.length ? monitorActivity.slice(0, 20).map((item) => <article key={item._id} className={`is-${item.type}`}><span></span><div><strong>{friendlyActivityMessage(item)}</strong><small>{new Date(item.createdAt).toLocaleString()}</small></div></article>) : <p>No activity yet.</p>}</div></details></> : null}
 
     {activeTab === "leads" ? <><section className="lead-review-hero"><div><span>Your opportunity inbox</span><h2>{signalSummary.total} results, separated by what they actually are</h2><p>A person can move toward direct outreach. A community needs an organizer or partnership approach. An organization needs a decision-maker. An intent signal needs identity research. These are no longer treated as the same kind of lead.</p></div><div className="lead-review-stats"><div><strong>{signalSummary.person}</strong><span>named people</span></div><div><strong>{signalSummary.community_partner}</strong><span>community partners</span></div><div><strong>{signalSummary.needsIdentity}</strong><span>need a person</span></div></div></section>
+    <section className="discovery-track-tabs" aria-label="Discovery track">{[["live_lead", "Live Leads", bucketSummary.live_lead], ["watchlist", "Watchlist", bucketSummary.watchlist], ["community_opportunity", "Community Opportunities", bucketSummary.community_opportunity], ["rejected", "Rejected", bucketSummary.rejected]].map(([id, label, count]) => <button key={id} type="button" className={discoveryTrack === id ? "is-active" : ""} onClick={() => loadDiscoveryTrack(id)}>{label} {count}</button>)}</section>
+    {discoveryTrack !== "live_lead" ? <DashboardCard title={discoveryTrack === "watchlist" ? "Watchlist — relevant people without confirmed current intent" : discoveryTrack === "community_opportunity" ? "Community Opportunities" : "Rejected — recorded reason for every irrelevant result"}>
+      {trackError ? <p className="form-error" role="alert">{trackError}</p> : null}
+      {trackLoading ? <p>Loading…</p> : trackSignals.length ? <div className="intent-signal-list">{trackSignals.map((signal) => <article key={signal._id}>
+        <div className="intent-signal-main"><div><span>{intentSourceLabel(signal)} · {signal.monitorName}</span><small>{signal.publishedAt ? new Date(signal.publishedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "Date unavailable"}</small></div><h3>{displayText(signal.title) || "Public evidence requiring review"}</h3><p>{displayText(signal.excerpt) || "Open the original source to review the context."}</p>
+          {discoveryTrack === "rejected" ? <div className="signal-why"><strong>Rejected: {String(signal.rejectionReason || "other").replaceAll("_", " ")}</strong><span>{(signal.scoreReasons || []).slice(0, 3).join(" · ")}</span></div> : null}
+          {discoveryTrack === "watchlist" ? <div className="signal-why"><strong>Score {signal.score}/100 — relevant but no confirmed current need yet</strong><span>{(signal.scoreReasons || []).slice(0, 4).join(" · ")}</span></div> : null}
+          {discoveryTrack === "community_opportunity" ? <div className="signal-why"><strong>{signal.communityProfile?.platform || "Community"}</strong><span>Audience: {signal.communityProfile?.audienceFit || "Real-estate investing"} · Organizer: {signal.communityProfile?.organizerEvidence || "Not yet identified"}</span><span>Promotion rules: {signal.communityProfile?.promotionRules}</span><span>Recommended approach: {signal.communityProfile?.recommendedApproach}</span></div> : null}
+          <a href={signal.sourceUrl} target="_blank" rel="noreferrer">View exact public evidence ↗</a>
+        </div>
+      </article>)}</div> : <div className="friendly-empty"><strong>Nothing here yet</strong><p>{discoveryTrack === "rejected" ? "Rejected results and their reasons will appear here as monitors run." : discoveryTrack === "watchlist" ? "People with relevant background but no confirmed current need will appear here." : "Public community groups, organizers, and partners will appear here as monitors run."}</p></div>}
+    </DashboardCard> : <>
+    <DashboardCard title="Research Agent: weekly Discovery brief" action={<Button variant="outline" size="sm" disabled={weeklyBriefBusy} onClick={runWeeklyBrief}>{weeklyBriefBusy ? "Summarizing…" : "Summarize this week's findings"}</Button>}>
+      <p className="weekly-brief-note">AI assistance only, grounded in this week's real Discovery signals. Nothing is contacted or added to CRM automatically.</p>
+      {weeklyBriefError ? <p className="form-error" role="alert">{weeklyBriefError}</p> : null}
+      {weeklyBrief ? <div className="weekly-brief-result">
+        <p>{weeklyBrief.data.summary}</p>
+        {weeklyBrief.data.topFindings?.length ? <><strong>Top findings</strong><ul>{weeklyBrief.data.topFindings.map((item, index) => <li key={index}><b>{item.title}</b>{item.why ? ` — ${item.why}` : ""}</li>)}</ul></> : null}
+        {weeklyBrief.data.recommendedFollowUps?.length ? <><strong>Recommended follow-ups</strong><ul>{weeklyBrief.data.recommendedFollowUps.map((item, index) => <li key={index}>{item}</li>)}</ul></> : null}
+      </div> : null}
+    </DashboardCard>
     <section className="lead-type-tabs" aria-label="Opportunity type"><button type="button" className={opportunityView === "all" ? "is-active" : ""} onClick={() => setOpportunityView("all")}>All {signalSummary.total}</button><button type="button" className={opportunityView === "person" ? "is-active" : ""} onClick={() => setOpportunityView("person")}>People {signalSummary.person}</button><button type="button" className={opportunityView === "community_partner" ? "is-active" : ""} onClick={() => setOpportunityView("community_partner")}>Communities {signalSummary.community_partner}</button><button type="button" className={opportunityView === "organization" ? "is-active" : ""} onClick={() => setOpportunityView("organization")}>Organizations {signalSummary.organization}</button><button type="button" className={opportunityView === "intent_signal" ? "is-active" : ""} onClick={() => setOpportunityView("intent_signal")}>Intent signals {signalSummary.intent_signal}</button></section>
     <section className="lead-workflow"><div><strong>People</strong><span>Verify the evidence and email, then add to CRM and prepare outreach.</span></div><div><strong>Communities</strong><span>Find the organizer and prepare a partnership request—not a member scrape.</span></div><div><strong>Organizations & intent</strong><span>Identify a real decision-maker before treating the result as contactable.</span></div></section>
     <DashboardCard title="Opportunity review" action={<div className="lead-view-tabs"><button type="button" className={leadView === "new" ? "is-active" : ""} onClick={() => setLeadView("new")}>Needs a decision</button><button type="button" className={leadView === "qualified" ? "is-active" : ""} onClick={() => setLeadView("qualified")}>Saved</button><button type="button" className={leadView === "all" ? "is-active" : ""} onClick={() => setLeadView("all")}>All active</button></div>}>
@@ -808,7 +913,7 @@ export default function Discovery() {
         {isBiggerPocketsUrl(signal.sourceUrl) ? <aside className="signal-contact biggerpockets-policy"><span>Public Engagement Opportunity</span><strong>No promotional outreach — BiggerPockets policy.</strong><small>Do not enrich or contact this author elsewhere because of this post. Only a useful public response may be drafted for manual review and manual posting.</small></aside> : <aside className="signal-contact"><span>{hasIdentifiedPerson ? "Identified person" : "Contact person"}</span>{hasIdentifiedPerson ? (account.url ? <a href={account.url} target="_blank" rel="noreferrer">{account.label} ↗</a> : <strong>{account.label}</strong>) : <strong>No person identified yet</strong>}<small>{hasIdentifiedPerson ? "A public source displays this name. Review the evidence before adding the person to CRM." : "This result is a community or organization. Lead Porch must identify a real contact person before drafting email."}</small>{signal.organizationName || signal.organizationDomain ? <><span>Community or organization</span><strong>{signal.organizationName || signal.organizationDomain}</strong>{signal.identityResolution?.status !== "supported" ? <small>The community is public; its relationship to a named person has not been established.</small> : null}</> : null}{signal.publishedEmails?.length ? <div className="published-email-note">{hasIdentifiedPerson ? "Published email found · still unverified" : "Community email found · not tied to a person"}</div> : null}</aside>}
         {isBiggerPocketsUrl(signal.sourceUrl) ? <div className="intent-signal-actions"><Button size="sm" loading={signalBusyId === signal._id} onClick={() => openBiggerPocketsResponse(signal)}>Draft helpful public response</Button><small>Manual review and manual posting only. No DM, enrichment, email, Closer sequence, link, or sales CTA.</small><Button size="sm" variant="outline" disabled={signalBusyId === signal._id} onClick={() => reviewSignal(signal, "dismissed")}>Not a fit</Button></div> : <div className="intent-signal-actions">{["qualified", "converted"].includes(signal.status) ? <><div className="intent-next-step"><span>Next step</span><strong>{!hasIdentifiedPerson ? "Find a real contact person and email" : !signal.emailDrafts?.length ? "Create the Deal to Close email" : !signal.crmContact ? "Add the identified person to CRM" : signal.crmContact.emailStatus !== "verified" ? "Confirm the contact email" : "Review and move the draft to Outreach"}</strong><small>Nothing is sent automatically.</small></div><div className="intent-action-row">{hasIdentifiedPerson ? <Button size="sm" onClick={() => openEmailDraft(signal)}>{signal.emailDrafts?.length ? "Review generated email" : "Generate Deal to Close email"}</Button> : <Button size="sm" loading={signalBusyId === signal._id} onClick={() => researchSignalIdentity(signal)}>Find contact person & email</Button>}{/reddit/i.test(signal.source || "") ? <Button size="sm" variant="outline" onClick={() => openRedditDrafts(signal)}>Create Reddit reply & DM</Button> : null}{hasIdentifiedPerson ? <Button size="sm" variant="outline" loading={signalBusyId === signal._id} onClick={() => researchSignalIdentity(signal)}>Research identity & email</Button> : null}{signal.status === "converted" ? <Button size="sm" variant="outline" onClick={() => navigate(`/contacts?tab=attention&search=${encodeURIComponent(signal.crmContact?.name || "Identity research needed")}`)}>Open contact next steps</Button> : hasIdentifiedPerson ? <Button size="sm" variant="outline" disabled={signalBusyId === signal._id} onClick={() => addSignalToCrm(signal)}>Add identified person to CRM</Button> : null}</div><IdentityResearchResult result={identityResult} busy={signalBusyId === signal._id} onSelect={(person) => researchSignalIdentity(signal, person)} /><ol className="intent-progress"><li className="is-done">Opportunity approved</li><li className={hasIdentifiedPerson ? "is-done" : ""}>Person identified</li><li className={signal.crmContact ? "is-done" : ""}>CRM contact added</li><li className={signal.crmContact?.emailStatus === "verified" ? "is-done" : ""}>Email confirmed</li><li className={signal.emailDrafts?.some((draft) => draft.status === "transferred") ? "is-done" : ""}>Ready in Outreach</li></ol><small>{hasIdentifiedPerson ? "The identified person still requires CRM and email review before Outreach." : "Lead Porch checks the public page directly without OpenAI credits. If no person is published, keep this as a community opportunity."}</small></> : <><Button size="sm" loading={signalBusyId === signal._id} disabled={signalBusyId === signal._id} onClick={() => reviewSignal(signal, "qualified")}>{hasIdentifiedPerson ? "Yes—prepare follow-up" : "Yes—find the contact person"}</Button><small>{hasIdentifiedPerson ? "Saves the lead and opens an unsent email draft." : "Saves the opportunity and checks its public pages for a named contact. No email is drafted yet."}</small></>}<Button size="sm" variant="outline" disabled={signalBusyId === signal._id || signal.status === "converted"} onClick={() => reviewSignal(signal, "dismissed")}>Not a fit</Button></div>}
       </article>; })}</div> : <div className="friendly-empty"><strong>{leadView === "new" ? "You’re caught up" : "No leads in this view"}</strong><p>{leadView === "new" ? "Lead Porch will place the next plausible adult buyer here after the automatic filters run." : "Change the view above or wait for the next monitoring check."}</p></div>}
-    </DashboardCard></> : null}
+    </DashboardCard></>}</> : null}
 
     {activeTab === "saved" ? <><DashboardCard title="Saved company targeting and result sets" action={<Button variant="outline" loading={historyLoading} onClick={loadResearchHistory}>Refresh</Button>}>
       <p className="crm-review-explainer"><strong>What belongs here:</strong> saved company targeting profiles and company-discovery result sets. People requests stay in People Research; active signal searches stay in Intent Monitoring. Historical Apollo-labeled records are preserved and marked legacy rather than presented as the current source.</p>

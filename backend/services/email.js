@@ -80,6 +80,73 @@ async function renderEmailContent(
 // SEND EMAIL
 // ======================================
 
+/**
+ * Shared eligibility gate for ANY automated/campaign email send — suppression,
+ * CRM contact existence, verified-email requirement, and topic-specific
+ * marketing opt-in. Every code path that sends email on the recipient's
+ * behalf (not a one-off admin connectivity test) must call this first; see
+ * marketingCampaignExecution.js for the bulk-send caller.
+ */
+async function checkSendEligibility(recipientEmail, { contactId, emailTopic } = {}) {
+  const recipient = String(recipientEmail || "").trim();
+  if (!recipient) return { eligible: false, message: "No recipient email found." };
+
+  const suppression = await EmailSuppression.findOne({
+    email: recipient.toLowerCase().trim(),
+  }).lean();
+  if (suppression) {
+    return {
+      eligible: false,
+      message: `This address is suppressed because of a previous ${suppression.reason.replaceAll("_", " ")}.`,
+    };
+  }
+
+  const contact = contactId
+    ? await Contact.findById(contactId)
+    : await Contact.findOne({ email: recipient.toLowerCase() });
+  if (
+    contact?.status === "unsubscribed" ||
+    contact?.emailPreferences?.marketingStatus === "unsubscribed"
+  ) {
+    return { eligible: false, message: "This contact unsubscribed from campaign email." };
+  }
+  if (!contact) {
+    return { eligible: false, message: "A CRM contact is required before campaign email can be sent." };
+  }
+  if (contact.emailStatus !== "verified") {
+    return {
+      eligible: false,
+      message: "This email address is not verified. Verify or directly confirm the corrected address before sending.",
+    };
+  }
+  if (
+    contact.emailPreferences?.marketingStatus !== "subscribed" ||
+    !contact.emailPreferences?.consentAt
+  ) {
+    return {
+      eligible: false,
+      message: "This contact has no recorded marketing opt-in. Verified email is not the same as permission to send.",
+    };
+  }
+  // "general" campaigns (MarketingCampaign's schema default) have no
+  // narrower topic checkbox of their own — the baseline subscribed +
+  // consentAt check above is their gate. Only the three specific topics
+  // require their own explicit opt-in checkbox.
+  if ((emailTopic || "event_invitations") === "general") return { eligible: true, contact };
+  const topicField = {
+    event_invitations: "eventInvitations",
+    program_offers: "programOffers",
+    educational_newsletter: "educationalNewsletter",
+  }[emailTopic || "event_invitations"];
+  if (!topicField || contact.emailPreferences?.topics?.[topicField] !== true) {
+    return {
+      eligible: false,
+      message: `This contact has not subscribed to ${String(emailTopic || "this email topic").replaceAll("_", " ")}.`,
+    };
+  }
+  return { eligible: true, contact };
+}
+
 async function sendEmail(outreachItem) {
   if (!outreachItem) {
     return {
@@ -90,69 +157,14 @@ async function sendEmail(outreachItem) {
 
   const recipient = outreachItem.contactEmail || process.env.TEST_EMAIL;
 
-  if (!recipient) {
-    return {
-      success: false,
-      message: "No recipient email found.",
-    };
+  const eligibility = await checkSendEligibility(recipient, {
+    contactId: outreachItem.contactId,
+    emailTopic: outreachItem.emailTopic,
+  });
+  if (!eligibility.eligible) {
+    return { success: false, message: eligibility.message };
   }
-
-  const suppression = await EmailSuppression.findOne({
-    email: String(recipient).toLowerCase().trim(),
-  }).lean();
-  if (suppression) {
-    return {
-      success: false,
-      message: `This address is suppressed because of a previous ${suppression.reason.replaceAll("_", " ")}.`,
-    };
-  }
-
-  const contact = outreachItem.contactId
-    ? await Contact.findById(outreachItem.contactId)
-    : await Contact.findOne({ email: String(recipient).toLowerCase() });
-  if (
-    contact?.status === "unsubscribed" ||
-    contact?.emailPreferences?.marketingStatus === "unsubscribed"
-  ) {
-    return {
-      success: false,
-      message: "This contact unsubscribed from campaign email.",
-    };
-  }
-  if (!contact) {
-    return {
-      success: false,
-      message: "A CRM contact is required before campaign email can be sent.",
-    };
-  }
-  if (contact.emailStatus !== "verified") {
-    return {
-      success: false,
-      message:
-        "This email address is not verified. Verify or directly confirm the corrected address before sending.",
-    };
-  }
-  if (
-    contact.emailPreferences?.marketingStatus !== "subscribed" ||
-    !contact.emailPreferences?.consentAt
-  ) {
-    return {
-      success: false,
-      message:
-        "This contact has no recorded marketing opt-in. Verified email is not the same as permission to send.",
-    };
-  }
-  const topicField = {
-    event_invitations: "eventInvitations",
-    program_offers: "programOffers",
-    educational_newsletter: "educationalNewsletter",
-  }[outreachItem.emailTopic || "event_invitations"];
-  if (!topicField || contact.emailPreferences?.topics?.[topicField] !== true) {
-    return {
-      success: false,
-      message: `This contact has not subscribed to ${String(outreachItem.emailTopic || "this email topic").replaceAll("_", " ")}.`,
-    };
-  }
+  const contact = eligibility.contact;
   let rendered;
   try {
     rendered = await renderEmailContent(outreachItem, { contact });
@@ -276,6 +288,7 @@ async function sendTestEmail(
 }
 
 module.exports = {
+  checkSendEligibility,
   renderEmailContent,
   sendEmail,
   sendTestEmail,

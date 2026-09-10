@@ -285,6 +285,7 @@ export default function JarvisChat() {
         actions: response.actionsAvailable,
         activity: response.activity || [],
         memorySources: response.memorySources || [],
+        delegatedAgent: response.delegatedAgent || null,
       };
       setMessages((prev) => [...prev, assistantMessage]);
       setNextId(nextId + 2);
@@ -642,6 +643,7 @@ export default function JarvisChat() {
 
               {msg.activity?.length ? <div className="jarvis-activity"><p>Jarvis completed</p>{msg.activity.map((step, index) => <div key={`${msg.id}-${index}`}><span>{step.status === "warning" ? "!" : "✓"}</span>{step.label}</div>)}</div> : null}
               {msg.memorySources?.length ? <div className="jarvis-memory-sources"><strong>Vault notes consulted</strong>{msg.memorySources.map((source) => <span key={source}>{source}</span>)}</div> : null}
+              {msg.delegatedAgent?.answer ? <div className="jarvis-delegated-agent"><strong>{msg.delegatedAgent.agent === "content" ? "Content Agent" : "Lead Agent"} says:</strong><p>{msg.delegatedAgent.answer}</p></div> : null}
 
               {!intentResearchTask && msg.actions && msg.actions.length > 0 && (
                 <div className="jarvis-actions">

@@ -199,6 +199,7 @@ export default function AmbassadorAdmin() {
           <a href="#ambassador-people">Ambassadors</a>
           <a href="#ambassador-referrals">Referrals</a>
           <a href="#ambassador-payouts">Commissions / Payouts</a>
+          <Link to="/ambassadors/resources">Resource Center</Link>
           <Link to="/automations">Follow-up automations</Link>
         </nav>
       </header>

@@ -28,7 +28,9 @@ async function run() {
   assert.equal((await service.emailPolicy({ ...baseContact, status: "active" }, "transactional", suppressedModels)).allowed, false);
 
   const created = [];
-  const startsAt = new Date("2026-09-01T18:00:00.000Z");
+  // Must stay far enough in the future that both reminder offsets
+  // (1440 and 60 minutes before startsAt) are still ahead of "now".
+  const startsAt = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000);
   const reminderModels = {
     CoachingSession: { findOne: async () => ({ _id: "session-1", workspaceId, contactId: "contact-1", coachProfileId: "coach-1", coachingProgramId: "program-1", enrollmentId: "enroll-1", startsAt, timezone: "America/Los_Angeles", status: "scheduled", videoMode: "zoom", zoom: { joinUrl: "https://zoom.example/join-safe" } }) },
     Contact: { findOne: async () => ({ _id: "contact-1", workspaceId, name: "Alex Student", firstName: "Alex", email: "alex@example.com" }) },

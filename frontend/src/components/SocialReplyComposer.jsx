@@ -23,7 +23,8 @@ export default function SocialReplyComposer({
     [error, setError] = useState("");
   const [analysis, setAnalysis] = useState(initialAnalysis),
     [aiBusy, setAiBusy] = useState(""),
-    [aiError, setAiError] = useState("");
+    [aiError, setAiError] = useState(""),
+    [extraInstruction, setExtraInstruction] = useState("");
   const ask = async (action, forceRegenerate = false) => {
     if (aiBusy) return;
     setAiBusy(action);
@@ -31,7 +32,14 @@ export default function SocialReplyComposer({
     try {
       const result = await mutateSocialWorkspace(
         `inbox/${thread._id}/ai-assist`,
-        { action, forceRegenerate },
+        {
+          action,
+          // A cached result is keyed on the conversation's content, not on this instruction — without
+          // forcing regeneration here, typing something new and re-asking would silently return the old,
+          // un-instructed answer.
+          forceRegenerate: forceRegenerate || Boolean(extraInstruction.trim()),
+          extraInstruction: extraInstruction.trim(),
+        },
       );
       setAnalysis(result.analysis);
       if (result.analysis?.suggestedReply)
@@ -56,6 +64,14 @@ export default function SocialReplyComposer({
           automatically.
         </p>
       </div>
+      <label className="social-ai-instruction">
+        Tell it what to focus on <small>Optional</small>
+        <input
+          placeholder="Mention our new cohort starting in October"
+          value={extraInstruction}
+          onChange={(event) => setExtraInstruction(event.target.value)}
+        />
+      </label>
       <div className="social-ai-actions">
         {ACTIONS.map(([key, label]) => (
           <button
@@ -85,6 +101,20 @@ export default function SocialReplyComposer({
             {analysis.leadPotential || "no"} lead potential
           </span>
           {analysis.recommendedAction && <p>{analysis.recommendedAction}</p>}
+          {(analysis.urgency || analysis.programFit) && (
+            <p className="social-ai-result__meta">
+              {analysis.urgency ? `${human(analysis.urgency)} urgency` : null}
+              {analysis.urgency && analysis.programFit ? " · " : null}
+              {analysis.programFit ? `Fits: ${analysis.programFit}` : null}
+            </p>
+          )}
+          {analysis.objections?.length ? (
+            <ul className="social-ai-result__objections">
+              {analysis.objections.map((objection, index) => (
+                <li key={index}>{objection}</li>
+              ))}
+            </ul>
+          ) : null}
           <small>
             {human(analysis.handoffState || "human_review_required")} · Human
             approval required

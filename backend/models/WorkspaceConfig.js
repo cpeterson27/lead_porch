@@ -366,6 +366,35 @@ const workspaceConfigSchema = new mongoose.Schema(
         system: { type: Boolean, default: true },
       },
     },
+    // Google Gemini Developer API provider — optional, off by default. Two
+    // independently switchable capabilities: Workspace Context (answers a
+    // question via prompt-stuffing from this workspace's own already-approved
+    // knowledge/structured data — NOT a search index) and Grounding
+    // (controlled public-web discovery via Gemini's Google Search grounding).
+    // Neither capability works at all unless GEMINI_ENABLED/GEMINI_API_KEY are
+    // also set server-side — this block only controls whether THIS workspace
+    // has opted in, on top of that platform-level switch. See `vertex` below
+    // for the separate, real Vertex AI Search (Discovery Engine) Agent Search.
+    gemini: {
+      workspaceContextEnabled: { type: Boolean, default: false },
+      groundingEnabled: { type: Boolean, default: false },
+      monthlyLimitUsd: { type: Number, default: null, min: 0 },
+    },
+    // Optional Vertex AI provider — a SEPARATE Google product from the Gemini
+    // Developer API block above, with its own server-side service-account
+    // credential (never GEMINI_API_KEY). Two independently switchable
+    // capabilities: groundingEnabled (Vertex AI Gemini + Google Search
+    // grounding, services/vertexGroundingService.js) and agentSearchEnabled
+    // (real indexed, tenant-isolated retrieval over this workspace's approved
+    // Knowledge Center documents via Vertex AI Search / Discovery Engine,
+    // services/discoveryEngineService.js). Neither works unless VERTEX_ENABLED
+    // and the Google Cloud project/location/data-store env vars are also set
+    // server-side — see services/vertexConfigService.js.
+    vertex: {
+      groundingEnabled: { type: Boolean, default: false },
+      agentSearchEnabled: { type: Boolean, default: false },
+      monthlyLimitUsd: { type: Number, default: null, min: 0 },
+    },
     socialAi: {
       analysisEnabled: { type: Boolean, default: false },
       suggestedRepliesEnabled: { type: Boolean, default: true },

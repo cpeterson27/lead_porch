@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { FaFacebookF, FaInstagram, FaLinkedinIn } from "react-icons/fa";
+import { FaXTwitter } from "react-icons/fa6";
 import Button from "./Button.jsx";
 import {
   channelDefinitions,
@@ -12,6 +13,7 @@ const icons = {
   meta: FaFacebookF,
   instagram: FaInstagram,
   linkedin: FaLinkedinIn,
+  x: FaXTwitter,
 };
 const date = (value) =>
   value && Number.isFinite(Date.parse(value))
@@ -49,7 +51,6 @@ function emptyAssetsGuidance(provider) {
 function ChannelRow({
   channel,
   connection,
-  connections,
   busy,
   onConnect,
   onDisconnect,
@@ -421,7 +422,6 @@ export default function SocialConnectedAccounts({
     return connection ? (
       <ChannelRow
         key={channel.provider}
-        connections={data.connections}
         {...{
           channel,
           connection,

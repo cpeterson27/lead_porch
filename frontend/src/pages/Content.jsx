@@ -44,6 +44,7 @@ const emptyPostAutomation = {
   name: "",
   triggerType: "comment_keyword",
   keywords: "",
+  qualification: "",
   responseTemplate: "",
   ctaLabel: "",
   ctaDestination: "",
@@ -455,7 +456,7 @@ function CommentGroups({ threads, destinations, onReload }) {
           </span>
         </header>
         {groupThreads.length ? (
-          groupThreads.map(({ thread, messages, like, hasConfirmedReply }) => {
+          groupThreads.map(({ thread, messages, like }) => {
             const comment = messages.find(
               (message) => message.direction === "inbound",
             );
@@ -719,21 +720,29 @@ export default function Content() {
           await updateSocialAutomation(automation._id, { enabled: false });
       return;
     }
-    const metaDestinations = draft.social.destinations.filter((row) =>
+    const allMetaDestinations = draft.social.destinations.filter((row) =>
       ["facebook", "instagram"].includes(row.provider),
     );
+    // Story replies are an Instagram-only concept — Facebook has no equivalent, and the backend rejects
+    // the combination outright, so a mixed-destination post only gets the automation where it's supported.
+    const metaDestinations =
+      postAutomation.triggerType === "story_reply"
+        ? allMetaDestinations.filter((row) => row.provider === "instagram")
+        : allMetaDestinations;
     if (!metaDestinations.length)
       throw new Error(
-        "Choose at least one connected Facebook or Instagram destination for this automation.",
+        postAutomation.triggerType === "story_reply"
+          ? "Story reply automations require a connected Instagram destination."
+          : "Choose at least one connected Facebook or Instagram destination for this automation.",
       );
     if (!postAutomation.name.trim())
       throw new Error("Enter an internal automation name.");
     if (
-      postAutomation.triggerType === "comment_keyword" &&
+      ["comment_keyword", "dm_keyword"].includes(postAutomation.triggerType) &&
       !postAutomation.keywords.trim()
     )
       throw new Error(
-        "Enter at least one comment keyword that should trigger this automation.",
+        "Enter at least one keyword that should trigger this automation.",
       );
     for (const destination of metaDestinations) {
       const existing = existingAutomations.find(
@@ -747,13 +756,18 @@ export default function Content() {
             ? `${postAutomation.name.trim()} — ${destination.provider}`
             : postAutomation.name.trim(),
         triggerType: postAutomation.triggerType,
-        keywords:
-          postAutomation.triggerType === "comment_keyword"
-            ? postAutomation.keywords
-                .split(",")
-                .map((item) => item.trim())
-                .filter(Boolean)
-            : [],
+        keywords: ["comment_keyword", "dm_keyword"].includes(
+          postAutomation.triggerType,
+        )
+          ? postAutomation.keywords
+              .split(",")
+              .map((item) => item.trim())
+              .filter(Boolean)
+          : [],
+        qualification: postAutomation.qualification
+          .split(",")
+          .map((item) => item.trim())
+          .filter(Boolean),
         responseTemplate: postAutomation.responseTemplate,
         cta: { label: postAutomation.ctaLabel, destination: postAutomation.ctaDestination },
         campaignId: postAutomation.campaignId || null,
@@ -912,6 +926,7 @@ export default function Content() {
           name: first.name || "",
           triggerType: first.triggerType || "comment_keyword",
           keywords: (first.keywords || []).join(", "),
+          qualification: (first.qualification || []).join(", "),
           responseTemplate: first.responseTemplate || "",
           ctaLabel: first.cta?.label || "",
           ctaDestination: first.cta?.destination || "",
@@ -1093,6 +1108,8 @@ export default function Content() {
                 onChange={setPostAutomation}
                 campaigns={campaigns}
                 onError={setError}
+                contentBriefId={draft._id}
+                provider={draft.social.destinations.map((row) => row.provider).find((p) => ["facebook", "instagram"].includes(p))}
               />
             </div>
             <div className="social-editor__preview">

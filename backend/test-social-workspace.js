@@ -107,6 +107,7 @@ async function authorization() {
     INSTAGRAM_REDIRECT_URI:
       "https://example.test/api/social/instagram/oauth/callback",
     META_GRAPH_API_VERSION: "v25.0",
+    X_ENABLED: "true",
     X_CLIENT_ID: "x-app",
     X_CLIENT_SECRET: "fixture",
     X_REDIRECT_URI: "https://example.test/api/social/x/oauth/callback",

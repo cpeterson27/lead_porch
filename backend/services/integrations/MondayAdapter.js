@@ -22,6 +22,16 @@ function cleanName(value = "") {
 
 }
 
+// Monday board items rarely have dedicated first/last-name columns — the
+// item's own `name` is the only reliably-present identity field, so it's
+// the fallback source when no explicit firstName/lastName column is mapped.
+function splitFullName(fullName = "") {
+  const parts = cleanName(fullName).split(" ").filter(Boolean);
+  if (parts.length === 0) return { firstName: "", lastName: "" };
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+  return { firstName: parts[0], lastName: parts.slice(1).join(" ") };
+}
+
 
 
 
@@ -345,8 +355,8 @@ class MondayAdapter extends BaseIntegration {
 
 
           company: cleanName(read("company", ["lead_company", "company"])),
-          firstName: cleanName(read("firstName")),
-          lastName: cleanName(read("lastName")),
+          firstName: cleanName(read("firstName")) || splitFullName(item.name).firstName,
+          lastName: cleanName(read("lastName")) || splitFullName(item.name).lastName,
           title: cleanName(read("title", ["title", "job_title"])),
           phone: read("phone", ["phone", "lead_phone"]),
           industry: cleanName(read("industry", ["industry"])),

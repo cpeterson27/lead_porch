@@ -42,6 +42,26 @@ function safeProviderError(error) {
       : `Meta rejected this action (HTTP ${status})`;
   return "Meta action outcome could not be confirmed";
 }
+// Facebook and Instagram both signal "this object does not exist" as Graph
+// API error code 100, subcode 33 — the same signature socialPublishingService.js
+// already relies on to distinguish an already-gone post from a real failure.
+function looksLikeMissingObject(error) {
+  const providerError = error?.response?.data?.error;
+  return Number(providerError?.code) === 100 && Number(providerError?.error_subcode) === 33;
+}
+async function markConfirmed(models, activityId, workspaceId, providerActionId, note) {
+  await models.CrmActivity.updateOne(
+    { _id: activityId, workspaceId },
+    {
+      $set: {
+        "metadata.outcome": "confirmed",
+        "metadata.providerActionId": clean(providerActionId, 500),
+        ...(note ? { "metadata.note": note } : {}),
+        completedAt: new Date(),
+      },
+    },
+  );
+}
 
 async function reserve(models, values) {
   const existing = await models.CrmActivity.findOne({
@@ -299,21 +319,42 @@ async function perform(
         { _id: reply._id, workspaceId, threadId, deletedAt: null },
         { $set: { deletedAt: new Date(), deletedBy: userId } },
       );
-    await models.CrmActivity.updateOne(
-      { _id: reserved.activity._id, workspaceId },
-      {
-        $set: {
-          "metadata.outcome": "confirmed",
-          "metadata.providerActionId": clean(response?.data?.id, 500),
-          completedAt: new Date(),
-        },
-      },
-    );
+    await markConfirmed(models, reserved.activity._id, workspaceId, clean(response?.data?.id, 500));
     return { duplicate: false, status: "confirmed", action };
   } catch (error) {
     console.error(
       `[Meta comment action] failed: workspaceId=${workspaceId} action=${action} provider=${provider} assetId=${assetId} status=${error.response?.status || "n/a"} providerCode=${error.response?.data?.error?.code || "n/a"} providerMessage=${error.response?.data?.error?.message || "n/a"}`,
     );
+    // Facebook and Instagram both answer a delete of an already-gone comment
+    // or reply with "does not exist" rather than success. That is ambiguous
+    // on its own (the same wording covers a real permission problem), so
+    // rather than guess, independently ask the object itself whether it is
+    // still there. Only when that second, unrelated call also reports the
+    // object missing do we have genuine provider confirmation that the
+    // desired end state (comment gone) already holds — and report the
+    // action as confirmed instead of surfacing a spurious failure to retry.
+    if (["delete", "delete_reply"].includes(action) && looksLikeMissingObject(error)) {
+      const verifyId = action === "delete_reply" ? reply.providerMessageId : commentId;
+      const verifyHost =
+        provider === "instagram"
+          ? connection.provider === "instagram"
+            ? "graph.instagram.com"
+            : "graph.facebook.com"
+          : "graph.facebook.com";
+      try {
+        await models.http.get(`https://${verifyHost}/${version}/${encodeURIComponent(verifyId)}`, { params: { fields: "id", access_token: token }, timeout: 15000 });
+      } catch (verifyError) {
+        if (looksLikeMissingObject(verifyError)) {
+          if (action === "delete_reply")
+            await models.ConversationMessage.updateOne(
+              { _id: reply._id, workspaceId, threadId, deletedAt: null },
+              { $set: { deletedAt: new Date(), deletedBy: userId } },
+            );
+          await markConfirmed(models, reserved.activity._id, workspaceId, "", "Already removed on the provider before this request");
+          return { duplicate: false, status: "confirmed", action };
+        }
+      }
+    }
     const outcome =
       Number(error?.response?.status || 0) >= 400 &&
       Number(error?.response?.status || 0) < 500

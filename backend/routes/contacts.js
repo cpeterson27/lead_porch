@@ -20,6 +20,7 @@ const { extractBusinessCard, extractDigitalBusinessCard } = require("../services
 const { generateLinkedinDraft } = require("../services/linkedinOutreachService");
 const { getConnectionPriorities } = require("../services/campaignAudienceService");
 const { authenticatedUserId } = require("../authorization/accessPolicy");
+const agentExecutionService = require("../services/agentExecutionService");
 
 const router = express.Router();
 
@@ -513,6 +514,65 @@ router.get("/:id", async (req, res) => {
     res.json({ success: true, data: contact });
   } catch (err) {
     res.status(404).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * POST /api/contacts/:id/ai-research
+ * Lead Agent: read this contact's CRM record, activity history, and opportunities, and produce a
+ * written summary and recommended approach. Read-only — proposes nothing, changes nothing.
+ */
+router.post("/:id/ai-research", async (req, res) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id))
+      return res.status(400).json({ success: false, message: "Invalid contact ID" });
+    const contactId = req.params.id;
+    const result = await agentExecutionService.runAgent({
+      workspaceId: req.auth.workspaceId,
+      userId: req.auth.user._id,
+      auth: req.auth,
+      agent: "lead",
+      task: "research_contact",
+      input: { contactId },
+      operationalContext:
+        "Base every claim strictly on the supplied tool results. Do not invent history, intent, or facts absent from the data. If activity or opportunity history is empty, say so plainly rather than speculating.",
+      correlationId: `contact-research:${contactId}`,
+      options: {
+        tools: [
+          { toolId: "crm.get_contact", input: { contactId } },
+          { toolId: "crm.list_activity", input: { contactId, limit: 25 } },
+          { toolId: "crm.list_opportunities", input: { contactId } },
+        ],
+        responseSchema: {
+          type: "object",
+          properties: {
+            summary: { type: "string" },
+            keySignals: { type: "array", items: { type: "string" } },
+            recommendedApproach: { type: "string" },
+            riskFlags: { type: "array", items: { type: "string" } },
+          },
+          required: ["summary", "keySignals", "recommendedApproach", "riskFlags"],
+          additionalProperties: false,
+        },
+        schemaName: "contact_research",
+      },
+    });
+    res.json({ success: true, data: result.output, metadata: result.metadata });
+  } catch (err) {
+    const isBillingLimit = err.status === 429 || err.statusCode === 429;
+    const status = isBillingLimit
+      ? 429
+      : ["AGENT_CAPABILITY_FORBIDDEN", "AGENT_WORKSPACE_FORBIDDEN"].includes(err.code)
+        ? 403
+        : ["AGENT_UNKNOWN", "AGENT_STRUCTURED_OUTPUT_FORBIDDEN", "AGENT_TEXT_OUTPUT_FORBIDDEN"].includes(err.code)
+          ? 400
+          : 500;
+    res.status(status).json({
+      success: false,
+      message: isBillingLimit
+        ? "OpenAI credits are empty. Add API credits to use AI research."
+          : err.message,
+    });
   }
 });
 

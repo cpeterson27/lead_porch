@@ -37,7 +37,7 @@ async function uploadImage({ file, folder, transformation = "" }, http = axios) 
   const signed = { folder, timestamp, ...(transformation ? { transformation } : {}) };
   const body = new FormData(); body.append("file", file); body.append("api_key", apiKey); body.append("timestamp", String(timestamp)); body.append("folder", folder); if (transformation) body.append("transformation", transformation); body.append("signature", signature(signed, apiSecret));
   const upload = await http.post(`https://api.cloudinary.com/v1_1/${cloudName}/image/upload`, body, { maxBodyLength: 7 * 1024 * 1024 });
-  return { url: upload.data.secure_url, publicId: upload.data.public_id, width: upload.data.width, height: upload.data.height };
+  return { url: upload.data.secure_url, publicId: upload.data.public_id, width: upload.data.width, height: upload.data.height, format: upload.data.format, sizeBytes: upload.data.bytes };
 }
 async function uploadGeneratedSvg({ svg, folder }, http = axios) {
   const value = String(svg || ""); if (!value.startsWith("<svg") || Buffer.byteLength(value) > 14 * 1024 * 1024) throw Object.assign(new Error("Generated graphic is invalid"), { code: "GENERATED_IMAGE_INVALID", status: 400 });
@@ -50,7 +50,7 @@ async function uploadVideo({ file, folder }, http = axios) {
   validateDataVideo(file); const { cloudName, apiKey, apiSecret } = credentials(); const timestamp = Math.floor(Date.now() / 1000);
   const signed = { folder, timestamp }; const body = new FormData(); body.append("file", file); body.append("api_key", apiKey); body.append("timestamp", String(timestamp)); body.append("folder", folder); body.append("signature", signature(signed, apiSecret));
   const upload = await http.post(`https://api.cloudinary.com/v1_1/${cloudName}/video/upload`, body, { maxBodyLength: 102 * 1024 * 1024 });
-  return { url: upload.data.secure_url, publicId: upload.data.public_id, width: upload.data.width, height: upload.data.height, duration: upload.data.duration };
+  return { url: upload.data.secure_url, publicId: upload.data.public_id, width: upload.data.width, height: upload.data.height, duration: upload.data.duration, format: upload.data.format, sizeBytes: upload.data.bytes };
 }
 function createVideoUploadSignature({ folder }) {
   const { cloudName, apiKey, apiSecret } = credentials();

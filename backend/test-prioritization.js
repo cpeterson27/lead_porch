@@ -1,3 +1,4 @@
+require("dotenv").config();
 const mongoose = require("mongoose");
 const Organization = require("./models/Organization");
 const Audience = require("./models/Audience");

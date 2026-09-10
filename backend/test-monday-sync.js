@@ -55,6 +55,13 @@ async function runTests() {
 }
 
 async function setupTestData() {
+  // Fixture emails are re-used across runs; without this, a second run (or
+  // leftover data from an earlier run) sees them as already-existing
+  // contacts and create/duplicate counts drift.
+  await Contact.deleteMany({
+    email: { $in: [/@mondaytest\.com$/, "newuser@monday.com"] },
+  });
+
   // Create test audience
   const audience = await Audience.create({
     name: "Test Monday Audience",
@@ -249,7 +256,13 @@ async function testMondayContactSync() {
   );
 
   // Test 2: Verify contacts in database
-  const savedContacts = await contactService.getContacts({ source: "monday" });
+  // Scoped to this fixture's own domain rather than the bare "monday" source
+  // filter — the dev database is shared across test files, and other suites
+  // (e.g. test-contact-execution.js) legitimately create their own
+  // "monday"-sourced contacts under different emails.
+  const savedContacts = (
+    await contactService.getContacts({ source: "monday" })
+  ).filter((c) => c.email.endsWith("@mondaytest.com"));
   if (savedContacts.length !== 3) {
     throw new Error(
       `Expected 3 contacts in database, got ${savedContacts.length}`,
@@ -261,7 +274,7 @@ async function testMondayContactSync() {
 
   // Test 3: Verify contact details
   const johnContact = savedContacts.find(
-    (c) => c.externalId === "monday-sync-001",
+    (c) => c.externalIds?.monday === "monday-sync-001",
   );
   if (!johnContact) {
     throw new Error("Contact with externalId not found");
@@ -334,11 +347,14 @@ async function testDuplicatePreventionMonday() {
     [sameEmailDifferentSource],
   );
 
-  if (differentSourceResult.created !== 1) {
-    throw new Error("Should allow same email from different source");
+  // Contacts are unified globally by email (see contactService.upsertContact's
+  // "Duplicate rule: email only"), so a second source for an existing email
+  // merges into the same contact — it's an update, not a new contact.
+  if (differentSourceResult.updated !== 1) {
+    throw new Error("Should merge same-email contact from a different source");
   }
   console.log(
-    "✓ Same email different source - Created contact from manual source",
+    "✓ Same email different source - Merged into existing contact, added manual source",
   );
 }
 

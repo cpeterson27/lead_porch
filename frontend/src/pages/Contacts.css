@@ -1192,6 +1192,22 @@
 .contact-research-notes strong { font-size: 0.82rem; font-weight: 720; }
 .contact-research-notes p { margin: 0; white-space: pre-wrap; font-size: 0.875rem; line-height: 1.55; }
 
+.contact-ai-research {
+  background: var(--color-surface-subtle);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  display: grid;
+  gap: 10px;
+  padding: 14px 16px;
+}
+.contact-ai-research > header { display: grid; gap: 2px; }
+.contact-ai-research > header span { font-size: 0.82rem; font-weight: 720; }
+.contact-ai-research > header small { color: var(--color-text-muted); font-size: 0.76rem; }
+.contact-ai-research__result { display: grid; gap: 10px; }
+.contact-ai-research__result > p { margin: 0; font-size: 0.875rem; line-height: 1.55; }
+.contact-ai-research__result strong { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; color: var(--color-text-muted); }
+.contact-ai-research__result ul { margin: 4px 0 0; padding-left: 18px; font-size: 0.875rem; line-height: 1.5; }
+
 @media (max-width: 720px) {
   .contact-overview-workspace { grid-template-columns: 1fr; }
   .contact-detail__summary {

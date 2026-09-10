@@ -65,7 +65,11 @@ function staticSecurityChecks() {
   const serviceSource = fs.readFileSync(path.join(__dirname, "services/privacyRequestService.js"), "utf8");
   assert.ok(route.includes('requireRole("owner", "admin")')); assert.ok(route.includes("req.auth.workspaceId"));
   assert.ok(app.includes('path="/settings/privacy"')); assert.ok(privacyUi.includes("DELETE VERIFIED REQUEST DATA") === false, "server supplies the approval phrase");
-  assert.ok(legal.includes("team@elliescoaching.com")); assert.equal(legal.includes("support@elliescoaching.com"), false);
+  // Contact email is a per-workspace field (Lead Porch is a white-label
+  // product, not hardcoded to one brand), rendered via ContactMethod reading
+  // site.publicSite.contactEmail — never a hardcoded address.
+  assert.ok(legal.includes("site?.publicSite?.contactEmail"));
+  assert.equal(/[a-z0-9.+_-]+@elliescoaching\.com/i.test(legal), false, "legal pages must not hardcode a brand-specific email address");
   for (const forbidden of ["gmail.send", "sendEmail(", "axios", "metaMessaging"]) assert.equal(serviceSource.includes(forbidden), false, `privacy workflow must not call provider: ${forbidden}`);
 }
 

@@ -9,6 +9,7 @@ assert(/status:\s*"approved"/.test(publicRoute));
 assert(service.includes("testimonialProjection"));
 assert(/router\.post\(\s*"\/program-media",\s*admin/.test(management));
 assert(/router\.post\(\s*"\/testimonial-media",\s*admin/.test(management));
+assert(/router\.post\(\s*"\/homepage-media-signature",\s*admin/.test(management));
 assert(model.includes("videoUrl"));
 assert.throws(() => media.validateDataVideo("data:image/png;base64,AAAA"), /MP4, WEBM, or MOV/);
 assert.equal(media.validateDataVideo("data:video/mp4;base64,AAAA").mimeType, "video/mp4");

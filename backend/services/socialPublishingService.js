@@ -72,6 +72,24 @@ async function deletePublished({workspaceId,item},models=deps){
   const failures=[],deleted=[],warnings=[];
   for(const publication of publications){
     try{
+      if(publication.provider==="x"){
+        const connection=await models.SocialConnection.findOne({workspaceId,provider:"x",status:"connected"}).select("+credentialsEncrypted");
+        if(!connection)throw new Error("connected account not found");
+        const credentials=decryptCredentials(connection.credentialsEncrypted);
+        if(!credentials.accessToken)throw new Error("account authorization is unavailable");
+        try{
+          const response=await models.http.delete(`https://api.x.com/2/tweets/${encodeURIComponent(publication.providerPostId)}`,{headers:{Authorization:`Bearer ${credentials.accessToken}`},timeout:15000});
+          if(response?.data?.data?.deleted!==true)throw new Error("provider did not explicitly confirm deletion");
+        }catch(error){
+          if(Number(error.response?.status)===404){publication.status="deleted";publication.deletedAt=new Date();await item.save();deleted.push(publication.provider);continue}
+          throw error;
+        }
+        publication.status="deleted";
+        publication.deletedAt=new Date();
+        await item.save();
+        deleted.push(publication.provider);
+        continue;
+      }
       if(!["facebook","instagram"].includes(publication.provider))throw new Error(`${publication.provider} post deletion is not integrated`);
       let connection;
       if(models===deps&&publication.provider==="instagram"){

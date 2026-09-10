@@ -107,7 +107,8 @@ function config(provider) {
           "instagram_business_basic instagram_business_manage_comments instagram_business_manage_messages instagram_business_content_publish instagram_business_manage_insights",
       ),
     };
-  if (provider === "x")
+  if (provider === "x") {
+    if (process.env.X_ENABLED !== "true") throw new Error("X is not enabled. Set X_ENABLED=true after configuring X_CLIENT_ID, X_CLIENT_SECRET, and X_REDIRECT_URI.");
     return {
       clientId: required("X_CLIENT_ID"),
       clientSecret: required("X_CLIENT_SECRET"),
@@ -117,6 +118,7 @@ function config(provider) {
           "tweet.read tweet.write users.read offline.access",
       ),
     };
+  }
   if (provider === "linkedin")
     return {
       clientId: required("LINKEDIN_CLIENT_ID"),
@@ -1309,6 +1311,7 @@ module.exports = {
   linkedinAssets,
   metaPermissions,
   provisionMetaSubscriptions,
+  provisionInstagramSubscriptions,
   removeMetaSubscriptions,
   resolveSocialOAuthMembership,
   safeProviderDiagnostic,

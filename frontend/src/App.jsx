@@ -8,7 +8,7 @@ import { AuthProvider } from "./context/AuthContext.jsx";
 import { WorkspaceThemeProvider } from "./context/WorkspaceThemeContext.jsx";
 import PublicHomepageAnchors from "./components/PublicHomepageAnchors.jsx";
 import useAuth from "./context/useAuth.js";
-import { canManageCoaching, canUseCoachPortal, canUseSales, hasPermission, isAmbassadorOnly, isCoachOnly, isSocialConnectionOnly } from "./utils/roleAccess.js";
+import { canManageCoaching, canUseCoachPortal, canUseSales, hasPermission, hasRole, isAmbassadorOnly, isCoachOnly, isSocialConnectionOnly } from "./utils/roleAccess.js";
 
 const Dashboard = lazy(() => import("./pages/Dashboard.jsx"));
 const Events = lazy(() => import("./pages/Events.jsx"));
@@ -25,7 +25,11 @@ const Opportunities = lazy(() => import("./pages/Opportunities.jsx"));
 const Tasks = lazy(() => import("./pages/Tasks.jsx"));
 const Analytics = lazy(() => import("./pages/Analytics.jsx"));
 const Settings = lazy(() => import("./pages/Settings.jsx"));
+const AiAcquisitionControls = lazy(() => import("./pages/AiAcquisitionControls.jsx"));
+const KnowledgeCenter = lazy(() => import("./pages/KnowledgeCenter.jsx"));
+const AuditLog = lazy(() => import("./pages/AuditLog.jsx"));
 const Jarvis = lazy(() => import("./pages/Jarvis.jsx"));
+const SystemHealth = lazy(() => import("./pages/SystemHealth.jsx"));
 const Integrations = lazy(() => import("./pages/Integrations.jsx"));
 const EventbriteIntegration = lazy(() => import("./pages/EventbriteIntegration.jsx"));
 const Discovery = lazy(() => import("./pages/Discovery.jsx"));
@@ -69,6 +73,7 @@ const SocialAutomation = lazy(() => import("./pages/SocialAutomation.jsx"));
 const Automations = lazy(() => import("./pages/Automations.jsx"));
 const AmbassadorPortal = lazy(() => import("./pages/AmbassadorPortal.jsx"));
 const AmbassadorAdmin = lazy(() => import("./pages/AmbassadorAdmin.jsx"));
+const AmbassadorResourceCenter = lazy(() => import("./pages/AmbassadorResourceCenter.jsx"));
 const AmbassadorWelcomeSettings = lazy(() => import("./pages/AmbassadorWelcomeSettings.jsx"));
 const SocialWorkspace = lazy(() => import("./pages/SocialWorkspace.jsx"));
 const MyProfile = lazy(() => import("./pages/MyProfile.jsx"));
@@ -152,7 +157,11 @@ function ProtectedApp() {
           <Route path="/settings/communications/invitations" element={<Settings />} />
           <Route path="/settings/privacy" element={<Settings />} />
           <Route path="/settings/payments" element={<Settings />} />
+          {hasRole(session, "owner") || hasRole(session, "admin") || session.isPlatformOwner ? <Route path="/settings/ai-acquisition" element={<AiAcquisitionControls />} /> : null}
+          {hasRole(session, "owner") || hasRole(session, "admin") ? <Route path="/settings/knowledge-center" element={<KnowledgeCenter />} /> : null}
+          {hasRole(session, "owner") || hasRole(session, "admin") ? <Route path="/settings/audit-log" element={<AuditLog />} /> : null}
           <Route path="/ambassadors/manage" element={<AmbassadorAdmin />} />
+          <Route path="/ambassadors/resources" element={<AmbassadorResourceCenter />} />
           <Route path="/ambassadors/welcome-template" element={<Navigate to="/automations/content-template" replace />} />
           <Route path="/automations/content-template" element={<AmbassadorWelcomeSettings />} />
           <Route path="/integrations" element={<Integrations />} />
@@ -164,6 +173,7 @@ function ProtectedApp() {
           <Route path="/conversations" element={<GmailIntegration />} />
           <Route path="/inbox" element={<GmailIntegration />} />
           <Route path="/operators/jarvis" element={<Jarvis />} />
+          {hasPermission(session, "system.monitor") ? <Route path="/system-health" element={<SystemHealth />} /> : null}
           <Route path="/operators/development-requests" element={<DevelopmentRequests />} />
           <Route path="/jarvis" element={<Jarvis />} />
           <Route path="/development-requests" element={<DevelopmentRequests />} />
