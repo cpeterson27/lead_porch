@@ -1149,6 +1149,8 @@ export const rankVertexGroundingResultsForProgramFit = (resultIds) =>
 // Person Search/Apollo People Search). Listing/saving/dismissing/PDL-
 // enriching a result stays on the existing vertex-grounding endpoints
 // above — PDL/Apollo-sourced rows land in that same review queue.
+export const fetchLeadGenerationProviderAvailability = () =>
+  api.get("/lead-generation/provider-availability").then((res) => res.data);
 export const fetchLeadGenerationPrograms = () =>
   api.get("/lead-generation/programs").then((res) => res.data);
 export const fetchLeadGenerationProgramSearchSuggestions = (noteId) =>

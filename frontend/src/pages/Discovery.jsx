@@ -47,6 +47,7 @@ import {
   dismissVertexGroundingResult,
   enrichVertexGroundingResultWithPdl,
   rankVertexGroundingResultsForProgramFit,
+  fetchLeadGenerationProviderAvailability,
   fetchLeadGenerationPrograms,
   fetchLeadGenerationProgramSearchSuggestions,
   proposeLeadGenerationSearch,
@@ -82,6 +83,12 @@ const MONITOR_SOURCE_DEFAULTS = { buyer_intent: ["bing_web", "reddit_rss"], inve
 const monitorSources = (type) => [...(MONITOR_SOURCE_DEFAULTS[type] || MONITOR_SOURCE_DEFAULTS.buyer_intent)];
 const SOURCE_OPTIONS = [["linkedin_public", "LinkedIn public group/page metadata", "community"], ["facebook_public", "Facebook public group/page metadata", "community"], ["meetup_public", "Meetup public group metadata", "community"], ["community_directories", "REIA and club directories", "community"], ["bing_web", "Bing public web discussions", "all"], ["bing_news", "Bing News · organization context", "nonstudent"], ["sec_form_d", "SEC Form D · experimental, never student intent", "disabled"], ["hacker_news", "Hacker News public discussions", "all"], ["stack_exchange", "Stack Exchange public questions", "all"], ["reddit_rss", "Reddit public discussions · best effort", "all"], ["google_web", "Google · unavailable for new projects", "all"], ["gdelt", "GDELT news · unreliable", "nonstudent"], ["bluesky", "Bluesky public posts · unreliable", "all"], ["duckduckgo", "DuckDuckGo web · unreliable", "all"]];
 const UNSTABLE_MONITOR_SOURCES = new Set(["google_web", "gdelt", "bluesky", "duckduckgo"]);
+const LEADGEN_PROVIDERS = [
+  ["vertex", "Vertex Grounding"],
+  ["openai_web_search", "OpenAI Web Search"],
+  ["pdl_person_search", "PDL Person Search"],
+  ["apollo_person_search", "Apollo People Search"],
+];
 
 const displayText = (value) => String(value || "")
   .replace(/<[^>]*>/g, " ")
@@ -275,6 +282,8 @@ export default function Discovery() {
   const [groundingError, setGroundingError] = useState("");
   const [groundingSourceErrors, setGroundingSourceErrors] = useState([]);
   const [suggestedSearches, setSuggestedSearches] = useState([]);
+  const [leadGenProviderAvailability, setLeadGenProviderAvailability] = useState(null);
+  const [leadGenSelectedSources, setLeadGenSelectedSources] = useState([]);
   const [leadGenPrograms, setLeadGenPrograms] = useState([]);
   // "" = nothing chosen yet (the required default); "all" = the "All
   // programs" pill; otherwise a specific program's noteId.
@@ -391,6 +400,23 @@ export default function Discovery() {
     }
   };
 
+  const loadLeadGenProviderAvailability = async () => {
+    try {
+      const response = await fetchLeadGenerationProviderAvailability();
+      const availability = response.data || {};
+      setLeadGenProviderAvailability(availability);
+      // Default-select only providers that are currently enabled and configured.
+      setLeadGenSelectedSources(LEADGEN_PROVIDERS.filter(([key]) => availability[key]?.available).map(([key]) => key));
+    } catch {
+      setLeadGenProviderAvailability({});
+      setLeadGenSelectedSources([]);
+    }
+  };
+
+  const toggleLeadGenSource = (key) => {
+    setLeadGenSelectedSources((current) => current.includes(key) ? current.filter((source) => source !== key) : [...current, key]);
+  };
+
   const selectLeadGenProgram = async (program) => {
     setSelectedProgramPillKey(program.noteId);
     setSelectedProgramNoteId(program.noteId);
@@ -413,12 +439,12 @@ export default function Discovery() {
   };
 
   const proposeLeadGenSearch = async () => {
-    if (!leadGenRequest.trim() || leadGenProposeBusy) return;
+    if (!leadGenRequest.trim() || leadGenProposeBusy || !leadGenSelectedSources.length) return;
     setLeadGenProposeBusy(true);
     setLeadGenError("");
     setMonitorSuggestion(null);
     try {
-      const response = await proposeLeadGenerationSearch({ naturalLanguageRequest: leadGenRequest, programNoteId: selectedProgramNoteId || undefined });
+      const response = await proposeLeadGenerationSearch({ naturalLanguageRequest: leadGenRequest, programNoteId: selectedProgramNoteId || undefined, sources: leadGenSelectedSources });
       setLeadGenProposal(response.data);
     } catch (err) {
       setLeadGenError(err.response?.data?.error || "Unable to propose this search.");
@@ -578,7 +604,7 @@ export default function Discovery() {
 
   useEffect(() => {
     if (activeTab !== "people") return undefined;
-    const timer = window.setTimeout(() => { loadGroundingResults(); loadSuggestedSearches(); loadLeadGenPrograms(); }, 0);
+    const timer = window.setTimeout(() => { loadGroundingResults(); loadSuggestedSearches(); loadLeadGenPrograms(); loadLeadGenProviderAvailability(); }, 0);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
@@ -1273,16 +1299,36 @@ export default function Discovery() {
             ) : null}
           </div>
         ) : null}
+        <fieldset className="leadgen-provider-fieldset">
+          <legend>Sources to use for this search</legend>
+          {LEADGEN_PROVIDERS.map(([key, label]) => {
+            const availability = leadGenProviderAvailability?.[key];
+            const isAvailable = Boolean(availability?.available);
+            return (
+              <label key={key} className={`leadgen-provider-checkbox${isAvailable ? "" : " is-unavailable"}`} title={isAvailable ? "" : availability?.reason || "Not currently available"}>
+                <input
+                  type="checkbox"
+                  checked={leadGenSelectedSources.includes(key)}
+                  disabled={!isAvailable || leadGenProposeBusy}
+                  onChange={() => toggleLeadGenSource(key)}
+                />
+                {label}
+                {!isAvailable ? <small>{availability?.reason || "Not currently available"}</small> : null}
+              </label>
+            );
+          })}
+        </fieldset>
         <div className="people-search-launcher">
           <label>
             <span>What should Jarvis find?</span>
             <textarea value={leadGenRequest} onChange={(event) => setLeadGenRequest(event.target.value)} placeholder='e.g. "Find 10 likely buyers for our Multifamily Bootcamp"' disabled={leadGenProposeBusy} />
           </label>
           <div>
-            <Button disabled={!leadGenRequest.trim()} loading={leadGenProposeBusy} onClick={proposeLeadGenSearch}>
+            <Button disabled={!leadGenRequest.trim() || !leadGenSelectedSources.length} loading={leadGenProposeBusy} onClick={proposeLeadGenSearch}>
               {leadGenProposeBusy ? "Planning…" : "Propose search"}
             </Button>
           </div>
+          {!leadGenSelectedSources.length ? <p className="form-error">Select at least one available source above.</p> : null}
           {leadGenError ? <p className="form-error">{leadGenError}</p> : null}
         </div>
 

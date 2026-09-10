@@ -598,3 +598,37 @@
   border-color: #173f36;
   color: #fff;
 }
+
+.leadgen-provider-fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  border: none;
+  padding: 0;
+  margin: 0 0 1rem;
+}
+
+.leadgen-provider-fieldset legend {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-text-subtle, #68736f);
+  margin-bottom: 6px;
+  width: 100%;
+}
+
+.leadgen-provider-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+}
+
+.leadgen-provider-checkbox.is-unavailable {
+  color: var(--color-text-subtle, #68736f);
+}
+
+.leadgen-provider-checkbox small {
+  color: #b3261e;
+  font-weight: 400;
+}

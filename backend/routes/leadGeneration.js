@@ -13,6 +13,16 @@ const leadGenerationCoordinatorService = require("../services/leadGenerationCoor
 const DiscoverySearch = require("../models/DiscoverySearch");
 const LeadMonitorSuggestion = require("../models/LeadMonitorSuggestion");
 
+/** Pure config check, no provider call — powers the provider checkboxes' default-selection/disabled state. */
+router.get("/provider-availability", (req, res) => {
+  try {
+    const data = leadGenerationCoordinatorService.checkProviderAvailability();
+    return res.json({ success: true, data });
+  } catch (_error) {
+    return res.status(500).json({ success: false, error: "Unable to check provider availability." });
+  }
+});
+
 /** Every approved Offers & Programs note, never capped — powers the searchable program selector. */
 router.get("/programs", async (req, res) => {
   try {

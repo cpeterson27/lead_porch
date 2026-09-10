@@ -38,6 +38,8 @@ const LeadMonitorSuggestion = require("../models/LeadMonitorSuggestion");
 const GroundingResearchResult = require("../models/GroundingResearchResult");
 const JarvisMemoryNote = require("../models/JarvisMemoryNote");
 const vertexGroundingDiscoveryService = require("./vertexGroundingDiscoveryService");
+const vertexGroundingService = require("./vertexGroundingService");
+const openaiWebSearchService = require("./openaiWebSearchService");
 const peopleDataLabsService = require("./peopleDataLabsService");
 const apolloService = require("./apolloService");
 const agentExecutionService = require("./agentExecutionService");
@@ -47,6 +49,35 @@ const clean = (value, length) => String(value || "").trim().slice(0, length);
 const MAX_REQUESTED_COUNT = 25;
 const DEFAULT_REQUESTED_COUNT = 10;
 const ICP_SOURCES = ["vertex", "openai_web_search", "pdl_person_search", "apollo_person_search", "all"];
+const ALL_SOURCE_KEYS = ["vertex", "openai_web_search", "pdl_person_search", "apollo_person_search"];
+
+/**
+ * Pure, synchronous, no-network config checks — never a live provider call
+ * — for whether each of the four sourcing providers is actually usable
+ * right now. Used both to default-select/disable the Discovery UI's
+ * provider checkboxes and to keep proposeSearch()'s displayed sources and
+ * credit estimate honest (previously it assumed "all" meant every
+ * provider regardless of real configuration, so it could show an estimate
+ * for Apollo credits even when Apollo was never enabled).
+ *
+ * Vertex's PLATFORM-level flag is checked here; a per-workspace Vertex
+ * capability toggle could still independently disable it at approval
+ * time — that existing, unchanged check happens inside
+ * vertexGroundingService.assertGroundingReady() and would surface as a
+ * normal sourceError on the run, exactly as it already does today.
+ */
+function checkProviderAvailability() {
+  const vertexAvailable = vertexGroundingService.groundingPlatformEnabled();
+  const openaiAvailable = openaiWebSearchService.masterEnabled();
+  const pdlAvailable = peopleDataLabsService.isEnabled();
+  const apolloAvailable = apolloService.isEnabled();
+  return {
+    vertex: { available: vertexAvailable, reason: vertexAvailable ? "" : "Not enabled at the platform level (VERTEX_ENABLED, VERTEX_GROUNDING_ENABLED, and Google credentials are required)." },
+    openai_web_search: { available: openaiAvailable, reason: openaiAvailable ? "" : "Not enabled (OPENAI_WEB_SEARCH_ENABLED and OPENAI_API_KEY are required)." },
+    pdl_person_search: { available: pdlAvailable, reason: pdlAvailable ? "" : "Not enabled (PDL_ENABLED and PDL_API_KEY are required)." },
+    apollo_person_search: { available: apolloAvailable, reason: apolloAvailable ? "" : "Not enabled (APOLLO_ENABLED and APOLLO_API_KEY are required)." },
+  };
+}
 
 const ICP_RESPONSE_SCHEMA = {
   type: "object",
@@ -195,8 +226,20 @@ async function proposeSearch({ workspaceId, userId, auth, naturalLanguageRequest
     if (!programNote) { const error = new Error("That program note was not found among this workspace's approved Offers & Programs"); error.code = "DISCOVERY_SEARCH_PROGRAM_NOT_FOUND"; throw error; }
   }
 
-  const requestedSources = (Array.isArray(sources) ? sources : ["all"]).filter((source) => ICP_SOURCES.includes(source));
-  const effectiveSources = requestedSources.length ? requestedSources : ["all"];
+  // The provider checkboxes in Discovery are the sole source of truth for
+  // which providers run — an explicit selection is used EXACTLY as given,
+  // never expanded, filtered, or second-guessed against the natural-
+  // language text (e.g. "do not use Apollo" only takes effect by
+  // unchecking the Apollo box, not by parsing the sentence). Only when
+  // nothing explicit was sent (a caller other than the Discovery UI, e.g.
+  // Jarvis chat) does this fall back to every currently AVAILABLE
+  // provider — never literally "all" regardless of configuration, which is
+  // what previously let the plan claim Apollo credits while Apollo was
+  // disabled.
+  const availability = checkProviderAvailability();
+  const explicitSources = (Array.isArray(sources) ? sources : []).filter((source) => ALL_SOURCE_KEYS.includes(source));
+  const effectiveSources = explicitSources.length ? explicitSources : ALL_SOURCE_KEYS.filter((source) => availability[source]?.available);
+  if (!effectiveSources.length) { const error = new Error("No sourcing provider is selected and available. Select at least one enabled provider."); error.code = "DISCOVERY_NO_SOURCES_AVAILABLE"; throw error; }
 
   const result = await runAgent({
     workspaceId, userId, auth, agent: "lead", task: "parse_lead_search_request", correlationId,
@@ -209,10 +252,14 @@ async function proposeSearch({ workspaceId, userId, auth, naturalLanguageRequest
   const requestedCount = Math.max(1, Math.min(MAX_REQUESTED_COUNT, Number(parsed.requestedCount) || DEFAULT_REQUESTED_COUNT));
   const safeFreshnessDays = Math.max(1, Math.min(365, Number(freshnessDays) || 90));
 
-  const includesPdl = effectiveSources.includes("all") || effectiveSources.includes("pdl_person_search");
-  const includesApollo = effectiveSources.includes("all") || effectiveSources.includes("apollo_person_search");
-  const includesVertex = effectiveSources.includes("all") || effectiveSources.includes("vertex");
-  const includesOpenai = effectiveSources.includes("all") || effectiveSources.includes("openai_web_search");
+  const includesPdl = effectiveSources.includes("pdl_person_search");
+  const includesApollo = effectiveSources.includes("apollo_person_search");
+  const includesVertex = effectiveSources.includes("vertex");
+  const includesOpenai = effectiveSources.includes("openai_web_search");
+  // A source can be selected but not actually available (e.g. a stale
+  // caller that didn't check first) — never estimate or claim credit use
+  // for one that won't really run; surface the mismatch plainly instead.
+  const unavailableSelected = effectiveSources.filter((source) => !availability[source]?.available);
 
   const search = await Model.create({
     workspaceId,
@@ -233,11 +280,12 @@ async function proposeSearch({ workspaceId, userId, auth, naturalLanguageRequest
     freshnessDays: safeFreshnessDays,
     requestedCount,
     estimatedCreditUse: {
-      pdl: includesPdl ? requestedCount : 0,
-      apollo: includesApollo ? requestedCount : 0,
-      vertex: includesVertex ? "1 grounded search call (~a few cents)" : "",
-      openai: includesOpenai ? "1 web_search call (~a few cents)" : "",
-      note: "PDL/Apollo figures are a conservative upper bound (at most 1 credit-equivalent per requested candidate) for the Person Search step alone — actual charges depend on your plan, and a further, separate charge applies only if you explicitly run PDL/Apollo enrichment afterward.",
+      pdl: includesPdl && availability.pdl_person_search.available ? requestedCount : 0,
+      apollo: includesApollo && availability.apollo_person_search.available ? requestedCount : 0,
+      vertex: includesVertex && availability.vertex.available ? "1 grounded search call (~a few cents)" : "",
+      openai: includesOpenai && availability.openai_web_search.available ? "1 web_search call (~a few cents)" : "",
+      note: "PDL/Apollo figures are a conservative upper bound (at most 1 credit-equivalent per requested candidate) for the Person Search step alone — actual charges depend on your plan, and a further, separate charge applies only if you explicitly run PDL/Apollo enrichment afterward."
+        + (unavailableSelected.length ? ` Selected but not currently enabled, so nothing will be spent on it: ${unavailableSelected.join(", ")} — running this plan will report that as a source error rather than silently skip it.` : ""),
     },
     status: "proposed",
     correlationId: clean(correlationId, 255),
@@ -562,6 +610,7 @@ async function proposeMonitorSuggestion({ workspaceId, userId, searchId }, depen
 module.exports = {
   listApprovedPrograms,
   getSearchSuggestionsForProgram,
+  checkProviderAvailability,
   proposeSearch,
   approveAndRunSearch,
   enrichWithApollo,
