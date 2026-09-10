@@ -671,6 +671,24 @@ router.post("/research/vertex-grounding/results/:id/dismiss", async (req, res) =
     return res.status(error.code === "GROUNDING_RESULT_NOT_FOUND" ? 404 : 400).json({ success: false, error: error.message, code: error.code });
   }
 });
+/** Explicit, per-row PDL enrichment — PDL remains the structured people/company provider, never a discovery source. */
+router.post("/research/vertex-grounding/results/:id/enrich-pdl", async (req, res) => {
+  try {
+    const data = await vertexGroundingDiscoveryService.enrichWithPdl({ workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, resultId: req.params.id, correlationId: req.headers["x-request-id"] || "" });
+    return res.json({ success: true, data });
+  } catch (error) {
+    return res.status(error.code === "GROUNDING_RESULT_NOT_FOUND" ? 404 : 400).json({ success: false, error: error.message, code: error.code });
+  }
+});
+/** Explicit, batch OpenAI/Jarvis program-fit ranking — planning/qualification only, never a web-search source (see the service module header for why). */
+router.post("/research/vertex-grounding/results/rank", async (req, res) => {
+  try {
+    const data = await vertexGroundingDiscoveryService.rankForProgramFit({ workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, auth: req.auth, resultIds: req.body?.resultIds, correlationId: req.headers["x-request-id"] || "" });
+    return res.json({ success: true, data });
+  } catch (error) {
+    return res.status(error.code ? 400 : 502).json({ success: false, error: error.message || "Ranking failed", code: error.code || "GROUNDING_RANK_FAILED" });
+  }
+});
 
 router.get("/research/results/:audienceId", async (req, res) => {
   try {

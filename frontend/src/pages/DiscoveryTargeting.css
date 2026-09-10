@@ -490,3 +490,9 @@
   color: var(--color-primary, #2f6fed);
   word-break: break-all;
 }
+
+.grounding-fit-score {
+  display: block;
+  margin-top: 2px;
+  font-weight: 600;
+}

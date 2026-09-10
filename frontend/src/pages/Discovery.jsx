@@ -44,6 +44,8 @@ import {
   fetchVertexGroundingResults,
   saveVertexGroundingResult,
   dismissVertexGroundingResult,
+  enrichVertexGroundingResultWithPdl,
+  rankVertexGroundingResultsForProgramFit,
 } from "../services/api.js";
 import "./Discovery.css";
 import { draftFromMonitorPreset, sourcesFromMonitorPreset } from "../utils/researchMonitorPreset.js";
@@ -265,6 +267,9 @@ export default function Discovery() {
   const [groundingResults, setGroundingResults] = useState([]);
   const [groundingResultsLoading, setGroundingResultsLoading] = useState(false);
   const [groundingResultsStatus, setGroundingResultsStatus] = useState("pending_review");
+  const [pdlEnrichBusyId, setPdlEnrichBusyId] = useState("");
+  const [rankBusy, setRankBusy] = useState(false);
+  const [selectedGroundingIds, setSelectedGroundingIds] = useState([]);
   const [draftSignal, setDraftSignal] = useState(null);
   const [draftCampaignId, setDraftCampaignId] = useState("");
   const [draftEditor, setDraftEditor] = useState(null);
@@ -370,6 +375,38 @@ export default function Discovery() {
       loadGroundingResults();
     } catch (err) {
       setNotice(err.response?.data?.error || "Unable to dismiss that result.");
+    }
+  };
+
+  const enrichGroundingResultWithPdl = async (id) => {
+    setPdlEnrichBusyId(id);
+    try {
+      const res = await enrichVertexGroundingResultWithPdl(id);
+      setNotice(res.data.pdlEnrichment?.matched ? "PDL found a verified match." : "PDL did not find a confident match — no email added.");
+      loadGroundingResults();
+    } catch (err) {
+      setNotice(err.response?.data?.error || "PDL enrichment failed.");
+    } finally {
+      setPdlEnrichBusyId("");
+    }
+  };
+
+  const toggleGroundingSelection = (id) => {
+    setSelectedGroundingIds((current) => current.includes(id) ? current.filter((row) => row !== id) : [...current, id]);
+  };
+
+  const rankSelectedGroundingResults = async () => {
+    if (!selectedGroundingIds.length || rankBusy) return;
+    setRankBusy(true);
+    try {
+      const res = await rankVertexGroundingResultsForProgramFit(selectedGroundingIds);
+      setNotice(`Ranked ${res.data.ranked} of ${res.data.requested} selected result(s) for program fit.`);
+      setSelectedGroundingIds([]);
+      loadGroundingResults();
+    } catch (err) {
+      setNotice(err.response?.data?.error || "Ranking failed.");
+    } finally {
+      setRankBusy(false);
     }
   };
 
@@ -1057,11 +1094,16 @@ export default function Discovery() {
 
         <div className="discovery-review-filters">
           {["pending_review", "saved", "dismissed"].map((status) => (
-            <Button key={status} size="sm" variant={groundingResultsStatus === status ? "primary" : "outline"} onClick={() => { setGroundingResultsStatus(status); loadGroundingResults(status); }}>
+            <Button key={status} size="sm" variant={groundingResultsStatus === status ? "primary" : "outline"} onClick={() => { setGroundingResultsStatus(status); setSelectedGroundingIds([]); loadGroundingResults(status); }}>
               {status.replace("_", " ")}
             </Button>
           ))}
           <Button size="sm" variant="outline" loading={groundingResultsLoading} onClick={() => loadGroundingResults()}>Refresh</Button>
+          {groundingResultsStatus === "pending_review" ? (
+            <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} loading={rankBusy} onClick={rankSelectedGroundingResults}>
+              Rank {selectedGroundingIds.length || ""} selected for program fit (OpenAI/Jarvis)
+            </Button>
+          ) : null}
         </div>
 
         {groundingResults.length ? <div className="people-preview-list">
@@ -1069,12 +1111,22 @@ export default function Discovery() {
             <article key={result._id} className={`people-preview-batch is-${result.status}`}>
               <header>
                 <div>
-                  <span>{result.type} · {result.confidence.replace("_", " ")}</span>
+                  {result.status === "pending_review" ? (
+                    <input type="checkbox" checked={selectedGroundingIds.includes(result._id)} onChange={() => toggleGroundingSelection(result._id)} aria-label={`Select ${result.name} for ranking`} />
+                  ) : null}
+                  <span>{result.type} · {result.confidence.replace("_", " ")} · via {(result.providers || []).join(", ") || "vertex_grounding"}</span>
                   <strong>{result.name}</strong>
                   <small>{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
+                  {result.fitScore != null ? <small className="grounding-fit-score">Program fit: {result.fitScore}/100 — {(result.fitReasons || []).join("; ")}</small> : null}
+                  {result.pdlEnrichment?.attempted ? (
+                    <small>{result.pdlEnrichment.matched ? `PDL verified: ${result.pdlEnrichment.email || "match found, no email"}` : "PDL: no confident match"}</small>
+                  ) : null}
                 </div>
                 {result.status === "pending_review" ? (
                   <div>
+                    {result.type === "person" && !result.pdlEnrichment?.attempted ? (
+                      <Button size="sm" variant="outline" loading={pdlEnrichBusyId === result._id} onClick={() => enrichGroundingResultWithPdl(result._id)}>Enrich via PDL</Button>
+                    ) : null}
                     <Button size="sm" onClick={() => saveGroundingResult(result._id)}>Save with attribution</Button>
                     <Button size="sm" variant="outline" onClick={() => dismissGroundingResult(result._id)}>Dismiss</Button>
                   </div>

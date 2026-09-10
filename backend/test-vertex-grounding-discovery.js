@@ -5,9 +5,14 @@
 // reviewed result creates the correct CRM entity (person -> Contact,
 // organization -> Organization, deduplicated by domain) with source
 // attribution, while community/event honestly stay in the review queue
-// (no invented CRM entity type); Apollo/PDL and OpenAI/Jarvis are untouched
-// (not called anywhere in this path). vertexGroundingService itself is
-// mocked — no real network/Google call is made.
+// (no invented CRM entity type); PDL enrichment and OpenAI/Jarvis ranking
+// only ever ACT ON an already-evidenced row (never originate one), record
+// real provenance, and never auto-run. Also asserts, as a live regression
+// guard, that services/llmService.js still calls only the Chat Completions
+// API — confirming the documented claim that this app's OpenAI integration
+// does NOT support (and does not pretend to support) the Responses API
+// web_search tool. vertexGroundingService/peopleDataLabsService/runAgent
+// are all mocked — no real network/Google/OpenAI/PDL call is made.
 require("dotenv").config();
 const assert = require("node:assert/strict");
 const mongoose = require("mongoose");
@@ -130,6 +135,118 @@ async function testDismissNeverCreatesAnything() {
   await GroundingResearchResult.deleteMany({ workspaceId });
 }
 
+async function testPdlEnrichmentRecordsRealProvenanceOnAMatch() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const row = await GroundingResearchResult.create({ workspaceId, query: "q", type: "person", name: "Jane Owner", organizationName: "Metro REIA", evidenceUrls: ["https://metroreia.org/about"], status: "pending_review", providers: ["vertex_grounding"] });
+  const peopleDataLabsService = { enrichPerson: async () => ({ matched: true, likelihood: 9, person: { email: "jane@metroreia.org", emailState: "provider_validated" } }) };
+
+  const updated = await vertexGroundingDiscoveryService.enrichWithPdl({ workspaceId, userId, resultId: row._id }, { peopleDataLabsService });
+  assert.equal(updated.pdlEnrichment.attempted, true);
+  assert.equal(updated.pdlEnrichment.matched, true);
+  assert.equal(updated.pdlEnrichment.email, "jane@metroreia.org");
+  assert.ok(updated.providers.includes("people_data_labs"), "a real PDL match must be recorded as real provenance");
+  assert.ok(updated.providers.includes("vertex_grounding"), "enrichment must not erase the original discovery provider");
+  assert.equal(updated.status, "pending_review", "enrichment alone must never save/review the result");
+
+  await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
+async function testPdlNoMatchRecordsAttemptWithoutFabricatingAnEmail() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const row = await GroundingResearchResult.create({ workspaceId, query: "q", type: "person", name: "Unknown Person", evidenceUrls: ["https://example.com"], status: "pending_review", providers: ["vertex_grounding"] });
+  const peopleDataLabsService = { enrichPerson: async () => ({ matched: false, likelihood: 3, person: null }) };
+
+  const updated = await vertexGroundingDiscoveryService.enrichWithPdl({ workspaceId, userId, resultId: row._id }, { peopleDataLabsService });
+  assert.equal(updated.pdlEnrichment.attempted, true);
+  assert.equal(updated.pdlEnrichment.matched, false);
+  assert.equal(updated.pdlEnrichment.email, "");
+  assert.ok(!updated.providers.includes("people_data_labs"), "a non-match must never be recorded as if PDL contributed real data");
+
+  await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
+async function testPdlEnrichmentRejectsNonPersonAndReviewedRows() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const orgRow = await GroundingResearchResult.create({ workspaceId, query: "q", type: "organization", name: "Metro REIA", evidenceUrls: ["https://metroreia.org"], status: "pending_review" });
+  await assert.rejects(() => vertexGroundingDiscoveryService.enrichWithPdl({ workspaceId, userId, resultId: orgRow._id }, { peopleDataLabsService: { enrichPerson: async () => ({ matched: false }) } }), (error) => error.code === "GROUNDING_RESULT_NOT_A_PERSON");
+
+  const savedRow = await GroundingResearchResult.create({ workspaceId, query: "q", type: "person", name: "Already Saved", evidenceUrls: ["https://example.com"], status: "saved" });
+  await assert.rejects(() => vertexGroundingDiscoveryService.enrichWithPdl({ workspaceId, userId, resultId: savedRow._id }, { peopleDataLabsService: { enrichPerson: async () => ({ matched: false }) } }), (error) => error.code === "GROUNDING_RESULT_ALREADY_REVIEWED");
+
+  await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
+async function testSavingAPersonUsesThePdlVerifiedEmailWhenPresent() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const row = await GroundingResearchResult.create({
+    workspaceId, query: "q", type: "person", name: "Jane Owner", organizationName: "Metro REIA", evidenceUrls: ["https://metroreia.org/about"], status: "pending_review",
+    pdlEnrichment: { attempted: true, matched: true, likelihood: 9, email: "jane@metroreia.org", emailState: "provider_validated", enrichedAt: new Date() },
+  });
+  const saved = await vertexGroundingDiscoveryService.saveResult({ workspaceId, userId, resultId: row._id });
+  const contact = await Contact.findById(saved.savedContactId).lean();
+  assert.equal(contact.email, "jane@metroreia.org", "a PDL-verified email must actually reach the saved Contact");
+
+  await GroundingResearchResult.deleteMany({ workspaceId });
+  await Contact.deleteMany({ workspaceId });
+}
+
+async function testRankForProgramFitScoresOnlyValidPendingRowsAndRecordsProvenance() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const pendingRow = await GroundingResearchResult.create({ workspaceId, query: "q", type: "person", name: "Jane Owner", evidenceUrls: ["https://metroreia.org/about"], status: "pending_review", providers: ["vertex_grounding"] });
+  const savedRow = await GroundingResearchResult.create({ workspaceId, query: "q", type: "person", name: "Already Saved", evidenceUrls: ["https://example.com"], status: "saved" });
+
+  let capturedContext = "";
+  const runAgent = async ({ operationalContext }) => {
+    capturedContext = operationalContext;
+    return { output: { rankings: [
+      { resultId: String(pendingRow._id), fitScore: 87, fitReasons: ["Strong evidence of active multifamily ownership"] },
+      { resultId: "000000000000000000000000", fitScore: 99, fitReasons: ["A fabricated ID the model made up"] },
+    ] } };
+  };
+
+  const result = await vertexGroundingDiscoveryService.rankForProgramFit({ workspaceId, userId, auth: { workspaceId: String(workspaceId) }, resultIds: [String(pendingRow._id), String(savedRow._id)] }, { runAgent });
+  assert.equal(result.ranked, 1, "only the real, still-pending row may be scored — the already-saved row and the fabricated ID must both be ignored");
+  assert.ok(capturedContext.includes("Jane Owner"), "the agent must actually receive the real candidate evidence, not a generic prompt");
+  assert.ok(!capturedContext.includes("Already Saved"), "an already-reviewed row must never be sent for ranking");
+
+  const rankedRow = await GroundingResearchResult.findById(pendingRow._id).lean();
+  assert.equal(rankedRow.fitScore, 87);
+  assert.deepEqual(rankedRow.fitReasons, ["Strong evidence of active multifamily ownership"]);
+  assert.ok(rankedRow.providers.includes("openai_jarvis"), "a real ranking must be recorded as real provenance");
+
+  const untouchedSavedRow = await GroundingResearchResult.findById(savedRow._id).lean();
+  assert.equal(untouchedSavedRow.fitScore, null, "ranking must never touch a row outside the requested, still-pending set");
+
+  await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
+async function testRankForProgramFitRequiresAtLeastOneSelection() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  await assert.rejects(
+    () => vertexGroundingDiscoveryService.rankForProgramFit({ workspaceId, userId: new mongoose.Types.ObjectId(), auth: { workspaceId: String(workspaceId) }, resultIds: [] }, { runAgent: async () => { throw new Error("must not be called"); } }),
+    (error) => error.code === "GROUNDING_RANK_SELECTION_REQUIRED",
+  );
+}
+
+/**
+ * Live regression guard for the honesty claim in this file's header and in
+ * services/vertexGroundingDiscoveryService.js's module comment: this app's
+ * OpenAI integration must keep using only the Chat Completions API. If this
+ * ever starts failing, it means someone added Responses API usage
+ * elsewhere without updating that documented claim — not a false alarm to
+ * silence, a prompt to re-verify and correct the claim everywhere it's made.
+ */
+function testOpenAiIntegrationStillHasNoResponsesApiWebSearch() {
+  const source = require("fs").readFileSync(require.resolve("./services/llmService"), "utf8");
+  assert.ok(source.includes("chat.completions.create"), "llmService.js must still be calling the Chat Completions API");
+  assert.ok(!source.includes("responses.create") && !source.includes("web_search"), "llmService.js must not silently gain Responses API / web_search usage without this claim being re-verified");
+}
+
 async function run() {
   await mongoose.connect(process.env.MONGO_URI);
   try {
@@ -139,7 +256,14 @@ async function run() {
     await testSavingAnOrganizationDedupesByDomain();
     await testSavingCommunityOrEventNeverInventsACrmEntity();
     await testDismissNeverCreatesAnything();
-    console.log("Vertex Grounding Discovery integration: results stage to a review queue with citations and never auto-create a lead, repeat finds merge and corroborate instead of duplicating, saving a person/organization creates the correct attributed+deduplicated CRM entity, community/event save honestly without inventing a CRM type, and dismiss creates nothing — all passed.");
+    await testPdlEnrichmentRecordsRealProvenanceOnAMatch();
+    await testPdlNoMatchRecordsAttemptWithoutFabricatingAnEmail();
+    await testPdlEnrichmentRejectsNonPersonAndReviewedRows();
+    await testSavingAPersonUsesThePdlVerifiedEmailWhenPresent();
+    await testRankForProgramFitScoresOnlyValidPendingRowsAndRecordsProvenance();
+    await testRankForProgramFitRequiresAtLeastOneSelection();
+    testOpenAiIntegrationStillHasNoResponsesApiWebSearch();
+    console.log("Vertex Grounding Discovery integration: results stage to a review queue with citations and never auto-create a lead, repeat finds merge and corroborate instead of duplicating, saving a person/organization creates the correct attributed+deduplicated CRM entity, community/event save honestly without inventing a CRM type, dismiss creates nothing, PDL enrichment records real provenance only on a real match and never fabricates data on a miss, a PDL-verified email actually reaches the saved Contact, OpenAI/Jarvis ranking scores only real still-pending rows with real evidence and ignores fabricated IDs, and the no-Responses-API-web-search honesty claim still holds — all passed.");
   } finally {
     await mongoose.disconnect();
   }

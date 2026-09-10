@@ -1138,6 +1138,10 @@ export const saveVertexGroundingResult = (id) =>
   api.post(`/audience/research/vertex-grounding/results/${id}/save`).then((res) => res.data);
 export const dismissVertexGroundingResult = (id) =>
   api.post(`/audience/research/vertex-grounding/results/${id}/dismiss`).then((res) => res.data);
+export const enrichVertexGroundingResultWithPdl = (id) =>
+  api.post(`/audience/research/vertex-grounding/results/${id}/enrich-pdl`).then((res) => res.data);
+export const rankVertexGroundingResultsForProgramFit = (resultIds) =>
+  api.post("/audience/research/vertex-grounding/results/rank", { resultIds }, { timeout: 60000 }).then((res) => res.data);
 
 export const startExternalMarketResearch = (payload) =>
   api.post("/audience/research/run", payload).then((res) => res.data);
