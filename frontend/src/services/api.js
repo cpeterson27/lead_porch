@@ -1145,6 +1145,27 @@ export const enrichVertexGroundingResultWithPdl = (id) =>
 export const rankVertexGroundingResultsForProgramFit = (resultIds) =>
   api.post("/audience/research/vertex-grounding/results/rank", { resultIds }, { timeout: 60000 }).then((res) => res.data);
 
+// Jarvis-coordinated, multi-provider lead generation (Vertex/OpenAI/PDL
+// Person Search/Apollo People Search). Listing/saving/dismissing/PDL-
+// enriching a result stays on the existing vertex-grounding endpoints
+// above — PDL/Apollo-sourced rows land in that same review queue.
+export const fetchLeadGenerationProgramSuggestions = () =>
+  api.get("/lead-generation/program-suggestions").then((res) => res.data);
+export const proposeLeadGenerationSearch = (payload) =>
+  api.post("/lead-generation/searches/propose", payload, { timeout: 60000 }).then((res) => res.data);
+export const approveLeadGenerationSearch = (searchId) =>
+  api.post(`/lead-generation/searches/${searchId}/approve`, {}, { timeout: 90000 }).then((res) => res.data);
+export const fetchLeadGenerationSearch = (searchId) =>
+  api.get(`/lead-generation/searches/${searchId}`).then((res) => res.data);
+export const enrichVertexGroundingResultWithApollo = (id) =>
+  api.post(`/lead-generation/results/${id}/enrich-apollo`).then((res) => res.data);
+export const qualifyLeadGenerationResults = (resultIds) =>
+  api.post("/lead-generation/results/qualify", { resultIds }, { timeout: 60000 }).then((res) => res.data);
+export const proposeLeadGenerationMonitor = (searchId) =>
+  api.post(`/lead-generation/searches/${searchId}/propose-monitor`).then((res) => res.data);
+export const fetchLeadGenerationMonitorSuggestions = () =>
+  api.get("/lead-generation/monitor-suggestions").then((res) => res.data);
+
 export const startExternalMarketResearch = (payload) =>
   api.post("/audience/research/run", payload).then((res) => res.data);
 

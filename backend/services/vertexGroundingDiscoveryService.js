@@ -237,9 +237,15 @@ async function listResults({ workspaceId, status, type }, dependencies = {}) {
   if (type) filter.type = type;
   const rows = await Model.find(filter).sort({ createdAt: -1 }).limit(200).lean();
   const now = Date.now();
-  // Age is computed at read time, never stored, so it's always accurate
-  // relative to "now" rather than whatever moment the row was last written.
-  return rows.map((row) => ({ ...row, evidenceAgeDays: row.evidenceDate ? Math.max(0, Math.floor((now - new Date(row.evidenceDate).getTime()) / 86400000)) : null }));
+  const NEW_WINDOW_MS = 48 * 60 * 60 * 1000;
+  // Age/newness are computed at read time, never stored, so they're always
+  // accurate relative to "now" rather than whatever moment the row was last
+  // written.
+  return rows.map((row) => ({
+    ...row,
+    evidenceAgeDays: row.evidenceDate ? Math.max(0, Math.floor((now - new Date(row.evidenceDate).getTime()) / 86400000)) : null,
+    isNew: row.status === "pending_review" && (now - new Date(row.createdAt).getTime()) < NEW_WINDOW_MS,
+  }));
 }
 
 /**
@@ -282,15 +288,27 @@ async function saveResult({ workspaceId, userId, resultId }, dependencies = {}) 
   let savedContactId = null, savedOrganizationId = null;
   if (row.type === "person") {
     const [firstName, ...rest] = String(row.name).trim().split(/\s+/);
+    // Email priority: a matched enrichment result (PDL, then Apollo — each
+    // an explicit, separate cross-check step) beats whatever email the
+    // discovery source itself may have already supplied (PDL/Apollo Person
+    // Search rows carry one directly; Vertex/OpenAI rows never do). Never
+    // upgrades the emailState past whatever the actual source reported —
+    // an "unverified"/"provider_validated" email is stored as exactly that,
+    // never relabeled "verified".
+    const emailSource = row.pdlEnrichment?.matched && row.pdlEnrichment?.email
+      ? { email: row.pdlEnrichment.email, state: row.pdlEnrichment.emailState || "provider_validated", provider: "people_data_labs" }
+      : row.apolloEnrichment?.matched && row.apolloEnrichment?.email
+        ? { email: row.apolloEnrichment.email, state: row.apolloEnrichment.emailState || "unverified", provider: "apollo" }
+        : row.email
+          ? { email: row.email, state: row.emailState || "unverified", provider: row.providers?.find((p) => p === "pdl_person_search" || p === "apollo_person_search") || "" }
+          : null;
     const summary = await ingest({
       contacts: [{
         "First Name": firstName || row.name, "Last Name": rest.join(" "), "Company Name": row.organizationName,
         "Website": row.organizationDomain,
-        // A PDL-verified email (an explicit, separate enrichment step — see
-        // enrichWithPdl below) takes priority when present; otherwise this
-        // stays a public-web find with no email, exactly as before.
-        ...(row.pdlEnrichment?.matched && row.pdlEnrichment?.email ? { Email: row.pdlEnrichment.email, "Email Status": row.pdlEnrichment.emailState || "provider_validated" } : {}),
-        "Primary Email Source": row.pdlEnrichment?.matched ? "people_data_labs" : (row.evidenceUrls?.[0] || ""),
+        ...(row.linkedinUrl ? { LinkedIn: row.linkedinUrl } : {}),
+        ...(emailSource ? { Email: emailSource.email, "Email Status": emailSource.state } : {}),
+        "Primary Email Source": emailSource?.provider || (row.evidenceUrls?.[0] || ""),
       }],
       source: "vertex_grounding",
     });

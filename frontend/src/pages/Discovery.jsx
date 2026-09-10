@@ -47,6 +47,12 @@ import {
   dismissVertexGroundingResult,
   enrichVertexGroundingResultWithPdl,
   rankVertexGroundingResultsForProgramFit,
+  fetchLeadGenerationProgramSuggestions,
+  proposeLeadGenerationSearch,
+  approveLeadGenerationSearch,
+  enrichVertexGroundingResultWithApollo,
+  qualifyLeadGenerationResults,
+  proposeLeadGenerationMonitor,
 } from "../services/api.js";
 import "./Discovery.css";
 import { draftFromMonitorPreset, sourcesFromMonitorPreset } from "../utils/researchMonitorPreset.js";
@@ -268,6 +274,16 @@ export default function Discovery() {
   const [groundingError, setGroundingError] = useState("");
   const [groundingSourceErrors, setGroundingSourceErrors] = useState([]);
   const [suggestedSearches, setSuggestedSearches] = useState([]);
+  const [leadGenProgramSuggestions, setLeadGenProgramSuggestions] = useState([]);
+  const [leadGenRequest, setLeadGenRequest] = useState("");
+  const [leadGenProposeBusy, setLeadGenProposeBusy] = useState(false);
+  const [leadGenProposal, setLeadGenProposal] = useState(null);
+  const [leadGenApproveBusy, setLeadGenApproveBusy] = useState(false);
+  const [leadGenError, setLeadGenError] = useState("");
+  const [apolloEnrichBusyId, setApolloEnrichBusyId] = useState("");
+  const [qualifyBusy, setQualifyBusy] = useState(false);
+  const [monitorSuggestion, setMonitorSuggestion] = useState(null);
+  const [monitorProposeBusy, setMonitorProposeBusy] = useState(false);
   const [groundingResults, setGroundingResults] = useState([]);
   const [groundingResultsLoading, setGroundingResultsLoading] = useState(false);
   const [groundingResultsStatus, setGroundingResultsStatus] = useState("pending_review");
@@ -359,6 +375,100 @@ export default function Discovery() {
     setGroundingTypes((current) => current.includes("person") ? current : [...current, "person"]);
   };
 
+  const loadLeadGenProgramSuggestions = async () => {
+    try {
+      const response = await fetchLeadGenerationProgramSuggestions();
+      setLeadGenProgramSuggestions(response.data || []);
+    } catch {
+      setLeadGenProgramSuggestions([]);
+    }
+  };
+
+  const proposeLeadGenSearch = async () => {
+    if (!leadGenRequest.trim() || leadGenProposeBusy) return;
+    setLeadGenProposeBusy(true);
+    setLeadGenError("");
+    setMonitorSuggestion(null);
+    try {
+      const response = await proposeLeadGenerationSearch({ naturalLanguageRequest: leadGenRequest });
+      setLeadGenProposal(response.data);
+    } catch (err) {
+      setLeadGenError(err.response?.data?.error || "Unable to propose this search.");
+      setLeadGenProposal(null);
+    } finally {
+      setLeadGenProposeBusy(false);
+    }
+  };
+
+  const approveLeadGenSearch = async () => {
+    if (!leadGenProposal?._id || leadGenApproveBusy) return;
+    setLeadGenApproveBusy(true);
+    setLeadGenError("");
+    try {
+      const response = await approveLeadGenerationSearch(leadGenProposal._id);
+      const summary = response.data.runSummary || {};
+      const staleNote = summary.excludedForFreshness ? ` ${summary.excludedForFreshness} excluded for missing/stale evidence.` : "";
+      const errorNote = summary.sourceErrors?.length ? ` ${summary.sourceErrors.length} source(s) reported an issue.` : "";
+      setNotice(`Search ${response.data.status}: ${summary.created || 0} new, ${summary.merged || 0} merged, ${summary.withConflicts || 0} flagged with conflicts.${staleNote}${errorNote}`);
+      setLeadGenProposal(response.data);
+      setGroundingResultsStatus("pending_review");
+      await loadGroundingResults("pending_review");
+    } catch (err) {
+      setLeadGenError(err.response?.data?.error || "Unable to run this search.");
+    } finally {
+      setLeadGenApproveBusy(false);
+    }
+  };
+
+  const discardLeadGenProposal = () => { setLeadGenProposal(null); setLeadGenError(""); };
+
+  const enrichGroundingResultWithApollo = async (id) => {
+    if (apolloEnrichBusyId) return;
+    setApolloEnrichBusyId(id);
+    try {
+      const res = await enrichVertexGroundingResultWithApollo(id);
+      const outcome = res.data.apolloEnrichment;
+      setNotice(
+        outcome?.error ? `Apollo enrichment error: ${outcome.errorMessage || "unknown error"}`
+          : outcome?.matched ? "Apollo found a verified match."
+            : "Apollo did not find a confident match — no email added.",
+      );
+      await loadGroundingResults();
+    } catch (err) {
+      setNotice(err.response?.data?.error || "Apollo enrichment failed.");
+    } finally {
+      setApolloEnrichBusyId("");
+    }
+  };
+
+  const qualifySelectedGroundingResults = async () => {
+    if (!selectedGroundingIds.length || qualifyBusy) return;
+    setQualifyBusy(true);
+    try {
+      const res = await qualifyLeadGenerationResults(selectedGroundingIds);
+      setNotice(`Jarvis qualified ${res.data.qualified} of ${res.data.requested} selected result(s) — recommended program, next action, and a draft outreach message are attached to each.`);
+      setSelectedGroundingIds([]);
+      await loadGroundingResults();
+    } catch (err) {
+      setNotice(err.response?.data?.error || "Qualification failed.");
+    } finally {
+      setQualifyBusy(false);
+    }
+  };
+
+  const proposeMonitorForLeadGenSearch = async () => {
+    if (!leadGenProposal?._id || monitorProposeBusy) return;
+    setMonitorProposeBusy(true);
+    try {
+      const res = await proposeLeadGenerationMonitor(leadGenProposal._id);
+      setMonitorSuggestion(res.data);
+    } catch (err) {
+      setNotice(err.response?.data?.error || "Unable to propose a monitor for this search.");
+    } finally {
+      setMonitorProposeBusy(false);
+    }
+  };
+
   const runGroundingSearch = async () => {
     if (!groundingQuery.trim() || groundingBusy || !groundingTypes.length) return;
     setGroundingBusy(true);
@@ -440,7 +550,7 @@ export default function Discovery() {
 
   useEffect(() => {
     if (activeTab !== "people") return undefined;
-    const timer = window.setTimeout(() => { loadGroundingResults(); loadSuggestedSearches(); }, 0);
+    const timer = window.setTimeout(() => { loadGroundingResults(); loadSuggestedSearches(); loadLeadGenProgramSuggestions(); }, 0);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
@@ -1085,6 +1195,84 @@ export default function Discovery() {
         })}</div> : <div className="table-state table-state--empty">No staged people previews yet. Ask Jarvis to find public-web decision-makers; the preview will appear here automatically.</div>}
       </DashboardCard>
 
+      <DashboardCard title="Ask Jarvis to find buyers">
+        <p className="people-preview-intro">
+          Jarvis reads your approved Offers &amp; Programs, turns a request like{" "}
+          <em>&quot;Find 10 likely buyers for this program&quot;</em> into an editable ICP and search plan,
+          and shows exactly what it will search, with which providers, and the estimated credit use —
+          <strong> before anything is spent.</strong> Vertex and OpenAI Web Search look for verifiable
+          public buyer-intent evidence from the last 90 days; PDL Person Search and Apollo People Search
+          actively match your program&apos;s ideal-customer profile. Nothing is ever spent, imported, or
+          sent without your explicit approval at each step.
+        </p>
+        {leadGenProgramSuggestions.length ? (
+          <div className="grounding-suggested-searches">
+            <span>Ask about an approved program</span>
+            <div className="grounding-suggested-searches__buttons">
+              {leadGenProgramSuggestions.map((suggestion) => (
+                <Button key={suggestion.noteId} size="sm" variant="outline" onClick={() => setLeadGenRequest(suggestion.suggestedRequest)}>
+                  {suggestion.title}
+                </Button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+        <div className="people-search-launcher">
+          <label>
+            <span>What should Jarvis find?</span>
+            <textarea value={leadGenRequest} onChange={(event) => setLeadGenRequest(event.target.value)} placeholder='e.g. "Find 10 likely buyers for our Multifamily Bootcamp"' disabled={leadGenProposeBusy} />
+          </label>
+          <div>
+            <Button disabled={!leadGenRequest.trim()} loading={leadGenProposeBusy} onClick={proposeLeadGenSearch}>
+              {leadGenProposeBusy ? "Planning…" : "Propose search"}
+            </Button>
+          </div>
+          {leadGenError ? <p className="form-error">{leadGenError}</p> : null}
+        </div>
+
+        {leadGenProposal ? (
+          <div className="leadgen-proposal">
+            <h4>{leadGenProposal.status === "proposed" ? "Proposed plan — nothing spent yet" : `Search ${leadGenProposal.status}`}</h4>
+            <dl>
+              <dt>Program</dt><dd>{leadGenProposal.programName || "(not specified)"}</dd>
+              <dt>ICP</dt><dd>{[...(leadGenProposal.icp?.titles || []), ...(leadGenProposal.icp?.industries || [])].join(", ") || "(broad)"}{leadGenProposal.icp?.locations?.length ? ` · ${leadGenProposal.icp.locations.join(", ")}` : ""}</dd>
+              <dt>Sources</dt><dd>{leadGenProposal.sources.join(", ")}</dd>
+              <dt>Freshness</dt><dd>Public-web evidence within {leadGenProposal.freshnessDays} days</dd>
+              <dt>Requested count</dt><dd>Up to {leadGenProposal.requestedCount} people</dd>
+              <dt>Estimated credit use</dt>
+              <dd>
+                {leadGenProposal.estimatedCreditUse?.pdl ? `PDL: up to ${leadGenProposal.estimatedCreditUse.pdl} · ` : ""}
+                {leadGenProposal.estimatedCreditUse?.apollo ? `Apollo: up to ${leadGenProposal.estimatedCreditUse.apollo} · ` : ""}
+                {leadGenProposal.estimatedCreditUse?.vertex || ""} {leadGenProposal.estimatedCreditUse?.openai || ""}
+                <br /><small>{leadGenProposal.estimatedCreditUse?.note}</small>
+              </dd>
+            </dl>
+            {leadGenProposal.status === "proposed" ? (
+              <div>
+                <Button loading={leadGenApproveBusy} onClick={approveLeadGenSearch}>Approve &amp; run</Button>
+                <Button variant="outline" onClick={discardLeadGenProposal}>Discard</Button>
+              </div>
+            ) : (
+              <div>
+                {!monitorSuggestion ? (
+                  <Button size="sm" variant="outline" loading={monitorProposeBusy} onClick={proposeMonitorForLeadGenSearch}>Suggest a recurring monitor for this search</Button>
+                ) : (
+                  <div className="leadgen-monitor-suggestion">
+                    <strong>Monitor suggestion created — disabled</strong>
+                    <p>{monitorSuggestion.name}</p>
+                    <small>
+                      Query: {monitorSuggestion.query} · Providers: {monitorSuggestion.sources.join(", ")} · Schedule: {monitorSuggestion.scheduleDescription} ·
+                      Cap: {monitorSuggestion.capPerRun}/run · Destination: {monitorSuggestion.destination.replace("_", " ")}
+                    </small>
+                    <p className="form-error">Scheduled execution for this monitor type isn&apos;t built yet — this suggestion is saved and stays disabled; enabling it does not run anything.</p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : null}
+      </DashboardCard>
+
       <DashboardCard title="Public-web research (optional discovery sources)">
         <p className="people-preview-intro">
           <strong>Vertex AI and OpenAI Web Search actively search the public web</strong> for
@@ -1155,9 +1343,14 @@ export default function Discovery() {
           ))}
           <Button size="sm" variant="outline" loading={groundingResultsLoading} onClick={() => loadGroundingResults()}>Refresh</Button>
           {groundingResultsStatus === "pending_review" ? (
-            <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} loading={rankBusy} onClick={rankSelectedGroundingResults}>
-              Rank {selectedGroundingIds.length || ""} selected for program fit (OpenAI/Jarvis)
-            </Button>
+            <>
+              <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} loading={rankBusy} onClick={rankSelectedGroundingResults}>
+                Rank {selectedGroundingIds.length || ""} selected for program fit (OpenAI/Jarvis)
+              </Button>
+              <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} loading={qualifyBusy} onClick={qualifySelectedGroundingResults}>
+                Qualify &amp; recommend {selectedGroundingIds.length || ""} selected (Jarvis)
+              </Button>
+            </>
           ) : null}
         </div>
 
@@ -1169,11 +1362,17 @@ export default function Discovery() {
                   {result.status === "pending_review" ? (
                     <input type="checkbox" checked={selectedGroundingIds.includes(result._id)} onChange={() => toggleGroundingSelection(result._id)} aria-label={`Select ${result.name} for ranking`} />
                   ) : null}
-                  <span>{result.type} · {result.confidence.replace("_", " ")} · via {(result.providers || []).join(", ") || "vertex_grounding"}</span>
+                  {result.isNew ? <span className="leadgen-badge-new">New</span> : null}
+                  <span>{result.type} · {result.confidence.replace("_", " ")} · {result.discoveryMode === "icp_match" ? "ICP match" : "public-web evidence"} · via {(result.providers || []).join(", ") || "vertex_grounding"}</span>
                   <strong>{result.name}</strong>
                   <small>{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
+                  {result.linkedinUrl ? <small><a href={result.linkedinUrl} target="_blank" rel="noreferrer">LinkedIn profile</a></small> : null}
+                  <small>Discovered {new Date(result.createdAt).toLocaleDateString()} · Identity confidence: {result.identityConfidence || "low"}</small>
+                  {result.email ? <small>Email: {result.email} ({result.emailVerificationStatus || result.emailState || "unverified"})</small> : null}
+                  {result.conflicts?.length ? <small className="form-error">Conflicts: {result.conflicts.join(" ")}</small> : null}
+                  {result.recommendedProgram?.name ? <small className="grounding-fit-score">Recommended program: {result.recommendedProgram.name} — {result.recommendedProgram.reason}</small> : null}
                   {result.fitScore != null ? <small className="grounding-fit-score">Program fit: {result.fitScore}/100 — {(result.fitReasons || []).join("; ")}</small> : null}
-                  {result.type === "person" ? (
+                  {result.type === "person" && result.discoveryMode !== "icp_match" ? (
                     <small>{result.evidenceDate ? `Evidence date: ${new Date(result.evidenceDate).toLocaleDateString()} (${result.evidenceAgeDays} day${result.evidenceAgeDays === 1 ? "" : "s"} old)` : "No verifiable evidence date"}</small>
                   ) : null}
                   {result.pdlEnrichment?.attempted ? (
@@ -1183,11 +1382,21 @@ export default function Discovery() {
                           : "PDL: no confident match"}
                     </small>
                   ) : null}
+                  {result.apolloEnrichment?.attempted ? (
+                    <small>
+                      {result.apolloEnrichment.error ? `Apollo error: ${result.apolloEnrichment.errorMessage || "unknown error"}`
+                        : result.apolloEnrichment.matched ? `Apollo verified: ${result.apolloEnrichment.email || "match found, no email"}`
+                          : "Apollo: no confident match"}
+                    </small>
+                  ) : null}
                 </div>
                 {result.status === "pending_review" ? (
                   <div>
                     {result.type === "person" && !result.pdlEnrichment?.attempted ? (
                       <Button size="sm" variant="outline" loading={pdlEnrichBusyId === result._id} disabled={Boolean(pdlEnrichBusyId) && pdlEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithPdl(result._id)}>Enrich via PDL</Button>
+                    ) : null}
+                    {result.type === "person" && !result.apolloEnrichment?.attempted ? (
+                      <Button size="sm" variant="outline" loading={apolloEnrichBusyId === result._id} disabled={Boolean(apolloEnrichBusyId) && apolloEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithApollo(result._id)}>Enrich via Apollo</Button>
                     ) : null}
                     <Button size="sm" onClick={() => saveGroundingResult(result._id)}>Save with attribution</Button>
                     <Button size="sm" variant="outline" onClick={() => dismissGroundingResult(result._id)}>Dismiss</Button>
@@ -1200,6 +1409,7 @@ export default function Discovery() {
                 <small>Citations</small>
                 <div className="grounding-citations">
                   {(result.evidenceUrls || []).map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}
+                  {!result.evidenceUrls?.length && result.discoveryMode === "icp_match" ? <span className="people-preview-footnote">No public-web citation — this is a structured ICP match, not a public-web find.</span> : null}
                 </div>
               </div>
             </article>

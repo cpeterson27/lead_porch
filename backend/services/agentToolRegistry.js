@@ -18,6 +18,15 @@ const salesAgentContextService = require("./salesAgentContextService");
 const systemAgentHealthService = require("./systemAgentHealthService");
 const searchQualityService = require("./searchQualityService");
 const coachingSuccessPatternsService = require("./coachingSuccessPatternsService");
+// NOT required eagerly here: leadGenerationCoordinatorService requires
+// agentExecutionService -> agentToolExecutor -> this file, a real circular
+// dependency. An eager top-level require at this point in the cycle
+// resolves to this module's still-empty exports (confirmed live: Node
+// itself warns "Accessing non-existent property ... inside circular
+// dependency"), leaving the tool handler below permanently broken whenever
+// anything requires the coordinator service before this file. Required
+// lazily inside the handler instead, by which point the cycle has long
+// finished and require() returns the fully-populated module.
 
 const TOOL_CLASSIFICATIONS = Object.freeze({ READ: "READ", PROPOSE: "PROPOSE", MUTATE: "MUTATE" });
 const models = { Contact, SalesOpportunity, Organization, CrmActivity, MarketingCampaign, Event, SocialConnection, ConversationThread, ConversationMessage, ContentBrief, CoachingProgram, Enrollment, CoachAssignment, IntentSignal };
@@ -48,6 +57,13 @@ const tools = [
   { id: "research.list_recent_signals", domain: "research", description: "List recent Discovery intent signals (public evidence only) for synthesis into a written brief.", classification: "READ", requiredCapabilities: ["discovery.manage", "jarvis.manage"], capabilityMode: "any", allowedAgents: ["research"], handler: async ({ workspaceId, input, models: db }) => db.IntentSignal.find({ workspaceId, discoveredAt: { $gte: new Date(Date.now() - Math.min(30, Math.max(1, Number(input.days) || 7)) * 86400000) } }).select("title organizationName score classification status matchedKeywords sourceUrl discoveredAt").sort({ score: -1, discoveredAt: -1 }).limit(limit(input.limit, 100)).lean() },
   { id: "coaching.get_success_patterns", domain: "coaching", description: "Read aggregated, anonymized enrollment outcome patterns (completion rates, common drop-off stages) — never individual student data.", classification: "READ", requiredCapabilities: ["coaching.view", "coaching.view_assigned"], capabilityMode: "any", allowedAgents: ["coaching", "content"], handler: async ({ workspaceId, services }) => services.coachingSuccessPatternsService.getSuccessPatterns(workspaceId) },
   { id: "research.get_monitor_performance", domain: "research", description: "Read each Discovery monitor's real outcomes (leads, enrollments, won revenue) and deterministic quality recommendations.", classification: "READ", requiredCapabilities: ["discovery.manage", "jarvis.manage"], capabilityMode: "any", allowedAgents: ["research"], handler: async ({ workspaceId, services }) => { const performance = await services.searchQualityService.getMonitorPerformance(workspaceId); return { performance, recommendations: services.searchQualityService.recommendationsFor(performance) }; } },
+  // A "propose" is a real write (creates a DiscoverySearch), but a free,
+  // no-provider-call, fully reversible one requiring a further explicit
+  // owner approval (POST .../searches/:id/approve, outside this tool
+  // entirely) before anything is actually spent — exactly what the
+  // PROPOSE classification exists for, distinct from the disabled generic
+  // MUTATE path above.
+  { id: "leads.propose_search", domain: "discovery", description: "Turn a natural request like 'Find 10 likely buyers for this program' into an editable, no-cost lead-search plan (ICP, sources, freshness, estimated credit use) awaiting owner approval.", classification: "PROPOSE", requiredCapabilities: ["discovery.manage"], allowedAgents: ["jarvis", "lead"], handler: async ({ workspaceId, userId, auth, input }) => require("./leadGenerationCoordinatorService").proposeSearch({ workspaceId, userId, auth, naturalLanguageRequest: input.naturalLanguageRequest, programNoteId: input.programNoteId, sources: input.sources, freshnessDays: input.freshnessDays }) },
 ];
 
 const registry = new Map(tools.map((tool) => [tool.id, Object.freeze(tool)]));

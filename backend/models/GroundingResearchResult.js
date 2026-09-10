@@ -32,6 +32,26 @@
  * services/vertexGroundingDiscoveryService.js) — a stale or undated
  * "buyer-intent" post is worthless as a lead signal, so it is excluded up
  * front rather than staged and only flagged later.
+ *
+ * services/leadGenerationCoordinatorService.js additively extends this same
+ * queue with two more discovery providers — PDL Person Search and Apollo
+ * People Search — which actively match a program ICP rather than finding
+ * public-web buyer-intent evidence. `discoveryMode` records which kind of
+ * row this is ("public_web_evidence" for Vertex/OpenAI, unchanged; or
+ * "icp_match" for PDL/Apollo). ICP-match rows deliberately do NOT go
+ * through the evidenceDate freshness gate above — a structured database
+ * match has no "post date" to check — so that existing gate is left fully
+ * intact rather than loosened to accommodate a fundamentally different kind
+ * of evidence. `apolloEnrichment` mirrors `pdlEnrichment` as Apollo's own
+ * separate, explicit, second-stage cross-check (never a discovery source in
+ * that role). `linkedinUrl`/`socialProfileUrls`, `emailVerificationStatus`,
+ * and `identityConfidence` are populated from whichever provider(s)
+ * actually supplied them and are never upgraded past what a provider itself
+ * reports (an Apollo "unverified" or PDL "provider_validated" email is
+ * never displayed or stored as "verified"). `conflicts` lists any
+ * field-level disagreement between providers on the same merged identity —
+ * a non-empty `conflicts` array keeps a row in "pending_review" for closer
+ * human review rather than letting automatic corroboration paper over it.
  */
 const mongoose = require("mongoose");
 const workspacePlugin = require("../tenancy/workspacePlugin");
@@ -44,6 +64,14 @@ const groundingResearchResultSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true, maxlength: 200 },
   organizationName: { type: String, default: "", trim: true, maxlength: 200 },
   organizationDomain: { type: String, default: "", trim: true, lowercase: true, maxlength: 200 },
+  // The email a DISCOVERY source (PDL/Apollo Person Search) supplied
+  // directly, if any — distinct from pdlEnrichment.email/apolloEnrichment.email,
+  // which represent a deliberate, separate later verification/cross-check
+  // step. Vertex/OpenAI never populate this (public-web grounding doesn't
+  // surface an email). Never upgraded past whatever emailState the
+  // originating provider itself reported.
+  email: { type: String, default: "", trim: true, lowercase: true },
+  emailState: { type: String, default: "" },
   summary: { type: String, default: "", trim: true, maxlength: 1000 },
   evidenceUrls: { type: [String], default: [] },
   // When the underlying evidence was actually published/last active, per the
@@ -58,7 +86,17 @@ const groundingResearchResultSchema = new mongoose.Schema({
   savedContactId: { type: mongoose.Schema.Types.ObjectId, ref: "Contact", default: null },
   savedOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: "Organization", default: null },
   // Real provenance: which provider(s) actually produced/touched this row.
-  providers: { type: [String], enum: ["vertex_grounding", "openai_web_search", "people_data_labs", "openai_jarvis"], default: [] },
+  providers: { type: [String], enum: ["vertex_grounding", "openai_web_search", "people_data_labs", "openai_jarvis", "pdl_person_search", "apollo_person_search", "apollo"], default: [] },
+  // "public_web_evidence" (Vertex/OpenAI, subject to the evidenceDate
+  // freshness gate) vs "icp_match" (PDL/Apollo Person Search, matched
+  // against a program ICP — no evidence date/URL concept applies).
+  discoveryMode: { type: String, enum: ["public_web_evidence", "icp_match"], default: "public_web_evidence" },
+  linkedinUrl: { type: String, default: "", trim: true, maxlength: 500 },
+  socialProfileUrls: { type: [String], default: [] },
+  // Which discovery search (services/leadGenerationCoordinatorService.js)
+  // produced/merged into this row, if any — nullable, purely for
+  // traceability back to the approved search plan and its ICP.
+  discoverySearchId: { type: mongoose.Schema.Types.ObjectId, ref: "DiscoverySearch", default: null },
   pdlEnrichment: {
     attempted: { type: Boolean, default: false },
     matched: { type: Boolean, default: false },
@@ -72,6 +110,38 @@ const groundingResearchResultSchema = new mongoose.Schema({
     // looking never-enriched after the attempt is gone from the UI.
     error: { type: Boolean, default: false },
     errorMessage: { type: String, default: "", trim: true, maxlength: 300 },
+  },
+  // Mirrors pdlEnrichment exactly — Apollo's own separate, explicit,
+  // second-stage cross-check of a person already found by any source.
+  apolloEnrichment: {
+    attempted: { type: Boolean, default: false },
+    matched: { type: Boolean, default: false },
+    email: { type: String, default: "", trim: true, lowercase: true },
+    emailState: { type: String, default: "" },
+    enrichedAt: { type: Date, default: null },
+    error: { type: Boolean, default: false },
+    errorMessage: { type: String, default: "", trim: true, maxlength: 300 },
+  },
+  // A short, display-only rollup of the best email-verification signal any
+  // provider actually reported — never a value stronger than what was
+  // reported (e.g. "provider_validated" from PDL is never shown as
+  // "verified"; only Apollo's own literal "verified" status counts as that).
+  emailVerificationStatus: { type: String, default: "" },
+  // Separate axis from `confidence` above: `confidence` is about EVIDENCE
+  // corroboration (independent citation domains / independent discovery
+  // providers agreeing); `identityConfidence` is about how sure we are this
+  // is a real, correctly-identified person (derived from email-verification
+  // strength and whether multiple providers independently matched the same
+  // identity) — kept distinct rather than overloading `confidence`.
+  identityConfidence: { type: String, enum: ["low", "medium", "high"], default: "low" },
+  // Field-level disagreements between providers on the same merged
+  // identity (e.g. differing company/title) — a non-empty list keeps the
+  // row in pending_review for closer human attention rather than letting
+  // automatic corroboration paper over a real conflict.
+  conflicts: { type: [String], default: [] },
+  recommendedProgram: {
+    name: { type: String, default: "", trim: true, maxlength: 200 },
+    reason: { type: String, default: "", trim: true, maxlength: 1000 },
   },
   fitScore: { type: Number, default: null, min: 0, max: 100 },
   fitReasons: { type: [String], default: [] },

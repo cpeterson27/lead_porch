@@ -54,6 +54,7 @@ const auditRouter = require("./routes/audit");
 const paymentsRouter = require("./routes/payments");
 const systemAgentRouter = require("./routes/systemAgent");
 const providersRouter = require("./routes/providers");
+const leadGenerationRouter = require("./routes/leadGeneration");
 const { requireAuth } = require("./middleware/auth");
 const { restrictNewRoleSurface } = require("./middleware/authorization");
 const { startResearchMonitorRunner } = require("./services/researchMonitorService");
@@ -245,6 +246,7 @@ connectDatabase(mongoUri)
     app.use("/api/privacy-requests", privacyRequestsRouter);
     app.use("/api/system-agent", systemAgentRouter);
     app.use("/api/providers", providersRouter);
+    app.use("/api/lead-generation", leadGenerationRouter);
 
     app.get("/api/health", (req, res) => {
       res.json({
