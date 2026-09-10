@@ -24,8 +24,15 @@ const { isJarvisWebResearchEnabled, normalizePublicPeople, researchAndStagePubli
 const { applyContactFieldUpdate, availableContactFields, buildContactFieldUpdatePreview } = require("../services/contactFieldUpdateService");
 const { collectMonitorSignals } = require("../services/intentSourceService");
 const { requireCapability, requireRole } = require("../middleware/auth");
+const multer = require("multer");
+const { ingestPdf } = require("../services/pdfKnowledgeIngestionService");
 
 const router = express.Router();
+const pdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024, files: 10 },
+  fileFilter: (req, file, cb) => cb(null, file.mimetype === "application/pdf"),
+});
 
 // Public only to the vault bridge: the bearer credential itself resolves the
 // workspace. A workspaceId supplied in the JSON body is never trusted.
@@ -556,6 +563,42 @@ router.post("/memory/notes/:id/restore-version", requireRole("owner", "admin"), 
   } catch (error) {
     return res.status(["MEMORY_NOTE_NOT_FOUND", "MEMORY_VERSION_NOT_FOUND"].includes(error.code) ? 404 : 400).json({ success: false, error: error.message, code: error.code });
   }
+});
+
+/**
+ * Owner-only multi-PDF upload. Deliberately narrower than every other
+ * Knowledge Center route above (owner/admin) — this both spends AI budget
+ * and creates draft monitors, so it stays owner-only. Every PDF becomes one
+ * draft note (never auto-approved) plus, when AI analysis succeeds, up to a
+ * few DISABLED draft monitors (never auto-enabled) — see
+ * services/pdfKnowledgeIngestionService.js for the full safety reasoning.
+ * A partial failure (one bad PDF among several) never discards the ones
+ * that succeeded.
+ */
+router.post("/memory/notes/upload-pdfs", requireRole("owner"), (req, res, next) => {
+  pdfUpload.array("files", 10)(req, res, (error) => {
+    if (error) return res.status(400).json({ success: false, error: error.message || "Upload failed", code: "PDF_UPLOAD_REJECTED" });
+    next();
+  });
+}, async (req, res) => {
+  const files = req.files || [];
+  if (!files.length) return res.status(400).json({ success: false, error: "Choose at least one PDF file", code: "PDF_FILES_REQUIRED" });
+  const category = req.body?.category;
+  const results = [];
+  for (const file of files) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const outcome = await ingestPdf({
+        workspaceId: req.auth.workspaceId, userId: req.auth.userId, auth: req.auth, category,
+        originalFilename: file.originalname, buffer: file.buffer,
+        correlationId: req.headers["x-request-id"] || "",
+      });
+      results.push({ filename: file.originalname, success: true, noteId: outcome.note._id, monitorDraftsCreated: outcome.monitorDrafts.length, aiAnalysisSucceeded: outcome.aiAnalysisSucceeded, aiAnalysisReason: outcome.aiAnalysisReason });
+    } catch (error) {
+      results.push({ filename: file.originalname, success: false, error: error.message, code: error.code || "PDF_INGEST_FAILED" });
+    }
+  }
+  return res.json({ success: true, data: { results } });
 });
 
 /**

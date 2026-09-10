@@ -5,6 +5,13 @@ const researchMonitorSchema = new mongoose.Schema({
   workspaceId: { type: mongoose.Schema.Types.ObjectId, ref: "Workspace", required: true, index: true },
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   name: { type: String, required: true, trim: true, maxlength: 160 },
+  // Set only for a monitor suggested by PDF knowledge ingestion
+  // (pdfKnowledgeIngestionService.js) — traceability back to the source
+  // note. Such a monitor is always created with enabled: false; the
+  // scheduler and manual "Run now" both require enabled: true, so it can
+  // never run until a human explicitly turns it on via the existing
+  // Discovery UI.
+  sourceNoteId: { type: mongoose.Schema.Types.ObjectId, ref: "JarvisMemoryNote", default: null },
   monitorType: { type: String, enum: ["buyer_intent", "community_partner", "investor_profile"], default: null, index: true },
   query: { type: String, required: true, trim: true, maxlength: 1200 },
   keywords: [{ type: String, trim: true }],

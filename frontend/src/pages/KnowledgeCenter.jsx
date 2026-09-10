@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Button from "../components/Button.jsx";
 import DashboardCard from "../components/DashboardCard.jsx";
+import useAuth from "../context/useAuth.js";
+import { hasRole } from "../utils/roleAccess.js";
 import {
   fetchKnowledgeNotes,
   fetchKnowledgeNote,
@@ -11,6 +13,7 @@ import {
   restoreKnowledgeNoteVersion,
   prepareKnowledgeMemory,
   confirmKnowledgeMemory,
+  uploadKnowledgePdfs,
   fetchVaultCredentials,
   createVaultCredential,
   revokeVaultCredential,
@@ -34,6 +37,7 @@ function formatDate(value) {
 }
 
 export default function KnowledgeCenter() {
+  const { session } = useAuth();
   const [notes, setNotes] = useState([]);
   const [statusFilter, setStatusFilter] = useState("draft");
   const [categoryFilter, setCategoryFilter] = useState("");
@@ -51,6 +55,10 @@ export default function KnowledgeCenter() {
   const [credentials, setCredentials] = useState([]);
   const [newCredentialLabel, setNewCredentialLabel] = useState("");
   const [newSecret, setNewSecret] = useState(null);
+  const [pdfCategory, setPdfCategory] = useState("offers-programs");
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfResults, setPdfResults] = useState(null);
+  const pdfInputRef = useRef(null);
 
   const loadNotes = useCallback(() => {
     fetchKnowledgeNotes({
@@ -179,6 +187,36 @@ export default function KnowledgeCenter() {
     }
   };
 
+  const hasUnsavedNewKnowledge = () => Boolean(draft.title.trim() || draft.content.trim() || pendingApproval);
+
+  const cancelNewKnowledge = () => {
+    if (hasUnsavedNewKnowledge() && !window.confirm("Discard this unsaved knowledge entry? Anything you typed will be lost.")) return;
+    setShowNewForm(false);
+    setDraft({ title: "", content: "", category: "sops" });
+    setPendingApproval(null);
+    setConfirmationInput("");
+  };
+
+  const uploadPdfs = async () => {
+    const files = pdfInputRef.current?.files;
+    if (!files?.length) return;
+    setPdfBusy(true);
+    setError("");
+    setPdfResults(null);
+    try {
+      const res = await uploadKnowledgePdfs(files, pdfCategory);
+      setPdfResults(res.data.results);
+      const succeeded = res.data.results.filter((row) => row.success).length;
+      setNotice(`${succeeded} of ${res.data.results.length} PDF(s) staged as drafts awaiting your review.`);
+      if (pdfInputRef.current) pdfInputRef.current.value = "";
+      loadNotes();
+    } catch (err) {
+      setError(err.response?.data?.error || "PDF upload failed.");
+    } finally {
+      setPdfBusy(false);
+    }
+  };
+
   const addCredential = async () => {
     setBusy(true);
     setError("");
@@ -225,9 +263,45 @@ export default function KnowledgeCenter() {
       {error ? <p className="form-error">{error}</p> : null}
       {notice ? <p className="discovery-notice">{notice}</p> : null}
 
+      {hasRole(session, "owner") ? (
+        <DashboardCard title="Upload program PDFs">
+          <p>
+            Upload Ellie's program PDFs directly — no copying and pasting. Each PDF becomes its
+            own draft note here, with an AI-generated program summary, ideal-customer profile,
+            qualification criteria, and suggested discovery-monitor searches. Nothing is approved
+            or activated automatically: review and approve each note like any other draft, and
+            any suggested monitor is created disabled — review, edit, and turn it on yourself
+            under Discovery &gt; Intent Monitoring.
+          </p>
+          <label>
+            Category for these PDFs
+            <select value={pdfCategory} onChange={(e) => setPdfCategory(e.target.value)}>
+              {CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+          <label>
+            PDF files (up to 10 at once)
+            <input ref={pdfInputRef} type="file" accept="application/pdf" multiple disabled={pdfBusy} />
+          </label>
+          <Button loading={pdfBusy} onClick={uploadPdfs}>{pdfBusy ? "Uploading and analyzing (can take a minute)…" : "Upload and analyze"}</Button>
+          {pdfResults ? (
+            <ul className="knowledge-pdf-results">
+              {pdfResults.map((row, index) => (
+                <li key={index} className={row.success ? "is-success" : "is-error"}>
+                  <strong>{row.filename}</strong>
+                  {row.success
+                    ? ` — staged as a draft${row.monitorDraftsCreated ? `, ${row.monitorDraftsCreated} suggested monitor(s) created disabled` : ""}${!row.aiAnalysisSucceeded ? ` (AI analysis unavailable: ${row.aiAnalysisReason})` : ""}`
+                    : ` — failed: ${row.error}`}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+        </DashboardCard>
+      ) : null}
+
       <DashboardCard
         title="Knowledge notes"
-        action={<Button size="sm" onClick={() => setShowNewForm((value) => !value)}>{showNewForm ? "Cancel" : "Add approved knowledge"}</Button>}
+        action={<Button size="sm" onClick={() => (showNewForm ? cancelNewKnowledge() : setShowNewForm(true))}>{showNewForm ? "Cancel" : "Add approved knowledge"}</Button>}
       >
         {showNewForm ? (
           <div className="knowledge-new-form">

@@ -1518,6 +1518,15 @@ export const prepareKnowledgeMemory = (payload) =>
   api.post("/jarvis/memory/prepare", payload).then((res) => res.data);
 export const confirmKnowledgeMemory = (approvalId, confirmationPhrase) =>
   api.post(`/jarvis/memory/${approvalId}/confirm`, { confirmationPhrase }).then((res) => res.data);
+// Multiple PDFs, plus AI analysis, can genuinely take a while — a
+// dedicated, longer per-call timeout, not a change to the shared client's
+// default (matching the same reasoning as runVertexGrounding above).
+export const uploadKnowledgePdfs = (files, category) => {
+  const formData = new FormData();
+  for (const file of files) formData.append("files", file);
+  formData.append("category", category);
+  return api.post("/jarvis/memory/notes/upload-pdfs", formData, { timeout: 120000 }).then((res) => res.data);
+};
 export const fetchVaultCredentials = () =>
   api.get("/jarvis/memory/vault-credentials").then((res) => res.data);
 export const createVaultCredential = (label) =>

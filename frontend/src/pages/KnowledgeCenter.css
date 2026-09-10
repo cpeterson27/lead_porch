@@ -243,3 +243,28 @@
   border-radius: 6px;
   word-break: break-all;
 }
+
+.knowledge-pdf-results {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.knowledge-pdf-results li {
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+.knowledge-pdf-results li.is-success {
+  background: var(--color-success-soft, #eaf7ee);
+  color: var(--color-success, #2e9e5b);
+}
+
+.knowledge-pdf-results li.is-error {
+  background: var(--color-danger-soft, #fdecea);
+  color: var(--color-danger, #d64545);
+}
