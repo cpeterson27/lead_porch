@@ -8,16 +8,18 @@ const MODEL_PRICING = Object.freeze({
   "gpt-4o-mini-2024-07-18": { input: 0.15, cachedInput: 0.075, output: 0.60 },
   // Verify against Google's current published rate card before relying on
   // this for real billing decisions — like the OpenAI rows above, this is a
-  // versioned snapshot, not a live-fetched price.
+  // versioned snapshot, not a live-fetched price. This same row also serves
+  // Vertex AI Gemini generateContent calls (services/vertexGroundingService.js
+  // defaults VERTEX_GEMINI_MODEL to this exact unsuffixed "gemini-2.5-flash"
+  // alias — the versioned-suffix form "gemini-2.5-flash-002" returns a real
+  // HTTP 404 on Vertex, confirmed live; see test-vertex-grounding.js). Vertex
+  // also bills a separate per-1,000-grounded-queries Google Search fee this
+  // estimate does NOT include. Discovery Engine (Agent Search) is billed per
+  // query/storage, not per token, so it intentionally has no row here — its
+  // usage ledger rows carry pricingAvailable: false and a request count, not
+  // a cost.
   "gemini-2.5-flash": { input: 0.30, cachedInput: 0.075, output: 2.50 },
   "gemini-2.0-flash": { input: 0.10, cachedInput: 0.025, output: 0.40 },
-  // Vertex AI Gemini generateContent — same published per-token rate as the
-  // Developer API row above at the time of writing; Vertex also bills a
-  // separate per-1,000-grounded-queries Google Search fee this estimate does
-  // NOT include. Discovery Engine (Agent Search) is billed per query/storage,
-  // not per token, so it intentionally has no row here — its usage ledger
-  // rows carry pricingAvailable: false and a request count, not a cost.
-  "gemini-2.5-flash-002": { input: 0.30, cachedInput: 0.075, output: 2.50 },
 });
 
 function estimateCost(model, usage = {}) {

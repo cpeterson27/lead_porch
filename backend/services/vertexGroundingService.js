@@ -33,7 +33,12 @@ function groundingPlatformEnabled() {
   return masterEnabled() && process.env.VERTEX_GROUNDING_ENABLED === "true";
 }
 function model() {
-  return clean(process.env.VERTEX_GEMINI_MODEL, 160) || "gemini-2.5-flash-002";
+  // "gemini-2.5-flash-002" (a versioned-suffix Vertex model ID) returns a
+  // real HTTP 404 "Publisher model ... was not found" against this
+  // project/region — confirmed live via scripts/vertex-smoke-test.js. The
+  // correct default is the unsuffixed alias, which Vertex resolves to its
+  // current stable Gemini 2.5 Flash release.
+  return clean(process.env.VERTEX_GEMINI_MODEL, 160) || "gemini-2.5-flash";
 }
 function location() {
   return clean(process.env.VERTEX_AI_LOCATION, 60) || "us-central1";

@@ -32,7 +32,7 @@ async function main() {
   }
   const project = process.env.VERTEX_PROJECT_ID.trim();
   const location = (process.env.VERTEX_AI_LOCATION || "us-central1").trim();
-  const model = (process.env.VERTEX_GEMINI_MODEL || "gemini-2.5-flash-002").trim();
+  const model = (process.env.VERTEX_GEMINI_MODEL || "gemini-2.5-flash").trim();
   const endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
 
   console.log("Requesting a Google Cloud access token...");

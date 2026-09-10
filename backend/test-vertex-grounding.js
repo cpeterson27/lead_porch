@@ -15,6 +15,7 @@ const originalEnabled = process.env.VERTEX_ENABLED;
 const originalCredsJson = process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
 const originalProjectId = process.env.VERTEX_PROJECT_ID;
 const originalGroundingFlag = process.env.VERTEX_GROUNDING_ENABLED;
+const originalModelFlag = process.env.VERTEX_GEMINI_MODEL;
 
 function freshService() {
   delete require.cache[require.resolve("./services/vertexGroundingService")];
@@ -62,7 +63,7 @@ async function testWorkspaceOptInAndBudget(models) {
   assert.equal(called, false);
 
   await models.vertexConfigService.save(workspaceId, { groundingEnabled: true, monthlyLimitUsd: 0.000001 }, models.WorkspaceConfig);
-  await models.AiUsageRecord.create({ workspaceId, agent: "research", feature: "vertex_grounded_search", provider: "vertex", model: "gemini-2.5-flash-002", endpoint: "generateContent", estimatedTotalCostUsd: 1, latencyMs: 10, success: true });
+  await models.AiUsageRecord.create({ workspaceId, agent: "research", feature: "vertex_grounded_search", provider: "vertex", model: vertex.model(), endpoint: "generateContent", estimatedTotalCostUsd: 1, latencyMs: 10, success: true });
   await assert.rejects(() => vertex.groundedSearch({ workspaceId, query: "q" }, { httpClient, getAccessToken: fakeAuth.getAccessToken }), (error) => error.code === "VERTEX_MONTHLY_LIMIT_REACHED");
   assert.equal(called, false, "a reached budget must block the call before any HTTP request");
 
@@ -119,6 +120,56 @@ async function testErrorPathIsLoggedAndCategorized(models) {
   await models.AiUsageRecord.deleteMany({ workspaceId });
 }
 
+/**
+ * Regression for a real, live-confirmed bug: the versioned-suffix model ID
+ * "gemini-2.5-flash-002" returns an actual HTTP 404 "Publisher model ... was
+ * not found" on Vertex AI (confirmed against a real Google Cloud project via
+ * scripts/vertex-smoke-test.js) — Vertex does not publish that suffixed
+ * alias for this model family. The unsuffixed "gemini-2.5-flash" is the
+ * correct default, and is what a real Vertex smoke test confirmed working.
+ */
+function testDefaultModelIsTheUnsuffixedAliasNotTheBrokenVersionedOne() {
+  delete process.env.VERTEX_GEMINI_MODEL;
+  const vertex = freshService();
+  assert.equal(vertex.model(), "gemini-2.5-flash", "the default Vertex model must be the unsuffixed alias — \"gemini-2.5-flash-002\" is confirmed to 404 on real Vertex projects");
+  assert.notEqual(vertex.model(), "gemini-2.5-flash-002");
+}
+
+function configureEnv() {
+  process.env.VERTEX_ENABLED = "true";
+  process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON = JSON.stringify({ type: "service_account" });
+  process.env.VERTEX_PROJECT_ID = "test-project";
+}
+
+/**
+ * Exercises the REAL endpoint()/client() URL-building path (passing `http`
+ * instead of a pre-built `httpClient` mock is what makes that path actually
+ * run) to prove the configured model genuinely reaches the request URL —
+ * this is what would have caught the -002 bug before it reached a live
+ * Vertex project.
+ */
+async function testEndpointUrlUsesTheConfiguredModel(models) {
+  configureEnv();
+  process.env.VERTEX_GEMINI_MODEL = "gemini-2.5-flash";
+  const vertex = freshService();
+  const workspaceId = new mongoose.Types.ObjectId();
+  await models.vertexConfigService.save(workspaceId, { groundingEnabled: true }, models.WorkspaceConfig);
+
+  let capturedUrl;
+  const http = {
+    post: async (url) => {
+      capturedUrl = url;
+      return { data: { candidates: [{ content: { parts: [{ text: "```json\n[]\n```" }] } }] } };
+    },
+  };
+  await vertex.groundedSearch({ workspaceId, query: "q" }, { http, getAccessToken: fakeAuth.getAccessToken });
+  assert.ok(capturedUrl.endsWith("/publishers/google/models/gemini-2.5-flash:generateContent"), `endpoint must target the configured model; got: ${capturedUrl}`);
+  assert.ok(!capturedUrl.includes("gemini-2.5-flash-002"), "must never build a request URL against the confirmed-broken versioned-suffix model ID");
+
+  await models.WorkspaceConfig.deleteMany({ workspaceId });
+  await models.AiUsageRecord.deleteMany({ workspaceId });
+}
+
 async function run() {
   await mongoose.connect(process.env.MONGO_URI);
   const WorkspaceConfig = require("./models/WorkspaceConfig");
@@ -133,18 +184,22 @@ async function run() {
     await testGroundedSearchUsesCamelCaseToolAndParsesCitations(models);
     require("./services/providerResilience").resetCircuits();
     await testErrorPathIsLoggedAndCategorized(models);
+    testDefaultModelIsTheUnsuffixedAliasNotTheBrokenVersionedOne();
+    require("./services/providerResilience").resetCircuits();
+    await testEndpointUrlUsesTheConfiguredModel(models);
   } finally {
     if (originalEnabled === undefined) delete process.env.VERTEX_ENABLED; else process.env.VERTEX_ENABLED = originalEnabled;
     if (originalCredsJson === undefined) delete process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON; else process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON = originalCredsJson;
     if (originalProjectId === undefined) delete process.env.VERTEX_PROJECT_ID; else process.env.VERTEX_PROJECT_ID = originalProjectId;
     if (originalGroundingFlag === undefined) delete process.env.VERTEX_GROUNDING_ENABLED; else process.env.VERTEX_GROUNDING_ENABLED = originalGroundingFlag;
+    if (originalModelFlag === undefined) delete process.env.VERTEX_GEMINI_MODEL; else process.env.VERTEX_GEMINI_MODEL = originalModelFlag;
     require("./services/providerResilience").resetCircuits();
     await mongoose.disconnect();
   }
 }
 
 run()
-  .then(() => console.log("Vertex grounding: disabled-by-default zero-requests, two-tier capability gating, workspace budget, camelCase googleSearch tool key (vs. Developer API's snake_case), citation parsing/evidence filtering, and error categorization all passed."))
+  .then(() => console.log("Vertex grounding: disabled-by-default zero-requests, two-tier capability gating, workspace budget, camelCase googleSearch tool key (vs. Developer API's snake_case), citation parsing/evidence filtering, error categorization, and the confirmed-live-fixed default model (\"gemini-2.5-flash\", not the 404ing \"gemini-2.5-flash-002\") all passed."))
   .catch((error) => {
     console.error(error);
     process.exitCode = 1;

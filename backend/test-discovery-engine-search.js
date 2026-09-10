@@ -37,7 +37,14 @@ function configureEnv() {
 }
 
 async function testDisabledMakesZeroRequests() {
+  // Explicitly clear every input to masterEnabled() rather than assuming the
+  // ambient environment has none of them set — a real deployment's .env
+  // legitimately has GOOGLE_APPLICATION_CREDENTIALS_JSON/VERTEX_PROJECT_ID
+  // configured even while VERTEX_ENABLED is still "false", and this test
+  // must prove the disabled state makes zero requests regardless of that.
   delete process.env.VERTEX_ENABLED;
+  delete process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON;
+  delete process.env.VERTEX_PROJECT_ID;
   const service = freshService();
   let called = false;
   const http = { post: async () => { called = true; }, get: async () => { called = true; } };
