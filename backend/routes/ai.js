@@ -19,6 +19,18 @@ function requireAiAdministrator(req, res, next) {
   return res.status(403).json({ error: "Owner or Admin access is required", code: "AI_ADMIN_REQUIRED" });
 }
 
+/**
+ * A real, irreversible Google-side deletion request — deliberately narrower
+ * than requireAiAdministrator above (which also allows admin). Admin is not
+ * enough to purge a workspace's indexed data; only owner (or a platform
+ * owner) can.
+ */
+function requireAiOwner(req, res, next) {
+  const roles = new Set([...(req.auth?.roles || []), req.auth?.role].filter(Boolean));
+  if (req.auth?.isPlatformOwner || roles.has("owner")) return next();
+  return res.status(403).json({ error: "Owner access is required for this action", code: "AI_OWNER_REQUIRED" });
+}
+
 function createAiRouter(dependencies = {}) {
   const router = express.Router();
   const configService = dependencies.aiConfigService || aiConfigService;
@@ -104,11 +116,11 @@ function createAiRouter(dependencies = {}) {
   /**
    * Explicit data-deletion request: purges every Knowledge Center document
    * this workspace has ever had indexed in Discovery Engine, regardless of
-   * current opt-in state. Owner/admin only (already enforced by
-   * requireAiAdministrator above) — this is a real, irreversible deletion
-   * request sent to Google, not a local toggle.
+   * current opt-in state. Owner-only (requireAiOwner) — narrower than the
+   * router-wide owner/admin gate, since this is a real, irreversible
+   * deletion request sent to Google, not a local toggle.
    */
-  router.post("/vertex/agent-search/purge", async (req, res) => {
+  router.post("/vertex/agent-search/purge", requireAiOwner, async (req, res) => {
     try {
       const sync = dependencies.discoveryEngineSyncService || discoveryEngineSyncService;
       const data = await sync.purgeWorkspace(req.auth.workspaceId, req.auth.user?._id);
@@ -176,3 +188,4 @@ const router = createAiRouter();
 module.exports = router;
 module.exports.createAiRouter = createAiRouter;
 module.exports.requireAiAdministrator = requireAiAdministrator;
+module.exports.requireAiOwner = requireAiOwner;

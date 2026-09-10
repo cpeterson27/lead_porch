@@ -218,3 +218,61 @@
   color: var(--color-primary, #2f6fed);
   word-break: break-all;
 }
+
+.ai-controls-danger-zone {
+  margin-top: 24px;
+  border: 1px solid var(--color-danger, #d64545);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ai-controls-danger-zone summary {
+  cursor: pointer;
+  padding: 10px 14px;
+  font-weight: 700;
+  color: var(--color-danger, #d64545);
+  background: var(--color-danger-soft, #fdecea);
+  list-style: none;
+}
+
+.ai-controls-danger-zone summary::-webkit-details-marker {
+  display: none;
+}
+
+.ai-controls-danger-zone summary::before {
+  content: "▸ ";
+}
+
+.ai-controls-danger-zone[open] summary::before {
+  content: "▾ ";
+}
+
+.ai-controls-danger-zone-body {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.ai-controls-danger-confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  width: 100%;
+  max-width: 360px;
+  background: var(--color-danger-soft, #fdecea);
+  border-radius: 6px;
+}
+
+.ai-controls-danger-confirm label {
+  width: 100%;
+  margin-bottom: 0;
+}
+
+.ai-controls-danger-confirm-actions {
+  display: flex;
+  gap: 8px;
+}

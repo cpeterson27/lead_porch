@@ -4,6 +4,7 @@ import Button from "../components/Button.jsx";
 import DashboardCard from "../components/DashboardCard.jsx";
 import StatCard from "../components/StatCard.jsx";
 import useAuth from "../context/useAuth.js";
+import { hasRole } from "../utils/roleAccess.js";
 import {
   fetchAiConfig,
   updateAiConfig,
@@ -74,6 +75,8 @@ export default function AiAcquisitionControls() {
   const [agentSearchQuery, setAgentSearchQuery] = useState("");
   const [agentSearchResult, setAgentSearchResult] = useState(null);
   const [agentSearchBusy, setAgentSearchBusy] = useState(false);
+  const [purgeConfirmOpen, setPurgeConfirmOpen] = useState(false);
+  const [purgeConfirmText, setPurgeConfirmText] = useState("");
 
   const load = useCallback(() => {
     const requests = [
@@ -168,13 +171,26 @@ export default function AiAcquisitionControls() {
     }
   };
 
-  const purgeAgentSearchIndex = async () => {
-    if (!window.confirm("Permanently delete every Knowledge Center document this workspace has indexed in Vertex AI Search? This sends a real deletion request to Google and cannot be undone.")) return;
+  const openPurgeConfirm = () => {
+    setPurgeConfirmOpen(true);
+    setPurgeConfirmText("");
+    setError("");
+  };
+
+  const cancelPurgeConfirm = () => {
+    setPurgeConfirmOpen(false);
+    setPurgeConfirmText("");
+  };
+
+  const confirmPurgeAgentSearchIndex = async () => {
+    if (purgeConfirmText !== "PURGE") return;
     setSaving(true);
     setError("");
     try {
       await purgeVertexAgentSearchIndex();
       setNotice("Purge request sent to Google. It may take a few minutes to complete.");
+      setPurgeConfirmOpen(false);
+      setPurgeConfirmText("");
     } catch (err) {
       setError(err.response?.data?.error || "Unable to purge the Vertex AI Search index.");
     } finally {
@@ -434,8 +450,50 @@ export default function AiAcquisitionControls() {
                   )) : <li>No approved documents matched.</li>}
                 </ul>
               ) : null}
-              <Button size="sm" variant="danger" loading={saving} onClick={purgeAgentSearchIndex}>Purge indexed data</Button>
             </div>
+          ) : null}
+
+          {hasRole(session, "owner") ? (
+            <details className="ai-controls-danger-zone">
+              <summary>Danger zone</summary>
+              <div className="ai-controls-danger-zone-body">
+                <p>
+                  Permanently deletes every Knowledge Center document this workspace has indexed
+                  in Vertex AI Search. This sends a real deletion request to Google and cannot be
+                  undone. It does not change any toggle above or disable Agent Search — it only
+                  removes already-indexed data, which will need to be re-indexed (or backfilled)
+                  before search results return anything again.
+                </p>
+                {!purgeConfirmOpen ? (
+                  <Button size="sm" variant="danger" onClick={openPurgeConfirm}>Purge indexed data</Button>
+                ) : (
+                  <div className="ai-controls-danger-confirm">
+                    <label>
+                      Type PURGE to confirm
+                      <input
+                        type="text"
+                        value={purgeConfirmText}
+                        onChange={(e) => setPurgeConfirmText(e.target.value)}
+                        placeholder="PURGE"
+                        autoComplete="off"
+                      />
+                    </label>
+                    <div className="ai-controls-danger-confirm-actions">
+                      <Button size="sm" variant="outline" onClick={cancelPurgeConfirm}>Cancel</Button>
+                      <Button
+                        size="sm"
+                        variant="danger"
+                        loading={saving}
+                        disabled={purgeConfirmText !== "PURGE"}
+                        onClick={confirmPurgeAgentSearchIndex}
+                      >
+                        Confirm purge
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </details>
           ) : null}
         </DashboardCard>
       ) : null}

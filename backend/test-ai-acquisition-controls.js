@@ -49,7 +49,11 @@ async function run() {
     healthCheck: async () => ({ enabled: false, configured: false, healthy: false, reason: "disabled" }),
     masterEnabled: () => false,
   };
-  const router = createAiRouter({ geminiConfigService, geminiService });
+  let purgeCalledWith = null;
+  const discoveryEngineSyncService = {
+    purgeWorkspace: async (workspaceId, actorUserId) => { purgeCalledWith = { workspaceId: String(workspaceId), actorUserId }; return { operationName: "operations/fake" }; },
+  };
+  const router = createAiRouter({ geminiConfigService, geminiService, discoveryEngineSyncService });
 
   try {
     // Non-admin is rejected before touching any service.
@@ -97,7 +101,26 @@ async function run() {
     const nowDisabled = await ResearchMonitor.findOne({ workspaceId }).lean();
     assert.equal(nowDisabled.enabled, false);
 
-    console.log("AI & Acquisition Controls routes: RBAC gate, Gemini config round-trip, aggregated provider health with no credential leakage, and workspace-scoped Pause All all passed.");
+    // The Vertex Agent Search purge route is a real, irreversible Google-side
+    // deletion request — deliberately owner-only, narrower than the
+    // router-wide owner/admin gate every other route above uses.
+    const admin = { workspaceId: owner.workspaceId, user: { _id: "u2" }, roles: ["admin"] };
+    const purgeForbidden = await runRoute(router, "/vertex/agent-search/purge", "post", { auth: admin, body: {} });
+    assert.equal(purgeForbidden.statusCode, 403, "admin must not be able to purge — only owner");
+    assert.equal(purgeCalledWith, null, "a forbidden request must never reach the real purge call");
+
+    // Workspace-scoped deletion: even if a request body claims a different
+    // workspaceId, the route must only ever purge the authenticated
+    // session's own workspace (req.auth.workspaceId), never trust the body.
+    const otherWorkspaceId = new mongoose.Types.ObjectId();
+    const purgeRes = await runRoute(router, "/vertex/agent-search/purge", "post", { auth: owner, body: { workspaceId: String(otherWorkspaceId) } });
+    assert.equal(purgeRes.statusCode, 200);
+    assert.equal(purgeRes.body.data.operationName, "operations/fake");
+    assert.equal(purgeCalledWith.workspaceId, owner.workspaceId, "purge must scope to the authenticated workspace, never a client-supplied one");
+    assert.notEqual(purgeCalledWith.workspaceId, String(otherWorkspaceId));
+    assert.equal(purgeCalledWith.actorUserId, owner.user._id, "the acting user must be recorded for the audit trail");
+
+    console.log("AI & Acquisition Controls routes: RBAC gate, Gemini config round-trip, aggregated provider health with no credential leakage, workspace-scoped Pause All, and owner-only workspace-scoped Vertex Agent Search purge (admin forbidden, body workspaceId ignored) all passed.");
   } finally {
     await ResearchMonitor.deleteMany({ workspaceId: { $in: [workspaceId, foreignWorkspaceId] } });
     await WorkspaceConfig.deleteMany({ workspaceId });

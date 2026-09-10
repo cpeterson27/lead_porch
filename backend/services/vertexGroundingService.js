@@ -9,11 +9,17 @@
  * two Grounding providers are fully independent — either, both, or neither
  * may be enabled — and never share a budget or usage ledger row.
  *
- * IMPORTANT: this integration has NOT been exercised against a live Google
- * Cloud project (no credentials are configured in this environment). Do not
- * describe this as "live-tested" or "verified" until it has actually been
- * run against a real Google Cloud project with real credentials — see
- * scripts/vertex-smoke-test.js for the manual verification step.
+ * LIVE-VERIFIED against the real lead-porch-production Google Cloud
+ * project via scripts/vertex-smoke-test.js: service-account auth succeeded,
+ * a plain generateContent call replied "ok", and a grounded call returned
+ * 10 real citations using the camelCase "googleSearch" tool. The default
+ * model was live-confirmed as "gemini-2.5-flash" — the versioned-suffix
+ * "gemini-2.5-flash-002" returns a real HTTP 404 on Vertex and must never
+ * be used (see the fixed default below and its regression test in
+ * test-vertex-grounding.js). Gemini 2.5 Flash retires on Vertex AI
+ * October 16, 2026 (per Google's Vertex AI release notes) — re-verify the
+ * successor model via vertex-smoke-test.js before that date, rather than
+ * assuming any specific replacement ID now.
  */
 const axios = require("axios");
 const AiUsageRecord = require("../models/AiUsageRecord");

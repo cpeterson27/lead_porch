@@ -13,13 +13,26 @@
  * and is the same logical-isolation model this app already uses for MongoDB
  * via tenancy/workspacePlugin.js — not physical per-tenant infrastructure.
  *
- * IMPORTANT: this has NOT been exercised against a live Discovery Engine
- * data store (no Google Cloud project is configured in this environment).
- * The exact request/response shapes below follow Google's publicly
- * documented Discovery Engine v1 REST API as of this writing, but must be
- * verified against a real data store before being trusted — see
- * scripts/discovery-engine-smoke-test.js. Do not describe this as
- * "live-tested" until that has actually been run.
+ * LIVE-VERIFIED against the real lead-porch-knowledge-center data store
+ * (lead-porch-production project): health check healthy, a real document
+ * indexed, workspace A's search found it, a DIFFERENT fake workspace B's
+ * search did NOT — the actual tenant-isolation proof, not a code-review
+ * claim — and cleanup succeeded (scripts/discovery-engine-smoke-test.js,
+ * full run). A first attempt failed with a real HTTP 400 "Unsupported field
+ * \"workspace_id\" on \":\" operator", because a fresh data store's
+ * auto-detected schema does not mark a custom structData field indexable by
+ * default. After the schema was patched, `workspace_id` came back
+ * auto-inferred as indexable and the isolation test above passed on it.
+ *
+ * NOT yet done, and NOT blocking activation: requiredSchemaPatchBody()
+ * below also specifies retrievable/searchable/dynamicFacetable: false on
+ * workspace_id (defense-in-depth — an internal tenant key should never be
+ * shown, full-text searched, or offered as a facet); the live schema may
+ * still have these auto-inferred to their defaults rather than explicitly
+ * false. Re-applying the same schemas.patch command is safe to do later
+ * whenever convenient: Discovery Engine does not allow removing an
+ * already-defined field, so title/category and everything else already in
+ * the schema are unaffected either way.
  */
 const axios = require("axios");
 const { withResilience } = require("./providerResilience");
@@ -61,8 +74,44 @@ function filterLiteral(value) {
   return String(value).replaceAll("\\", "\\\\").replaceAll('"', '\\"');
 }
 
+// Single source of truth for the tenant-isolation field name, so the filter
+// this app builds and the schema patch it documents/requires can never
+// silently drift apart (e.g. one gets renamed without the other).
+const WORKSPACE_FIELD = "workspace_id";
+
 function workspaceFilter(workspaceId) {
-  return `workspace_id: ANY("${filterLiteral(String(workspaceId))}")`;
+  return `${WORKSPACE_FIELD}: ANY("${filterLiteral(String(workspaceId))}")`;
+}
+
+/**
+ * The Discovery Engine schema field this integration REQUIRES to exist on
+ * the data store, and how it must be configured, for workspaceFilter()'s
+ * ANY() expression to work at all. Confirmed live: a brand-new data store's
+ * auto-detected schema does NOT mark a custom structData field indexable by
+ * default — filtering on it fails with HTTP 400 "Unsupported field
+ * \"workspace_id\" on \":\" operator" until this is explicitly patched in.
+ *
+ * The REQUIRED part — indexable: true — is live-confirmed satisfied: after
+ * applying this patch once, workspace_id came back auto-inferred as
+ * indexable and the real tenant-isolation smoke test passed on it. The
+ * retrievable/searchable/dynamicFacetable: false annotations below are
+ * additional, non-blocking hardening (an internal tenant key never meant to
+ * be shown, full-text searched, or offered as a facet) — the live schema may
+ * not have picked these three up from auto-inference yet. Re-applying this
+ * exact patch later to lock them in is safe and non-destructive: Discovery
+ * Engine does not allow removing an already-defined field, so title,
+ * category, and everything else already in the schema are never affected.
+ */
+function requiredSchemaPatchBody() {
+  return {
+    structSchema: {
+      $schema: "https://json-schema.org/draft/2020-12/schema",
+      type: "object",
+      properties: {
+        [WORKSPACE_FIELD]: { type: "string", indexable: true, retrievable: false, searchable: false, dynamicFacetable: false },
+      },
+    },
+  };
 }
 
 function documentName(cfg, docId) {
@@ -81,7 +130,7 @@ async function upsertDocument({ docId, workspaceId, title, content, structData =
   const http = dependencies.http || axios;
   const body = {
     id: docId,
-    structData: { workspace_id: String(workspaceId), title: clean(title, 300), ...structData },
+    structData: { [WORKSPACE_FIELD]: String(workspaceId), title: clean(title, 300), ...structData },
     content: { mimeType: "text/plain", rawBytes: Buffer.from(String(content || ""), "utf8").toString("base64") },
   };
   const url = `${apiBase(cfg.location)}/${documentName(cfg, docId)}?allowMissing=true`;
@@ -165,4 +214,4 @@ async function healthCheck(dependencies = {}) {
   }
 }
 
-module.exports = { masterEnabled, agentSearchPlatformEnabled, config, workspaceFilter, upsertDocument, deleteDocument, purgeWorkspaceDocuments, search, healthCheck };
+module.exports = { masterEnabled, agentSearchPlatformEnabled, config, workspaceFilter, requiredSchemaPatchBody, upsertDocument, deleteDocument, purgeWorkspaceDocuments, search, healthCheck };

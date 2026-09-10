@@ -62,6 +62,35 @@ function testWorkspaceFilterIsServerBuiltAndEscaped() {
   assert.equal(service.workspaceFilter('abc" OR "1"="1'), 'workspace_id: ANY("abc\\" OR \\"1\\"=\\"1")');
 }
 
+/**
+ * Regression for a real, live-confirmed bug: a filtered search failed with
+ * HTTP 400 "Unsupported field \"workspace_id\" on \":\" operator" against a
+ * fresh data store, because auto-detected schemas don't mark custom
+ * structData fields indexable by default. This asserts the documented fix
+ * (requiredSchemaPatchBody()) actually declares the SAME field name
+ * workspaceFilter() filters on, as indexable, and string-typed — so the
+ * schema patch and the filter code can never silently drift apart, and a
+ * schema patch that weakened this (e.g. indexable: false, or a wrong field
+ * name) would fail this test.
+ */
+function testRequiredSchemaPatchMatchesTheFilterFieldAndStaysStrict() {
+  configureEnv();
+  const service = freshService();
+  const patch = service.requiredSchemaPatchBody();
+  const fieldNameInFilter = service.workspaceFilter("x").split(":")[0];
+  const fieldSchema = patch.structSchema.properties[fieldNameInFilter];
+  assert.ok(fieldSchema, `requiredSchemaPatchBody() must define the same field workspaceFilter() uses ("${fieldNameInFilter}")`);
+  assert.equal(fieldSchema.type, "string");
+  assert.equal(fieldSchema.indexable, true, "indexable:true is the one setting that actually fixes the live 400 — must never be weakened");
+  // Deliberately not searchable/retrievable/dynamicFacetable — this is an
+  // internal tenant key, never meant to be exposed, full-text searched, or
+  // offered as a facet. A patch that turned these on would be a real
+  // regression, not a hardening.
+  assert.equal(fieldSchema.searchable, false);
+  assert.equal(fieldSchema.retrievable, false);
+  assert.equal(fieldSchema.dynamicFacetable, false);
+}
+
 async function testUpsertDocumentSendsCorrectShape() {
   configureEnv();
   const service = freshService();
@@ -140,6 +169,7 @@ async function run() {
   try {
     await testDisabledMakesZeroRequests();
     testWorkspaceFilterIsServerBuiltAndEscaped();
+    testRequiredSchemaPatchMatchesTheFilterFieldAndStaysStrict();
     require("./services/providerResilience").resetCircuits();
     await testUpsertDocumentSendsCorrectShape();
     await testDeleteDocumentIsIdempotentOnAlreadyAbsent();
@@ -160,7 +190,7 @@ async function run() {
 }
 
 run()
-  .then(() => console.log("Discovery Engine client: disabled-by-default zero-requests, server-built and escaped workspace filter (never caller-influenced), document upsert/delete/purge request shapes, already-absent-delete idempotency, tenant-isolated search parsing, and a quota-free health check all passed."))
+  .then(() => console.log("Discovery Engine client: disabled-by-default zero-requests, server-built and escaped workspace filter (never caller-influenced), the required-schema-patch contract staying in sync with the filter field and never weakened, document upsert/delete/purge request shapes, already-absent-delete idempotency, tenant-isolated search parsing, and a quota-free health check all passed."))
   .catch((error) => {
     console.error(error);
     process.exitCode = 1;
