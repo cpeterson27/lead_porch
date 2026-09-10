@@ -22,7 +22,7 @@
  * analysis.
  */
 const crypto = require("crypto");
-const pdfParse = require("pdf-parse");
+const { PDFParse } = require("pdf-parse");
 const JarvisMemoryNote = require("../models/JarvisMemoryNote");
 const ResearchMonitor = require("../models/ResearchMonitor");
 const agentExecutionService = require("./agentExecutionService");
@@ -35,6 +35,24 @@ const MAX_SUGGESTED_MONITORS = 5;
 const MONITOR_TYPES = ["buyer_intent", "community_partner", "investor_profile"];
 
 const clean = (value, max) => String(value || "").replaceAll("\u0000", "").trim().slice(0, max);
+
+/**
+ * pdf-parse@2 replaced the old v1 API (calling the module directly as a
+ * function, e.g. `pdfParse(buffer)`) with a class, PDFParse -- confirmed by
+ * the installed package.json and its own README migration notes. This
+ * adapter is the ONLY thing that changed: it preserves the exact
+ * (buffer) => Promise<{ text }> shape every caller below (and its tests)
+ * already depend on, so nothing else in this file needed to change.
+ */
+async function defaultPdfParse(buffer) {
+  const parser = new PDFParse({ data: buffer });
+  try {
+    return await parser.getText();
+  } finally {
+    await parser.destroy();
+  }
+}
+
 const slug = (value) => clean(value, 200).toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 70) || "document";
 
 const RESPONSE_SCHEMA = {
@@ -111,7 +129,7 @@ async function ingestPdf({ workspaceId, userId, auth, category, originalFilename
 
   let extractedText;
   try {
-    const parse = dependencies.pdfParse || pdfParse;
+    const parse = dependencies.pdfParse || defaultPdfParse;
     const parsed = await parse(buffer);
     extractedText = String(parsed?.text || "").trim();
   } catch (error) {
