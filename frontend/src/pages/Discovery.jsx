@@ -262,8 +262,10 @@ export default function Discovery() {
   const [peopleSearchPrompt, setPeopleSearchPrompt] = useState("Find 20 named owners, founders, executives, or multifamily principals at real U.S. organizations using public leadership evidence. Treat professional role as identity evidence only, not buyer intent. Keep every result staged for review.");
   const [groundingQuery, setGroundingQuery] = useState("");
   const [groundingTypes, setGroundingTypes] = useState(["person", "organization"]);
+  const [groundingSource, setGroundingSource] = useState("both");
   const [groundingBusy, setGroundingBusy] = useState(false);
   const [groundingError, setGroundingError] = useState("");
+  const [groundingSourceErrors, setGroundingSourceErrors] = useState([]);
   const [groundingResults, setGroundingResults] = useState([]);
   const [groundingResultsLoading, setGroundingResultsLoading] = useState(false);
   const [groundingResultsStatus, setGroundingResultsStatus] = useState("pending_review");
@@ -345,15 +347,18 @@ export default function Discovery() {
     if (!groundingQuery.trim() || groundingBusy || !groundingTypes.length) return;
     setGroundingBusy(true);
     setGroundingError("");
+    setGroundingSourceErrors([]);
     try {
-      const response = await runVertexGroundingDiscoverySearch({ query: groundingQuery, resultTypes: groundingTypes });
-      setNotice(`Vertex Grounding found ${response.data.total} result(s): ${response.data.created} new, ${response.data.merged} merged into existing pending results.`);
+      const response = await runVertexGroundingDiscoverySearch({ query: groundingQuery, resultTypes: groundingTypes, source: groundingSource });
+      setNotice(`Public-web search (${response.data.source}) found ${response.data.total} result(s): ${response.data.created} new, ${response.data.merged} merged into existing pending results.`);
+      setGroundingSourceErrors(response.data.sourceErrors || []);
       await loadGroundingResults("pending_review");
       setGroundingResultsStatus("pending_review");
     } catch (err) {
       const message = err.response?.data?.error
-        || (err.code === "ECONNABORTED" ? "This is taking longer than expected. Vertex Grounding can take up to a minute — please try again." : "Vertex Grounding search failed.");
+        || (err.code === "ECONNABORTED" ? "This is taking longer than expected. Public-web search can take up to a minute — please try again." : "Public-web search failed.");
       setGroundingError(message);
+      setGroundingSourceErrors(err.response?.data?.sourceErrors || []);
     } finally {
       setGroundingBusy(false);
     }
@@ -1057,18 +1062,28 @@ export default function Discovery() {
         })}</div> : <div className="table-state table-state--empty">No staged people previews yet. Ask Jarvis to find public-web decision-makers; the preview will appear here automatically.</div>}
       </DashboardCard>
 
-      <DashboardCard title="Vertex AI Grounding (optional public-web source)">
+      <DashboardCard title="Public-web research (optional discovery sources)">
         <p className="people-preview-intro">
-          A separate, optional source from the Jarvis research above — real Google Search grounding
-          via Vertex AI, with a real citation for every result. Apollo/PDL remain the structured
-          people/company providers and OpenAI/Jarvis still handles planning and qualification;
-          this only adds another way to discover candidates. Nothing here becomes a lead
-          automatically — every result waits for your explicit review below.
+          Two separate, optional sources from the Jarvis research above — real Google Search
+          grounding via Vertex AI and, optionally, OpenAI&apos;s Responses API web_search tool —
+          each with a real citation for every result. Apollo/PDL remain the structured
+          people/company providers and OpenAI/Jarvis&apos;s planning/qualification role is
+          unchanged; this only adds ways to discover candidates. Nothing here becomes a lead
+          automatically — every result waits for your explicit review below. The initial request
+          is capped at 5 people per search.
         </p>
         <div className="people-search-launcher">
           <label>
-            <span>What should Vertex search the public web for?</span>
+            <span>What should the public web be searched for?</span>
             <textarea value={groundingQuery} onChange={(event) => setGroundingQuery(event.target.value)} placeholder="e.g. real estate investor associations and their named organizers near Austin, Texas" disabled={groundingBusy} />
+          </label>
+          <label>
+            <span>Source</span>
+            <select value={groundingSource} onChange={(event) => setGroundingSource(event.target.value)} disabled={groundingBusy}>
+              <option value="both">Both (Vertex + OpenAI Web Search)</option>
+              <option value="vertex">Vertex Grounding only</option>
+              <option value="openai_web_search">OpenAI Web Search only</option>
+            </select>
           </label>
           <fieldset className="grounding-type-fieldset">
             <legend>Result types</legend>
@@ -1086,10 +1101,15 @@ export default function Discovery() {
           </fieldset>
           <div>
             <Button disabled={!groundingQuery.trim() || !groundingTypes.length} loading={groundingBusy} onClick={runGroundingSearch}>
-              {groundingBusy ? "Searching (can take up to a minute)…" : "Search with Vertex Grounding"}
+              {groundingBusy ? "Searching (can take up to a minute)…" : "Search public web"}
             </Button>
           </div>
           {groundingError ? <p className="form-error">{groundingError}</p> : null}
+          {groundingSourceErrors.length ? groundingSourceErrors.map((sourceError) => (
+            <p key={sourceError.source} className="form-error">
+              {sourceError.source === "vertex_grounding" ? "Vertex Grounding" : "OpenAI Web Search"} unavailable: {sourceError.message}
+            </p>
+          )) : null}
         </div>
 
         <div className="discovery-review-filters">
@@ -1142,7 +1162,7 @@ export default function Discovery() {
               </div>
             </article>
           ))}
-        </div> : <div className="table-state table-state--empty">No {groundingResultsStatus.replace("_", " ")} Vertex Grounding results yet.</div>}
+        </div> : <div className="table-state table-state--empty">No {groundingResultsStatus.replace("_", " ")} public-web research results yet.</div>}
       </DashboardCard>
     </div> : null}
 

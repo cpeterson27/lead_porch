@@ -1,18 +1,28 @@
-// Targeted regression coverage for connecting Vertex AI Grounding to
-// Discovery as an optional public-web research source: results land in a
-// review queue with citations and are never auto-created as leads;
-// deduplication merges repeat finds instead of duplicating; saving a
-// reviewed result creates the correct CRM entity (person -> Contact,
-// organization -> Organization, deduplicated by domain) with source
-// attribution, while community/event honestly stay in the review queue
-// (no invented CRM entity type); PDL enrichment and OpenAI/Jarvis ranking
-// only ever ACT ON an already-evidenced row (never originate one), record
-// real provenance, and never auto-run. Also asserts, as a live regression
-// guard, that services/llmService.js still calls only the Chat Completions
-// API — confirming the documented claim that this app's OpenAI integration
-// does NOT support (and does not pretend to support) the Responses API
-// web_search tool. vertexGroundingService/peopleDataLabsService/runAgent
-// are all mocked — no real network/Google/OpenAI/PDL call is made.
+// Targeted regression coverage for connecting Vertex AI Grounding AND
+// OpenAI's Responses API web_search tool to Discovery as two independent,
+// optional public-web research sources: results land in a review queue with
+// citations and are never auto-created as leads; deduplication merges
+// repeat finds instead of duplicating, both WITHIN a source and ACROSS the
+// two sources (a person both sources find merges into one row carrying both
+// providers and corroborated confidence, and an already-corroborated
+// single-source result is never wrongly downgraded by the cross-source
+// merge); the initial request is capped at 5 people regardless of how many
+// sources contribute; selecting a single source surfaces that source's real
+// error directly with no silent fallback, while "both" reports a partial
+// source failure plainly instead of hiding it; saving a reviewed result
+// creates the correct CRM entity (person -> Contact, organization ->
+// Organization, deduplicated by domain) with source attribution, while
+// community/event honestly stay in the review queue (no invented CRM entity
+// type); PDL enrichment and OpenAI/Jarvis ranking only ever ACT ON an
+// already-evidenced row (never originate one), record real provenance, and
+// never auto-run. Also asserts, as a live regression guard, that
+// services/llmService.js still calls only the Chat Completions API —
+// confirming the documented claim that this app's OpenAI/Jarvis CHAT
+// integration does not use the Responses API (the separate
+// services/openaiWebSearchService.js module does, deliberately, for web
+// search only). vertexGroundingService/openaiWebSearchService/
+// peopleDataLabsService/runAgent are all mocked — no real
+// network/Google/OpenAI/PDL call is made.
 require("dotenv").config();
 const assert = require("node:assert/strict");
 const mongoose = require("mongoose");
@@ -131,6 +141,80 @@ async function testDismissNeverCreatesAnything() {
   const dismissed = await vertexGroundingDiscoveryService.dismissResult({ workspaceId, userId, resultId: row._id });
   assert.equal(dismissed.status, "dismissed");
   assert.equal((await Contact.countDocuments({ workspaceId })), 0);
+
+  await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
+async function testBothSourcesMergeAndPreserveEachProvidersProvenance() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const vertexGroundingService = { groundedSearch: async () => ({
+    results: [{ type: "person", name: "Jane Owner", organizationName: "Metro REIA", organizationDomain: "metroreia.org", summary: "Organizer.", evidenceUrls: ["https://metroreia.org/about"], confidence: "single_source" }],
+    groundingCitations: [{ url: "https://metroreia.org/about", title: "About" }],
+  }) };
+  const openaiWebSearchService = { groundedSearch: async () => ({
+    results: [
+      { type: "person", name: "Jane Owner", organizationName: "Metro REIA", organizationDomain: "metroreia.org", summary: "Also found via OpenAI.", evidenceUrls: ["https://news.example.com/jane-owner"], confidence: "single_source" },
+      { type: "person", name: "Sam Second", organizationName: "", organizationDomain: "", summary: "Only OpenAI found this one.", evidenceUrls: ["https://example.com/sam-second"], confidence: "single_source" },
+    ],
+    groundingCitations: [],
+  }) };
+
+  const result = await vertexGroundingDiscoveryService.search({ workspaceId, userId, auth: { workspaceId: String(workspaceId) }, query: "q", resultTypes: ["person"], source: "both" }, { vertexGroundingService, openaiWebSearchService });
+  assert.equal(result.source, "both");
+  assert.equal(result.created, 2, "the same person found by both sources must merge into ONE row, not two");
+
+  const jane = await GroundingResearchResult.findOne({ workspaceId, name: "Jane Owner" }).lean();
+  assert.deepEqual([...jane.providers].sort(), ["openai_web_search", "vertex_grounding"], "a row found by both sources must carry both providers");
+  assert.equal(jane.evidenceUrls.length, 2, "evidence from both sources must be combined on the merged row");
+  assert.equal(jane.confidence, "corroborated", "two independent providers finding the same person is real corroboration");
+
+  const sam = await GroundingResearchResult.findOne({ workspaceId, name: "Sam Second" }).lean();
+  assert.deepEqual(sam.providers, ["openai_web_search"], "a row only OpenAI found must not falsely claim Vertex provenance");
+
+  await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
+async function testSearchCapsInitialPeopleAtFiveRegardlessOfSourceCount() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const makePerson = (n) => ({ type: "person", name: `Person ${n}`, organizationName: "", organizationDomain: "", summary: "", evidenceUrls: [`https://example.com/person-${n}`], confidence: "single_source" });
+  const vertexGroundingService = { groundedSearch: async () => ({ results: [1, 2, 3].map(makePerson), groundingCitations: [] }) };
+  const openaiWebSearchService = { groundedSearch: async () => ({ results: [4, 5, 6, 7].map(makePerson), groundingCitations: [] }) };
+
+  const result = await vertexGroundingDiscoveryService.search({ workspaceId, userId, auth: { workspaceId: String(workspaceId) }, query: "q", resultTypes: ["person"], source: "both" }, { vertexGroundingService, openaiWebSearchService });
+  assert.equal(result.created, 5, "search() must cap the number of NEW people staged at 5, no matter how many sources contributed or how many each returned");
+
+  const rows = await GroundingResearchResult.find({ workspaceId }).lean();
+  assert.equal(rows.length, 5);
+
+  await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
+async function testSingleSourceFailureSurfacesAsAClearErrorWithNoSilentFallback() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const failingOpenai = { groundedSearch: async () => { throw Object.assign(new Error("does not support the web_search tool"), { code: "OPENAI_WEB_SEARCH_UNSUPPORTED_MODEL" }); } };
+
+  await assert.rejects(
+    () => vertexGroundingDiscoveryService.search({ workspaceId, userId, auth: { workspaceId: String(workspaceId) }, query: "q", resultTypes: ["person"], source: "openai_web_search" }, { openaiWebSearchService: failingOpenai }),
+    (error) => error.code === "OPENAI_WEB_SEARCH_UNSUPPORTED_MODEL",
+    "selecting OpenAI Web Search alone must surface its real config error directly, never silently fall back to Vertex or a different model",
+  );
+  assert.equal((await GroundingResearchResult.countDocuments({ workspaceId })), 0, "a failed single-source search must stage nothing");
+}
+
+async function testBothModeReportsAPartialSourceFailureInsteadOfHidingIt() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const vertexGroundingService = { groundedSearch: async () => ({ results: [{ type: "person", name: "Jane Owner", organizationName: "", organizationDomain: "", summary: "", evidenceUrls: ["https://example.com/jane"], confidence: "single_source" }], groundingCitations: [] }) };
+  const openaiWebSearchService = { groundedSearch: async () => { throw Object.assign(new Error("OpenAI Web Search is not enabled."), { code: "OPENAI_WEB_SEARCH_DISABLED" }); } };
+
+  const result = await vertexGroundingDiscoveryService.search({ workspaceId, userId, auth: { workspaceId: String(workspaceId) }, query: "q", resultTypes: ["person"], source: "both" }, { vertexGroundingService, openaiWebSearchService });
+  assert.equal(result.created, 1, "the working source's results must still be staged");
+  assert.equal(result.sourceErrors.length, 1);
+  assert.equal(result.sourceErrors[0].source, "openai_web_search");
+  assert.equal(result.sourceErrors[0].code, "OPENAI_WEB_SEARCH_DISABLED", "a partial failure under 'both' must be reported plainly, not hidden behind a successful-looking response");
 
   await GroundingResearchResult.deleteMany({ workspaceId });
 }
@@ -256,6 +340,10 @@ async function run() {
     await testSavingAnOrganizationDedupesByDomain();
     await testSavingCommunityOrEventNeverInventsACrmEntity();
     await testDismissNeverCreatesAnything();
+    await testBothSourcesMergeAndPreserveEachProvidersProvenance();
+    await testSearchCapsInitialPeopleAtFiveRegardlessOfSourceCount();
+    await testSingleSourceFailureSurfacesAsAClearErrorWithNoSilentFallback();
+    await testBothModeReportsAPartialSourceFailureInsteadOfHidingIt();
     await testPdlEnrichmentRecordsRealProvenanceOnAMatch();
     await testPdlNoMatchRecordsAttemptWithoutFabricatingAnEmail();
     await testPdlEnrichmentRejectsNonPersonAndReviewedRows();
@@ -263,7 +351,7 @@ async function run() {
     await testRankForProgramFitScoresOnlyValidPendingRowsAndRecordsProvenance();
     await testRankForProgramFitRequiresAtLeastOneSelection();
     testOpenAiIntegrationStillHasNoResponsesApiWebSearch();
-    console.log("Vertex Grounding Discovery integration: results stage to a review queue with citations and never auto-create a lead, repeat finds merge and corroborate instead of duplicating, saving a person/organization creates the correct attributed+deduplicated CRM entity, community/event save honestly without inventing a CRM type, dismiss creates nothing, PDL enrichment records real provenance only on a real match and never fabricates data on a miss, a PDL-verified email actually reaches the saved Contact, OpenAI/Jarvis ranking scores only real still-pending rows with real evidence and ignores fabricated IDs, and the no-Responses-API-web-search honesty claim still holds — all passed.");
+    console.log("Vertex Grounding + OpenAI Web Search Discovery integration: results stage to a review queue with citations and never auto-create a lead, repeat finds merge and corroborate instead of duplicating (within AND across the two sources, without wrongly downgrading an already-corroborated result), the initial request caps at 5 people regardless of source count, a single selected source's failure surfaces directly with no silent fallback while 'both' reports a partial failure plainly, saving a person/organization creates the correct attributed+deduplicated CRM entity, community/event save honestly without inventing a CRM type, dismiss creates nothing, PDL enrichment records real provenance only on a real match and never fabricates data on a miss, a PDL-verified email actually reaches the saved Contact, OpenAI/Jarvis ranking scores only real still-pending rows with real evidence and ignores fabricated IDs, and the OpenAI/Jarvis-chat-still-Chat-Completions-only honesty claim still holds — all passed.");
   } finally {
     await mongoose.disconnect();
   }

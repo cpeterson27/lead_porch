@@ -630,21 +630,27 @@ router.get("/research/people-previews", async (req, res) => {
 });
 
 /**
- * Vertex AI Grounding as an OPTIONAL public-web research source for
- * Discovery — entirely separate from Apollo/PDL (structured people/company
- * providers, untouched) and OpenAI/Jarvis (planning/qualification,
- * untouched). Every result lands in a review queue with citations; nothing
- * here becomes a lead without an explicit, separate save.
+ * Two OPTIONAL public-web research sources for Discovery People Research —
+ * Vertex AI Grounding and OpenAI Responses API web_search, selected via
+ * `source` ("vertex" | "openai_web_search" | "both", default "both") and
+ * merged/deduplicated by vertexGroundingDiscoveryService.search(). Entirely
+ * separate from Apollo/PDL (structured people/company providers, untouched)
+ * and OpenAI/Jarvis's OTHER role, program-fit ranking (untouched). Every
+ * result lands in a review queue with per-provider citations; nothing here
+ * becomes a lead without an explicit, separate save. The route path keeps
+ * its original "vertex-grounding" name for backward compatibility even
+ * though it now also covers OpenAI web search — renaming it was out of
+ * scope for this change.
  */
 router.post("/research/vertex-grounding/search", async (req, res) => {
   try {
     const data = await vertexGroundingDiscoveryService.search({
       workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, auth: req.auth,
-      query: req.body?.query, resultTypes: req.body?.resultTypes, correlationId: req.headers["x-request-id"] || "",
+      query: req.body?.query, resultTypes: req.body?.resultTypes, source: req.body?.source, correlationId: req.headers["x-request-id"] || "",
     });
     return res.json({ success: true, data });
   } catch (error) {
-    return res.status(error.httpStatus || (error.code ? 400 : 502)).json({ success: false, error: error.message || "Vertex grounding search failed", code: error.code || "VERTEX_GROUNDING_DISCOVERY_FAILED" });
+    return res.status(error.httpStatus || (error.code ? 400 : 502)).json({ success: false, error: error.message || "Public-web search failed", code: error.code || "GROUNDING_SEARCH_FAILED", sourceErrors: error.sourceErrors || [] });
   }
 });
 router.get("/research/vertex-grounding/results", async (req, res) => {

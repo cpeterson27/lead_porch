@@ -1,50 +1,70 @@
 /**
- * Connects Vertex AI Grounding (services/vertexGroundingService.js) to
- * Discovery as an OPTIONAL public-web research source. Every grounded
- * result lands in a review queue (GroundingResearchResult) with its
- * citations attached — nothing here ever becomes a CRM contact,
- * organization, or lead without an explicit, separate "save" action.
+ * Connects TWO independent, optional public-web discovery sources to
+ * Discovery People Research, merged and deduplicated into one review queue
+ * (GroundingResearchResult) with per-source citations attached — nothing
+ * here ever becomes a CRM contact, organization, or lead without an
+ * explicit, separate "save" action:
+ *   - Vertex AI Gemini + Google Search grounding
+ *     (services/vertexGroundingService.js).
+ *   - OpenAI's Responses API `web_search` hosted tool
+ *     (services/openaiWebSearchService.js). This app's OpenAI/Jarvis chat
+ *     (services/llmService.js) calls `client.chat.completions.create(...)`
+ *     exclusively — the Chat Completions API, which has no hosted
+ *     web-search tool. `web_search` only exists on OpenAI's separate
+ *     Responses API (`client.responses.create(...)`), confirmed supported
+ *     by the installed `openai` SDK. openaiWebSearchService.js uses that
+ *     Responses API path specifically for this second discovery source; it
+ *     is a genuinely different code path from llmService.js, not a
+ *     reinterpretation of it.
+ * The caller picks "vertex", "openai_web_search", or "both" (default
+ * "both") via the `source` option on search() below. Either, both, or
+ * neither may be enabled server-side; an unavailable/misconfigured source
+ * selected under "both" is reported back in `sourceErrors` alongside
+ * whatever the other source found, rather than silently hidden — and if a
+ * single source is selected explicitly, its error is thrown directly with
+ * no silent fallback to the other source or to a different model.
  *
- * A SECOND public-web source (OpenAI's Responses API `web_search` hosted
- * tool) was evaluated and deliberately NOT added: this app's OpenAI
- * integration (services/llmService.js) calls
- * `client.chat.completions.create(...)` exclusively — the Chat Completions
- * API, which has no hosted web-search tool. `web_search` only exists on
- * OpenAI's separate Responses API (`client.responses.create(...)`), which
- * this codebase does not use anywhere. Claiming OpenAI/Jarvis "searches the
- * web" here would be false; it does not, and still does not after this
- * change. OpenAI/Jarvis's real, unchanged role in this pipeline is
- * evidence-based program-fit evaluation/ranking (rankForProgramFit below),
- * exactly as already established, via the SAME agent system
- * (agentExecutionService.js) every other AI feature in this app uses — not
- * a new discovery source.
+ * OpenAI/Jarvis's OTHER role in this pipeline — evidence-based program-fit
+ * evaluation/ranking (rankForProgramFit below) — is unrelated to web search:
+ * it runs via the SAME agent system (agentExecutionService.js) every other
+ * AI feature in this app uses, never originates a discovery row, and is
+ * recorded under the separate "openai_jarvis" provider tag.
  *
  * PDL (people_data_labs) likewise never originates a row here — it is
  * explicit, per-row structured enrichment (services/peopleDataLabsService.js
- * enrichPerson()) of a person Vertex already found with public evidence,
- * matching its established role as the structured people/company provider.
+ * enrichPerson()) of a person a discovery source already found with public
+ * evidence, matching its established role as the structured people/company
+ * provider.
  *
- * Deduplication happens at two layers: services/geminiService.js's
- * deduplicateAndCorroborate() already merges duplicate entities WITHIN one
- * search's results (by type+name+domain, raising confidence only when
- * independent citation domains agree); this service ALSO merges a new
+ * Deduplication happens at three layers: services/geminiService.js's
+ * deduplicateAndCorroborate() first merges duplicate entities WITHIN one
+ * source's own results (by type+name+domain, raising confidence only when
+ * independent citation domains agree); mergeAcrossSources() below then
+ * merges the two sources' results together by the same key, unions their
+ * `providers` and evidenceUrls, and raises confidence to "corroborated"
+ * when two independent providers (not just two citations from the same
+ * provider) both found the same entity; finally, this service merges a new
  * finding into an existing, still-open review row from an EARLIER search
  * for the same entity, rather than creating a duplicate row every time the
- * same person/organization/event/community turns up again. There is
- * currently only one live discovery source (Vertex Grounding) feeding this
- * queue, so there is no second source's results to merge against yet — the
- * `providers` field on each row exists so a future second discovery source
- * could be merged the same way without a schema change.
+ * same person/organization/event/community turns up again.
+ *
+ * The initial request is capped at MAX_INITIAL_PEOPLE person-type results
+ * per search() call, regardless of how many sources are active or how many
+ * each returns — enforced here after merging, not left to each provider's
+ * own prompt compliance.
  */
 const GroundingResearchResult = require("../models/GroundingResearchResult");
 const Organization = require("../models/Organization");
 const vertexGroundingService = require("./vertexGroundingService");
+const openaiWebSearchService = require("./openaiWebSearchService");
 const peopleDataLabsService = require("./peopleDataLabsService");
 const agentExecutionService = require("./agentExecutionService");
 const { ingestContacts } = require("./contactIngestionService");
 const auditService = require("./auditService");
 
 const MAX_RANK_BATCH = 20;
+const MAX_INITIAL_PEOPLE = 5;
+const SOURCES = ["vertex", "openai_web_search", "both"];
 
 const RANK_RESPONSE_SCHEMA = {
   type: "object",
@@ -72,28 +92,101 @@ function fingerprintKey({ type, name, organizationDomain }) {
 }
 
 /**
- * Runs a real, billed Vertex Grounding call and stages every result into
- * the review queue. Never creates a Contact/Organization/lead — only
- * pending_review rows. Merges into an existing open (pending_review) row
- * for the same entity instead of duplicating it.
+ * Merges results from multiple discovery sources by the same
+ * type+name+domain key deduplicateAndCorroborate() uses, unioning their
+ * evidenceUrls and `providers`. Confidence is raised to "corroborated" when
+ * either two independent citation domains agree (already true for a single
+ * source) OR two independent PROVIDERS both found the same entity — the
+ * latter is stronger corroboration than two links from one search.
  */
-async function search({ workspaceId, userId, auth, query, resultTypes, correlationId = "" }, dependencies = {}) {
+function mergeAcrossSources(sourcedResults) {
+  const byKey = new Map();
+  for (const { result, provider } of sourcedResults) {
+    const key = fingerprintKey(result);
+    if (!byKey.has(key)) { byKey.set(key, { ...result, providers: new Set([provider]), anyCorroborated: result.confidence === "corroborated" }); continue; }
+    const existing = byKey.get(key);
+    existing.evidenceUrls = [...new Set([...(existing.evidenceUrls || []), ...(result.evidenceUrls || [])])];
+    existing.summary = existing.summary || result.summary;
+    existing.providers.add(provider);
+    if (result.confidence === "corroborated") existing.anyCorroborated = true;
+  }
+  return [...byKey.values()].map(({ anyCorroborated, ...row }) => {
+    const domains = new Set((row.evidenceUrls || []).map((url) => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return ""; } }).filter(Boolean));
+    // Preserve a source's own already-corroborated verdict (e.g. that
+    // provider's single search already saw 2 independent citation domains)
+    // rather than recomputing purely from THIS merge's inputs, which could
+    // otherwise wrongly downgrade it back to single_source.
+    return { ...row, providers: [...row.providers], confidence: (anyCorroborated || domains.size >= 2 || row.providers.length >= 2) ? "corroborated" : "single_source" };
+  });
+}
+
+/**
+ * Runs real, billed discovery calls against whichever source(s) `source`
+ * selects ("vertex" | "openai_web_search" | "both", default "both") and
+ * stages every merged result into the review queue. Never creates a
+ * Contact/Organization/lead — only pending_review rows. Merges into an
+ * existing open (pending_review) row for the same entity instead of
+ * duplicating it. Caps the number of NEW person-type results this call can
+ * stage at MAX_INITIAL_PEOPLE, regardless of source count.
+ */
+async function search({ workspaceId, userId, auth, query, resultTypes, source = "both", correlationId = "" }, dependencies = {}) {
   const Model = dependencies.GroundingResearchResult || GroundingResearchResult;
   const vertex = dependencies.vertexGroundingService || vertexGroundingService;
-  const { results, groundingCitations } = await vertex.groundedSearch({ workspaceId, userId, query, resultTypes, correlationId }, dependencies);
+  const openaiWebSearch = dependencies.openaiWebSearchService || openaiWebSearchService;
+  const selectedSource = SOURCES.includes(source) ? source : "both";
 
-  const existing = await Model.find({ workspaceId, status: "pending_review" }).select("type name organizationDomain evidenceUrls confidence").lean();
+  const sourcedResults = [];
+  const sourceErrors = [];
+  let groundingCitations = [];
+
+  if (selectedSource === "vertex" || selectedSource === "both") {
+    try {
+      const outcome = await vertex.groundedSearch({ workspaceId, userId, query, resultTypes, correlationId }, dependencies);
+      for (const result of outcome.results) sourcedResults.push({ result, provider: "vertex_grounding" });
+      groundingCitations = groundingCitations.concat(outcome.groundingCitations || []);
+    } catch (error) {
+      if (selectedSource === "vertex") throw error;
+      sourceErrors.push({ source: "vertex_grounding", code: error.code || "VERTEX_GROUNDING_FAILED", message: error.message });
+    }
+  }
+  if (selectedSource === "openai_web_search" || selectedSource === "both") {
+    try {
+      const outcome = await openaiWebSearch.groundedSearch({ workspaceId, userId, query, resultTypes, maxResults: MAX_INITIAL_PEOPLE, correlationId }, dependencies);
+      for (const result of outcome.results) sourcedResults.push({ result, provider: "openai_web_search" });
+      groundingCitations = groundingCitations.concat(outcome.groundingCitations || []);
+    } catch (error) {
+      if (selectedSource === "openai_web_search") throw error;
+      sourceErrors.push({ source: "openai_web_search", code: error.code || "OPENAI_WEB_SEARCH_FAILED", message: error.message });
+    }
+  }
+  if (!sourcedResults.length && sourceErrors.length) {
+    const error = new Error("Both public-web sources failed for this search.");
+    error.code = "GROUNDING_ALL_SOURCES_FAILED";
+    error.sourceErrors = sourceErrors;
+    throw error;
+  }
+
+  const merged = mergeAcrossSources(sourcedResults);
+  // Hard cap regardless of provider prompt compliance — "the initial
+  // request" for people stays at MAX_INITIAL_PEOPLE no matter how many
+  // sources contributed or how many each returned.
+  const people = merged.filter((row) => row.type === "person").slice(0, MAX_INITIAL_PEOPLE);
+  const nonPeople = merged.filter((row) => row.type !== "person");
+  const combinedResults = [...people, ...nonPeople];
+
+  const existing = await Model.find({ workspaceId, status: "pending_review" }).select("type name organizationDomain evidenceUrls confidence providers").lean();
   const existingByKey = new Map(existing.map((row) => [fingerprintKey(row), row]));
 
-  let created = 0, merged = 0;
-  for (const result of results) {
+  let created = 0, mergedCount = 0;
+  for (const result of combinedResults) {
     const key = fingerprintKey(result);
     const match = existingByKey.get(key);
     if (match) {
       const mergedUrls = [...new Set([...(match.evidenceUrls || []), ...(result.evidenceUrls || [])])];
+      const mergedProviders = [...new Set([...(match.providers || []), ...(result.providers || [])])];
       // eslint-disable-next-line no-await-in-loop
-      await Model.updateOne({ _id: match._id }, { $set: { evidenceUrls: mergedUrls, confidence: result.confidence === "corroborated" || match.confidence === "corroborated" ? "corroborated" : "single_source", summary: result.summary || match.summary } });
-      merged += 1;
+      await Model.updateOne({ _id: match._id }, { $set: { evidenceUrls: mergedUrls, confidence: result.confidence === "corroborated" || match.confidence === "corroborated" ? "corroborated" : "single_source", summary: result.summary || match.summary, providers: mergedProviders } });
+      mergedCount += 1;
       continue;
     }
     // eslint-disable-next-line no-await-in-loop
@@ -101,12 +194,12 @@ async function search({ workspaceId, userId, auth, query, resultTypes, correlati
       workspaceId, query: String(query || "").slice(0, 2000), type: result.type, name: result.name,
       organizationName: result.organizationName, organizationDomain: result.organizationDomain,
       summary: result.summary, evidenceUrls: result.evidenceUrls, confidence: result.confidence,
-      status: "pending_review", createdByUserId: userId, correlationId, providers: ["vertex_grounding"],
+      status: "pending_review", createdByUserId: userId, correlationId, providers: result.providers,
     });
     created += 1;
   }
 
-  return { created, merged, total: results.length, groundingCitations };
+  return { created, merged: mergedCount, total: combinedResults.length, source: selectedSource, groundingCitations, sourceErrors };
 }
 
 async function listResults({ workspaceId, status, type }, dependencies = {}) {

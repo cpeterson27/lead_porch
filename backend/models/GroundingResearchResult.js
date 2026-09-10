@@ -6,18 +6,26 @@
  * saves or dismisses it — nothing here ever becomes a CRM contact,
  * organization, or lead on its own.
  *
- * Discovery itself currently has exactly one live public-web source, Vertex
- * AI Grounding (`providers` always includes "vertex_grounding" for a
- * discovered row). PDL and OpenAI/Jarvis never originate a row — they only
- * ever act on one Vertex already found, evidence-required:
+ * Discovery has two independent, optional public-web DISCOVERY sources —
+ * either, both, or neither may be enabled — merged and deduplicated into
+ * this one queue by services/vertexGroundingDiscoveryService.js:
+ *   - "vertex_grounding": Vertex AI Gemini + Google Search grounding
+ *     (services/vertexGroundingService.js).
+ *   - "openai_web_search": OpenAI's Responses API `web_search` hosted tool
+ *     (services/openaiWebSearchService.js) — a different API from the Chat
+ *     Completions API OpenAI/Jarvis chat uses elsewhere in this app.
+ * PDL and OpenAI/Jarvis never originate a row — they only ever act on one a
+ * discovery source already found, evidence-required:
  *   - PDL (people_data_labs): explicit, per-row structured enrichment
  *     (verified email/title/company) via services/peopleDataLabsService.js.
- *   - OpenAI/Jarvis: explicit, batch program-fit evaluation/ranking via the
- *     same agent system every other AI feature in this app already uses
- *     (services/agentExecutionService.js) — never web search (see
- *     services/vertexGroundingDiscoveryService.js's module header for why).
- * `providers` records which of these actually touched a row, for real
- * provenance instead of an assumed single source.
+ *   - OpenAI/Jarvis ("openai_jarvis"): explicit, batch program-fit
+ *     evaluation/ranking via the same agent system every other AI feature in
+ *     this app already uses (services/agentExecutionService.js) — planning
+ *     and qualification only, never a discovery/search source.
+ * `providers` records which of these actually touched a row (a row found by
+ * both discovery sources carries both, e.g. corroborated evidence from two
+ * independent public-web providers), for real provenance instead of an
+ * assumed single source.
  */
 const mongoose = require("mongoose");
 const workspacePlugin = require("../tenancy/workspacePlugin");
@@ -37,7 +45,7 @@ const groundingResearchResultSchema = new mongoose.Schema({
   savedContactId: { type: mongoose.Schema.Types.ObjectId, ref: "Contact", default: null },
   savedOrganizationId: { type: mongoose.Schema.Types.ObjectId, ref: "Organization", default: null },
   // Real provenance: which provider(s) actually produced/touched this row.
-  providers: { type: [String], enum: ["vertex_grounding", "people_data_labs", "openai_jarvis"], default: [] },
+  providers: { type: [String], enum: ["vertex_grounding", "openai_web_search", "people_data_labs", "openai_jarvis"], default: [] },
   pdlEnrichment: {
     attempted: { type: Boolean, default: false },
     matched: { type: Boolean, default: false },
