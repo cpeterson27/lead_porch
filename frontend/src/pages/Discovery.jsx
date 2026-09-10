@@ -276,7 +276,9 @@ export default function Discovery() {
   const [groundingSourceErrors, setGroundingSourceErrors] = useState([]);
   const [suggestedSearches, setSuggestedSearches] = useState([]);
   const [leadGenPrograms, setLeadGenPrograms] = useState([]);
-  const [leadGenProgramFilter, setLeadGenProgramFilter] = useState("");
+  // "" = nothing chosen yet (the required default); "all" = the "All
+  // programs" pill; otherwise a specific program's noteId.
+  const [selectedProgramPillKey, setSelectedProgramPillKey] = useState("");
   const [selectedProgramNoteId, setSelectedProgramNoteId] = useState("");
   const [programSearchSuggestions, setProgramSearchSuggestions] = useState([]);
   const [programSuggestionsLoading, setProgramSuggestionsLoading] = useState(false);
@@ -390,8 +392,8 @@ export default function Discovery() {
   };
 
   const selectLeadGenProgram = async (program) => {
+    setSelectedProgramPillKey(program.noteId);
     setSelectedProgramNoteId(program.noteId);
-    setLeadGenProgramFilter(program.title);
     setProgramSearchSuggestions([]);
     setProgramSuggestionsLoading(true);
     try {
@@ -402,6 +404,12 @@ export default function Discovery() {
     } finally {
       setProgramSuggestionsLoading(false);
     }
+  };
+
+  const selectAllPrograms = () => {
+    setSelectedProgramPillKey("all");
+    setSelectedProgramNoteId("");
+    setProgramSearchSuggestions([]);
   };
 
   const proposeLeadGenSearch = async () => {
@@ -1227,27 +1235,28 @@ export default function Discovery() {
         </p>
         {leadGenPrograms.length ? (
           <div className="leadgen-program-selector">
-            <span>All {leadGenPrograms.length} approved programs — search to pick one</span>
-            <input
-              type="text"
-              value={leadGenProgramFilter}
-              onChange={(event) => { setLeadGenProgramFilter(event.target.value); setSelectedProgramNoteId(""); setProgramSearchSuggestions([]); }}
-              placeholder="Type to filter approved programs…"
-            />
-            {leadGenProgramFilter && !selectedProgramNoteId ? (
-              <div className="leadgen-program-options">
-                {leadGenPrograms
-                  .filter((program) => program.title.toLowerCase().includes(leadGenProgramFilter.toLowerCase()))
-                  .map((program) => (
-                    <button key={program.noteId} type="button" onClick={() => selectLeadGenProgram(program)}>
-                      {program.title}
-                    </button>
-                  ))}
-                {!leadGenPrograms.some((program) => program.title.toLowerCase().includes(leadGenProgramFilter.toLowerCase())) ? (
-                  <span className="people-preview-footnote">No approved program matches &quot;{leadGenProgramFilter}&quot;.</span>
-                ) : null}
-              </div>
-            ) : null}
+            <span>Choose an approved program ({leadGenPrograms.length})</span>
+            <div className="leadgen-program-pills">
+              <button
+                type="button"
+                className={`leadgen-program-pill${selectedProgramPillKey === "all" ? " is-selected" : ""}`}
+                aria-pressed={selectedProgramPillKey === "all"}
+                onClick={selectAllPrograms}
+              >
+                All programs
+              </button>
+              {leadGenPrograms.map((program) => (
+                <button
+                  key={program.noteId}
+                  type="button"
+                  className={`leadgen-program-pill${selectedProgramPillKey === program.noteId ? " is-selected" : ""}`}
+                  aria-pressed={selectedProgramPillKey === program.noteId}
+                  onClick={() => selectLeadGenProgram(program)}
+                >
+                  {program.title}
+                </button>
+              ))}
+            </div>
             {selectedProgramNoteId ? (
               <div className="grounding-suggested-searches">
                 <span>Up to 5 suggested searches for this program — edit any before proposing</span>

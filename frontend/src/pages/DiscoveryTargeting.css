@@ -570,34 +570,31 @@
   font-weight: 800;
 }
 
-.leadgen-program-selector > input {
-  border: 1px solid #ccd7d2;
-  border-radius: 10px;
-  font: inherit;
-  padding: 0.6rem 0.8rem;
-}
-
-.leadgen-program-options {
+.leadgen-program-pills {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-height: 220px;
-  overflow-y: auto;
-  border: 1px solid #ded7ca;
-  border-radius: 10px;
-  padding: 4px;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
-.leadgen-program-options button {
-  text-align: left;
-  border: none;
-  background: transparent;
-  padding: 0.5rem 0.6rem;
-  border-radius: 6px;
-  cursor: pointer;
+.leadgen-program-pill {
+  border: 1px solid #ccd7d2;
+  background: #fff;
+  color: #263f36;
   font: inherit;
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
 }
 
-.leadgen-program-options button:hover {
-  background: #f4f1ea;
+.leadgen-program-pill:hover {
+  border-color: #173f36;
+}
+
+.leadgen-program-pill.is-selected {
+  background: #173f36;
+  border-color: #173f36;
+  color: #fff;
 }
