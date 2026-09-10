@@ -3,7 +3,6 @@
  * Test AI-powered insights and recommendations
  */
 
-const mongoose = require("mongoose");
 require("dotenv").config();
 const Organization = require("./models/Organization");
 const OrganizationRelationship = require("./models/OrganizationRelationship");
@@ -11,6 +10,7 @@ const Audience = require("./models/Audience");
 const Contact = require("./models/Contact");
 const MarketingCampaign = require("./models/MarketingCampaign");
 const jarvisService = require("./services/jarvisService");
+const { connectTestDatabase } = require("./test-setup/testDatabase");
 
 async function runTests() {
   try {
@@ -18,8 +18,9 @@ async function runTests() {
     console.log("Jarvis Assistant Tests");
     console.log("════════════════════════════════════════════════\n");
 
-    // Connect to MongoDB
-    await mongoose.connect(process.env.MONGO_URI);
+    // Connect to the isolated TEST database — never MONGO_URI (production).
+    // See test-setup/testDatabase.js.
+    await connectTestDatabase();
     console.log("✓ Connected to MongoDB\n");
 
     // Cleanup old test data

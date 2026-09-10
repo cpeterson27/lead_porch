@@ -7,6 +7,17 @@ function enforcementEnabled() {
   return String(process.env.TENANT_QUERY_ENFORCEMENT || "enabled").toLowerCase() !== "disabled";
 }
 
+/** The database name MONGO_URI (production) resolves to, or null if unparseable/unset. */
+function productionDbName() {
+  if (!process.env.MONGO_URI) return null;
+  try {
+    const normalized = process.env.MONGO_URI.replace(/^mongodb\+srv:\/\//, "https://").replace(/^mongodb:\/\//, "https://");
+    return new URL(normalized).pathname.replace(/^\//, "").split("?")[0] || null;
+  } catch {
+    return null;
+  }
+}
+
 function scopeWorkspaceUpdate(update, workspaceId) {
   if (!update) return update;
   if (update.$set) {
@@ -39,6 +50,38 @@ function workspacePlugin(schema) {
     const update = this.getUpdate?.();
     if (!update) return;
     this.setUpdate(scopeWorkspaceUpdate(update, workspaceId));
+  });
+
+  // On 2026-09-10, test-jarvis.js/test-jarvis-actions.js ran
+  // Contact/Organization/OrganizationRelationship/Audience/
+  // MarketingCampaign.deleteMany({}) with no filter at all, outside any
+  // request context, against the production database — wiping every
+  // workspace's data in those collections at once. This refuses that exact
+  // pattern against production specifically: an empty-filter bulk write
+  // with no workspace context is almost never legitimate application
+  // behavior (real code always scopes by workspace, by ID, or runs inside
+  // runWithWorkspace()). A connection that's positively confirmed to be a
+  // DIFFERENT database than MONGO_URI (e.g. a real, separate test database)
+  // is exempt — wiping its own collections for test hygiene is legitimate
+  // there. Any case where that can't be positively confirmed fails closed
+  // (refuses), rather than assuming safety.
+  schema.pre(["deleteMany", "updateMany"], function refuseUnscopedBulkWrite() {
+    const workspaceId = currentWorkspaceId();
+    const conditions = this.getQuery();
+    const hasAnyCondition = conditions && Object.keys(conditions).length > 0;
+    if (workspaceId || hasAnyCondition || !enforcementEnabled()) return;
+
+    const activeDbName = this.model.db?.name || this.model.db?.databaseName || "";
+    const prodDbName = productionDbName();
+    const confirmedDifferentDatabase = Boolean(prodDbName) && Boolean(activeDbName) && activeDbName !== prodDbName;
+    if (confirmedDifferentDatabase) return;
+
+    throw new Error(
+      `Refusing to run ${this.op}({}) with no filter and no workspace context on ${this.model.modelName} ` +
+      `(database "${activeDbName || "unknown"}"). This is almost always a bug (e.g. unscoped test cleanup) ` +
+      "that would wipe every workspace's data at once. Pass an explicit filter, wrap the call in " +
+      "runWithWorkspace(), or connect to a database other than MONGO_URI's for tests.",
+    );
   });
 
   schema.pre("aggregate", function scopeWorkspaceAggregate() {
