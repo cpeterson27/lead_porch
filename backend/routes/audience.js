@@ -653,6 +653,15 @@ router.post("/research/vertex-grounding/search", async (req, res) => {
     return res.status(error.httpStatus || (error.code ? 400 : 502)).json({ success: false, error: error.message || "Public-web search failed", code: error.code || "GROUNDING_SEARCH_FAILED", sourceErrors: error.sourceErrors || [] });
   }
 });
+/** Editable, one-click search suggestions derived (no AI call) from this workspace's own approved Offers & Programs Knowledge Center notes. */
+router.get("/research/vertex-grounding/suggested-searches", async (req, res) => {
+  try {
+    const data = await vertexGroundingDiscoveryService.getSuggestedSearches({ workspaceId: req.auth.workspaceId });
+    return res.json({ success: true, data });
+  } catch (_error) {
+    return res.status(500).json({ success: false, error: "Unable to load suggested searches." });
+  }
+});
 router.get("/research/vertex-grounding/results", async (req, res) => {
   try {
     const data = await vertexGroundingDiscoveryService.listResults({ workspaceId: req.auth.workspaceId, status: req.query.status, type: req.query.type });

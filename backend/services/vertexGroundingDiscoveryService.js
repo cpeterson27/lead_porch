@@ -52,19 +52,34 @@
  * per search() call, regardless of how many sources are active or how many
  * each returns — enforced here after merging, not left to each provider's
  * own prompt compliance.
+ *
+ * Every "person" result must also carry a verifiable evidenceDate within
+ * PERSON_FRESHNESS_DAYS (default 90) — enforced here, independently of
+ * whatever each provider's own prompt asked for — after a real report of
+ * "buyer-intent" search results surfacing posts over a year old.
  */
 const GroundingResearchResult = require("../models/GroundingResearchResult");
 const Organization = require("../models/Organization");
+const JarvisMemoryNote = require("../models/JarvisMemoryNote");
 const vertexGroundingService = require("./vertexGroundingService");
 const openaiWebSearchService = require("./openaiWebSearchService");
 const peopleDataLabsService = require("./peopleDataLabsService");
 const agentExecutionService = require("./agentExecutionService");
 const { ingestContacts } = require("./contactIngestionService");
 const auditService = require("./auditService");
+const clean = (value, length) => String(value || "").trim().slice(0, length);
 
 const MAX_RANK_BATCH = 20;
 const MAX_INITIAL_PEOPLE = 5;
+const MAX_SUGGESTED_SEARCHES = 5;
 const SOURCES = ["vertex", "openai_web_search", "both"];
+// The SERVER-SIDE freshness cutoff for "person" results — independent of
+// whatever each provider's own prompt asked for (see the module headers in
+// vertexGroundingService.js / openaiWebSearchService.js). A stale or
+// undated buyer-intent post is excluded here regardless of provider
+// compliance. Same env var both providers read, so one flag tunes both
+// layers consistently.
+const PERSON_FRESHNESS_DAYS = Number(process.env.DISCOVERY_PERSON_FRESHNESS_DAYS) || 90;
 
 const RANK_RESPONSE_SCHEMA = {
   type: "object",
@@ -75,7 +90,10 @@ const RANK_RESPONSE_SCHEMA = {
         type: "object",
         properties: {
           resultId: { type: "string" },
-          fitScore: { type: "number" },
+          // Explicitly 0-100, not a 1-10 rating — an unscaled prompt let the
+          // model default to a 0-10-ish score that this code then displayed
+          // as "N/100", making every real fit look terrible.
+          fitScore: { type: "number", description: "Integer from 0 to 100 (never a 0-10 scale) — 100 is a perfect program fit, 0 is no fit at all." },
           fitReasons: { type: "array", items: { type: "string" } },
         },
         required: ["resultId", "fitScore", "fitReasons"],
@@ -167,14 +185,22 @@ async function search({ workspaceId, userId, auth, query, resultTypes, source = 
   }
 
   const merged = mergeAcrossSources(sourcedResults);
+  // SERVER-SIDE freshness validation — independent of provider prompt
+  // compliance. A "person" result without a verifiable evidenceDate, or
+  // dated older than PERSON_FRESHNESS_DAYS, is excluded before it ever
+  // reaches the review queue. Non-person types are unaffected.
+  const cutoffDate = new Date(Date.now() - PERSON_FRESHNESS_DAYS * 24 * 60 * 60 * 1000);
+  const isFreshPerson = (row) => row.type !== "person" || (row.evidenceDate instanceof Date && row.evidenceDate >= cutoffDate);
+  const excludedForFreshness = merged.filter((row) => !isFreshPerson(row)).length;
+  const freshResults = merged.filter(isFreshPerson);
   // Hard cap regardless of provider prompt compliance — "the initial
   // request" for people stays at MAX_INITIAL_PEOPLE no matter how many
   // sources contributed or how many each returned.
-  const people = merged.filter((row) => row.type === "person").slice(0, MAX_INITIAL_PEOPLE);
-  const nonPeople = merged.filter((row) => row.type !== "person");
+  const people = freshResults.filter((row) => row.type === "person").slice(0, MAX_INITIAL_PEOPLE);
+  const nonPeople = freshResults.filter((row) => row.type !== "person");
   const combinedResults = [...people, ...nonPeople];
 
-  const existing = await Model.find({ workspaceId, status: "pending_review" }).select("type name organizationDomain evidenceUrls confidence providers").lean();
+  const existing = await Model.find({ workspaceId, status: "pending_review" }).select("type name organizationDomain evidenceUrls evidenceDate confidence providers").lean();
   const existingByKey = new Map(existing.map((row) => [fingerprintKey(row), row]));
 
   let created = 0, mergedCount = 0;
@@ -184,8 +210,10 @@ async function search({ workspaceId, userId, auth, query, resultTypes, source = 
     if (match) {
       const mergedUrls = [...new Set([...(match.evidenceUrls || []), ...(result.evidenceUrls || [])])];
       const mergedProviders = [...new Set([...(match.providers || []), ...(result.providers || [])])];
+      const matchEvidenceDate = match.evidenceDate ? new Date(match.evidenceDate) : null;
+      const mergedEvidenceDate = result.evidenceDate && (!matchEvidenceDate || result.evidenceDate > matchEvidenceDate) ? result.evidenceDate : matchEvidenceDate;
       // eslint-disable-next-line no-await-in-loop
-      await Model.updateOne({ _id: match._id }, { $set: { evidenceUrls: mergedUrls, confidence: result.confidence === "corroborated" || match.confidence === "corroborated" ? "corroborated" : "single_source", summary: result.summary || match.summary, providers: mergedProviders } });
+      await Model.updateOne({ _id: match._id }, { $set: { evidenceUrls: mergedUrls, evidenceDate: mergedEvidenceDate, confidence: result.confidence === "corroborated" || match.confidence === "corroborated" ? "corroborated" : "single_source", summary: result.summary || match.summary, providers: mergedProviders } });
       mergedCount += 1;
       continue;
     }
@@ -193,13 +221,13 @@ async function search({ workspaceId, userId, auth, query, resultTypes, source = 
     await Model.create({
       workspaceId, query: String(query || "").slice(0, 2000), type: result.type, name: result.name,
       organizationName: result.organizationName, organizationDomain: result.organizationDomain,
-      summary: result.summary, evidenceUrls: result.evidenceUrls, confidence: result.confidence,
+      summary: result.summary, evidenceUrls: result.evidenceUrls, evidenceDate: result.evidenceDate || null, confidence: result.confidence,
       status: "pending_review", createdByUserId: userId, correlationId, providers: result.providers,
     });
     created += 1;
   }
 
-  return { created, merged: mergedCount, total: combinedResults.length, source: selectedSource, groundingCitations, sourceErrors };
+  return { created, merged: mergedCount, total: combinedResults.length, source: selectedSource, groundingCitations, sourceErrors, excludedForFreshness, personFreshnessDays: PERSON_FRESHNESS_DAYS };
 }
 
 async function listResults({ workspaceId, status, type }, dependencies = {}) {
@@ -207,7 +235,29 @@ async function listResults({ workspaceId, status, type }, dependencies = {}) {
   const filter = { workspaceId };
   if (status) filter.status = status;
   if (type) filter.type = type;
-  return Model.find(filter).sort({ createdAt: -1 }).limit(200).lean();
+  const rows = await Model.find(filter).sort({ createdAt: -1 }).limit(200).lean();
+  const now = Date.now();
+  // Age is computed at read time, never stored, so it's always accurate
+  // relative to "now" rather than whatever moment the row was last written.
+  return rows.map((row) => ({ ...row, evidenceAgeDays: row.evidenceDate ? Math.max(0, Math.floor((now - new Date(row.evidenceDate).getTime()) / 86400000)) : null }));
+}
+
+/**
+ * Editable, one-click starting points for a search — derived deterministically
+ * (no AI call, no cost) from this workspace's own APPROVED Offers & Programs
+ * Knowledge Center notes, so a suggestion always reflects a real, reviewed
+ * program rather than a guess. Purely a convenience prefill for the query
+ * textarea; running the suggested text still goes through the normal
+ * search() pipeline (5-person cap, freshness cutoff, review queue) unchanged.
+ */
+async function getSuggestedSearches({ workspaceId }, dependencies = {}) {
+  const NoteModel = dependencies.JarvisMemoryNote || JarvisMemoryNote;
+  const notes = await NoteModel.find({ workspaceId, category: "offers-programs", status: "approved" }).select("title").sort({ updatedAt: -1 }).limit(MAX_SUGGESTED_SEARCHES).lean();
+  return notes.map((note) => ({
+    noteId: String(note._id),
+    title: clean(note.title, 200),
+    query: `Find people publicly discussing recent, active interest in "${clean(note.title, 160)}" — for example asking questions about it, evaluating whether to join, or comparing it to alternatives.`,
+  }));
 }
 
 /**
@@ -277,6 +327,15 @@ async function saveResult({ workspaceId, userId, resultId }, dependencies = {}) 
  * creates a row without at least one evidenceUrl); PDL only ever adds
  * structured detail (a verified email, when it finds a confident match) on
  * top of a publicly-evidenced find, never originates one.
+ *
+ * Always leaves a PERSISTED, explicit outcome — matched, no-match, OR error
+ * — on the row before returning. A PDL call that throws (disabled,
+ * insufficient corroborating identity inputs, rate limited, provider error,
+ * etc.) previously left the row completely untouched: nothing was saved,
+ * so after a page refresh the attempt looked like it had never happened.
+ * Once a real attempt (of any outcome) is persisted, a second call is
+ * rejected server-side — belt-and-suspenders against a double-click firing
+ * two overlapping PDL calls (billed per call) for the same row.
  */
 async function enrichWithPdl({ workspaceId, userId, resultId, correlationId = "" }, dependencies = {}) {
   const Model = dependencies.GroundingResearchResult || GroundingResearchResult;
@@ -285,21 +344,33 @@ async function enrichWithPdl({ workspaceId, userId, resultId, correlationId = ""
   if (!row) { const error = new Error("Grounding result not found"); error.code = "GROUNDING_RESULT_NOT_FOUND"; throw error; }
   if (row.type !== "person") { const error = new Error("PDL enrichment only applies to person results"); error.code = "GROUNDING_RESULT_NOT_A_PERSON"; throw error; }
   if (row.status !== "pending_review") { const error = new Error("This result has already been reviewed"); error.code = "GROUNDING_RESULT_ALREADY_REVIEWED"; throw error; }
+  if (row.pdlEnrichment?.attempted) { const error = new Error("PDL enrichment has already been attempted for this result"); error.code = "GROUNDING_RESULT_ALREADY_ENRICHED"; throw error; }
 
-  const outcome = await pdl.enrichPerson({ workspaceId, userId, inputs: { name: row.name, company: row.organizationName }, correlationId });
-  row.pdlEnrichment = {
-    attempted: true,
-    matched: outcome.matched,
-    likelihood: outcome.likelihood,
-    email: outcome.matched ? outcome.person?.email || "" : "",
-    emailState: outcome.matched ? outcome.person?.emailState || "" : "",
-    enrichedAt: new Date(),
-  };
-  if (outcome.matched && !row.providers.includes("people_data_labs")) row.providers.push("people_data_labs");
-  await row.save();
-
-  await auditService.record({ workspaceId, actorUserId: userId, action: "provider.request", targetType: "GroundingResearchResult", targetId: row._id, after: { pdlMatched: outcome.matched }, provider: "people_data_labs", success: true });
-  return row;
+  try {
+    const outcome = await pdl.enrichPerson({ workspaceId, userId, inputs: { name: row.name, company: row.organizationName }, correlationId });
+    row.pdlEnrichment = {
+      attempted: true,
+      matched: outcome.matched,
+      likelihood: outcome.likelihood,
+      email: outcome.matched ? outcome.person?.email || "" : "",
+      emailState: outcome.matched ? outcome.person?.emailState || "" : "",
+      enrichedAt: new Date(),
+      error: false,
+      errorMessage: "",
+    };
+    if (outcome.matched && !row.providers.includes("people_data_labs")) row.providers.push("people_data_labs");
+    await row.save();
+    await auditService.record({ workspaceId, actorUserId: userId, action: "provider.request", targetType: "GroundingResearchResult", targetId: row._id, after: { pdlMatched: outcome.matched }, provider: "people_data_labs", success: true });
+    return row;
+  } catch (error) {
+    row.pdlEnrichment = {
+      attempted: true, matched: false, likelihood: null, email: "", emailState: "", enrichedAt: new Date(),
+      error: true, errorMessage: clean(error.message || "PDL enrichment failed", 300),
+    };
+    await row.save();
+    await auditService.record({ workspaceId, actorUserId: userId, action: "provider.request", targetType: "GroundingResearchResult", targetId: row._id, after: { pdlMatched: false, pdlErrorCode: error.code || "PDL_ENRICHMENT_FAILED" }, provider: "people_data_labs", success: false });
+    return row;
+  }
 }
 
 /**
@@ -323,7 +394,7 @@ async function rankForProgramFit({ workspaceId, userId, auth, resultIds, correla
   const candidates = rows.map((row) => ({ resultId: String(row._id), type: row.type, name: row.name, organizationName: row.organizationName, summary: row.summary, evidenceUrls: row.evidenceUrls }));
   const result = await runAgent({
     workspaceId, userId, auth, agent: "lead", task: "rank_discovery_candidates_for_program_fit", correlationId,
-    operationalContext: `Evaluate how well each of these publicly-discovered Discovery candidates fits our coaching program, using the approved program/ICP knowledge already provided to you. Base every score and reason strictly on the evidence given for that candidate below — never invent facts not present. A candidate with weak or no evidence for program fit should score low, not be guessed generously.\n\nCandidates:\n${JSON.stringify(candidates, null, 2)}`,
+    operationalContext: `Evaluate how well each of these publicly-discovered Discovery candidates fits our coaching program, using the approved program/ICP knowledge already provided to you. Base every score and reason strictly on the evidence given for that candidate below — never invent facts not present. A candidate with weak or no evidence for program fit should score low, not be guessed generously.\n\nScore fitScore on a 0 to 100 scale — NOT 0 to 10. 100 means a perfect program fit, 0 means no fit at all. For example, a strong fit should score in the 70-95 range, a weak fit in the 5-30 range; never return a bare single digit like "8" to mean "80".\n\nCandidates:\n${JSON.stringify(candidates, null, 2)}`,
     input: { candidateCount: candidates.length },
     options: { responseSchema: RANK_RESPONSE_SCHEMA, schemaName: "discovery_program_fit_ranking" },
   });
@@ -354,4 +425,4 @@ async function dismissResult({ workspaceId, userId, resultId }, dependencies = {
   return row;
 }
 
-module.exports = { search, listResults, saveResult, dismissResult, enrichWithPdl, rankForProgramFit };
+module.exports = { search, listResults, saveResult, dismissResult, enrichWithPdl, rankForProgramFit, getSuggestedSearches };

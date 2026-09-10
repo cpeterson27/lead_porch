@@ -15,7 +15,19 @@
 // community/event honestly stay in the review queue (no invented CRM entity
 // type); PDL enrichment and OpenAI/Jarvis ranking only ever ACT ON an
 // already-evidenced row (never originate one), record real provenance, and
-// never auto-run. Also asserts, as a live regression guard, that
+// never auto-run. Also covers three fixes from a later focused pass: (1) a
+// "person" result missing a verifiable evidenceDate, or dated outside the
+// 90-day freshness cutoff, is excluded server-side regardless of what the
+// provider returned, and evidenceAgeDays is computed correctly at read
+// time; (2) a failed PDL call (disabled, insufficient inputs, etc.) now
+// persists an explicit "attempted, error" outcome instead of leaving the
+// row untouched (the reported "no visible or persisted outcome" bug), and a
+// second attempt on an already-attempted row is refused server-side; (3)
+// the program-fit ranking prompt now explicitly requests a 0-100 scale,
+// fixing a reported 0-10-vs-/100 display mismatch caused by an unscaled
+// prompt; and suggested-search coverage confirming suggestions are derived
+// only from approved Offers & Programs notes, never drafts or other
+// categories. Also asserts, as a live regression guard, that
 // services/llmService.js still calls only the Chat Completions API —
 // confirming the documented claim that this app's OpenAI/Jarvis CHAT
 // integration does not use the Responses API (the separate
@@ -28,6 +40,14 @@ const assert = require("node:assert/strict");
 const mongoose = require("mongoose");
 const vertexGroundingDiscoveryService = require("./services/vertexGroundingDiscoveryService");
 const GroundingResearchResult = require("./models/GroundingResearchResult");
+const JarvisMemoryNote = require("./models/JarvisMemoryNote");
+// A real provider must now supply a verifiable evidenceDate for every
+// "person" result (see the freshness-cutoff coverage below) — this is a
+// fixed recent date well inside the default 90-day window for every mocked
+// "person" result standing in for realistic provider output in search()
+// tests. Rows seeded directly via GroundingResearchResult.create() (bypassing
+// search()) are unaffected and don't need this.
+const RECENT_EVIDENCE_DATE = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
 const Organization = require("./models/Organization");
 const Contact = require("./models/Contact");
 async function testSearchStagesResultsWithoutCreatingAnyLead() {
@@ -36,7 +56,7 @@ async function testSearchStagesResultsWithoutCreatingAnyLead() {
   const vertexGroundingService = {
     groundedSearch: async () => ({
       results: [
-        { type: "person", name: "Jane Owner", organizationName: "Metro REIA", organizationDomain: "metroreia.org", summary: "A local association organizer.", evidenceUrls: ["https://metroreia.org/about"], confidence: "single_source" },
+        { type: "person", name: "Jane Owner", organizationName: "Metro REIA", organizationDomain: "metroreia.org", summary: "A local association organizer.", evidenceUrls: ["https://metroreia.org/about"], confidence: "single_source", evidenceDate: RECENT_EVIDENCE_DATE },
         { type: "organization", name: "Metro REIA", organizationName: "Metro REIA", organizationDomain: "metroreia.org", summary: "A real estate investors association.", evidenceUrls: ["https://metroreia.org"], confidence: "single_source" },
       ],
       groundingCitations: [{ url: "https://metroreia.org/events", title: "Metro REIA Events" }],
@@ -62,7 +82,7 @@ async function testSearchStagesResultsWithoutCreatingAnyLead() {
 async function testRepeatSearchMergesInsteadOfDuplicating() {
   const workspaceId = new mongoose.Types.ObjectId();
   const userId = new mongoose.Types.ObjectId();
-  const firstFind = { type: "person", name: "Jane Owner", organizationName: "Metro REIA", organizationDomain: "metroreia.org", summary: "Organizer.", evidenceUrls: ["https://metroreia.org/about"], confidence: "single_source" };
+  const firstFind = { type: "person", name: "Jane Owner", organizationName: "Metro REIA", organizationDomain: "metroreia.org", summary: "Organizer.", evidenceUrls: ["https://metroreia.org/about"], confidence: "single_source", evidenceDate: RECENT_EVIDENCE_DATE };
   const secondFind = { ...firstFind, evidenceUrls: ["https://news.example.com/jane-owner-profile"], confidence: "corroborated" };
 
   await vertexGroundingDiscoveryService.search({ workspaceId, userId, auth: { workspaceId: String(workspaceId) }, query: "q1", resultTypes: ["person"] }, { vertexGroundingService: { groundedSearch: async () => ({ results: [firstFind], groundingCitations: [] }) } });
@@ -149,13 +169,13 @@ async function testBothSourcesMergeAndPreserveEachProvidersProvenance() {
   const workspaceId = new mongoose.Types.ObjectId();
   const userId = new mongoose.Types.ObjectId();
   const vertexGroundingService = { groundedSearch: async () => ({
-    results: [{ type: "person", name: "Jane Owner", organizationName: "Metro REIA", organizationDomain: "metroreia.org", summary: "Organizer.", evidenceUrls: ["https://metroreia.org/about"], confidence: "single_source" }],
+    results: [{ type: "person", name: "Jane Owner", organizationName: "Metro REIA", organizationDomain: "metroreia.org", summary: "Organizer.", evidenceUrls: ["https://metroreia.org/about"], confidence: "single_source", evidenceDate: RECENT_EVIDENCE_DATE }],
     groundingCitations: [{ url: "https://metroreia.org/about", title: "About" }],
   }) };
   const openaiWebSearchService = { groundedSearch: async () => ({
     results: [
-      { type: "person", name: "Jane Owner", organizationName: "Metro REIA", organizationDomain: "metroreia.org", summary: "Also found via OpenAI.", evidenceUrls: ["https://news.example.com/jane-owner"], confidence: "single_source" },
-      { type: "person", name: "Sam Second", organizationName: "", organizationDomain: "", summary: "Only OpenAI found this one.", evidenceUrls: ["https://example.com/sam-second"], confidence: "single_source" },
+      { type: "person", name: "Jane Owner", organizationName: "Metro REIA", organizationDomain: "metroreia.org", summary: "Also found via OpenAI.", evidenceUrls: ["https://news.example.com/jane-owner"], confidence: "single_source", evidenceDate: RECENT_EVIDENCE_DATE },
+      { type: "person", name: "Sam Second", organizationName: "", organizationDomain: "", summary: "Only OpenAI found this one.", evidenceUrls: ["https://example.com/sam-second"], confidence: "single_source", evidenceDate: RECENT_EVIDENCE_DATE },
     ],
     groundingCitations: [],
   }) };
@@ -178,7 +198,7 @@ async function testBothSourcesMergeAndPreserveEachProvidersProvenance() {
 async function testSearchCapsInitialPeopleAtFiveRegardlessOfSourceCount() {
   const workspaceId = new mongoose.Types.ObjectId();
   const userId = new mongoose.Types.ObjectId();
-  const makePerson = (n) => ({ type: "person", name: `Person ${n}`, organizationName: "", organizationDomain: "", summary: "", evidenceUrls: [`https://example.com/person-${n}`], confidence: "single_source" });
+  const makePerson = (n) => ({ type: "person", name: `Person ${n}`, organizationName: "", organizationDomain: "", summary: "", evidenceUrls: [`https://example.com/person-${n}`], confidence: "single_source", evidenceDate: RECENT_EVIDENCE_DATE });
   const vertexGroundingService = { groundedSearch: async () => ({ results: [1, 2, 3].map(makePerson), groundingCitations: [] }) };
   const openaiWebSearchService = { groundedSearch: async () => ({ results: [4, 5, 6, 7].map(makePerson), groundingCitations: [] }) };
 
@@ -207,7 +227,7 @@ async function testSingleSourceFailureSurfacesAsAClearErrorWithNoSilentFallback(
 async function testBothModeReportsAPartialSourceFailureInsteadOfHidingIt() {
   const workspaceId = new mongoose.Types.ObjectId();
   const userId = new mongoose.Types.ObjectId();
-  const vertexGroundingService = { groundedSearch: async () => ({ results: [{ type: "person", name: "Jane Owner", organizationName: "", organizationDomain: "", summary: "", evidenceUrls: ["https://example.com/jane"], confidence: "single_source" }], groundingCitations: [] }) };
+  const vertexGroundingService = { groundedSearch: async () => ({ results: [{ type: "person", name: "Jane Owner", organizationName: "", organizationDomain: "", summary: "", evidenceUrls: ["https://example.com/jane"], confidence: "single_source", evidenceDate: RECENT_EVIDENCE_DATE }], groundingCitations: [] }) };
   const openaiWebSearchService = { groundedSearch: async () => { throw Object.assign(new Error("OpenAI Web Search is not enabled."), { code: "OPENAI_WEB_SEARCH_DISABLED" }); } };
 
   const result = await vertexGroundingDiscoveryService.search({ workspaceId, userId, auth: { workspaceId: String(workspaceId) }, query: "q", resultTypes: ["person"], source: "both" }, { vertexGroundingService, openaiWebSearchService });
@@ -217,6 +237,106 @@ async function testBothModeReportsAPartialSourceFailureInsteadOfHidingIt() {
   assert.equal(result.sourceErrors[0].code, "OPENAI_WEB_SEARCH_DISABLED", "a partial failure under 'both' must be reported plainly, not hidden behind a successful-looking response");
 
   await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
+async function testFreshnessCutoffExcludesMissingOrStalePersonEvidence() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const stalePersonDate = new Date(Date.now() - 400 * 24 * 60 * 60 * 1000); // over a year old — the exact real-world bug reported
+  const vertexGroundingService = { groundedSearch: async () => ({
+    results: [
+      { type: "person", name: "Fresh Person", organizationName: "", organizationDomain: "", summary: "Posted this week.", evidenceUrls: ["https://forum.example.com/fresh"], confidence: "single_source", evidenceDate: RECENT_EVIDENCE_DATE },
+      { type: "person", name: "Stale Person", organizationName: "", organizationDomain: "", summary: "Posted last year.", evidenceUrls: ["https://forum.example.com/stale"], confidence: "single_source", evidenceDate: stalePersonDate },
+      { type: "person", name: "Undated Person", organizationName: "", organizationDomain: "", summary: "No date at all.", evidenceUrls: ["https://forum.example.com/undated"], confidence: "single_source", evidenceDate: null },
+      { type: "organization", name: "Metro REIA", organizationName: "Metro REIA", organizationDomain: "metroreia.org", summary: "Evergreen entity, no date required.", evidenceUrls: ["https://metroreia.org"], confidence: "single_source" },
+    ],
+    groundingCitations: [],
+  }) };
+
+  const result = await vertexGroundingDiscoveryService.search({ workspaceId, userId, auth: { workspaceId: String(workspaceId) }, query: "q", resultTypes: ["person", "organization"], source: "vertex" }, { vertexGroundingService });
+  assert.equal(result.created, 2, "only the fresh person and the (date-exempt) organization must be staged");
+  assert.equal(result.excludedForFreshness, 2, "the stale and undated person results must both be counted as excluded");
+  assert.equal(result.personFreshnessDays, 90);
+
+  const names = (await GroundingResearchResult.find({ workspaceId }).lean()).map((row) => row.name).sort();
+  assert.deepEqual(names, ["Fresh Person", "Metro REIA"], "a stale or undated 'person' result must never reach the review queue, regardless of what the provider returned");
+
+  await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
+async function testListResultsComputesEvidenceAgeFromEvidenceDate() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000);
+  await GroundingResearchResult.create({ workspaceId, query: "q", type: "person", name: "Dated Person", evidenceUrls: ["https://example.com"], evidenceDate: tenDaysAgo, status: "pending_review" });
+  await GroundingResearchResult.create({ workspaceId, query: "q", type: "organization", name: "No Date Needed Org", evidenceUrls: ["https://example.com"], status: "pending_review" });
+
+  const rows = await vertexGroundingDiscoveryService.listResults({ workspaceId });
+  const dated = rows.find((row) => row.name === "Dated Person");
+  const org = rows.find((row) => row.name === "No Date Needed Org");
+  assert.equal(dated.evidenceAgeDays, 10, "evidence age must be computed from evidenceDate at read time");
+  assert.equal(org.evidenceAgeDays, null, "a row with no evidenceDate must report a null age, never a fabricated one");
+
+  await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
+async function testPdlEnrichmentPersistsAnExplicitErrorOutcomeInsteadOfVanishing() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const row = await GroundingResearchResult.create({ workspaceId, query: "q", type: "person", name: "No Company Person", evidenceUrls: ["https://example.com"], status: "pending_review", providers: ["vertex_grounding"] });
+  const peopleDataLabsService = { enrichPerson: async () => { const error = new Error("At least two corroborating identity inputs are required"); error.code = "PDL_INSUFFICIENT_INPUTS"; throw error; } };
+
+  const updated = await vertexGroundingDiscoveryService.enrichWithPdl({ workspaceId, userId, resultId: row._id }, { peopleDataLabsService });
+  assert.equal(updated.pdlEnrichment.attempted, true, "a failed PDL call must still leave a persisted attempt — this was the reported bug (no visible or persisted outcome)");
+  assert.equal(updated.pdlEnrichment.error, true);
+  assert.ok(updated.pdlEnrichment.errorMessage.includes("corroborating"), "the real error reason must be persisted, not swallowed");
+  assert.equal(updated.pdlEnrichment.matched, false, "an error must never be reported as a fabricated match");
+
+  const reloaded = await GroundingResearchResult.findById(row._id).lean();
+  assert.equal(reloaded.pdlEnrichment.error, true, "the error outcome must actually be persisted, not just returned transiently");
+
+  await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
+async function testPdlEnrichmentRefusesADuplicateAttemptOnTheSameRow() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const row = await GroundingResearchResult.create({ workspaceId, query: "q", type: "person", name: "Already Tried", organizationName: "Metro REIA", evidenceUrls: ["https://example.com"], status: "pending_review", pdlEnrichment: { attempted: true, matched: false, error: false } });
+  let called = false;
+  await assert.rejects(
+    () => vertexGroundingDiscoveryService.enrichWithPdl({ workspaceId, userId, resultId: row._id }, { peopleDataLabsService: { enrichPerson: async () => { called = true; return { matched: false }; } } }),
+    (error) => error.code === "GROUNDING_RESULT_ALREADY_ENRICHED",
+  );
+  assert.equal(called, false, "a row already attempted must never trigger a second, duplicate-click PDL call");
+
+  await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
+async function testRankForProgramFitPromptExplicitlyRequestsAZeroToHundredScale() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const row = await GroundingResearchResult.create({ workspaceId, query: "q", type: "person", name: "Jane Owner", evidenceUrls: ["https://example.com"], status: "pending_review" });
+  let capturedContext = "";
+  const runAgent = async ({ operationalContext }) => { capturedContext = operationalContext; return { output: { rankings: [{ resultId: String(row._id), fitScore: 85, fitReasons: ["Strong fit"] }] } }; };
+
+  await vertexGroundingDiscoveryService.rankForProgramFit({ workspaceId, userId, auth: { workspaceId: String(workspaceId) }, resultIds: [String(row._id)] }, { runAgent });
+  assert.ok(/0 to 100/.test(capturedContext), "the ranking prompt must explicitly state a 0-100 scale — an unscaled prompt caused the reported '8/100' style mismatch by letting the model default to a 0-10 scale");
+
+  await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
+async function testGetSuggestedSearchesUsesOnlyApprovedOffersProgramsNotes() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const approved = await JarvisMemoryNote.create({ workspaceId, source: "approved_memory", category: "offers-programs", path: "offers/flagship.md", title: "Flagship Multifamily Mentorship", content: "Program details.", contentHash: "hash1", status: "approved" });
+  await JarvisMemoryNote.create({ workspaceId, source: "approved_memory", category: "offers-programs", path: "offers/draft.md", title: "Draft Unreleased Program", content: "Not ready.", contentHash: "hash2", status: "draft" });
+  await JarvisMemoryNote.create({ workspaceId, source: "approved_memory", category: "sops", path: "sops/onboarding.md", title: "Onboarding SOP", content: "Not a program.", contentHash: "hash3", status: "approved" });
+
+  const suggestions = await vertexGroundingDiscoveryService.getSuggestedSearches({ workspaceId });
+  assert.equal(suggestions.length, 1, "only approved offers-programs notes may produce a suggestion — draft notes and other categories must not leak in");
+  assert.equal(suggestions[0].title, "Flagship Multifamily Mentorship");
+  assert.equal(suggestions[0].noteId, String(approved._id));
+  assert.ok(suggestions[0].query.includes("Flagship Multifamily Mentorship"), "the suggested query must be a real, editable string derived from the approved program, not a placeholder");
+
+  await JarvisMemoryNote.deleteMany({ workspaceId });
 }
 
 async function testPdlEnrichmentRecordsRealProvenanceOnAMatch() {
@@ -344,6 +464,12 @@ async function run() {
     await testSearchCapsInitialPeopleAtFiveRegardlessOfSourceCount();
     await testSingleSourceFailureSurfacesAsAClearErrorWithNoSilentFallback();
     await testBothModeReportsAPartialSourceFailureInsteadOfHidingIt();
+    await testFreshnessCutoffExcludesMissingOrStalePersonEvidence();
+    await testListResultsComputesEvidenceAgeFromEvidenceDate();
+    await testPdlEnrichmentPersistsAnExplicitErrorOutcomeInsteadOfVanishing();
+    await testPdlEnrichmentRefusesADuplicateAttemptOnTheSameRow();
+    await testRankForProgramFitPromptExplicitlyRequestsAZeroToHundredScale();
+    await testGetSuggestedSearchesUsesOnlyApprovedOffersProgramsNotes();
     await testPdlEnrichmentRecordsRealProvenanceOnAMatch();
     await testPdlNoMatchRecordsAttemptWithoutFabricatingAnEmail();
     await testPdlEnrichmentRejectsNonPersonAndReviewedRows();
@@ -351,7 +477,7 @@ async function run() {
     await testRankForProgramFitScoresOnlyValidPendingRowsAndRecordsProvenance();
     await testRankForProgramFitRequiresAtLeastOneSelection();
     testOpenAiIntegrationStillHasNoResponsesApiWebSearch();
-    console.log("Vertex Grounding + OpenAI Web Search Discovery integration: results stage to a review queue with citations and never auto-create a lead, repeat finds merge and corroborate instead of duplicating (within AND across the two sources, without wrongly downgrading an already-corroborated result), the initial request caps at 5 people regardless of source count, a single selected source's failure surfaces directly with no silent fallback while 'both' reports a partial failure plainly, saving a person/organization creates the correct attributed+deduplicated CRM entity, community/event save honestly without inventing a CRM type, dismiss creates nothing, PDL enrichment records real provenance only on a real match and never fabricates data on a miss, a PDL-verified email actually reaches the saved Contact, OpenAI/Jarvis ranking scores only real still-pending rows with real evidence and ignores fabricated IDs, and the OpenAI/Jarvis-chat-still-Chat-Completions-only honesty claim still holds — all passed.");
+    console.log("Vertex Grounding + OpenAI Web Search Discovery integration: results stage to a review queue with citations and never auto-create a lead, repeat finds merge and corroborate instead of duplicating (within AND across the two sources, without wrongly downgrading an already-corroborated result), the initial request caps at 5 people regardless of source count, a single selected source's failure surfaces directly with no silent fallback while 'both' reports a partial failure plainly, a stale or undated 'person' result is excluded server-side regardless of what the provider returned, evidenceAgeDays is computed correctly at read time, saving a person/organization creates the correct attributed+deduplicated CRM entity, community/event save honestly without inventing a CRM type, dismiss creates nothing, a failed PDL call persists an explicit error outcome instead of vanishing and a duplicate attempt is refused server-side, the program-fit ranking prompt explicitly requests a 0-100 scale (fixing the reported 0-10-vs-/100 mismatch), suggested searches are derived only from approved Offers & Programs notes, PDL enrichment records real provenance only on a real match and never fabricates data on a miss, a PDL-verified email actually reaches the saved Contact, OpenAI/Jarvis ranking scores only real still-pending rows with real evidence and ignores fabricated IDs, and the OpenAI/Jarvis-chat-still-Chat-Completions-only honesty claim still holds — all passed.");
   } finally {
     await mongoose.disconnect();
   }

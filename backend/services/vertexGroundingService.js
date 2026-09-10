@@ -27,7 +27,7 @@ const { estimateCost } = require("./aiPricingService");
 const { withResilience } = require("./providerResilience");
 const vertexConfigService = require("./vertexConfigService");
 const googleAuthService = require("./googleAuthService");
-const { RESULT_TYPES, extractJsonBlock, deduplicateAndCorroborate, normalizeGroundingCitations } = require("./geminiService");
+const { RESULT_TYPES, extractJsonBlock, deduplicateAndCorroborate, normalizeGroundingCitations, parseEvidenceDate } = require("./geminiService");
 
 const CIRCUIT = "vertex_grounding";
 const clean = (value, length) => String(value || "").trim().slice(0, length);
@@ -39,6 +39,13 @@ const clean = (value, length) => String(value || "").trim().slice(0, length);
 // genuinely-succeeding requests off as if they had failed.
 const HEALTH_CHECK_TIMEOUT_MS = 20000;
 const GROUNDING_TIMEOUT_MS = 75000;
+// Person-type buyer-intent results (e.g. a forum post) are worthless if
+// stale — a user reported live searches surfacing posts from over a year
+// ago. This is the PROVIDER-REQUEST half of the fix: ask the model for a
+// verifiable date and to omit anything it can't date within the window.
+// services/vertexGroundingDiscoveryService.js applies the independent,
+// authoritative SERVER-SIDE cutoff regardless of how well this is honored.
+const PERSON_FRESHNESS_DAYS = Number(process.env.DISCOVERY_PERSON_FRESHNESS_DAYS) || 90;
 
 function masterEnabled() {
   return process.env.VERTEX_ENABLED === "true" && googleAuthService.configured();
@@ -137,7 +144,12 @@ async function groundedSearch({ workspaceId, userId = null, agent = "research", 
   if (!String(query || "").trim()) throw Object.assign(new Error("A query is required"), { code: "VERTEX_QUERY_REQUIRED" });
   const requestedTypes = resultTypes.filter((type) => RESULT_TYPES.includes(type));
   if (!requestedTypes.length) throw Object.assign(new Error(`resultTypes must include at least one of: ${RESULT_TYPES.join(", ")}`), { code: "VERTEX_RESULT_TYPES_REQUIRED" });
-  const prompt = `Search the public web for real, currently-findable ${requestedTypes.join("/")} results relevant to: ${query}\n\nRules:\n- Only report something you can point to a real, currently retrievable public source for.\n- Never claim access to private Facebook or LinkedIn content, private groups, or login-only data — public pages only.\n- Never invent a person, organization, email, or fact you did not actually find.\n- After your findings, output a fenced \`\`\`json array where each item is {"type": one of ${JSON.stringify(RESULT_TYPES)}, "name": string, "organizationName": string, "organizationDomain": string, "summary": string, "evidenceUrls": [string]}. Omit anything you are not confident is real.`;
+  const includesPerson = requestedTypes.includes("person");
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const freshnessClause = includesPerson
+    ? `\n- Today's date is ${todayIso}. For any "person" result, you must include an "evidenceDate" field (ISO date, YYYY-MM-DD) — the date the underlying post, profile update, or article was actually published or last active. Only include a "person" result if that evidence is verifiably dated within the last ${PERSON_FRESHNESS_DAYS} days. If you cannot find or verify a real date for a person result, omit that result entirely — never guess a date or leave one out to include an otherwise-stale result.`
+    : "";
+  const prompt = `Search the public web for real, currently-findable ${requestedTypes.join("/")} results relevant to: ${query}\n\nRules:\n- Only report something you can point to a real, currently retrievable public source for.\n- Never claim access to private Facebook or LinkedIn content, private groups, or login-only data — public pages only.\n- Never invent a person, organization, email, or fact you did not actually find.${freshnessClause}\n- After your findings, output a fenced \`\`\`json array where each item is {"type": one of ${JSON.stringify(RESULT_TYPES)}, "name": string, "organizationName": string, "organizationDomain": string, "summary": string, "evidenceUrls": [string]${includesPerson ? `, "evidenceDate": string` : ""}}. Omit anything you are not confident is real.`;
   const started = Date.now();
   try {
     // Vertex's REST tool key is camelCase ("googleSearch"), unlike the Gemini
@@ -165,6 +177,7 @@ async function groundedSearch({ workspaceId, userId = null, agent = "research", 
         organizationDomain: clean(row.organizationDomain, 200),
         summary: clean(row.summary, 1000),
         evidenceUrls: [...new Set((Array.isArray(row.evidenceUrls) ? row.evidenceUrls : []).filter(isHttpUrl))].slice(0, 10),
+        evidenceDate: parseEvidenceDate(row.evidenceDate),
       }))
       .filter((row) => row.evidenceUrls.length > 0);
     await logUsage({ workspaceId, userId, agent, feature, response: data, latencyMs: Date.now() - started, correlationId }, dependencies.models);

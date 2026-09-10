@@ -1134,6 +1134,8 @@ export const runVertexGroundingDiscoverySearch = (payload) =>
   api.post("/audience/research/vertex-grounding/search", payload, { timeout: 90000 }).then((res) => res.data);
 export const fetchVertexGroundingResults = (params = {}) =>
   api.get("/audience/research/vertex-grounding/results", { params }).then((res) => res.data);
+export const fetchSuggestedGroundingSearches = () =>
+  api.get("/audience/research/vertex-grounding/suggested-searches").then((res) => res.data);
 export const saveVertexGroundingResult = (id) =>
   api.post(`/audience/research/vertex-grounding/results/${id}/save`).then((res) => res.data);
 export const dismissVertexGroundingResult = (id) =>

@@ -87,6 +87,34 @@ async function testSuccessfulSearchExtractsCitationsAndCapsAtFive() {
   assert.equal(result.groundingCitations[0].url, "https://metroreia.org/person-0");
 }
 
+/**
+ * Same provider-request freshness fix as vertexGroundingService.js: a
+ * "person" request must ask for a verifiable evidenceDate and state the
+ * freshness window, and a future-dated or unparseable date must never
+ * survive extraction as real evidence.
+ */
+async function testPersonRequestsAskForAndParseAnEvidenceDate() {
+  process.env.OPENAI_WEB_SEARCH_ENABLED = "true";
+  process.env.OPENAI_API_KEY = "test-key";
+  const service = freshService();
+  const candidates = [
+    { type: "person", name: "Jane Owner", evidenceUrls: ["https://forum.example.com/jane"], evidenceDate: "2026-08-20" },
+    { type: "person", name: "Future Dated", evidenceUrls: ["https://forum.example.com/future"], evidenceDate: "2099-01-01" },
+  ];
+  const text = `\`\`\`json\n${JSON.stringify(candidates)}\n\`\`\``;
+  const mockResponse = { output: [{ type: "message", content: [{ type: "output_text", text, annotations: [] }] }] };
+  let capturedRequest = null;
+  const client = { responses: { create: async (request) => { capturedRequest = request; return mockResponse; } } };
+  const result = await service.groundedSearch({ workspaceId: "w1", query: "q", resultTypes: ["person"] }, { assertEnabled: async () => {}, clientFactory: () => client });
+
+  assert.ok(capturedRequest.input.includes("evidenceDate"), "requesting person results must ask for a verifiable evidenceDate");
+  assert.ok(/\b90\b/.test(capturedRequest.input), "the freshness window must actually be stated in the prompt");
+  const jane = result.results.find((row) => row.name === "Jane Owner");
+  assert.ok(jane.evidenceDate instanceof Date, "a real, parseable date must survive as a real Date");
+  const futureDated = result.results.find((row) => row.name === "Future Dated");
+  assert.equal(futureDated.evidenceDate, null, "a future-dated claim cannot be real evidence and must not be trusted");
+}
+
 async function testUnsupportedToolErrorBecomesAClearConfigErrorNotASilentFallback() {
   process.env.OPENAI_WEB_SEARCH_ENABLED = "true";
   process.env.OPENAI_API_KEY = "test-key";
@@ -107,6 +135,7 @@ async function run() {
     await testWorkspaceBudgetEnforcementBlocksBeforeAnyCall();
     await testMissingQueryRejectsWithoutCallingOpenAi();
     await testSuccessfulSearchExtractsCitationsAndCapsAtFive();
+    await testPersonRequestsAskForAndParseAnEvidenceDate();
     await testUnsupportedToolErrorBecomesAClearConfigErrorNotASilentFallback();
   } finally {
     if (originalEnabled === undefined) delete process.env.OPENAI_WEB_SEARCH_ENABLED; else process.env.OPENAI_WEB_SEARCH_ENABLED = originalEnabled;
@@ -117,7 +146,7 @@ async function run() {
 }
 
 run()
-  .then(() => console.log("OpenAI Web Search integration: disabled-by-default zero-calls, workspace AI budget enforcement runs before any call, missing-query validation, successful extraction (citations + 5-result cap + non-http URL rejection), and an unsupported-tool error surfaces as a clear config error with no silent retry — all passed."))
+  .then(() => console.log("OpenAI Web Search integration: disabled-by-default zero-calls, workspace AI budget enforcement runs before any call, missing-query validation, successful extraction (citations + 5-result cap + non-http URL rejection), a person request asks for and correctly parses a verifiable evidenceDate (rejecting a future-dated claim), and an unsupported-tool error surfaces as a clear config error with no silent retry — all passed."))
   .catch((error) => {
     console.error(error);
     process.exitCode = 1;

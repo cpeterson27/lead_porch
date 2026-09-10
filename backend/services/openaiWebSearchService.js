@@ -35,11 +35,15 @@ const AiUsageRecord = require("../models/AiUsageRecord");
 const { estimateCost } = require("./aiPricingService");
 const { withResilience } = require("./providerResilience");
 const aiConfigService = require("./aiConfigService");
-const { RESULT_TYPES, extractJsonBlock, deduplicateAndCorroborate } = require("./geminiService");
+const { RESULT_TYPES, extractJsonBlock, deduplicateAndCorroborate, parseEvidenceDate } = require("./geminiService");
 
 const CIRCUIT = "openai_web_search";
 const WEB_SEARCH_TIMEOUT_MS = 60000;
 const DEFAULT_MAX_RESULTS = 5;
+// Same provider-request-level freshness ask as vertexGroundingService.js —
+// the authoritative, provider-agnostic cutoff is enforced independently by
+// services/vertexGroundingDiscoveryService.js.
+const PERSON_FRESHNESS_DAYS = Number(process.env.DISCOVERY_PERSON_FRESHNESS_DAYS) || 90;
 const clean = (value, length) => String(value || "").trim().slice(0, length);
 
 function masterEnabled() {
@@ -130,7 +134,12 @@ async function groundedSearch({ workspaceId, userId = null, agent = "research", 
   if (!requestedTypes.length) throw Object.assign(new Error(`resultTypes must include at least one of: ${RESULT_TYPES.join(", ")}`), { code: "OPENAI_WEB_SEARCH_RESULT_TYPES_REQUIRED" });
   const cappedMax = Math.max(1, Math.min(DEFAULT_MAX_RESULTS, Number(maxResults) || DEFAULT_MAX_RESULTS));
   const selectedModel = model();
-  const prompt = `Search the public web for at most ${cappedMax} real, currently-findable ${requestedTypes.join("/")} results relevant to: ${query}\n\nRules:\n- Only report something you can point to a real, currently retrievable public source for.\n- Never claim access to private Facebook or LinkedIn content, private groups, or login-only data — public pages only.\n- Never invent a person, organization, email, or fact you did not actually find.\n- Return at most ${cappedMax} results.\n- After your findings, output a fenced \`\`\`json array where each item is {"type": one of ${JSON.stringify(requestedTypes)}, "name": string, "organizationName": string, "organizationDomain": string, "summary": string, "evidenceUrls": [string]}. Omit anything you are not confident is real.`;
+  const includesPerson = requestedTypes.includes("person");
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const freshnessClause = includesPerson
+    ? `\n- Today's date is ${todayIso}. For any "person" result, you must include an "evidenceDate" field (ISO date, YYYY-MM-DD) — the date the underlying post, profile update, or article was actually published or last active. Only include a "person" result if that evidence is verifiably dated within the last ${PERSON_FRESHNESS_DAYS} days. If you cannot find or verify a real date for a person result, omit that result entirely — never guess a date or leave one out to include an otherwise-stale result.`
+    : "";
+  const prompt = `Search the public web for at most ${cappedMax} real, currently-findable ${requestedTypes.join("/")} results relevant to: ${query}\n\nRules:\n- Only report something you can point to a real, currently retrievable public source for.\n- Never claim access to private Facebook or LinkedIn content, private groups, or login-only data — public pages only.\n- Never invent a person, organization, email, or fact you did not actually find.\n- Return at most ${cappedMax} results.${freshnessClause}\n- After your findings, output a fenced \`\`\`json array where each item is {"type": one of ${JSON.stringify(requestedTypes)}, "name": string, "organizationName": string, "organizationDomain": string, "summary": string, "evidenceUrls": [string]${includesPerson ? `, "evidenceDate": string` : ""}}. Omit anything you are not confident is real.`;
   const started = Date.now();
   try {
     const client = dependencies.clientFactory ? dependencies.clientFactory() : new OpenAI({ apiKey: process.env.OPENAI_API_KEY.trim() });
@@ -152,6 +161,7 @@ async function groundedSearch({ workspaceId, userId = null, agent = "research", 
         organizationDomain: clean(row.organizationDomain, 200),
         summary: clean(row.summary, 1000),
         evidenceUrls: [...new Set((Array.isArray(row.evidenceUrls) ? row.evidenceUrls : []).filter(isHttpUrl))].slice(0, 10),
+        evidenceDate: parseEvidenceDate(row.evidenceDate),
       }))
       .filter((row) => row.evidenceUrls.length > 0)
       .slice(0, cappedMax);

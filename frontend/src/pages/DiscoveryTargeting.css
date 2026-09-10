@@ -496,3 +496,21 @@
   margin-top: 2px;
   font-weight: 600;
 }
+
+.grounding-suggested-searches {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.grounding-suggested-searches > span {
+  color: #263f36;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.grounding-suggested-searches__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

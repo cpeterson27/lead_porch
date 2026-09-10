@@ -42,6 +42,7 @@ import {
   fetchDiscoveryStrategyRecommendations,
   runVertexGroundingDiscoverySearch,
   fetchVertexGroundingResults,
+  fetchSuggestedGroundingSearches,
   saveVertexGroundingResult,
   dismissVertexGroundingResult,
   enrichVertexGroundingResultWithPdl,
@@ -266,6 +267,7 @@ export default function Discovery() {
   const [groundingBusy, setGroundingBusy] = useState(false);
   const [groundingError, setGroundingError] = useState("");
   const [groundingSourceErrors, setGroundingSourceErrors] = useState([]);
+  const [suggestedSearches, setSuggestedSearches] = useState([]);
   const [groundingResults, setGroundingResults] = useState([]);
   const [groundingResultsLoading, setGroundingResultsLoading] = useState(false);
   const [groundingResultsStatus, setGroundingResultsStatus] = useState("pending_review");
@@ -343,6 +345,20 @@ export default function Discovery() {
     }
   };
 
+  const loadSuggestedSearches = async () => {
+    try {
+      const response = await fetchSuggestedGroundingSearches();
+      setSuggestedSearches(response.data || []);
+    } catch {
+      setSuggestedSearches([]);
+    }
+  };
+
+  const applySuggestedSearch = (suggestion) => {
+    setGroundingQuery(suggestion.query);
+    setGroundingTypes((current) => current.includes("person") ? current : [...current, "person"]);
+  };
+
   const runGroundingSearch = async () => {
     if (!groundingQuery.trim() || groundingBusy || !groundingTypes.length) return;
     setGroundingBusy(true);
@@ -350,7 +366,8 @@ export default function Discovery() {
     setGroundingSourceErrors([]);
     try {
       const response = await runVertexGroundingDiscoverySearch({ query: groundingQuery, resultTypes: groundingTypes, source: groundingSource });
-      setNotice(`Public-web search (${response.data.source}) found ${response.data.total} result(s): ${response.data.created} new, ${response.data.merged} merged into existing pending results.`);
+      const staleNote = response.data.excludedForFreshness ? ` ${response.data.excludedForFreshness} person result(s) were excluded for missing or stale (older than ${response.data.personFreshnessDays} days) evidence.` : "";
+      setNotice(`Public-web search (${response.data.source}) found ${response.data.total} result(s): ${response.data.created} new, ${response.data.merged} merged into existing pending results.${staleNote}`);
       setGroundingSourceErrors(response.data.sourceErrors || []);
       await loadGroundingResults("pending_review");
       setGroundingResultsStatus("pending_review");
@@ -384,11 +401,17 @@ export default function Discovery() {
   };
 
   const enrichGroundingResultWithPdl = async (id) => {
+    if (pdlEnrichBusyId) return;
     setPdlEnrichBusyId(id);
     try {
       const res = await enrichVertexGroundingResultWithPdl(id);
-      setNotice(res.data.pdlEnrichment?.matched ? "PDL found a verified match." : "PDL did not find a confident match — no email added.");
-      loadGroundingResults();
+      const outcome = res.data.pdlEnrichment;
+      setNotice(
+        outcome?.error ? `PDL enrichment error: ${outcome.errorMessage || "unknown error"}`
+          : outcome?.matched ? "PDL found a verified match."
+            : "PDL did not find a confident match — no email added.",
+      );
+      await loadGroundingResults();
     } catch (err) {
       setNotice(err.response?.data?.error || "PDL enrichment failed.");
     } finally {
@@ -417,7 +440,7 @@ export default function Discovery() {
 
   useEffect(() => {
     if (activeTab !== "people") return undefined;
-    const timer = window.setTimeout(() => loadGroundingResults(), 0);
+    const timer = window.setTimeout(() => { loadGroundingResults(); loadSuggestedSearches(); }, 0);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
@@ -1064,14 +1087,26 @@ export default function Discovery() {
 
       <DashboardCard title="Public-web research (optional discovery sources)">
         <p className="people-preview-intro">
-          Two separate, optional sources from the Jarvis research above — real Google Search
-          grounding via Vertex AI and, optionally, OpenAI&apos;s Responses API web_search tool —
-          each with a real citation for every result. Apollo/PDL remain the structured
-          people/company providers and OpenAI/Jarvis&apos;s planning/qualification role is
-          unchanged; this only adds ways to discover candidates. Nothing here becomes a lead
-          automatically — every result waits for your explicit review below. The initial request
-          is capped at 5 people per search.
+          <strong>Vertex AI and OpenAI Web Search actively search the public web</strong> for
+          real, citable results — each result carries a real source URL and, for people, a
+          verified evidence date. <strong>Up to 5 new people per search.</strong> Nothing else
+          runs automatically: PDL enrichment, CRM import, monitors, and outreach all require your
+          own explicit action, every time — this search alone never enriches, imports, contacts,
+          or monitors anyone. Every result waits in the review queue below until you decide.
         </p>
+        {suggestedSearches.length ? (
+          <div className="grounding-suggested-searches">
+            <span>Suggested searches from your approved Offers &amp; Programs</span>
+            <div className="grounding-suggested-searches__buttons">
+              {suggestedSearches.map((suggestion) => (
+                <Button key={suggestion.noteId} size="sm" variant="outline" onClick={() => applySuggestedSearch(suggestion)}>
+                  {suggestion.title}
+                </Button>
+              ))}
+            </div>
+            <small>Clicking a suggestion fills in the search box below — edit it freely before searching.</small>
+          </div>
+        ) : null}
         <div className="people-search-launcher">
           <label>
             <span>What should the public web be searched for?</span>
@@ -1138,14 +1173,21 @@ export default function Discovery() {
                   <strong>{result.name}</strong>
                   <small>{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
                   {result.fitScore != null ? <small className="grounding-fit-score">Program fit: {result.fitScore}/100 — {(result.fitReasons || []).join("; ")}</small> : null}
+                  {result.type === "person" ? (
+                    <small>{result.evidenceDate ? `Evidence date: ${new Date(result.evidenceDate).toLocaleDateString()} (${result.evidenceAgeDays} day${result.evidenceAgeDays === 1 ? "" : "s"} old)` : "No verifiable evidence date"}</small>
+                  ) : null}
                   {result.pdlEnrichment?.attempted ? (
-                    <small>{result.pdlEnrichment.matched ? `PDL verified: ${result.pdlEnrichment.email || "match found, no email"}` : "PDL: no confident match"}</small>
+                    <small>
+                      {result.pdlEnrichment.error ? `PDL error: ${result.pdlEnrichment.errorMessage || "unknown error"}`
+                        : result.pdlEnrichment.matched ? `PDL verified: ${result.pdlEnrichment.email || "match found, no email"}`
+                          : "PDL: no confident match"}
+                    </small>
                   ) : null}
                 </div>
                 {result.status === "pending_review" ? (
                   <div>
                     {result.type === "person" && !result.pdlEnrichment?.attempted ? (
-                      <Button size="sm" variant="outline" loading={pdlEnrichBusyId === result._id} onClick={() => enrichGroundingResultWithPdl(result._id)}>Enrich via PDL</Button>
+                      <Button size="sm" variant="outline" loading={pdlEnrichBusyId === result._id} disabled={Boolean(pdlEnrichBusyId) && pdlEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithPdl(result._id)}>Enrich via PDL</Button>
                     ) : null}
                     <Button size="sm" onClick={() => saveGroundingResult(result._id)}>Save with attribution</Button>
                     <Button size="sm" variant="outline" onClick={() => dismissGroundingResult(result._id)}>Dismiss</Button>

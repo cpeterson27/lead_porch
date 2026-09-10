@@ -106,6 +106,41 @@ async function testGroundedSearchUsesCamelCaseToolAndParsesCitations(models) {
 }
 
 /**
+ * A real report: buyer-intent "person" searches were surfacing posts from
+ * over a year ago. The fix's provider-request half — ask for a verifiable
+ * evidenceDate and only when "person" is actually requested; a future-dated
+ * or unparseable date must never be trusted as real evidence.
+ */
+async function testPersonRequestsAskForAndParseAnEvidenceDate(models) {
+  const vertex = freshService();
+  const workspaceId = new mongoose.Types.ObjectId();
+  await models.vertexConfigService.save(workspaceId, { groundingEnabled: true }, models.WorkspaceConfig);
+
+  const rawJson = JSON.stringify([
+    { type: "person", name: "Jane Owner", evidenceUrls: ["https://forum.example.com/jane"], evidenceDate: "2026-08-20" },
+    { type: "person", name: "Future Dated", evidenceUrls: ["https://forum.example.com/future"], evidenceDate: "2099-01-01" },
+    { type: "person", name: "Bad Date", evidenceUrls: ["https://forum.example.com/bad"], evidenceDate: "not-a-date" },
+  ]);
+  const text = `\`\`\`json\n${rawJson}\n\`\`\``;
+  let capturedBody;
+  const httpClient = { post: async (body) => { capturedBody = body; return { data: { candidates: [{ content: { parts: [{ text }] } }] } }; } };
+  const result = await vertex.groundedSearch({ workspaceId, query: "multifamily investors", resultTypes: ["person"] }, { httpClient, getAccessToken: fakeAuth.getAccessToken });
+
+  assert.ok(capturedBody.contents[0].parts[0].text.includes("evidenceDate"), "requesting person results must ask the model for a verifiable evidenceDate");
+  assert.ok(/\b90\b/.test(capturedBody.contents[0].parts[0].text), "the freshness window must actually be stated in the prompt, not just implied");
+
+  const jane = result.results.find((row) => row.name === "Jane Owner");
+  assert.ok(jane.evidenceDate instanceof Date, "a real, parseable date must survive as a real Date");
+  const futureDated = result.results.find((row) => row.name === "Future Dated");
+  assert.equal(futureDated.evidenceDate, null, "a future-dated claim cannot be real evidence and must not be trusted");
+  const badDate = result.results.find((row) => row.name === "Bad Date");
+  assert.equal(badDate.evidenceDate, null, "an unparseable date must never be silently coerced into some fabricated Date");
+
+  await models.WorkspaceConfig.deleteMany({ workspaceId });
+  await models.AiUsageRecord.deleteMany({ workspaceId });
+}
+
+/**
  * A provider error's raw text (here, a bare "Forbidden" — real Google error
  * bodies can be considerably more detailed) must never reach the client
  * as-is; the usage ledger still keeps the true category for diagnostics.
@@ -291,6 +326,8 @@ async function run() {
     require("./services/providerResilience").resetCircuits();
     await testWorkspaceOptInAndBudget(models);
     await testGroundedSearchUsesCamelCaseToolAndParsesCitations(models);
+    require("./services/providerResilience").resetCircuits();
+    await testPersonRequestsAskForAndParseAnEvidenceDate(models);
     require("./services/providerResilience").resetCircuits();
     await testErrorPathIsSanitizedForTheClientButFullyLoggedInternally(models);
     testDefaultModelIsTheUnsuffixedAliasNotTheBrokenVersionedOne();

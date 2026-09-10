@@ -26,6 +26,12 @@
  * both discovery sources carries both, e.g. corroborated evidence from two
  * independent public-web providers), for real provenance instead of an
  * assumed single source.
+ *
+ * A "person" row's `evidenceDate` is required and freshness-checked before
+ * the row is ever created (see search()'s cutoff in
+ * services/vertexGroundingDiscoveryService.js) — a stale or undated
+ * "buyer-intent" post is worthless as a lead signal, so it is excluded up
+ * front rather than staged and only flagged later.
  */
 const mongoose = require("mongoose");
 const workspacePlugin = require("../tenancy/workspacePlugin");
@@ -40,6 +46,13 @@ const groundingResearchResultSchema = new mongoose.Schema({
   organizationDomain: { type: String, default: "", trim: true, lowercase: true, maxlength: 200 },
   summary: { type: String, default: "", trim: true, maxlength: 1000 },
   evidenceUrls: { type: [String], default: [] },
+  // When the underlying evidence was actually published/last active, per the
+  // discovery source itself — null when no source could verify a real date.
+  // For "person" results this is enforced server-side (never just trusted
+  // from the provider): a person result may only be staged if this is set
+  // and within services/vertexGroundingDiscoveryService.js's freshness
+  // cutoff (DISCOVERY_PERSON_FRESHNESS_DAYS, default 90 days).
+  evidenceDate: { type: Date, default: null },
   confidence: { type: String, enum: ["single_source", "corroborated"], default: "single_source" },
   status: { type: String, enum: ["pending_review", "saved", "dismissed"], default: "pending_review", index: true },
   savedContactId: { type: mongoose.Schema.Types.ObjectId, ref: "Contact", default: null },
@@ -53,6 +66,12 @@ const groundingResearchResultSchema = new mongoose.Schema({
     email: { type: String, default: "", trim: true, lowercase: true },
     emailState: { type: String, default: "" },
     enrichedAt: { type: Date, default: null },
+    // A failed PDL call (disabled, insufficient identity inputs, rate
+    // limited, etc.) must still leave a persisted, visible outcome —
+    // "attempted: true, error: true" — rather than silently leaving the row
+    // looking never-enriched after the attempt is gone from the UI.
+    error: { type: Boolean, default: false },
+    errorMessage: { type: String, default: "", trim: true, maxlength: 300 },
   },
   fitScore: { type: Number, default: null, min: 0, max: 100 },
   fitReasons: { type: [String], default: [] },

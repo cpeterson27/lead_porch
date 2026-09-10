@@ -173,9 +173,24 @@ function fingerprint(result) {
 }
 
 /**
+ * Parses a model-supplied "evidenceDate" string into a real Date, or null if
+ * it is missing, unparseable, or claims a date in the future (which cannot
+ * be real evidence and is more likely a hallucination) — never guesses or
+ * fabricates a date when the model didn't actually supply a verifiable one.
+ */
+function parseEvidenceDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime()) || date.getTime() > Date.now()) return null;
+  return date;
+}
+
+/**
  * Deduplicates by (type, name, domain) and raises confidence only when the
  * SAME entity is corroborated by evidence from more than one distinct
- * citation domain — never on repetition from a single source.
+ * citation domain — never on repetition from a single source. When a
+ * duplicate carries an evidenceDate, the most recent valid one wins, since
+ * that best represents how current the merged evidence actually is.
  */
 function deduplicateAndCorroborate(results) {
   const byKey = new Map();
@@ -186,6 +201,7 @@ function deduplicateAndCorroborate(results) {
     const existing = byKey.get(key);
     for (const domain of domains) existing.evidenceDomains.add(domain);
     existing.evidenceUrls = [...new Set([...(existing.evidenceUrls || []), ...(result.evidenceUrls || [])])];
+    if (result.evidenceDate && (!existing.evidenceDate || result.evidenceDate > existing.evidenceDate)) existing.evidenceDate = result.evidenceDate;
   }
   return [...byKey.values()].map((result) => ({
     ...result,
@@ -268,4 +284,5 @@ module.exports = {
   extractJsonBlock,
   gatherWorkspaceContext,
   normalizeGroundingCitations,
+  parseEvidenceDate,
 };
