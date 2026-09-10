@@ -13,12 +13,23 @@ const leadGenerationCoordinatorService = require("../services/leadGenerationCoor
 const DiscoverySearch = require("../models/DiscoverySearch");
 const LeadMonitorSuggestion = require("../models/LeadMonitorSuggestion");
 
-router.get("/program-suggestions", async (req, res) => {
+/** Every approved Offers & Programs note, never capped — powers the searchable program selector. */
+router.get("/programs", async (req, res) => {
   try {
-    const data = await leadGenerationCoordinatorService.getProgramSuggestions({ workspaceId: req.auth.workspaceId });
+    const data = await leadGenerationCoordinatorService.listApprovedPrograms({ workspaceId: req.auth.workspaceId });
     return res.json({ success: true, data });
   } catch (_error) {
-    return res.status(500).json({ success: false, error: "Unable to load program suggestions." });
+    return res.status(500).json({ success: false, error: "Unable to load approved programs." });
+  }
+});
+
+/** Up to 5 editable search-request suggestions for ONE selected program — the only place the 5-cap applies. */
+router.get("/programs/:noteId/search-suggestions", async (req, res) => {
+  try {
+    const data = await leadGenerationCoordinatorService.getSearchSuggestionsForProgram({ workspaceId: req.auth.workspaceId, programNoteId: req.params.noteId });
+    return res.json({ success: true, data });
+  } catch (error) {
+    return res.status(error.code === "DISCOVERY_SEARCH_PROGRAM_NOT_FOUND" ? 404 : 400).json({ success: false, error: error.message, code: error.code });
   }
 });
 

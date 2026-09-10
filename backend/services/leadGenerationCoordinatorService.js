@@ -101,21 +101,77 @@ function isHttpUrl(value) {
   try { const url = new URL(String(value)); return url.protocol === "http:" || url.protocol === "https:"; } catch { return false; }
 }
 
+// A generous technical ceiling only — never a product-facing cap. The
+// approved-program list and Jarvis's program context must show/consider
+// every approved program; only the search-SUGGESTIONS shown after a
+// program is selected are capped (at 5, see getSearchSuggestionsForProgram).
+const MAX_APPROVED_PROGRAMS = 200;
+const MAX_SUGGESTIONS_PER_PROGRAM = 5;
+// Trailing filename noise a PDF upload's raw filename commonly carries
+// (services/pdfKnowledgeIngestionService.js sets `title` to the filename
+// verbatim, minus ".pdf") — stripped repeatedly so "Program_FINAL_v2"
+// cleans to "Program", not "Program FINAL".
+const TITLE_NOISE_SUFFIX = /[\s_-]*\b(v\d+(?:\.\d+)?|version\s?\d+|final|draft|copy|rev(?:ised)?|updated|\d{4}[-_]?\d{2}[-_]?\d{2})\b[\s_-]*$/i;
+
 /**
- * Editable, one-click program suggestions derived (no AI call, no cost)
- * from this workspace's own APPROVED Offers & Programs notes — the same
- * data source and pattern as vertexGroundingDiscoveryService.js's
- * getSuggestedSearches(), extended here with an ICP starting point so the
- * owner can jump straight to "Find 10 likely buyers for {program}."
+ * Turns a raw stored title (often literally a PDF filename minus its
+ * extension) into a human-readable display title: underscores/dashes to
+ * spaces, repeated trailing filename noise stripped, and light title-casing
+ * applied ONLY to words that are fully lowercase or fully uppercase — an
+ * already mixed-case word (a brand name, an acronym) is left exactly as
+ * written rather than risk mangling it. Never returns an empty string —
+ * falls back to the original if cleanup would strip everything.
  */
-async function getProgramSuggestions({ workspaceId }, dependencies = {}) {
+function cleanProgramTitle(rawTitle) {
+  const original = String(rawTitle || "").trim();
+  if (!original) return "";
+  let title = original.replace(/_+/g, " ");
+  let previous;
+  do { previous = title; title = title.replace(TITLE_NOISE_SUFFIX, "").trim(); } while (title !== previous && title);
+  title = title.replace(/\s{2,}/g, " ").replace(/[\s-]+$/, "").trim();
+  if (!title) return original;
+  title = title.split(" ").map((word) => {
+    if (/^[a-z0-9]+$/.test(word)) return word.charAt(0).toUpperCase() + word.slice(1);
+    if (/^[A-Z0-9]{2,}$/.test(word) && word.length > 3) return word.charAt(0) + word.slice(1).toLowerCase();
+    return word;
+  }).join(" ");
+  return title;
+}
+
+/**
+ * EVERY approved Offers & Programs note — never capped — for a searchable
+ * program selector. Clean, human-readable titles (see cleanProgramTitle)
+ * are shown instead of a raw PDF filename; the original stored title is
+ * still returned as `rawTitle` so nothing is hidden.
+ */
+async function listApprovedPrograms({ workspaceId }, dependencies = {}) {
   const NoteModel = dependencies.JarvisMemoryNote || JarvisMemoryNote;
-  const notes = await NoteModel.find({ workspaceId, category: "offers-programs", status: "approved" }).select("title content").sort({ updatedAt: -1 }).limit(5).lean();
-  return notes.map((note) => ({
-    noteId: String(note._id),
-    title: clean(note.title, 200),
-    suggestedRequest: `Find ${DEFAULT_REQUESTED_COUNT} likely buyers for "${clean(note.title, 160)}".`,
-  }));
+  const notes = await NoteModel.find({ workspaceId, category: "offers-programs", status: "approved" }).select("title source").limit(MAX_APPROVED_PROGRAMS).lean();
+  return notes
+    .map((note) => ({ noteId: String(note._id), title: cleanProgramTitle(note.title), rawTitle: clean(note.title, 200), source: note.source || "" }))
+    .sort((a, b) => a.title.localeCompare(b.title));
+}
+
+/**
+ * Up to 5 editable, one-click search-request variations for ONE selected
+ * program — deterministic templating, no AI call, no cost. This is the
+ * ONLY place the 5-suggestion cap applies; it never limits how many
+ * approved programs are loaded or selectable.
+ */
+async function getSearchSuggestionsForProgram({ workspaceId, programNoteId }, dependencies = {}) {
+  const NoteModel = dependencies.JarvisMemoryNote || JarvisMemoryNote;
+  if (!programNoteId) { const error = new Error("A program must be selected first"); error.code = "DISCOVERY_PROGRAM_REQUIRED"; throw error; }
+  const note = await NoteModel.findOne({ _id: programNoteId, workspaceId, category: "offers-programs", status: "approved" }).select("title").lean();
+  if (!note) { const error = new Error("That program was not found among this workspace's approved Offers & Programs"); error.code = "DISCOVERY_SEARCH_PROGRAM_NOT_FOUND"; throw error; }
+  const title = cleanProgramTitle(note.title);
+  const templates = [
+    `Find ${DEFAULT_REQUESTED_COUNT} likely buyers for "${title}".`,
+    `Find people who recently showed interest in "${title}" but haven't enrolled yet.`,
+    `Find decision-makers who match the ideal profile for "${title}".`,
+    `Find people similar to past "${title}" students.`,
+    `Find people actively discussing challenges "${title}" solves, from the last 90 days.`,
+  ];
+  return { noteId: String(note._id), title, suggestions: templates.slice(0, MAX_SUGGESTIONS_PER_PROGRAM).map((query) => ({ query })) };
 }
 
 /**
@@ -144,7 +200,7 @@ async function proposeSearch({ workspaceId, userId, auth, naturalLanguageRequest
 
   const result = await runAgent({
     workspaceId, userId, auth, agent: "lead", task: "parse_lead_search_request", correlationId,
-    operationalContext: `${programNote ? `Approved program details:\nTitle: ${programNote.title}\n${clean(programNote.content, 4000)}\n\n` : ""}Owner's request: ${clean(naturalLanguageRequest, 2000)}\n\nExtract a structured ideal-customer-profile (ICP) search plan for finding real prospective students/buyers matching this program. Base the ICP strictly on the program details and the request — never invent criteria not implied by either.`,
+    operationalContext: `${programNote ? `Approved program details:\nTitle: ${cleanProgramTitle(programNote.title)}\n${clean(programNote.content, 4000)}\n\n` : ""}Owner's request: ${clean(naturalLanguageRequest, 2000)}\n\nExtract a structured ideal-customer-profile (ICP) search plan for finding real prospective students/buyers matching this program. Base the ICP strictly on the program details and the request — never invent criteria not implied by either.`,
     input: { hasProgramNote: Boolean(programNote) },
     options: { responseSchema: ICP_RESPONSE_SCHEMA, schemaName: "lead_search_icp" },
   });
@@ -163,7 +219,7 @@ async function proposeSearch({ workspaceId, userId, auth, naturalLanguageRequest
     requestedByUserId: userId,
     naturalLanguageRequest: clean(naturalLanguageRequest, 2000),
     programNoteId: programNote ? programNoteId : null,
-    programName: clean(parsed.programName || programNote?.title || "", 200),
+    programName: clean(parsed.programName || cleanProgramTitle(programNote?.title) || "", 200),
     icp: {
       titles: (parsed.icp?.titles || []).slice(0, 20).map((v) => clean(v, 120)),
       industries: (parsed.icp?.industries || []).slice(0, 20).map((v) => clean(v, 120)),
@@ -504,7 +560,8 @@ async function proposeMonitorSuggestion({ workspaceId, userId, searchId }, depen
 }
 
 module.exports = {
-  getProgramSuggestions,
+  listApprovedPrograms,
+  getSearchSuggestionsForProgram,
   proposeSearch,
   approveAndRunSearch,
   enrichWithApollo,

@@ -47,7 +47,8 @@ import {
   dismissVertexGroundingResult,
   enrichVertexGroundingResultWithPdl,
   rankVertexGroundingResultsForProgramFit,
-  fetchLeadGenerationProgramSuggestions,
+  fetchLeadGenerationPrograms,
+  fetchLeadGenerationProgramSearchSuggestions,
   proposeLeadGenerationSearch,
   approveLeadGenerationSearch,
   enrichVertexGroundingResultWithApollo,
@@ -274,7 +275,11 @@ export default function Discovery() {
   const [groundingError, setGroundingError] = useState("");
   const [groundingSourceErrors, setGroundingSourceErrors] = useState([]);
   const [suggestedSearches, setSuggestedSearches] = useState([]);
-  const [leadGenProgramSuggestions, setLeadGenProgramSuggestions] = useState([]);
+  const [leadGenPrograms, setLeadGenPrograms] = useState([]);
+  const [leadGenProgramFilter, setLeadGenProgramFilter] = useState("");
+  const [selectedProgramNoteId, setSelectedProgramNoteId] = useState("");
+  const [programSearchSuggestions, setProgramSearchSuggestions] = useState([]);
+  const [programSuggestionsLoading, setProgramSuggestionsLoading] = useState(false);
   const [leadGenRequest, setLeadGenRequest] = useState("");
   const [leadGenProposeBusy, setLeadGenProposeBusy] = useState(false);
   const [leadGenProposal, setLeadGenProposal] = useState(null);
@@ -375,12 +380,27 @@ export default function Discovery() {
     setGroundingTypes((current) => current.includes("person") ? current : [...current, "person"]);
   };
 
-  const loadLeadGenProgramSuggestions = async () => {
+  const loadLeadGenPrograms = async () => {
     try {
-      const response = await fetchLeadGenerationProgramSuggestions();
-      setLeadGenProgramSuggestions(response.data || []);
+      const response = await fetchLeadGenerationPrograms();
+      setLeadGenPrograms(response.data || []);
     } catch {
-      setLeadGenProgramSuggestions([]);
+      setLeadGenPrograms([]);
+    }
+  };
+
+  const selectLeadGenProgram = async (program) => {
+    setSelectedProgramNoteId(program.noteId);
+    setLeadGenProgramFilter(program.title);
+    setProgramSearchSuggestions([]);
+    setProgramSuggestionsLoading(true);
+    try {
+      const response = await fetchLeadGenerationProgramSearchSuggestions(program.noteId);
+      setProgramSearchSuggestions(response.data.suggestions || []);
+    } catch (err) {
+      setLeadGenError(err.response?.data?.error || "Unable to load search suggestions for this program.");
+    } finally {
+      setProgramSuggestionsLoading(false);
     }
   };
 
@@ -390,7 +410,7 @@ export default function Discovery() {
     setLeadGenError("");
     setMonitorSuggestion(null);
     try {
-      const response = await proposeLeadGenerationSearch({ naturalLanguageRequest: leadGenRequest });
+      const response = await proposeLeadGenerationSearch({ naturalLanguageRequest: leadGenRequest, programNoteId: selectedProgramNoteId || undefined });
       setLeadGenProposal(response.data);
     } catch (err) {
       setLeadGenError(err.response?.data?.error || "Unable to propose this search.");
@@ -550,7 +570,7 @@ export default function Discovery() {
 
   useEffect(() => {
     if (activeTab !== "people") return undefined;
-    const timer = window.setTimeout(() => { loadGroundingResults(); loadSuggestedSearches(); loadLeadGenProgramSuggestions(); }, 0);
+    const timer = window.setTimeout(() => { loadGroundingResults(); loadSuggestedSearches(); loadLeadGenPrograms(); }, 0);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
@@ -1205,16 +1225,43 @@ export default function Discovery() {
           actively match your program&apos;s ideal-customer profile. Nothing is ever spent, imported, or
           sent without your explicit approval at each step.
         </p>
-        {leadGenProgramSuggestions.length ? (
-          <div className="grounding-suggested-searches">
-            <span>Ask about an approved program</span>
-            <div className="grounding-suggested-searches__buttons">
-              {leadGenProgramSuggestions.map((suggestion) => (
-                <Button key={suggestion.noteId} size="sm" variant="outline" onClick={() => setLeadGenRequest(suggestion.suggestedRequest)}>
-                  {suggestion.title}
-                </Button>
-              ))}
-            </div>
+        {leadGenPrograms.length ? (
+          <div className="leadgen-program-selector">
+            <span>All {leadGenPrograms.length} approved programs — search to pick one</span>
+            <input
+              type="text"
+              value={leadGenProgramFilter}
+              onChange={(event) => { setLeadGenProgramFilter(event.target.value); setSelectedProgramNoteId(""); setProgramSearchSuggestions([]); }}
+              placeholder="Type to filter approved programs…"
+            />
+            {leadGenProgramFilter && !selectedProgramNoteId ? (
+              <div className="leadgen-program-options">
+                {leadGenPrograms
+                  .filter((program) => program.title.toLowerCase().includes(leadGenProgramFilter.toLowerCase()))
+                  .map((program) => (
+                    <button key={program.noteId} type="button" onClick={() => selectLeadGenProgram(program)}>
+                      {program.title}
+                    </button>
+                  ))}
+                {!leadGenPrograms.some((program) => program.title.toLowerCase().includes(leadGenProgramFilter.toLowerCase())) ? (
+                  <span className="people-preview-footnote">No approved program matches &quot;{leadGenProgramFilter}&quot;.</span>
+                ) : null}
+              </div>
+            ) : null}
+            {selectedProgramNoteId ? (
+              <div className="grounding-suggested-searches">
+                <span>Up to 5 suggested searches for this program — edit any before proposing</span>
+                {programSuggestionsLoading ? <small>Loading suggestions…</small> : (
+                  <div className="grounding-suggested-searches__buttons">
+                    {programSearchSuggestions.map((suggestion) => (
+                      <Button key={suggestion.query} size="sm" variant="outline" onClick={() => setLeadGenRequest(suggestion.query)}>
+                        {suggestion.query}
+                      </Button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ) : null}
           </div>
         ) : null}
         <div className="people-search-launcher">

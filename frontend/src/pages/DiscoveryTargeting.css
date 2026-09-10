@@ -557,3 +557,47 @@
   margin-top: 0.75rem;
   padding-top: 0.75rem;
 }
+
+.leadgen-program-selector {
+  display: grid;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.leadgen-program-selector > span {
+  color: #263f36;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.leadgen-program-selector > input {
+  border: 1px solid #ccd7d2;
+  border-radius: 10px;
+  font: inherit;
+  padding: 0.6rem 0.8rem;
+}
+
+.leadgen-program-options {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid #ded7ca;
+  border-radius: 10px;
+  padding: 4px;
+}
+
+.leadgen-program-options button {
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 0.5rem 0.6rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.leadgen-program-options button:hover {
+  background: #f4f1ea;
+}
