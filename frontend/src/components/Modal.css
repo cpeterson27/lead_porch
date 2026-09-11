@@ -60,12 +60,17 @@
   height: 34px;
   place-items: center;
   border: 1px solid var(--border);
-  border-radius: 9px;
+  border-radius: 50%;
   background: var(--surface-strong);
   color: var(--text);
   font-size: 1.35rem;
   line-height: 1;
   cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.modal-close:hover {
+  background: var(--color-surface-muted);
 }
 
 .modal-body {

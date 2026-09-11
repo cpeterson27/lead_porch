@@ -980,10 +980,9 @@
   color: #68736f;
 }
 
-.review-queue-filter-row input,
+.review-queue-filter-row input:not([type="checkbox"]),
 .review-queue-filter-row select {
   border: 1px solid #ccd7d2;
-  border-radius: 8px;
   padding: 0.4rem 0.55rem;
   font: inherit;
   font-size: 0.83rem;

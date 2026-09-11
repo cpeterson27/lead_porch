@@ -110,6 +110,90 @@ select {
   font: inherit;
 }
 
+/*
+ * Project-wide control shape: every button, text-like input, select, and
+ * textarea is pill-shaped (fully rounded ends), and every checkbox is a
+ * small filled circle with a checkmark, iOS/macOS-style. Uses !important
+ * deliberately — dozens of page-specific stylesheets each set their own
+ * border-radius on these same elements (e.g. "border-radius: 8px" on a
+ * filter input), and the intent here is a single, unconditional
+ * project-wide shape rule that always wins over any of those, rather than
+ * hunting down and editing every page individually. A pill radius on a
+ * roughly-square element (an icon button, a small toggle) auto-clamps to
+ * a perfect circle, so this never conflicts with existing circular
+ * buttons/avatars elsewhere.
+ */
+button,
+input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+select,
+textarea {
+  border-radius: var(--radius-pill) !important;
+}
+
+input[type="file"] {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+}
+
+input[type="file"]::file-selector-button {
+  margin-right: 0.75rem;
+  border: none;
+  border-radius: var(--radius-pill);
+  padding: 0.45rem 0.9rem;
+  background: var(--color-brand-soft);
+  color: var(--color-brand-hover);
+  font: inherit;
+  font-weight: var(--font-weight-medium);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+input[type="file"]::file-selector-button:hover {
+  background: color-mix(in srgb, var(--color-brand-soft) 78%, var(--color-brand));
+}
+
+input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  margin: 0;
+  padding: 0;
+  border-radius: 50% !important;
+  border: 1.5px solid var(--color-border-strong);
+  background: var(--color-surface-raised);
+  display: inline-grid;
+  place-content: center;
+  vertical-align: middle;
+  cursor: pointer;
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+input[type="checkbox"]::after {
+  content: "";
+  width: 5px;
+  height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg) translate(-1px, -1px) scale(0);
+  transition: transform var(--transition-fast);
+}
+
+input[type="checkbox"]:checked {
+  background: var(--color-brand);
+  border-color: var(--color-brand);
+}
+
+input[type="checkbox"]:checked::after {
+  transform: rotate(45deg) translate(-1px, -1px) scale(1);
+}
+
+input[type="checkbox"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 :where(button, input, textarea, select, a):focus-visible {
   outline: 3px solid color-mix(in srgb, var(--color-focus) 42%, transparent);
   outline-offset: 2px;
