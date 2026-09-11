@@ -1185,6 +1185,11 @@ export const fetchLeadGenerationMonitorSuggestions = () =>
 // queue the endpoints above already read/write — nothing new to fetch there.
 export const proposePublicWebDiscoveryRun = (payload) =>
   api.post("/public-web-discovery/runs/propose", payload, { timeout: 60000 }).then((res) => res.data);
+// One-click "Find prospective students" preset: PDL (independent
+// candidate source) → intent discussions → aspiring/beginner people →
+// communities/groups, with conservative first-run defaults already set.
+export const proposeStudentSearchPreset = (payload) =>
+  api.post("/public-web-discovery/runs/propose-student-preset", payload, { timeout: 60000 }).then((res) => res.data);
 export const fetchPublicWebDiscoveryRun = (runId) =>
   api.get(`/public-web-discovery/runs/${runId}`).then((res) => res.data);
 export const fetchPublicWebDiscoveryRuns = () =>

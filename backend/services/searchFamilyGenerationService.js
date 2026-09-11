@@ -63,7 +63,14 @@ const FAMILY_RESPONSE_SCHEMA = {
  * spreading across them, so the run isn't relying on one combined query to
  * find everyone. Never calls a discovery provider itself.
  */
-async function generateSearchFamilies({ workspaceId, userId, auth, programNoteId, locations = [], correlationId = "" }, dependencies = {}) {
+// Coaches, course sellers, established syndicators, brokers, lenders,
+// vendors, and capital-raising services are professionals, not
+// prospective students — a student-focused search asking for "people" or
+// "recent problem/intent discussions" must never be told to look for
+// these, even implicitly through generic real-estate phrasing.
+const STUDENT_EXCLUSION_INSTRUCTION = "For the 'people' and 'intent_discussions' categories specifically: only generate queries aimed at prospective STUDENTS/buyers — never coaches, course sellers, syndicators, brokers, lenders, vendors, or capital-raising services. Those are professionals, not students, and belong in 'communities'/'organizations' instead if relevant at all.";
+
+async function generateSearchFamilies({ workspaceId, userId, auth, programNoteId, locations = [], categories = null, audienceFraming = "", correlationId = "" }, dependencies = {}) {
   const NoteModel = dependencies.JarvisMemoryNote || JarvisMemoryNote;
   const runAgent = dependencies.runAgent || agentExecutionService.runAgent;
 
@@ -71,17 +78,25 @@ async function generateSearchFamilies({ workspaceId, userId, auth, programNoteId
   if (!note) { const error = new Error("That program note was not found among this workspace's approved Offers & Programs"); error.code = "DISCOVERY_SEARCH_PROGRAM_NOT_FOUND"; throw error; }
 
   const safeLocations = (Array.isArray(locations) ? locations : []).slice(0, 10).map((v) => clean(v, 120)).filter(Boolean);
-  const categoryList = JOB_CATEGORIES.map((category) => `- ${category}: ${CATEGORY_DESCRIPTIONS[category]}`).join("\n");
+  // A preset (e.g. "Find prospective students") can restrict generation to
+  // just the categories it needs, rather than paying for an LLM call that
+  // drafts queries for categories that preset will never use.
+  const activeCategories = (Array.isArray(categories) && categories.length ? categories.filter((c) => JOB_CATEGORIES.includes(c)) : JOB_CATEGORIES);
+  const categoryList = activeCategories.map((category) => `- ${category}: ${CATEGORY_DESCRIPTIONS[category]}`).join("\n");
+  // Computed from the server's own clock, never a training-data year baked
+  // into the model's own assumptions — an event/date query must never
+  // silently reference a year that has already passed.
+  const currentYear = new Date().getFullYear();
 
   const result = await runAgent({
     workspaceId, userId, auth, agent: "lead", task: "generate_public_web_discovery_search_families", correlationId,
-    operationalContext: `Program: ${clean(note.title, 200)}\n${clean(note.content, 4000)}\n\n${safeLocations.length ? `Target locations: ${safeLocations.join(", ")}\n\n` : ""}Generate up to ${MAX_QUERIES_PER_CATEGORY} distinct, real public-web search queries for EACH of the following categories, varying phrasing and terminology (never near-duplicate queries) and, when locations are given, spreading queries across them rather than repeating one location on every query:\n${categoryList}\n\nEvery query must be searchable on the real public web today — never a request to access private, login-only, or members-only content on any platform. Base every query strictly on this program's real audience and terminology — never invent an audience the program doesn't actually serve.`,
-    input: { hasLocations: Boolean(safeLocations.length) },
+    operationalContext: `Program: ${clean(note.title, 200)}\n${clean(note.content, 4000)}\n\n${safeLocations.length ? `Target locations: ${safeLocations.join(", ")}\n\n` : ""}The current year is ${currentYear}. If a query needs a year (e.g. an upcoming event or "this year"), use ${currentYear} or ${currentYear + 1} — never a year that has already passed. Never hardcode an old year from memory.\n\nGenerate up to ${MAX_QUERIES_PER_CATEGORY} distinct, real public-web search queries for EACH of the following categories, varying phrasing and terminology (never near-duplicate queries) and, when locations are given, spreading queries across them rather than repeating one location on every query:\n${categoryList}\n\n${STUDENT_EXCLUSION_INSTRUCTION}${audienceFraming ? `\n\n${audienceFraming}` : ""}\n\nEvery query must be searchable on the real public web today — never a request to access private, login-only, or members-only content on any platform. Base every query strictly on this program's real audience and terminology — never invent an audience the program doesn't actually serve.`,
+    input: { hasLocations: Boolean(safeLocations.length), currentYear },
     options: { responseSchema: FAMILY_RESPONSE_SCHEMA, schemaName: "public_web_discovery_search_families" },
   });
 
   const families = (result.output.families || [])
-    .filter((family) => JOB_CATEGORIES.includes(family.category))
+    .filter((family) => activeCategories.includes(family.category))
     .map((family) => ({
       category: family.category,
       queries: (family.queries || []).slice(0, MAX_QUERIES_PER_CATEGORY).map((q) => ({

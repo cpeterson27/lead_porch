@@ -877,6 +877,26 @@
   font-size: 0.85rem;
 }
 
+/* PDL is an independent candidate source, not a text query — no search-text
+   input or source picker, just a label, an optional location hint, and remove. */
+.leadgen-job-row--pdl {
+  grid-template-columns: 2fr 1fr auto;
+  background: #f6ead2;
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+}
+
+.leadgen-job-row--pdl strong {
+  color: #263f36;
+  font-size: 0.85rem;
+}
+
+.leadgen-job-row--pdl small {
+  display: block;
+  color: #7a6a45;
+  font-size: 0.72rem;
+}
+
 .leadgen-run-checkbox {
   display: flex;
   align-items: center;

@@ -38,7 +38,11 @@ const workspaceSelfExclusionService = require("./workspaceSelfExclusionService")
 const webCrawlerService = require("./webCrawlerService");
 const searchFamilyGenerationService = require("./searchFamilyGenerationService");
 const leadGenerationCoordinatorService = require("./leadGenerationCoordinatorService");
-const { JOB_CATEGORIES } = require("../models/PublicWebDiscoveryRun");
+const { JOB_CATEGORIES, JOB_SOURCES } = require("../models/PublicWebDiscoveryRun");
+// The two grounded-search providers a search-family QUERY can run
+// through — PDL is a valid job source but is never assigned a natural-
+// language query the way these two are (see runPdlDirectJob).
+const GROUNDED_SEARCH_SOURCES = ["vertex", "openai_web_search"];
 
 const clean = (value, length) => String(value || "").trim().slice(0, length);
 const WORKER_ID = `discovery-runner-${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
@@ -65,8 +69,39 @@ const INTENT_PHRASE_PATTERNS = [
   /[^.?!\n]*\b(looking for|any recommendations?|need help with|how do i get started|trying to (decide|choose) between|considering (a |an )?(coach|program|course)|does anyone know a good)\b[^.?!\n]*[.?!]/gi,
 ];
 
+// A student-focused search (people/intent_discussions categories, or the
+// direct PDL job) must never stage a professional who serves this same
+// audience rather than being part of it — a coach, course seller,
+// established syndicator, broker, lender, vendor, or capital-raising
+// service is not a prospective student. Community/group discovery is
+// NOT filtered by this list — those categories legitimately include
+// organizers, brokers, etc., and stay separately labeled.
+const SELLER_OR_VENDOR_PATTERNS = [
+  /\bcoach(ing)?\b/i, /\bmentor(ing|ship)?\b/i, /\bcourse (creator|seller)\b/i, /\bsells? (a |an |the )?(course|program|coaching)\b/i,
+  /\bsyndicat(or|ion sponsor)\b/i, /\bgeneral partner\b/i, /\bfund manager\b/i, /\bsponsor(ed)? (deal|syndication)\b/i,
+  /\bbroker\b/i, /\breal estate broker\b/i, /\bmortgage broker\b/i,
+  /\blender\b/i, /\bhard money\b/i, /\bprivate money lend/i,
+  /\bvendor\b/i, /\bsupplier\b/i, /\bsoftware provider\b/i,
+  /\bcapital rais(ing|er)\b/i, /\bcapital partner(s)?\b/i, /\baccredited investor relations\b/i,
+];
+const STUDENT_SEARCH_CATEGORIES = new Set(["people", "intent_discussions"]);
+
+function isStudentSearchContext(category) {
+  return STUDENT_SEARCH_CATEGORIES.has(category);
+}
+
+function isLikelySellerOrVendor(candidate) {
+  const text = `${candidate.name || ""} ${candidate.organizationName || ""} ${candidate.summary || ""}`;
+  return SELLER_OR_VENDOR_PATTERNS.some((pattern) => pattern.test(text));
+}
+
 let timer = null;
 let polling = false;
+
+/** The count to compare against dailyCandidateTarget — every accepted candidate, or just people, depending on targetType. */
+function acceptedCountForTarget(run) {
+  return run.targetType === "person" ? run.runSummary.personAccepted : (run.runSummary.created + run.runSummary.merged);
+}
 
 function computeFreshnessTier(evidenceDate) {
   if (!evidenceDate) return "evergreen";
@@ -89,25 +124,87 @@ function extractIntentSignals(text) {
   return [...snippets];
 }
 
+const PEOPLE_LIKE_CATEGORIES = new Set(["people", "intent_discussions"]);
+// A conservative, clearly-labeled reference point — this app tracks no
+// real workspace-wide spending limit (see computeBudgetWarning below).
+const RECOMMENDED_FIRST_RUN_CAP_USD = 1;
+
+/**
+ * Groups jobs by category, and within each category by source, then
+ * round-robins across BOTH so that truncating this list to a smaller
+ * queryLimitPerRun never systematically excludes an entire provider or
+ * category just because it happened to be generated last — e.g. every
+ * OpenAI-sourced query landing at the end of the array while Vertex
+ * queries fill the front.
+ */
+function interleaveJobsRoundRobin(jobs) {
+  const byCategory = new Map();
+  for (const job of jobs) { if (!byCategory.has(job.category)) byCategory.set(job.category, []); byCategory.get(job.category).push(job); }
+  const categoryOrder = [...byCategory.keys()];
+  for (const category of categoryOrder) {
+    const list = byCategory.get(category);
+    const bySource = new Map();
+    for (const job of list) { if (!bySource.has(job.source)) bySource.set(job.source, []); bySource.get(job.source).push(job); }
+    const sourceGroups = [...bySource.values()];
+    const merged = [];
+    for (let i = 0; merged.length < list.length; i += 1) { for (const group of sourceGroups) if (group[i]) merged.push(group[i]); }
+    byCategory.set(category, merged);
+  }
+  const categoryGroups = categoryOrder.map((category) => byCategory.get(category));
+  const result = [];
+  for (let i = 0; result.length < jobs.length; i += 1) { for (const group of categoryGroups) if (group[i]) result.push(group[i]); }
+  return result;
+}
+
+/** Rough, clearly-labeled estimate of people vs. community/organization results — never a promise. */
+function estimateExpectedCounts(jobs, includesPdlDirect) {
+  const peopleJobs = jobs.filter((j) => PEOPLE_LIKE_CATEGORIES.has(j.category) && j.source !== "pdl_person_search").length;
+  const otherJobs = jobs.length - peopleJobs - jobs.filter((j) => j.source === "pdl_person_search").length;
+  const expectedPeople = peopleJobs * 3 + (includesPdlDirect ? 10 : 0);
+  const expectedCommunitiesOrganizations = otherJobs * 2;
+  return { expectedPeople, expectedCommunitiesOrganizations };
+}
+
+/**
+ * This app does not track a real workspace-wide provider spending limit
+ * (no such config exists anywhere in this codebase) — this compares the
+ * proposed cap against a conservative, clearly-labeled reference instead
+ * of a real "remaining budget", and says so explicitly rather than
+ * implying more certainty than this check actually has.
+ */
+function computeBudgetWarning(providerCreditCapUsd) {
+  if (providerCreditCapUsd > RECOMMENDED_FIRST_RUN_CAP_USD * 5) {
+    return `This plan's provider credit cap ($${providerCreditCapUsd}) is ${Math.round(providerCreditCapUsd / RECOMMENDED_FIRST_RUN_CAP_USD)}x the recommended $${RECOMMENDED_FIRST_RUN_CAP_USD} first-run cap. This app doesn't track a workspace-wide spending limit, so this is a safety comparison against that conservative default, not a real "remaining budget" check — confirm this is intentional, and separately check your actual PDL/OpenAI account limits if you're unsure.`;
+  }
+  return "";
+}
+
+function emptyRunSummary() {
+  return { created: 0, merged: 0, rejectedSelfMatch: 0, rejectedCrmDuplicate: 0, rejectedPreviouslyDismissed: 0, rejectedAlreadyInQueue: 0, rejectedSellerOrVendor: 0, personAccepted: 0, crawlBlockedByRobots: 0, crawlSkippedLoginWall: 0, crawlErrors: 0, byFreshnessTier: { recent: 0, aging: 0, evergreen: 0 }, perSource: [], explanation: "" };
+}
+
 /**
  * Proposes a new run: generates editable search families for an approved
  * program (zero provider spend) and stores them as a "draft" PublicWebDiscoveryRun
  * for the owner to edit before approving. Mirrors DiscoverySearch's
- * propose→approve pattern.
+ * propose→approve pattern. Jobs are round-robin interleaved across
+ * category and source before storage (see interleaveJobsRoundRobin).
  */
 async function proposePublicWebDiscoveryRun({ workspaceId, userId, auth, programNoteId, locations, correlationId = "" }, dependencies = {}) {
   const Model = dependencies.PublicWebDiscoveryRun || PublicWebDiscoveryRun;
   const generateSearchFamilies = dependencies.generateSearchFamilies || searchFamilyGenerationService.generateSearchFamilies;
 
   const { programName, families } = await generateSearchFamilies({ workspaceId, userId, auth, programNoteId, locations, correlationId }, dependencies);
-  const jobs = families.flatMap((family) => family.queries.map((q) => ({
+  const rawJobs = families.flatMap((family) => family.queries.map((q) => ({
     category: family.category, query: q.query, source: q.source, locationHint: q.locationHint, status: "pending", page: 0, maxPages: 2, attempts: 0, resultsCount: 0, acceptedCount: 0,
   })));
+  const jobs = interleaveJobsRoundRobin(rawJobs);
 
   const vertexCalls = jobs.filter((j) => j.source === "vertex").reduce((sum, j) => sum + j.maxPages, 0);
   const openaiCalls = jobs.filter((j) => j.source === "openai_web_search").reduce((sum, j) => sum + j.maxPages, 0);
   const pdlCandidates = 25;
   const estimatedUsd = Math.round(((vertexCalls + openaiCalls) * COST_PER_GROUNDED_CALL_USD + pdlCandidates * COST_PER_PDL_CANDIDATE_USD) * 100) / 100;
+  const { expectedPeople, expectedCommunitiesOrganizations } = estimateExpectedCounts(jobs, false);
 
   // Set explicitly rather than relying on the schema's own nested-subdocument
   // defaults — keeps a freshly-created run's document fully self-describing
@@ -115,12 +212,78 @@ async function proposePublicWebDiscoveryRun({ workspaceId, userId, auth, program
   // it was persisted.
   const run = await Model.create({
     workspaceId, programNoteId, programName, status: "draft", jobs, nextJobIndex: 0,
-    dailyCandidateTarget: 25, pageLimitPerQuery: 2, queryLimitPerRun: 40, providerCreditCapUsd: 5,
+    dailyCandidateTarget: 25, pageLimitPerQuery: 2, queryLimitPerRun: 40, providerCreditCapUsd: 5, targetType: "all",
     retryPolicy: { maxAttemptsPerJob: 3 },
-    estimatedCreditUse: { vertexCalls, openaiCalls, pdlCandidates, estimatedUsd, note: "Rough estimate only, assuming every generated query runs its full page limit and PDL cross-reference finds a full batch — actual spend depends on real results and the caps set at approval." },
+    estimatedCreditUse: {
+      vertexCalls, openaiCalls, pdlCandidates, estimatedUsd, expectedPeople, expectedCommunitiesOrganizations,
+      budgetWarning: computeBudgetWarning(5),
+      note: "Rough estimate only, assuming every generated query runs its full page limit and PDL cross-reference finds a full batch — actual spend depends on real results and the caps set at approval.",
+    },
     spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, estimatedUsd: 0 },
-    runSummary: { created: 0, merged: 0, rejectedSelfMatch: 0, rejectedCrmDuplicate: 0, rejectedPreviouslyDismissed: 0, rejectedAlreadyInQueue: 0, crawlBlockedByRobots: 0, crawlSkippedLoginWall: 0, crawlErrors: 0, byFreshnessTier: { recent: 0, aging: 0, evergreen: 0 }, perSource: [], explanation: "" },
+    runSummary: emptyRunSummary(),
     pdlCrossReferenceDone: false, includePdlCrossReference: true,
+    createdByUserId: userId, correlationId: clean(correlationId, 255),
+  });
+  return run;
+}
+
+/**
+ * The "Find prospective students" one-click preset: assembles a plan in
+ * strict priority order — (1) PDL Person Search as an independent,
+ * paginated candidate source, (2) recent public problem/intent
+ * discussions, (3) aspiring/beginner-investor people searches, then
+ * (4) relevant communities and groups — round-robins WITHIN each tier
+ * (never across tiers, so the priority order itself is never disturbed),
+ * and applies conservative, safe-by-default first-run limits.
+ */
+async function proposeStudentSearchPreset({ workspaceId, userId, auth, programNoteId, locations, correlationId = "" }, dependencies = {}) {
+  const Model = dependencies.PublicWebDiscoveryRun || PublicWebDiscoveryRun;
+  const generateSearchFamilies = dependencies.generateSearchFamilies || searchFamilyGenerationService.generateSearchFamilies;
+
+  const { programName, families } = await generateSearchFamilies({
+    workspaceId, userId, auth, programNoteId, locations, correlationId,
+    categories: ["intent_discussions", "people", "facebook_groups", "communities"],
+    audienceFraming: "For the 'people' category specifically: frame queries around ASPIRING or BEGINNER investors — people just starting out, asking introductory questions, or new to real estate investing — not established professionals.",
+  }, dependencies);
+
+  const byCategory = new Map(families.map((family) => [family.category, family.queries]));
+  const toJobs = (category, queries) => (queries || []).map((q) => ({ category, query: q.query, source: q.source, locationHint: q.locationHint, status: "pending", page: 0, maxPages: 1, attempts: 0, resultsCount: 0, acceptedCount: 0 }));
+
+  // Tier 1: PDL Person Search — independent, paginated, never limited to
+  // enrichment/cross-reference. `query` is a descriptive label only; the
+  // real search criteria come from the program's ICP (see runPdlDirectJob).
+  const pdlTier = [{ category: "people", query: `PDL Person Search: ideal prospective students for ${programName || "this program"}`, source: "pdl_person_search", locationHint: (locations || [])[0] || "", status: "pending", page: 0, maxPages: 1, attempts: 0, resultsCount: 0, acceptedCount: 0 }];
+  // Tier 2: recent problem/intent discussions.
+  const intentTier = interleaveJobsRoundRobin(toJobs("intent_discussions", byCategory.get("intent_discussions")));
+  // Tier 3: aspiring/beginner-investor people searches.
+  const peopleTier = interleaveJobsRoundRobin(toJobs("people", byCategory.get("people")));
+  // Tier 4: relevant communities and groups — separately labeled, never
+  // filtered by the seller/vendor exclusion (see isStudentSearchContext).
+  const communityTier = interleaveJobsRoundRobin([...toJobs("facebook_groups", byCategory.get("facebook_groups")), ...toJobs("communities", byCategory.get("communities"))]);
+
+  const jobs = [...pdlTier, ...intentTier, ...peopleTier, ...communityTier];
+  const vertexCalls = jobs.filter((j) => j.source === "vertex").reduce((sum, j) => sum + j.maxPages, 0);
+  const openaiCalls = jobs.filter((j) => j.source === "openai_web_search").reduce((sum, j) => sum + j.maxPages, 0);
+  const pdlCandidates = 25;
+  const estimatedUsd = Math.round(((vertexCalls + openaiCalls) * COST_PER_GROUNDED_CALL_USD + pdlCandidates * COST_PER_PDL_CANDIDATE_USD) * 100) / 100;
+  const { expectedPeople, expectedCommunitiesOrganizations } = estimateExpectedCounts(jobs, true);
+  const providerCreditCapUsd = 1;
+
+  const run = await Model.create({
+    workspaceId, programNoteId, programName, status: "draft", jobs, nextJobIndex: 0,
+    // Defaults for the first run of this preset: 25 unique PEOPLE (not a
+    // mix with communities — targetType:"person"), one page per query,
+    // one retry (2 attempts total), and a $1 hard cap.
+    dailyCandidateTarget: 25, targetType: "person", pageLimitPerQuery: 1, queryLimitPerRun: Math.max(jobs.length, 20), providerCreditCapUsd,
+    retryPolicy: { maxAttemptsPerJob: 2 },
+    estimatedCreditUse: {
+      vertexCalls, openaiCalls, pdlCandidates, estimatedUsd, expectedPeople, expectedCommunitiesOrganizations,
+      budgetWarning: computeBudgetWarning(providerCreditCapUsd),
+      note: "Find prospective students preset: PDL runs as an independent candidate source (tier 1), then recent intent discussions, then aspiring/beginner people searches, then communities/groups — coaches, course sellers, syndicators, brokers, lenders, vendors, and capital-raising services are excluded from the people/intent/PDL tiers, never from community discovery.",
+    },
+    spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, estimatedUsd: 0 },
+    runSummary: emptyRunSummary(),
+    pdlCrossReferenceDone: false, includePdlCrossReference: false, // PDL already runs directly as tier 1 — cross-reference would be redundant here.
     createdByUserId: userId, correlationId: clean(correlationId, 255),
   });
   return run;
@@ -138,10 +301,14 @@ async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, 
   if (run.status !== "draft") { const error = new Error("This run has already been approved or run"); error.code = "DISCOVERY_RUN_ALREADY_APPROVED"; throw error; }
 
   if (Array.isArray(jobs) && jobs.length) {
-    const allowedSources = Array.isArray(sources) && sources.length ? sources.filter((s) => ["vertex", "openai_web_search"].includes(s)) : null;
+    // `sources` is meant to toggle the grounded-search providers
+    // (vertex/openai_web_search) — a direct PDL job is a fundamentally
+    // different kind of source and is never controlled by that toggle;
+    // it's included/excluded only by whether it's present in `jobs`.
+    const allowedSources = Array.isArray(sources) && sources.length ? sources.filter((s) => JOB_SOURCES.includes(s)) : null;
     run.jobs = jobs
-      .filter((j) => JOB_CATEGORIES.includes(j.category) && String(j.query || "").trim() && ["vertex", "openai_web_search"].includes(j.source))
-      .filter((j) => !allowedSources || allowedSources.includes(j.source))
+      .filter((j) => JOB_CATEGORIES.includes(j.category) && String(j.query || "").trim() && JOB_SOURCES.includes(j.source))
+      .filter((j) => j.source === "pdl_person_search" || !allowedSources || allowedSources.includes(j.source))
       .slice(0, Math.max(1, Math.min(500, Number(queryLimitPerRun) || run.queryLimitPerRun)))
       .map((j) => ({ category: j.category, query: clean(j.query, 500), source: j.source, locationHint: clean(j.locationHint, 200), status: "pending", page: 0, maxPages: Math.max(1, Math.min(10, Number(pageLimitPerQuery) || run.pageLimitPerQuery)), attempts: 0, resultsCount: 0, acceptedCount: 0 }));
   } else {
@@ -173,13 +340,14 @@ async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, 
  * Never deletes an older/undated result — labels its freshness tier
  * instead.
  */
-async function mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, selfSignals, correlationId }, dependencies = {}) {
+async function mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, selfSignals, isStudentSearch = false, correlationId }, dependencies = {}) {
   const Model = dependencies.GroundingResearchResult || GroundingResearchResult;
   const ContactModel = dependencies.Contact || Contact;
   const OrganizationModel = dependencies.Organization || Organization;
   const isSelfMatchCheck = dependencies.isSelfMatch || workspaceSelfExclusionService.isSelfMatch;
 
   if (isSelfMatchCheck(candidate, selfSignals).isSelf) return { outcome: "rejected_self" };
+  if (isStudentSearch && isLikelySellerOrVendor(candidate)) return { outcome: "rejected_seller_or_vendor" };
 
   if (candidate.type === "person" && candidate.email) {
     const contact = await ContactModel.findOne({ workspaceId, email: candidate.email.toLowerCase() }).select("_id").lean();
@@ -226,18 +394,39 @@ async function mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, se
   return { outcome: "created", row: created };
 }
 
+/** Single choke point for recording a mergeDiscoveryCandidate() outcome — used by every job type so counting never drifts between them. */
+function tallyMergeOutcome(run, merge, candidateType) {
+  if ((merge.outcome === "created" || merge.outcome === "merged") && candidateType === "person") run.runSummary.personAccepted += 1;
+  if (merge.outcome === "created") run.runSummary.created += 1;
+  else if (merge.outcome === "merged") run.runSummary.merged += 1;
+  else if (merge.outcome === "rejected_self") run.runSummary.rejectedSelfMatch += 1;
+  else if (merge.outcome === "rejected_crm") run.runSummary.rejectedCrmDuplicate += 1;
+  else if (merge.outcome === "rejected_dismissed") run.runSummary.rejectedPreviouslyDismissed += 1;
+  else if (merge.outcome === "rejected_seller_or_vendor") run.runSummary.rejectedSellerOrVendor += 1;
+}
+
 function tallyFreshnessTier(run, tier) {
   if (tier === "recent") run.runSummary.byFreshnessTier.recent += 1;
   else if (tier === "aging") run.runSummary.byFreshnessTier.aging += 1;
   else run.runSummary.byFreshnessTier.evergreen += 1;
 }
 
-/** Runs one search-family job's current "page" (see module header re: pagination) and merges every result. */
+/**
+ * Runs one search-family job's current "page" (see module header re:
+ * pagination) and merges every result. Branches early for a direct PDL
+ * Person Search job — an INDEPENDENT candidate source (see module header),
+ * never only enrichment/cross-reference — which has no citation pages to
+ * crawl and derives its own SQL from the program's ICP rather than using
+ * job.query as a literal search string.
+ */
 async function runJob({ workspaceId, userId, auth, run, job, selfSignals, correlationId }, dependencies = {}) {
+  if (job.source === "pdl_person_search") return runPdlDirectJob({ workspaceId, userId, auth, run, job, selfSignals, correlationId }, dependencies);
+
   const vertex = dependencies.vertexGroundingService || vertexGroundingService;
   const openaiWebSearch = dependencies.openaiWebSearchService || openaiWebSearchService;
   const caller = job.source === "vertex" ? vertex : openaiWebSearch;
   const resultTypes = CATEGORY_RESULT_TYPES[job.category] || ["person"];
+  const isStudentSearch = isStudentSearchContext(job.category);
 
   const alreadyFound = job.page > 0 ? await (dependencies.GroundingResearchResult || GroundingResearchResult).find({ workspaceId, discoveryRunId: run._id, discoveryCategory: job.category }).select("name").limit(20).lean() : [];
   const refinement = job.page > 0 && alreadyFound.length ? ` (find different results than: ${alreadyFound.map((r) => r.name).slice(0, 10).join(", ")})` : "";
@@ -252,7 +441,7 @@ async function runJob({ workspaceId, userId, auth, run, job, selfSignals, correl
 
   for (const result of outcome.results) {
     if (run.spend.estimatedUsd >= run.providerCreditCapUsd) break;
-    if (run.runSummary.created + run.runSummary.merged >= run.dailyCandidateTarget) break;
+    if (acceptedCountForTarget(run) >= run.dailyCandidateTarget) break;
 
     let intentSignals = [];
     const citationUrl = (result.evidenceUrls || [])[0];
@@ -266,20 +455,62 @@ async function runJob({ workspaceId, userId, auth, run, job, selfSignals, correl
 
     const candidate = { ...result, discoveryCategory: job.category, intentSignals, providers: [job.source === "vertex" ? "vertex_grounding" : "openai_web_search"] };
     // eslint-disable-next-line no-await-in-loop
-    const merge = await mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, selfSignals, correlationId }, dependencies);
+    const merge = await mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, selfSignals, isStudentSearch, correlationId }, dependencies);
     if (merge.outcome === "created" || merge.outcome === "merged") {
       job.acceptedCount += 1;
       perSourceEntry.accepted += 1;
       tallyFreshnessTier(run, merge.row.freshnessTier || computeFreshnessTier(result.evidenceDate));
     }
-    if (merge.outcome === "created") run.runSummary.created += 1;
-    else if (merge.outcome === "merged") run.runSummary.merged += 1;
-    else if (merge.outcome === "rejected_self") run.runSummary.rejectedSelfMatch += 1;
-    else if (merge.outcome === "rejected_crm") run.runSummary.rejectedCrmDuplicate += 1;
-    else if (merge.outcome === "rejected_dismissed") run.runSummary.rejectedPreviouslyDismissed += 1;
+    tallyMergeOutcome(run, merge, candidate.type);
   }
   run.runSummary.perSource = [...(run.runSummary.perSource || []), perSourceEntry];
   job.lastRunAt = new Date();
+}
+
+/**
+ * The direct PDL Person Search job: an independent candidate source, not
+ * only enrichment/cross-reference. "Pagination" here means requesting a
+ * cumulatively larger `size` and taking only the newly-revealed slice —
+ * PDL's SQL search has no separate offset/cursor parameter exposed by
+ * services/peopleDataLabsService.js, and this deliberately does not
+ * change that service (see module instructions: "do not change or run
+ * providers").
+ */
+async function runPdlDirectJob({ workspaceId, userId, auth, run, job, selfSignals, correlationId }, dependencies = {}) {
+  const pdl = dependencies.peopleDataLabsService || peopleDataLabsService;
+  const perSourceEntry = { source: "pdl_person_search", category: job.category, queriesRun: 0, entitiesExtracted: 0, accepted: 0, error: null };
+  try {
+    const icp = await derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlationId }, dependencies);
+    const sql = leadGenerationCoordinatorService.buildPdlSql(icp);
+    if (!sql) throw Object.assign(new Error("No realistic ICP criteria (titles, locations, or industries) could be derived from the program for PDL."), { code: "PDL_ICP_EMPTY" });
+    const baseSize = Math.min(100, Math.max(1, run.dailyCandidateTarget));
+    const cumulativeSize = Math.min(100, baseSize * (job.page + 1));
+    perSourceEntry.queriesRun = 1;
+    const outcome = await pdl.searchPeople({ workspaceId, userId, sql, size: cumulativeSize, correlationId });
+    const newPeople = outcome.people.slice(job.page * baseSize);
+    perSourceEntry.entitiesExtracted = newPeople.length;
+    job.resultsCount += newPeople.length;
+    run.spend.pdlCandidates += newPeople.length;
+    run.spend.estimatedUsd = Math.round((run.spend.estimatedUsd + newPeople.length * COST_PER_PDL_CANDIDATE_USD) * 100) / 100;
+
+    for (const person of newPeople) {
+      if (run.spend.estimatedUsd >= run.providerCreditCapUsd) break;
+      if (acceptedCountForTarget(run) >= run.dailyCandidateTarget) break;
+      const candidate = leadGenerationCoordinatorService.normalizePdlCandidate(person);
+      candidate.discoveryCategory = job.category;
+      candidate.providers = [candidate.provider];
+      // eslint-disable-next-line no-await-in-loop
+      const merge = await mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, selfSignals, isStudentSearch: true, correlationId }, dependencies);
+      if (merge.outcome === "created" || merge.outcome === "merged") { job.acceptedCount += 1; perSourceEntry.accepted += 1; tallyFreshnessTier(run, merge.row.freshnessTier); }
+      tallyMergeOutcome(run, merge, "person");
+    }
+  } catch (error) {
+    perSourceEntry.error = clean(error.message, 300);
+    throw error; // let processNextBatch's existing retry/failure handling apply, same as a grounded-search job failure.
+  } finally {
+    run.runSummary.perSource = [...(run.runSummary.perSource || []), perSourceEntry];
+    job.lastRunAt = new Date();
+  }
 }
 
 const PDL_ICP_SCHEMA = {
@@ -294,23 +525,17 @@ const PDL_ICP_SCHEMA = {
 };
 
 /**
- * Cross-references PDL Person Search against this run's OWN accumulated
- * public-web evidence: a PDL candidate that matches an already-created
- * web-evidence row for the same name+company is merged into it (raising
- * confidence rather than creating a second row), so the run is never
- * relying on one web query — or PDL alone — to find everyone.
+ * Derives a PDL ICP (real job titles, locations, industries) from the
+ * run's program note — shared by the direct PDL job and the cross-
+ * reference pass so both use identical, already-tested logic
+ * (isRealisticJobTitle rejects skill-level/audience phrases like
+ * "beginner") rather than two copies that could drift apart.
  */
-async function runPdlCrossReference({ workspaceId, userId, auth, run, selfSignals, correlationId }, dependencies = {}) {
-  const pdl = dependencies.peopleDataLabsService || peopleDataLabsService;
+async function derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlationId }, dependencies = {}) {
   const NoteModel = dependencies.JarvisMemoryNote || JarvisMemoryNote;
   const runAgent = dependencies.runAgent || agentExecutionService.runAgent;
-  if (!run.includePdlCrossReference) return;
-  if (run.spend.estimatedUsd >= run.providerCreditCapUsd) return;
-  const remaining = Math.max(0, run.dailyCandidateTarget - (run.runSummary.created + run.runSummary.merged));
-  if (remaining <= 0) return;
-
   const note = run.programNoteId ? await NoteModel.findOne({ _id: run.programNoteId, workspaceId }).select("title content").lean() : null;
-  if (!note) { run.runSummary.perSource = [...(run.runSummary.perSource || []), { source: "pdl_person_search", category: "people", error: "No program note available for PDL ICP derivation." }]; return; }
+  if (!note) { const error = new Error("No program note available for PDL ICP derivation."); error.code = "PDL_ICP_NO_PROGRAM"; throw error; }
 
   const locations = [...new Set(run.jobs.map((j) => j.locationHint).filter(Boolean))].slice(0, 10);
   const icpResult = await runAgent({
@@ -318,34 +543,57 @@ async function runPdlCrossReference({ workspaceId, userId, auth, run, selfSignal
     operationalContext: `Program: ${clean(note.title, 200)}\n${clean(note.content, 3000)}\n${locations.length ? `Target locations: ${locations.join(", ")}\n` : ""}Extract real, searchable professional job titles (never skill levels or audience labels), locations, and industries for a structured people-database search matching this program's ideal buyer.`,
     input: {}, options: { responseSchema: PDL_ICP_SCHEMA, schemaName: "public_web_discovery_pdl_icp" },
   });
-  const icp = {
+  return {
     titles: (icpResult.output.titles || []).map((t) => clean(t, 120)).filter(leadGenerationCoordinatorService.isRealisticJobTitle),
     locations: (icpResult.output.locations || []).map((l) => clean(l, 120)),
     industries: (icpResult.output.industries || []).map((i) => clean(i, 120)),
   };
+}
+
+/**
+ * Cross-references PDL Person Search against this run's OWN accumulated
+ * public-web evidence: a PDL candidate that matches an already-created
+ * web-evidence row for the same name+company is merged into it (raising
+ * confidence rather than creating a second row). Distinct from, and in
+ * addition to, the direct PDL job above — its perSource entries use
+ * category "cross_reference" specifically so the two PDL contributions
+ * are never conflated in reporting.
+ */
+async function runPdlCrossReference({ workspaceId, userId, auth, run, selfSignals, correlationId }, dependencies = {}) {
+  const pdl = dependencies.peopleDataLabsService || peopleDataLabsService;
+  if (!run.includePdlCrossReference) return;
+  if (run.spend.estimatedUsd >= run.providerCreditCapUsd) return;
+  const remaining = Math.max(0, run.dailyCandidateTarget - acceptedCountForTarget(run));
+  if (remaining <= 0) return;
+
+  const perSourceEntry = { source: "pdl_person_search", category: "cross_reference", queriesRun: 0, entitiesExtracted: 0, accepted: 0, error: null };
+  let icp;
+  try {
+    icp = await derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlationId }, dependencies);
+  } catch (error) {
+    perSourceEntry.error = clean(error.message, 300);
+    run.runSummary.perSource = [...(run.runSummary.perSource || []), perSourceEntry];
+    return;
+  }
   const sql = leadGenerationCoordinatorService.buildPdlSql(icp);
-  const perSourceEntry = { source: "pdl_person_search", category: "people", queriesRun: sql ? 1 : 0, entitiesExtracted: 0, accepted: 0, error: null };
   if (!sql) { perSourceEntry.error = "No realistic ICP criteria could be derived for PDL — skipped."; run.runSummary.perSource = [...(run.runSummary.perSource || []), perSourceEntry]; return; }
 
   try {
+    perSourceEntry.queriesRun = 1;
     const outcome = await pdl.searchPeople({ workspaceId, userId, sql, size: Math.min(remaining, 25), correlationId });
     perSourceEntry.entitiesExtracted = outcome.people.length;
     run.spend.pdlCandidates += outcome.people.length;
     run.spend.estimatedUsd = Math.round((run.spend.estimatedUsd + outcome.people.length * COST_PER_PDL_CANDIDATE_USD) * 100) / 100;
     for (const person of outcome.people) {
       if (run.spend.estimatedUsd >= run.providerCreditCapUsd) break;
-      if (run.runSummary.created + run.runSummary.merged >= run.dailyCandidateTarget) break;
+      if (acceptedCountForTarget(run) >= run.dailyCandidateTarget) break;
       const candidate = leadGenerationCoordinatorService.normalizePdlCandidate(person);
       candidate.discoveryCategory = "people";
       candidate.providers = [candidate.provider];
       // eslint-disable-next-line no-await-in-loop
-      const merge = await mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, selfSignals, correlationId }, dependencies);
+      const merge = await mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, selfSignals, isStudentSearch: true, correlationId }, dependencies);
       if (merge.outcome === "created" || merge.outcome === "merged") { perSourceEntry.accepted += 1; tallyFreshnessTier(run, merge.row.freshnessTier); }
-      if (merge.outcome === "created") run.runSummary.created += 1;
-      else if (merge.outcome === "merged") run.runSummary.merged += 1;
-      else if (merge.outcome === "rejected_self") run.runSummary.rejectedSelfMatch += 1;
-      else if (merge.outcome === "rejected_crm") run.runSummary.rejectedCrmDuplicate += 1;
-      else if (merge.outcome === "rejected_dismissed") run.runSummary.rejectedPreviouslyDismissed += 1;
+      tallyMergeOutcome(run, merge, "person");
     }
   } catch (error) {
     perSourceEntry.error = error.message;
@@ -383,7 +631,7 @@ async function processNextBatch({ workspaceId, userId = null, auth = null, runId
     // not only after it already has — the job's own source determines
     // which per-call estimate applies.
     if (run.spend.estimatedUsd + COST_PER_GROUNDED_CALL_USD > run.providerCreditCapUsd) { stoppedReason = "provider_credit_cap_reached"; break; }
-    if (run.runSummary.created + run.runSummary.merged >= run.dailyCandidateTarget) { stoppedReason = "daily_candidate_target_reached"; break; }
+    if (acceptedCountForTarget(run) >= run.dailyCandidateTarget) { stoppedReason = "daily_candidate_target_reached"; break; }
     if (run.nextJobIndex >= run.jobs.length) {
       if (run.includePdlCrossReference && !run.pdlCrossReferenceDone) {
         // eslint-disable-next-line no-await-in-loop
@@ -452,6 +700,7 @@ function buildRunExplanation(run, stoppedReason) {
     run.runSummary.rejectedSelfMatch ? `${run.runSummary.rejectedSelfMatch} self-match` : "",
     run.runSummary.rejectedCrmDuplicate ? `${run.runSummary.rejectedCrmDuplicate} already in CRM` : "",
     run.runSummary.rejectedPreviouslyDismissed ? `${run.runSummary.rejectedPreviouslyDismissed} previously dismissed` : "",
+    run.runSummary.rejectedSellerOrVendor ? `${run.runSummary.rejectedSellerOrVendor} coach/seller/vendor excluded from student search` : "",
   ].filter(Boolean).join(", ");
   return `This run ${reasonText}: ${total} new/updated review-queue entries (${run.runSummary.created} new, ${run.runSummary.merged} merged) — ${tierText}. Only the recent tier may be treated as recent intent.${rejectedText ? ` Excluded: ${rejectedText}.` : ""}`;
 }
@@ -521,6 +770,7 @@ async function requestScheduleRunNow({ workspaceId, scheduleId }, dependencies =
 
 module.exports = {
   proposePublicWebDiscoveryRun,
+  proposeStudentSearchPreset,
   approvePublicWebDiscoveryRun,
   processNextBatch,
   mergeDiscoveryCandidate,
@@ -530,4 +780,11 @@ module.exports = {
   startPublicWebDiscoveryRunner,
   requestScheduleRunNow,
   CATEGORY_RESULT_TYPES,
+  // Exported for direct unit testing — pure/deterministic helpers.
+  interleaveJobsRoundRobin,
+  estimateExpectedCounts,
+  computeBudgetWarning,
+  isLikelySellerOrVendor,
+  isStudentSearchContext,
+  acceptedCountForTarget,
 };

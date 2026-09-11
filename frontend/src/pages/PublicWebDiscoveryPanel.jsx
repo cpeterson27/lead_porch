@@ -5,6 +5,7 @@ import {
   fetchLeadGenerationPrograms,
   fetchLeadGenerationProviderAvailability,
   proposePublicWebDiscoveryRun,
+  proposeStudentSearchPreset,
   approvePublicWebDiscoveryRun,
   processPublicWebDiscoveryRunBatch,
   pausePublicWebDiscoveryRun,
@@ -90,22 +91,24 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
     setRuns((current) => current.map((r) => (r._id === updatedRun._id ? updatedRun : r)));
   };
 
-  const generateSearchFamilies = async () => {
-    if (!selectedProgramNoteIds.length || proposeBusy) return;
-    setProposeBusy(true);
+  const [presetBusy, setPresetBusy] = useState(false);
+
+  const generateSearchFamilies = async (proposeFn, setBusy) => {
+    if (!selectedProgramNoteIds.length || proposeBusy || presetBusy) return;
+    setBusy(true);
     setError("");
     try {
       const locations = locationsDraft.split(",").map((v) => v.trim()).filter(Boolean);
       const created = [];
       for (const programNoteId of selectedProgramNoteIds) {
-        const response = await proposePublicWebDiscoveryRun({ programNoteId, locations });
+        const response = await proposeFn({ programNoteId, locations });
         created.push(response.data);
       }
       setRuns((current) => [...created, ...current]);
     } catch (err) {
       setError(err.response?.data?.error || "Unable to generate search families.");
     } finally {
-      setProposeBusy(false);
+      setBusy(false);
     }
   };
 
@@ -122,7 +125,11 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
   const updateRunField = (run, field, value) => updateRunInState({ ...run, [field]: value });
   const toggleRunSource = (run, source) => {
     const sources = run.sources?.includes(source) ? run.sources.filter((s) => s !== source) : [...(run.sources || ["vertex", "openai_web_search"]), source];
-    updateRunInState({ ...run, sources, jobs: run.jobs.filter((j) => sources.includes(j.source)) });
+    // This pill only ever toggles vertex/openai_web_search — a direct PDL
+    // job is never controlled by it (removed only via its own Remove
+    // button), so it must survive regardless of which grounded-search
+    // provider is on or off.
+    updateRunInState({ ...run, sources, jobs: run.jobs.filter((j) => j.source === "pdl_person_search" || sources.includes(j.source)) });
   };
 
   const approveRun = async (run) => {
@@ -279,12 +286,18 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
         <input type="text" value={locationsDraft} onChange={(event) => setLocationsDraft(event.target.value)} placeholder="e.g. Texas, Florida" />
       </label>
 
-      <div>
-        <Button disabled={!selectedProgramNoteIds.length} loading={proposeBusy} onClick={generateSearchFamilies}>
-          {proposeBusy ? "Generating…" : "Generate search families"}
+      <div className="leadgen-review-actions">
+        <Button disabled={!selectedProgramNoteIds.length} loading={presetBusy} onClick={() => generateSearchFamilies(proposeStudentSearchPreset, setPresetBusy)}>
+          {presetBusy ? "Generating…" : "Find prospective students"}
+        </Button>
+        <Button variant="outline" disabled={!selectedProgramNoteIds.length} loading={proposeBusy} onClick={() => generateSearchFamilies(proposePublicWebDiscoveryRun, setProposeBusy)}>
+          {proposeBusy ? "Generating…" : "Generate custom search families"}
         </Button>
         <p className="leadgen-run-disclosure">
-          Uses one Jarvis/OpenAI call per selected program to draft these queries — standard AI usage, billed like any other Jarvis request. No Vertex, OpenAI Web Search, PDL, or Apollo provider credit is spent yet; that only happens when you approve and run below.
+          <strong>Find prospective students</strong> prioritizes: PDL Person Search as an independent candidate source, then recent problem/intent discussions, then aspiring/beginner-investor people searches, then communities and groups — with coaches, course sellers, syndicators, brokers, lenders, vendors, and capital-raising services excluded from the people/intent/PDL results (never from communities). Defaults to 25 unique people, one page per query, one retry, and a $1 hard cap.
+        </p>
+        <p className="leadgen-run-disclosure">
+          Both buttons use one Jarvis/OpenAI call per selected program to draft these queries — standard AI usage, billed like any other Jarvis request. No Vertex, OpenAI Web Search, or PDL provider credit is spent yet; that only happens when you approve and run below.
         </p>
       </div>
       {error ? <p className="form-error">{error}</p> : null}
@@ -310,15 +323,23 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
                     <summary>{label} ({jobGroups.get(key).length})</summary>
                     <div className="leadgen-advanced-search__body">
                       {run.jobs.map((job, index) => (job.category === key ? (
-                        <div className="leadgen-job-row" key={`${key}-${index}`}>
-                          <input type="text" value={job.query} onChange={(event) => updateJob(run, index, "query", event.target.value)} placeholder="Search query" />
-                          <input type="text" value={job.locationHint} onChange={(event) => updateJob(run, index, "locationHint", event.target.value)} placeholder="Location (optional)" className="leadgen-job-row__location" />
-                          <select value={job.source} onChange={(event) => updateJob(run, index, "source", event.target.value)}>
-                            <option value="vertex">Vertex</option>
-                            <option value="openai_web_search">OpenAI Web Search</option>
-                          </select>
-                          <Button size="sm" variant="outline" onClick={() => removeJob(run, index)}>Remove</Button>
-                        </div>
+                        job.source === "pdl_person_search" ? (
+                          <div className="leadgen-job-row leadgen-job-row--pdl" key={`${key}-${index}`}>
+                            <div><strong>PDL Person Search</strong><small>Independent candidate source — searches your program's ICP directly (real job titles/locations/industries), not this text.</small></div>
+                            <input type="text" value={job.locationHint} onChange={(event) => updateJob(run, index, "locationHint", event.target.value)} placeholder="Location hint (optional)" className="leadgen-job-row__location" />
+                            <Button size="sm" variant="outline" onClick={() => removeJob(run, index)}>Remove</Button>
+                          </div>
+                        ) : (
+                          <div className="leadgen-job-row" key={`${key}-${index}`}>
+                            <input type="text" value={job.query} onChange={(event) => updateJob(run, index, "query", event.target.value)} placeholder="Search query" />
+                            <input type="text" value={job.locationHint} onChange={(event) => updateJob(run, index, "locationHint", event.target.value)} placeholder="Location (optional)" className="leadgen-job-row__location" />
+                            <select value={job.source} onChange={(event) => updateJob(run, index, "source", event.target.value)}>
+                              <option value="vertex">Vertex</option>
+                              <option value="openai_web_search">OpenAI Web Search</option>
+                            </select>
+                            <Button size="sm" variant="outline" onClick={() => removeJob(run, index)}>Remove</Button>
+                          </div>
+                        )
                       ) : null))}
                       <Button size="sm" variant="outline" onClick={() => addJob(run, key)}>+ Add query</Button>
                     </div>
@@ -348,6 +369,12 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
                   <label><span>Retry attempts per query</span><input type="number" min="1" max="10" value={run.retryPolicy?.maxAttemptsPerJob || 3} onChange={(event) => updateRunInState({ ...run, retryPolicy: { maxAttemptsPerJob: Number(event.target.value) } })} /></label>
                   <label className="leadgen-run-checkbox"><input type="checkbox" checked={run.includePdlCrossReference} onChange={(event) => updateRunField(run, "includePdlCrossReference", event.target.checked)} /><span>Include PDL cross-reference</span></label>
                 </div>
+                <dl className="leadgen-review-summary">
+                  <dt>Expected people</dt><dd>~{run.estimatedCreditUse?.expectedPeople ?? "?"} (rough estimate — direct outreach candidates)</dd>
+                  <dt>Expected communities/organizations</dt><dd>~{run.estimatedCreditUse?.expectedCommunitiesOrganizations ?? "?"} (rough estimate — need an organizer/partnership approach, not direct outreach)</dd>
+                  <dt>Target</dt><dd>{run.dailyCandidateTarget} {run.targetType === "person" ? "unique people specifically" : "candidates of any type"}</dd>
+                </dl>
+                {run.estimatedCreditUse?.budgetWarning ? <p className="form-error">{run.estimatedCreditUse.budgetWarning}</p> : null}
                 <p className="leadgen-run-disclosure">Destination: the review queue below — nothing is imported into the CRM, enriched, monitored, or contacted automatically. Estimated cost if every query and PDL cross-reference runs in full: ${run.estimatedCreditUse?.estimatedUsd ?? "?"} (rough estimate — {run.estimatedCreditUse?.note}).</p>
 
                 <div className="leadgen-review-actions">

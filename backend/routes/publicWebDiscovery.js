@@ -26,6 +26,26 @@ router.post("/runs/propose", async (req, res) => {
   }
 });
 
+/**
+ * One-click "Find prospective students" preset — free, no provider call.
+ * Assembles PDL (independent candidate source) → intent discussions →
+ * aspiring/beginner people → communities/groups, in that priority order,
+ * with conservative first-run defaults (25 unique people, one page per
+ * query, one retry, $1 hard cap).
+ */
+router.post("/runs/propose-student-preset", async (req, res) => {
+  try {
+    const data = await publicWebDiscoveryEngineService.proposeStudentSearchPreset({
+      workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, auth: req.auth,
+      programNoteId: req.body?.programNoteId, locations: req.body?.locations,
+      correlationId: req.headers["x-request-id"] || "",
+    });
+    return res.json({ success: true, data });
+  } catch (error) {
+    return res.status(error.code ? 400 : 502).json({ success: false, error: error.message || "Unable to propose the student-search preset", code: error.code || "DISCOVERY_RUN_PRESET_FAILED" });
+  }
+});
+
 router.get("/runs/:id", async (req, res) => {
   try {
     const run = await PublicWebDiscoveryRun.findOne({ _id: req.params.id, workspaceId: req.auth.workspaceId }).lean();

@@ -29,7 +29,11 @@ const mongoose = require("mongoose");
 const workspacePlugin = require("../tenancy/workspacePlugin");
 
 const JOB_CATEGORIES = ["people", "facebook_groups", "communities", "organizations", "events", "forums", "podcasts", "directories", "intent_discussions"];
-const JOB_SOURCES = ["vertex", "openai_web_search"];
+// "pdl_person_search" is an INDEPENDENT candidate-search job source, not
+// only a post-hoc cross-reference/enrichment step — see
+// publicWebDiscoveryEngineService.js's runJob() PDL branch and the
+// "Find prospective students" preset, which puts it first in priority.
+const JOB_SOURCES = ["vertex", "openai_web_search", "pdl_person_search"];
 const JOB_STATUSES = ["pending", "in_progress", "completed", "failed", "skipped"];
 const RUN_STATUSES = ["draft", "queued", "running", "paused", "completed", "failed", "canceled"];
 
@@ -68,6 +72,13 @@ const publicWebDiscoveryRunSchema = new mongoose.Schema({
   // new provider/PDL calls once the NEXT call would push spend over this,
   // regardless of how many jobs remain.
   providerCreditCapUsd: { type: Number, default: 5, min: 0, max: 1000 },
+  // "person": dailyCandidateTarget/stop-checks count ONLY person-type
+  // accepted candidates (runSummary.personAccepted) — used by the "Find
+  // prospective students" preset, whose target is explicitly "25 unique
+  // PEOPLE", not a mix of people and communities/organizations.
+  // "all" (default): counts every accepted candidate of any type, as
+  // every run before this preset already did.
+  targetType: { type: String, enum: ["all", "person"], default: "all" },
   includePdlCrossReference: { type: Boolean, default: true },
   pdlCrossReferenceDone: { type: Boolean, default: false },
   retryPolicy: {
@@ -79,6 +90,17 @@ const publicWebDiscoveryRunSchema = new mongoose.Schema({
     pdlCandidates: { type: Number, default: 0 },
     estimatedUsd: { type: Number, default: 0 },
     note: { type: String, default: "", trim: true, maxlength: 500 },
+    // Rough, separate estimates of how many results will plausibly be
+    // people vs. communities/organizations — a person can move toward
+    // direct outreach; a community/organization needs a different kind of
+    // follow-up, so the owner should see them apart before approving.
+    expectedPeople: { type: Number, default: 0 },
+    expectedCommunitiesOrganizations: { type: Number, default: 0 },
+    // Set only when providerCreditCapUsd is well above the conservative
+    // recommended default — this app does not track a workspace-wide
+    // spending limit, so this is a relative safety comparison, not a real
+    // "remaining budget" check. Empty string means no warning.
+    budgetWarning: { type: String, default: "", trim: true, maxlength: 500 },
   },
   // Running counters checked against the caps above before each unit of
   // work — never retroactive, always checked BEFORE spending more.
@@ -95,6 +117,19 @@ const publicWebDiscoveryRunSchema = new mongoose.Schema({
     rejectedCrmDuplicate: { type: Number, default: 0 },
     rejectedPreviouslyDismissed: { type: Number, default: 0 },
     rejectedAlreadyInQueue: { type: Number, default: 0 },
+    // Coaches, course sellers, established syndicators, brokers, lenders,
+    // vendors, and capital-raising services found by a student-focused
+    // search (people/intent_discussions categories, or the direct PDL
+    // job) — these are professionals, not prospective students, so they
+    // are excluded here rather than staged. Community/group discovery is
+    // NOT filtered this way — those results are legitimately meant to
+    // include organizers, brokers, etc., and stay in their own
+    // separately-labeled category.
+    rejectedSellerOrVendor: { type: Number, default: 0 },
+    // Accepted (created OR merged) candidates of type "person" specifically
+    // — the basis for targetType:"person" runs, where the target is a
+    // people count, not a mix of people and communities/organizations.
+    personAccepted: { type: Number, default: 0 },
     crawlBlockedByRobots: { type: Number, default: 0 },
     crawlSkippedLoginWall: { type: Number, default: 0 },
     crawlErrors: { type: Number, default: 0 },

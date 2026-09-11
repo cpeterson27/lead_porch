@@ -12,10 +12,14 @@ require("dotenv").config();
 const assert = require("node:assert/strict");
 const webCrawlerService = require("./services/webCrawlerService");
 const publicWebDiscoveryEngineService = require("./services/publicWebDiscoveryEngineService");
+const searchFamilyGenerationService = require("./services/searchFamilyGenerationService");
 const { JOB_CATEGORIES } = require("./models/PublicWebDiscoveryRun");
 
 const { parseRobotsTxt, evaluateCrawlability, fetchPage, isNeverCrawlHost, looksLikeLoginWall, stripHtmlToText } = webCrawlerService;
-const { computeFreshnessTier, extractIntentSignals, mergeDiscoveryCandidate, proposePublicWebDiscoveryRun, approvePublicWebDiscoveryRun, processNextBatch, runDueDiscoverySchedules } = publicWebDiscoveryEngineService;
+const {
+  computeFreshnessTier, extractIntentSignals, mergeDiscoveryCandidate, proposePublicWebDiscoveryRun, approvePublicWebDiscoveryRun, processNextBatch, runDueDiscoverySchedules,
+  proposeStudentSearchPreset, interleaveJobsRoundRobin, estimateExpectedCounts, computeBudgetWarning, isLikelySellerOrVendor, isStudentSearchContext, acceptedCountForTarget,
+} = publicWebDiscoveryEngineService;
 
 // ---- tiny generic in-memory Mongo-like helpers (shared across fakes) ----
 function matchesFilter(doc, filter) {
@@ -492,6 +496,195 @@ async function testRunDueDiscoverySchedulesProcessesAnEnabledDueSchedule() {
   assert.equal(schedule.leaseOwner, "", "the lease must be released after the tick");
 }
 
+// ==================== search-family generation: current year, never stale ====================
+
+async function testGenerateSearchFamiliesInjectsTheServersActualCurrentYear() {
+  const realCurrentYear = new Date().getFullYear();
+  let capturedContext = "";
+  const runAgent = async ({ operationalContext }) => { capturedContext = operationalContext; return { output: { families: [] } }; };
+  const JarvisMemoryNote = fakeNoteModel({ _id: "note-1", workspaceId: WORKSPACE_ID, title: "Multifamily Bootcamp", content: "A coaching program." });
+
+  await searchFamilyGenerationService.generateSearchFamilies(
+    { workspaceId: WORKSPACE_ID, userId: "u1", programNoteId: "note-1", locations: [] },
+    { JarvisMemoryNote, runAgent },
+  );
+
+  assert.ok(capturedContext.includes(`current year is ${realCurrentYear}`), "the prompt must state the server's real current year, computed at request time");
+  assert.ok(!/\b(202[0-3])\b/.test(capturedContext), "the prompt must never contain an old, stale hardcoded year");
+}
+
+// ==================== student-search fixes ====================
+
+function testIsLikelySellerOrVendorDetectsProfessionalsNotStudents() {
+  assert.equal(isLikelySellerOrVendor({ name: "Jane Coach", organizationName: "Jane's Real Estate Coaching", summary: "" }), true);
+  assert.equal(isLikelySellerOrVendor({ name: "Sam Broker", organizationName: "", summary: "Licensed real estate broker helping clients buy homes." }), true);
+  assert.equal(isLikelySellerOrVendor({ name: "Pat Syndicator", organizationName: "", summary: "General partner raising capital for a syndication deal." }), true);
+  assert.equal(isLikelySellerOrVendor({ name: "Alex Hardmoney", organizationName: "", summary: "Runs a hard money lending shop." }), true);
+  assert.equal(isLikelySellerOrVendor({ name: "New Investor", organizationName: "", summary: "Just starting out, asking beginner questions about my first rental." }), false, "a genuine prospective student must never be caught by the seller/vendor filter");
+}
+
+function testIsStudentSearchContextIdentifiesPeopleAndIntentCategoriesOnly() {
+  assert.equal(isStudentSearchContext("people"), true);
+  assert.equal(isStudentSearchContext("intent_discussions"), true);
+  assert.equal(isStudentSearchContext("facebook_groups"), false, "community/group discovery must never be filtered by the student-search seller exclusion");
+  assert.equal(isStudentSearchContext("communities"), false);
+  assert.equal(isStudentSearchContext("organizations"), false);
+}
+
+async function testMergeDiscoveryCandidateAppliesSellerExclusionOnlyForStudentSearches() {
+  const run = { _id: "run-x", jobs: [] };
+  const selfSignals = { names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() };
+  const seller = { type: "person", name: "Jane Coach", organizationName: "Jane's Coaching Co", summary: "" };
+
+  const rejectedAsStudent = await mergeDiscoveryCandidate(
+    { workspaceId: WORKSPACE_ID, userId: "u1", run, candidate: seller, selfSignals, isStudentSearch: true },
+    { GroundingResearchResult: fakeGroundingResultModel(), Contact: fakeLookupModel([]), Organization: fakeLookupModel([]) },
+  );
+  assert.equal(rejectedAsStudent.outcome, "rejected_seller_or_vendor", "a coach must be excluded from a student-focused search");
+
+  const keptForCommunity = await mergeDiscoveryCandidate(
+    { workspaceId: WORKSPACE_ID, userId: "u1", run, candidate: { ...seller, type: "community" }, selfSignals, isStudentSearch: false },
+    { GroundingResearchResult: fakeGroundingResultModel(), Contact: fakeLookupModel([]), Organization: fakeLookupModel([]) },
+  );
+  assert.equal(keptForCommunity.outcome, "created", "the SAME exclusion list must never apply to community/group discovery — that stays separately labeled, not filtered");
+}
+
+function testInterleaveJobsRoundRobinPreventsProviderExclusionOnTruncation() {
+  // Every openai_web_search job placed after every vertex job, as a naive
+  // category-then-provider generation order would produce.
+  const jobs = [
+    { category: "people", source: "vertex", query: "v1" }, { category: "people", source: "vertex", query: "v2" },
+    { category: "intent_discussions", source: "vertex", query: "v3" },
+    { category: "people", source: "openai_web_search", query: "o1" }, { category: "people", source: "openai_web_search", query: "o2" },
+    { category: "intent_discussions", source: "openai_web_search", query: "o3" },
+  ];
+  const interleaved = interleaveJobsRoundRobin(jobs);
+  const firstThree = interleaved.slice(0, 3);
+  assert.ok(firstThree.some((j) => j.source === "vertex"), "a truncated prefix must still include vertex");
+  assert.ok(firstThree.some((j) => j.source === "openai_web_search"), "a truncated prefix must still include openai_web_search — this is the exact bug being fixed");
+  const categoriesInPrefix = new Set(firstThree.map((j) => j.category));
+  assert.ok(categoriesInPrefix.size >= 2, "a truncated prefix must also represent more than one category");
+  assert.equal(interleaved.length, jobs.length, "interleaving must never drop or duplicate a job");
+}
+
+function testEstimateExpectedCountsSeparatesPeopleFromCommunities() {
+  const jobs = [
+    { category: "people", source: "vertex" }, { category: "intent_discussions", source: "openai_web_search" },
+    { category: "facebook_groups", source: "vertex" }, { category: "communities", source: "openai_web_search" },
+  ];
+  const { expectedPeople, expectedCommunitiesOrganizations } = estimateExpectedCounts(jobs, true);
+  assert.ok(expectedPeople > 0);
+  assert.ok(expectedCommunitiesOrganizations > 0);
+  assert.notEqual(expectedPeople, expectedCommunitiesOrganizations, "people and community/organization expectations must be tracked separately, not one combined figure");
+}
+
+function testComputeBudgetWarningOnlyFiresWellAboveTheRecommendedDefault() {
+  assert.equal(computeBudgetWarning(1), "", "the recommended $1 first-run cap itself must not trigger a warning");
+  assert.equal(computeBudgetWarning(2), "", "a modest cap close to the default must not trigger a warning");
+  const warning = computeBudgetWarning(20);
+  assert.ok(warning, "a cap far above the recommended default must warn");
+  assert.ok(warning.includes("$20"), "the warning must state the actual proposed cap");
+  assert.ok(/does(n't| not) track a workspace-wide spending limit/.test(warning), "the warning must honestly disclose this is a safety comparison, not a real remaining-budget check");
+}
+
+function testAcceptedCountForTargetRespectsTargetType() {
+  const runAll = { targetType: "all", runSummary: { created: 3, merged: 2, personAccepted: 1 } };
+  assert.equal(acceptedCountForTarget(runAll), 5, "targetType 'all' must count every accepted candidate");
+  const runPerson = { targetType: "person", runSummary: { created: 3, merged: 2, personAccepted: 1 } };
+  assert.equal(acceptedCountForTarget(runPerson), 1, "targetType 'person' must count ONLY person-type accepted candidates, ignoring communities/organizations mixed into created/merged");
+}
+
+async function testProposeStudentSearchPresetOrdersTiersAndAppliesSafeDefaults() {
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel();
+  const generateSearchFamilies = async ({ categories, audienceFraming }) => {
+    assert.deepEqual(categories, ["intent_discussions", "people", "facebook_groups", "communities"], "the preset must only generate the four categories it actually uses");
+    assert.ok(/aspiring|beginner/i.test(audienceFraming), "the preset must ask for aspiring/beginner framing on the people category");
+    return {
+      programName: "Multifamily Bootcamp",
+      families: [
+        { category: "intent_discussions", queries: [{ query: "recent post asking for real estate investing advice", locationHint: "", source: "openai_web_search" }] },
+        { category: "people", queries: [{ query: "beginner real estate investors just starting out", locationHint: "", source: "vertex" }] },
+        { category: "facebook_groups", queries: [{ query: "real estate investing Facebook groups for beginners", locationHint: "", source: "vertex" }] },
+        { category: "communities", queries: [{ query: "real estate investing subreddits", locationHint: "", source: "openai_web_search" }] },
+      ],
+    };
+  };
+
+  const run = await proposeStudentSearchPreset(
+    { workspaceId: WORKSPACE_ID, userId: "u1", programNoteId: "note-1", locations: ["Texas"] },
+    { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, generateSearchFamilies },
+  );
+
+  assert.equal(run.status, "draft");
+  assert.equal(run.jobs[0].source, "pdl_person_search", "PDL must be tier 1 — the very first job");
+  assert.equal(run.jobs[0].category, "people");
+  const categoriesAfterPdl = run.jobs.slice(1).map((j) => j.category);
+  assert.equal(categoriesAfterPdl[0], "intent_discussions", "tier 2 (intent discussions) must come immediately after PDL");
+  assert.ok(categoriesAfterPdl.slice(1).includes("people"), "tier 3 (people) must be present after intent discussions");
+  const lastCategories = categoriesAfterPdl.slice(-2);
+  assert.ok(lastCategories.every((c) => ["facebook_groups", "communities"].includes(c)), "tier 4 (communities/groups) must come last");
+
+  assert.equal(run.dailyCandidateTarget, 25, "default target must be 25");
+  assert.equal(run.targetType, "person", "the target must count PEOPLE specifically, not a mix with communities");
+  assert.equal(run.pageLimitPerQuery, 1, "default must be one page per query");
+  assert.equal(run.retryPolicy.maxAttemptsPerJob, 2, "default must be one retry (2 attempts total)");
+  assert.equal(run.providerCreditCapUsd, 1, "default must be a $1 hard cap");
+  assert.equal(run.includePdlCrossReference, false, "cross-reference would be redundant — PDL already runs directly as tier 1");
+  assert.ok(run.estimatedCreditUse.expectedPeople > 0);
+  assert.ok(run.estimatedCreditUse.expectedCommunitiesOrganizations > 0);
+}
+
+async function testRunPdlDirectJobActsAsIndependentCandidateSourceNotOnlyCrossReference() {
+  const run = fakePublicWebDiscoveryRunModel([{
+    _id: "run-pdl", workspaceId: WORKSPACE_ID, status: "queued",
+    jobs: [{ category: "people", query: "PDL Person Search: ideal buyer", source: "pdl_person_search", locationHint: "", status: "pending", page: 0, maxPages: 1, attempts: 0, resultsCount: 0, acceptedCount: 0 }],
+    nextJobIndex: 0, dailyCandidateTarget: 25, targetType: "person", pageLimitPerQuery: 1, queryLimitPerRun: 10, providerCreditCapUsd: 5,
+    includePdlCrossReference: false, pdlCrossReferenceDone: false, retryPolicy: { maxAttemptsPerJob: 2 },
+    estimatedCreditUse: {}, spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, estimatedUsd: 0 },
+    runSummary: { created: 0, merged: 0, rejectedSelfMatch: 0, rejectedCrmDuplicate: 0, rejectedPreviouslyDismissed: 0, rejectedAlreadyInQueue: 0, rejectedSellerOrVendor: 0, personAccepted: 0, crawlBlockedByRobots: 0, crawlSkippedLoginWall: 0, crawlErrors: 0, byFreshnessTier: { recent: 0, aging: 0, evergreen: 0 }, perSource: [], explanation: "" },
+    programNoteId: "note-1",
+  }]).rows[0];
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([run]);
+  const GroundingResearchResult = fakeGroundingResultModel();
+  const runAgent = async () => ({ output: { titles: ["Real Estate Agent"], locations: ["Texas"], industries: [] } });
+  const peopleDataLabsService = { searchPeople: async () => ({ people: [{ fullName: "New Investor", company: "", companyDomain: "", linkedinUrl: "", email: "", emailState: "" }] }) };
+  const JarvisMemoryNote = fakeNoteModel({ _id: "note-1", workspaceId: WORKSPACE_ID, title: "Multifamily Bootcamp", content: "A coaching program for real estate investors." });
+
+  const outcome = await processNextBatch(
+    { workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-pdl", batchSize: 1 },
+    { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, GroundingResearchResult, peopleDataLabsService, runAgent, JarvisMemoryNote, Contact: fakeLookupModel([]), Organization: fakeLookupModel([]), getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }), isSelfMatch: () => ({ isSelf: false, reasons: [] }) },
+  );
+
+  assert.equal(GroundingResearchResult.rows.length, 1, "PDL must independently stage a candidate on its own, never only as an enrichment/cross-reference side effect");
+  const perSourceEntry = outcome.run.runSummary.perSource.find((e) => e.source === "pdl_person_search");
+  assert.ok(perSourceEntry, "PDL's own contribution must be clearly reported as its own perSource row");
+  assert.notEqual(perSourceEntry.category, "cross_reference", "a DIRECT PDL job must be labeled distinctly from the cross-reference pass");
+  assert.equal(outcome.run.runSummary.personAccepted, 1);
+}
+
+async function testRunPdlCrossReferenceIsLabeledDistinctlyFromTheDirectSource() {
+  const run = fakePublicWebDiscoveryRunModel([{
+    _id: "run-xref", workspaceId: WORKSPACE_ID, status: "queued", jobs: [], nextJobIndex: 0,
+    dailyCandidateTarget: 25, targetType: "all", pageLimitPerQuery: 1, queryLimitPerRun: 10, providerCreditCapUsd: 5,
+    includePdlCrossReference: true, pdlCrossReferenceDone: false, retryPolicy: { maxAttemptsPerJob: 2 },
+    estimatedCreditUse: {}, spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, estimatedUsd: 0 },
+    runSummary: { created: 0, merged: 0, rejectedSelfMatch: 0, rejectedCrmDuplicate: 0, rejectedPreviouslyDismissed: 0, rejectedAlreadyInQueue: 0, rejectedSellerOrVendor: 0, personAccepted: 0, crawlBlockedByRobots: 0, crawlSkippedLoginWall: 0, crawlErrors: 0, byFreshnessTier: { recent: 0, aging: 0, evergreen: 0 }, perSource: [], explanation: "" },
+    programNoteId: "note-1",
+  }]).rows[0];
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([run]);
+  const GroundingResearchResult = fakeGroundingResultModel();
+  const runAgent = async () => ({ output: { titles: ["Real Estate Agent"], locations: [], industries: [] } });
+  const peopleDataLabsService = { searchPeople: async () => ({ people: [{ fullName: "Cross Referenced Person", company: "", companyDomain: "", linkedinUrl: "", email: "", emailState: "" }] }) };
+  const JarvisMemoryNote = fakeNoteModel({ _id: "note-1", workspaceId: WORKSPACE_ID, title: "Multifamily Bootcamp", content: "A coaching program for real estate investors." });
+
+  const outcome = await processNextBatch(
+    { workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-xref", batchSize: 1 },
+    { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, GroundingResearchResult, peopleDataLabsService, runAgent, JarvisMemoryNote, Contact: fakeLookupModel([]), Organization: fakeLookupModel([]), getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }), isSelfMatch: () => ({ isSelf: false, reasons: [] }) },
+  );
+  const perSourceEntry = outcome.run.runSummary.perSource.find((e) => e.source === "pdl_person_search");
+  assert.equal(perSourceEntry.category, "cross_reference", "the cross-reference pass must be labeled distinctly from a direct PDL candidate-search job");
+}
+
 async function run() {
   testIsNeverCrawlHostBlocksFacebookAndLinkedinAlways();
   testParseRobotsTxtRespectsDisallowAllowAndLongestMatch();
@@ -519,6 +712,17 @@ async function run() {
   await testProcessNextBatchRefusesADoubleLeaseWhileAlreadyRunning();
   await testProcessNextBatchResumesARunLeftRunningByADeadWorkerAfterARestart();
   await testProcessNextBatchRespectsAConcurrentPauseRequestedMidBatch();
+  await testGenerateSearchFamiliesInjectsTheServersActualCurrentYear();
+  testIsLikelySellerOrVendorDetectsProfessionalsNotStudents();
+  testIsStudentSearchContextIdentifiesPeopleAndIntentCategoriesOnly();
+  await testMergeDiscoveryCandidateAppliesSellerExclusionOnlyForStudentSearches();
+  testInterleaveJobsRoundRobinPreventsProviderExclusionOnTruncation();
+  testEstimateExpectedCountsSeparatesPeopleFromCommunities();
+  testComputeBudgetWarningOnlyFiresWellAboveTheRecommendedDefault();
+  testAcceptedCountForTargetRespectsTargetType();
+  await testProposeStudentSearchPresetOrdersTiersAndAppliesSafeDefaults();
+  await testRunPdlDirectJobActsAsIndependentCandidateSourceNotOnlyCrossReference();
+  await testRunPdlCrossReferenceIsLabeledDistinctlyFromTheDirectSource();
   await testRunDueDiscoverySchedulesSkipsDisabledSchedules();
   await testRunDueDiscoverySchedulesProcessesAnEnabledDueSchedule();
   console.log("Public Web Discovery engine: robots.txt/rate-limit/login-wall/Facebook-LinkedIn-denylist crawler compliance (fails closed on unverifiable robots.txt, never fetches the page when disallowed), freshness TIERING (labels recent/aging/evergreen — never drops an old or undated lead), dedup against self-match/CRM/dismissed-records/previous-runs, checkpointed+resumable+retryable batch processing with a hard provider-credit-cap stop and an honest explanation, and a scheduler that never acts on a disabled schedule but genuinely runs an enabled+due one — all passed.");
