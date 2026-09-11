@@ -129,11 +129,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
   const updateRunField = (run, field, value) => updateRunInState({ ...run, [field]: value });
   const toggleRunSource = (run, source) => {
     const sources = run.sources?.includes(source) ? run.sources.filter((s) => s !== source) : [...(run.sources || ["vertex", "openai_web_search"]), source];
-    // This pill only ever toggles vertex/openai_web_search — a direct PDL
-    // job is never controlled by it (removed only via its own Remove
-    // button), so it must survive regardless of which grounded-search
-    // provider is on or off.
-    updateRunInState({ ...run, sources, jobs: run.jobs.filter((j) => j.source === "pdl_person_search" || sources.includes(j.source)) });
+    updateRunInState({ ...run, sources, jobs: run.jobs.filter((j) => sources.includes(j.source)) });
   };
 
   const approveRun = async (run) => {
@@ -144,6 +140,9 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
       queryLimitPerRun: run.queryLimitPerRun,
       providerCreditCapUsd: run.providerCreditCapUsd,
       includePdlCrossReference: run.includePdlCrossReference,
+      includePdlPersonSearch: run.includePdlPersonSearch,
+      maxPdlPersonSearchCredits: run.maxPdlPersonSearchCredits,
+      maxPdlCrossReferenceCredits: run.maxPdlCrossReferenceCredits,
       maxAttemptsPerJob: run.retryPolicy?.maxAttemptsPerJob,
       sources: run.sources,
     });
@@ -219,7 +218,9 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
         intervalMinutes: frequencyByRun[run._id] || 1440,
         dailyCandidateTarget: run.dailyCandidateTarget, pageLimitPerQuery: run.pageLimitPerQuery,
         queryLimitPerRun: run.queryLimitPerRun, providerCreditCapUsd: run.providerCreditCapUsd,
-        includePdlCrossReference: run.includePdlCrossReference, maxAttemptsPerJob: run.retryPolicy?.maxAttemptsPerJob,
+        includePdlCrossReference: run.includePdlCrossReference, includePdlPersonSearch: run.includePdlPersonSearch,
+        maxPdlPersonSearchCredits: run.maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: run.maxPdlCrossReferenceCredits,
+        maxAttemptsPerJob: run.retryPolicy?.maxAttemptsPerJob,
         sources: run.sources,
       });
       setSchedules((current) => [response.data, ...current]);
@@ -327,23 +328,15 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
                     <summary>{label} ({jobGroups.get(key).length})</summary>
                     <div className="leadgen-advanced-search__body">
                       {run.jobs.map((job, index) => (job.category === key ? (
-                        job.source === "pdl_person_search" ? (
-                          <div className="leadgen-job-row leadgen-job-row--pdl" key={`${key}-${index}`}>
-                            <div><strong>PDL Person Search</strong><small>Independent candidate source — searches your program's ICP directly (real job titles/locations/industries), not this text.</small></div>
-                            <input type="text" value={job.locationHint} onChange={(event) => updateJob(run, index, "locationHint", event.target.value)} placeholder="Location hint (optional)" className="leadgen-job-row__location" />
-                            <Button size="sm" variant="outline" onClick={() => removeJob(run, index)}>Remove</Button>
-                          </div>
-                        ) : (
-                          <div className="leadgen-job-row" key={`${key}-${index}`}>
-                            <input type="text" value={job.query} onChange={(event) => updateJob(run, index, "query", event.target.value)} placeholder="Search query" />
-                            <input type="text" value={job.locationHint} onChange={(event) => updateJob(run, index, "locationHint", event.target.value)} placeholder="Location (optional)" className="leadgen-job-row__location" />
-                            <select value={job.source} onChange={(event) => updateJob(run, index, "source", event.target.value)}>
-                              <option value="vertex">Vertex</option>
-                              <option value="openai_web_search">OpenAI Web Search</option>
-                            </select>
-                            <Button size="sm" variant="outline" onClick={() => removeJob(run, index)}>Remove</Button>
-                          </div>
-                        )
+                        <div className="leadgen-job-row" key={`${key}-${index}`}>
+                          <input type="text" value={job.query} onChange={(event) => updateJob(run, index, "query", event.target.value)} placeholder="Search query" />
+                          <input type="text" value={job.locationHint} onChange={(event) => updateJob(run, index, "locationHint", event.target.value)} placeholder="Location (optional)" className="leadgen-job-row__location" />
+                          <select value={job.source} onChange={(event) => updateJob(run, index, "source", event.target.value)}>
+                            <option value="vertex">Vertex</option>
+                            <option value="openai_web_search">OpenAI Web Search</option>
+                          </select>
+                          <Button size="sm" variant="outline" onClick={() => removeJob(run, index)}>Remove</Button>
+                        </div>
                       ) : null))}
                       <Button size="sm" variant="outline" onClick={() => addJob(run, key)}>+ Add query</Button>
                     </div>
@@ -351,7 +344,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
                 ) : null))}
 
                 <div className="leadgen-field-group">
-                  <span className="leadgen-field-label">Enabled providers</span>
+                  <span className="leadgen-field-label">Enabled web providers</span>
                   <div className="leadgen-pill-row">
                     {["vertex", "openai_web_search"].map((source) => {
                       const availability = providerAvailability?.[source];
@@ -365,21 +358,36 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
                   </div>
                 </div>
 
+                <div className="leadgen-field-group">
+                  <span className="leadgen-field-label">PDL (People Data Labs) — tracked in its own credits, never converted to web cash</span>
+                  <div className="leadgen-review-grid">
+                    <label className="leadgen-run-checkbox"><input type="checkbox" checked={run.includePdlPersonSearch} onChange={(event) => updateRunField(run, "includePdlPersonSearch", event.target.checked)} /><span>PDL Person Search (independent candidate source)</span></label>
+                    <label><span>Max PDL Person Search credits</span><input type="number" min="0" max="500" disabled={!run.includePdlPersonSearch} value={run.maxPdlPersonSearchCredits} onChange={(event) => updateRunField(run, "maxPdlPersonSearchCredits", Number(event.target.value))} /></label>
+                    <label className="leadgen-run-checkbox"><input type="checkbox" checked={run.includePdlCrossReference} onChange={(event) => updateRunField(run, "includePdlCrossReference", event.target.checked)} /><span>Include PDL cross-reference</span></label>
+                    <label><span>Max PDL cross-reference credits</span><input type="number" min="0" max="500" disabled={!run.includePdlCrossReference} value={run.maxPdlCrossReferenceCredits} onChange={(event) => updateRunField(run, "maxPdlCrossReferenceCredits", Number(event.target.value))} /></label>
+                  </div>
+                  <p className="leadgen-run-disclosure">Each toggle above is the ONLY thing that turns its PDL call on or off — when off, nothing is enqueued, called, estimated, or charged for it.</p>
+                </div>
+
                 <div className="leadgen-review-grid">
                   <label><span>Daily candidate target</span><input type="number" min="1" max="500" value={run.dailyCandidateTarget} onChange={(event) => updateRunField(run, "dailyCandidateTarget", Number(event.target.value))} /></label>
-                  <label><span>Provider credit hard cap ($)</span><input type="number" min="0" max="1000" step="0.5" value={run.providerCreditCapUsd} onChange={(event) => updateRunField(run, "providerCreditCapUsd", Number(event.target.value))} /></label>
+                  <label><span>Web search cash cap ($) — Vertex + OpenAI only</span><input type="number" min="0" max="1000" step="0.5" value={run.providerCreditCapUsd} onChange={(event) => updateRunField(run, "providerCreditCapUsd", Number(event.target.value))} /></label>
                   <label><span>Page limit per query</span><input type="number" min="1" max="10" value={run.pageLimitPerQuery} onChange={(event) => updateRunField(run, "pageLimitPerQuery", Number(event.target.value))} /></label>
-                  <label><span>Query limit per run</span><input type="number" min="1" max="500" value={run.queryLimitPerRun} onChange={(event) => updateRunField(run, "queryLimitPerRun", Number(event.target.value))} /></label>
+                  <label><span>Query limit per run (web queries only — never PDL)</span><input type="number" min="1" max="500" value={run.queryLimitPerRun} onChange={(event) => updateRunField(run, "queryLimitPerRun", Number(event.target.value))} /></label>
                   <label><span>Retry attempts per query</span><input type="number" min="1" max="10" value={run.retryPolicy?.maxAttemptsPerJob || 3} onChange={(event) => updateRunInState({ ...run, retryPolicy: { maxAttemptsPerJob: Number(event.target.value) } })} /></label>
-                  <label className="leadgen-run-checkbox"><input type="checkbox" checked={run.includePdlCrossReference} onChange={(event) => updateRunField(run, "includePdlCrossReference", event.target.checked)} /><span>Include PDL cross-reference</span></label>
                 </div>
                 <dl className="leadgen-review-summary">
                   <dt>Expected people</dt><dd>~{run.estimatedCreditUse?.expectedPeople ?? "?"} (rough estimate — direct outreach candidates)</dd>
                   <dt>Expected communities/organizations</dt><dd>~{run.estimatedCreditUse?.expectedCommunitiesOrganizations ?? "?"} (rough estimate — need an organizer/partnership approach, not direct outreach)</dd>
                   <dt>Target</dt><dd>{run.dailyCandidateTarget} {run.targetType === "person" ? "unique people specifically" : "candidates of any type"}</dd>
+                  <dt>Maximum PDL Person Search credits</dt><dd>{run.includePdlPersonSearch ? run.maxPdlPersonSearchCredits : "0 (off)"}</dd>
+                  <dt>Maximum PDL cross-reference credits</dt><dd>{run.includePdlCrossReference ? run.maxPdlCrossReferenceCredits : "0 (off)"}</dd>
+                  <dt>Maximum Vertex calls</dt><dd>{sources.includes("vertex") ? (run.estimatedCreditUse?.vertexCalls ?? "?") : "0 (off)"}</dd>
+                  <dt>Maximum OpenAI Web Search calls</dt><dd>{sources.includes("openai_web_search") ? (run.estimatedCreditUse?.openaiCalls ?? "?") : "0 (off)"}</dd>
+                  <dt>Maximum estimated web cash</dt><dd>${run.estimatedCreditUse?.estimatedUsd ?? "?"} (Vertex + OpenAI only — PDL credits above are never converted into this figure)</dd>
                 </dl>
                 {run.estimatedCreditUse?.budgetWarning ? <p className="form-error">{run.estimatedCreditUse.budgetWarning}</p> : null}
-                <p className="leadgen-run-disclosure">Destination: the review queue below — nothing is imported into the CRM, enriched, monitored, or contacted automatically. Estimated cost if every query and PDL cross-reference runs in full: ${run.estimatedCreditUse?.estimatedUsd ?? "?"} (rough estimate — {run.estimatedCreditUse?.note}).</p>
+                <p className="leadgen-run-disclosure">Destination: the review queue below — nothing is imported into the CRM, enriched, monitored, or contacted automatically. {run.estimatedCreditUse?.note}</p>
 
                 <div className="leadgen-review-actions">
                   <Button loading={busy === "running"} onClick={() => runOnceNow(run)}>Run once now</Button>
@@ -397,14 +405,23 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
             ) : (
               <div className="leadgen-run-status-detail">
                 <p>Checkpoint: job {Math.min(run.nextJobIndex + 1, totalJobs)} of {totalJobs}{currentJob ? ` — "${currentJob.query}" (page ${currentJob.page + 1} of ${currentJob.maxPages})` : ""}</p>
-                <p>Spend so far: ${run.spend?.estimatedUsd ?? 0} of ${run.providerCreditCapUsd} cap · {run.spend?.vertexCalls || 0} Vertex calls · {run.spend?.openaiCalls || 0} OpenAI calls · {run.spend?.pdlCandidates || 0} PDL candidates</p>
                 {run.runSummary?.explanation ? <p className="leadgen-run-explanation">{run.runSummary.explanation}</p> : null}
                 <dl className="leadgen-review-summary">
+                  <dt>PDL Person Search credits used</dt><dd>{run.spend?.pdlPersonSearchCredits || 0} of {run.maxPdlPersonSearchCredits} max{!run.includePdlPersonSearch ? " (off)" : ""}</dd>
+                  <dt>PDL cross-reference credits used</dt><dd>{run.spend?.pdlCrossReferenceCredits || 0} of {run.maxPdlCrossReferenceCredits} max{!run.includePdlCrossReference ? " (off)" : ""}</dd>
+                  <dt>Vertex calls</dt><dd>{run.spend?.vertexCalls || 0}</dd>
+                  <dt>OpenAI Web Search calls</dt><dd>{run.spend?.openaiCalls || 0}</dd>
+                  <dt>Web cash spent</dt><dd>${run.spend?.estimatedUsd ?? 0} of ${run.providerCreditCapUsd} cap</dd>
                   <dt>Accepted</dt><dd>{run.runSummary?.created || 0} new · {run.runSummary?.merged || 0} merged into existing queue entries</dd>
                   <dt>Freshness</dt><dd>{run.runSummary?.byFreshnessTier?.recent || 0} recent (0-90d) · {run.runSummary?.byFreshnessTier?.aging || 0} aging (91-365d) · {run.runSummary?.byFreshnessTier?.evergreen || 0} evergreen/undated</dd>
                   <dt>Excluded</dt><dd>{run.runSummary?.rejectedSelfMatch || 0} self-match · {run.runSummary?.rejectedCrmDuplicate || 0} already in CRM · {run.runSummary?.rejectedPreviouslyDismissed || 0} previously dismissed</dd>
                   <dt>Crawl</dt><dd>{run.runSummary?.crawlBlockedByRobots || 0} blocked by robots.txt · {run.runSummary?.crawlSkippedLoginWall || 0} skipped (login wall/never-crawled platform) · {run.runSummary?.crawlErrors || 0} errors</dd>
                 </dl>
+                {run.runSummary?.zeroCallReasons?.length ? (
+                  <ul className="leadgen-run-zero-call-reasons">
+                    {run.runSummary.zeroCallReasons.map((reason, index) => <li key={index} className="form-error">{reason}</li>)}
+                  </ul>
+                ) : null}
                 {run.runSummary?.perSource?.length ? (
                   <div className="leadgen-provider-breakdown-wrap">
                     <table className="leadgen-provider-breakdown">

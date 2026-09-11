@@ -82,8 +82,33 @@ const publicWebDiscoveryRunSchema = new mongoose.Schema({
   // "all" (default): counts every accepted candidate of any type, as
   // every run before this preset already did.
   targetType: { type: String, enum: ["all", "person"], default: "all" },
+  // The SINGLE source of truth for whether the direct PDL Person Search
+  // phase runs at all — independent of includePdlCrossReference below, and
+  // independent of `jobs` (a direct PDL job is never a member of `jobs`;
+  // it runs as its own one-shot phase — see
+  // publicWebDiscoveryEngineService.js's runPdlPersonSearchPhase). This
+  // fixes a reported incident where the owner removed an editable "PDL
+  // Person Search" row and left cross-reference unchecked, yet PDL still
+  // ran anyway — a removable row is not a reliable on/off switch; this
+  // boolean is, and is enforced on the backend regardless of what a client
+  // submits.
+  includePdlPersonSearch: { type: Boolean, default: true },
+  pdlPersonSearchDone: { type: Boolean, default: false },
+  // PDL is billed in its own per-record credits, never dollars — these caps
+  // (and their spend.pdlPersonSearchCredits/pdlCrossReferenceCredits
+  // counters below) are tracked entirely separately from
+  // providerCreditCapUsd/spend.estimatedUsd, which apply only to
+  // Vertex/OpenAI web-search cash. Free PDL credits must never be
+  // converted into "cash spent" against the web cash cap.
+  maxPdlPersonSearchCredits: { type: Number, default: 25, min: 0, max: 500 },
+  maxPdlCrossReferenceCredits: { type: Number, default: 25, min: 0, max: 500 },
   includePdlCrossReference: { type: Boolean, default: true },
   pdlCrossReferenceDone: { type: Boolean, default: false },
+  // The owner's provider selection at approval time, persisted so a
+  // completed/capped run can honestly report WHY an enabled provider ended
+  // up with zero calls (query limit, edits, cap, or every query failing)
+  // instead of leaving that unexplained.
+  enabledSources: { type: [String], enum: ["vertex", "openai_web_search"], default: ["vertex", "openai_web_search"] },
   retryPolicy: {
     maxAttemptsPerJob: { type: Number, default: 3, min: 1, max: 10 },
   },
@@ -99,6 +124,11 @@ const publicWebDiscoveryRunSchema = new mongoose.Schema({
     // follow-up, so the owner should see them apart before approving.
     expectedPeople: { type: Number, default: 0 },
     expectedCommunitiesOrganizations: { type: Number, default: 0 },
+    // The exact pre-run plan, shown to the owner before anything is spent —
+    // PDL credits are deliberately separate numbers from the web cash
+    // estimate below, never combined into one figure.
+    maxPdlPersonSearchCredits: { type: Number, default: 0 },
+    maxPdlCrossReferenceCredits: { type: Number, default: 0 },
     // Set only when providerCreditCapUsd is well above the conservative
     // recommended default — this app does not track a workspace-wide
     // spending limit, so this is a relative safety comparison, not a real
@@ -110,7 +140,14 @@ const publicWebDiscoveryRunSchema = new mongoose.Schema({
   spend: {
     vertexCalls: { type: Number, default: 0 },
     openaiCalls: { type: Number, default: 0 },
+    // Legacy aggregate (pdlPersonSearchCredits + pdlCrossReferenceCredits),
+    // kept for any existing reader of this field — always kept in sync by
+    // whichever PDL phase records credits.
     pdlCandidates: { type: Number, default: 0 },
+    pdlPersonSearchCredits: { type: Number, default: 0 },
+    pdlCrossReferenceCredits: { type: Number, default: 0 },
+    // Web-search cash ONLY (Vertex + OpenAI calls) — PDL is never added
+    // here. Checked directly against providerCreditCapUsd.
     estimatedUsd: { type: Number, default: 0 },
   },
   runSummary: {
@@ -165,6 +202,11 @@ const publicWebDiscoveryRunSchema = new mongoose.Schema({
     },
     perSource: { type: mongoose.Schema.Types.Mixed, default: [] },
     explanation: { type: String, default: "", trim: true, maxlength: 2000 },
+    // Explicit, per-provider reasons computed whenever a provider the owner
+    // enabled (enabledSources / includePdlPersonSearch / includePdlCrossReference)
+    // ends this run with zero calls/credits — never left as an unexplained
+    // "0 calls" the way the reported incident was.
+    zeroCallReasons: { type: [String], default: [] },
   },
   // Same lease pattern as services/researchMonitorService.js's
   // ResearchMonitor runner — guards against two ticks (a manual trigger and

@@ -72,7 +72,9 @@ router.post("/runs/:id/approve", async (req, res) => {
       workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, runId: req.params.id,
       jobs: req.body?.jobs, dailyCandidateTarget: req.body?.dailyCandidateTarget, pageLimitPerQuery: req.body?.pageLimitPerQuery,
       queryLimitPerRun: req.body?.queryLimitPerRun, providerCreditCapUsd: req.body?.providerCreditCapUsd,
-      includePdlCrossReference: req.body?.includePdlCrossReference, sources: req.body?.sources, maxAttemptsPerJob: req.body?.maxAttemptsPerJob,
+      includePdlCrossReference: req.body?.includePdlCrossReference, includePdlPersonSearch: req.body?.includePdlPersonSearch,
+      maxPdlPersonSearchCredits: req.body?.maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: req.body?.maxPdlCrossReferenceCredits,
+      sources: req.body?.sources, maxAttemptsPerJob: req.body?.maxAttemptsPerJob,
     });
     return res.json({ success: true, data });
   } catch (error) {
@@ -130,7 +132,9 @@ router.post("/schedules", async (req, res) => {
       workspaceId: req.auth.workspaceId, name: req.body?.name || "Discovery schedule", programNoteId: req.body?.programNoteId || null,
       programName: req.body?.programName || "", intervalMinutes: req.body?.intervalMinutes, dailyCandidateTarget: req.body?.dailyCandidateTarget,
       pageLimitPerQuery: req.body?.pageLimitPerQuery, queryLimitPerRun: req.body?.queryLimitPerRun, providerCreditCapUsd: req.body?.providerCreditCapUsd,
-      sources: req.body?.sources, includePdlCrossReference: req.body?.includePdlCrossReference, maxAttemptsPerJob: req.body?.maxAttemptsPerJob,
+      sources: req.body?.sources, includePdlCrossReference: req.body?.includePdlCrossReference, includePdlPersonSearch: req.body?.includePdlPersonSearch,
+      maxPdlPersonSearchCredits: req.body?.maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: req.body?.maxPdlCrossReferenceCredits,
+      maxAttemptsPerJob: req.body?.maxAttemptsPerJob,
       enabled: false, // Never honors a client-supplied enabled:true — the owner must flip it on via /enable below.
       createdByUserId: req.auth.user?._id,
     });

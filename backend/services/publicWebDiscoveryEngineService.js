@@ -41,7 +41,7 @@ const leadGenerationCoordinatorService = require("./leadGenerationCoordinatorSer
 const { JOB_CATEGORIES, JOB_SOURCES } = require("../models/PublicWebDiscoveryRun");
 // The two grounded-search providers a search-family QUERY can run
 // through — PDL is a valid job source but is never assigned a natural-
-// language query the way these two are (see runPdlDirectJob).
+// language query the way these two are (see runPdlPersonSearchPhase).
 const GROUNDED_SEARCH_SOURCES = ["vertex", "openai_web_search"];
 
 const clean = (value, length) => String(value || "").trim().slice(0, length);
@@ -156,13 +156,39 @@ function interleaveJobsRoundRobin(jobs) {
   return result;
 }
 
-/** Rough, clearly-labeled estimate of people vs. community/organization results — never a promise. */
+/**
+ * Rough, clearly-labeled estimate of people vs. community/organization
+ * results — never a promise. `jobs` here is always the web (Vertex/OpenAI)
+ * job list — a direct PDL job is never a member of it (see
+ * includePdlPersonSearch / runPdlPersonSearchPhase), so `includesPdlDirect`
+ * is passed separately to account for its own expected-people contribution.
+ */
 function estimateExpectedCounts(jobs, includesPdlDirect) {
-  const peopleJobs = jobs.filter((j) => PEOPLE_LIKE_CATEGORIES.has(j.category) && j.source !== "pdl_person_search").length;
-  const otherJobs = jobs.length - peopleJobs - jobs.filter((j) => j.source === "pdl_person_search").length;
+  const peopleJobs = jobs.filter((j) => PEOPLE_LIKE_CATEGORIES.has(j.category)).length;
+  const otherJobs = jobs.length - peopleJobs;
   const expectedPeople = peopleJobs * 3 + (includesPdlDirect ? 10 : 0);
   const expectedCommunitiesOrganizations = otherJobs * 2;
   return { expectedPeople, expectedCommunitiesOrganizations };
+}
+
+/**
+ * Groups jobs by source and round-robins across ALL of them GLOBALLY —
+ * unlike interleaveJobsRoundRobin (which preserves category grouping and
+ * only alternates sources within a category), this ignores category
+ * boundaries entirely so that truncating to queryLimitPerRun always
+ * schedules one call for each enabled web provider before either gets a
+ * second one, regardless of how many categories or how unevenly they're
+ * split across providers. Used only on the final web-job list at approval
+ * time, right before the queryLimitPerRun slice — the exact point where
+ * the reported incident lost every OpenAI query to a 2-job limit.
+ */
+function roundRobinBySourceGlobally(jobs) {
+  const bySource = new Map();
+  for (const job of jobs) { if (!bySource.has(job.source)) bySource.set(job.source, []); bySource.get(job.source).push(job); }
+  const sourceGroups = [...bySource.values()];
+  const result = [];
+  for (let i = 0; result.length < jobs.length; i += 1) { for (const group of sourceGroups) if (group[i]) result.push(group[i]); }
+  return result;
 }
 
 /**
@@ -180,7 +206,7 @@ function computeBudgetWarning(providerCreditCapUsd) {
 }
 
 function emptyRunSummary() {
-  return { created: 0, merged: 0, rejectedSelfMatch: 0, rejectedCrmDuplicate: 0, rejectedPreviouslyDismissed: 0, rejectedAlreadyInQueue: 0, rejectedSellerOrVendor: 0, personAccepted: 0, crawlBlockedByRobots: 0, crawlSkippedLoginWall: 0, crawlErrors: 0, byFreshnessTier: { recent: 0, aging: 0, evergreen: 0 }, perSource: [], explanation: "" };
+  return { created: 0, merged: 0, rejectedSelfMatch: 0, rejectedCrmDuplicate: 0, rejectedPreviouslyDismissed: 0, rejectedAlreadyInQueue: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedBudgetCap: 0, unexplainedRejections: 0, personAccepted: 0, crawlBlockedByRobots: 0, crawlSkippedLoginWall: 0, crawlErrors: 0, byFreshnessTier: { recent: 0, aging: 0, evergreen: 0 }, perSource: [], explanation: "", zeroCallReasons: [] };
 }
 
 /**
@@ -202,9 +228,19 @@ async function proposePublicWebDiscoveryRun({ workspaceId, userId, auth, program
 
   const vertexCalls = jobs.filter((j) => j.source === "vertex").reduce((sum, j) => sum + j.maxPages, 0);
   const openaiCalls = jobs.filter((j) => j.source === "openai_web_search").reduce((sum, j) => sum + j.maxPages, 0);
-  const pdlCandidates = 25;
-  const estimatedUsd = Math.round(((vertexCalls + openaiCalls) * COST_PER_GROUNDED_CALL_USD + pdlCandidates * COST_PER_PDL_CANDIDATE_USD) * 100) / 100;
+  // Web cash estimate ONLY (Vertex + OpenAI) — PDL is never a member of
+  // `jobs` and is never converted into a dollar figure here; its own
+  // credit ceiling is reported separately below.
+  const estimatedUsd = Math.round((vertexCalls + openaiCalls) * COST_PER_GROUNDED_CALL_USD * 100) / 100;
   const { expectedPeople, expectedCommunitiesOrganizations } = estimateExpectedCounts(jobs, false);
+  // The custom "Generate custom search families" flow has never included a
+  // direct PDL job (searchFamilyGenerationService only ever generates
+  // Vertex/OpenAI queries) — preserved unchanged; cross-reference remains
+  // the only PDL involvement here unless the owner explicitly turns the
+  // direct toggle on after generating.
+  const includePdlPersonSearch = false;
+  const maxPdlPersonSearchCredits = 25;
+  const maxPdlCrossReferenceCredits = 25;
 
   // Set explicitly rather than relying on the schema's own nested-subdocument
   // defaults — keeps a freshly-created run's document fully self-describing
@@ -215,13 +251,18 @@ async function proposePublicWebDiscoveryRun({ workspaceId, userId, auth, program
     dailyCandidateTarget: 25, pageLimitPerQuery: 2, queryLimitPerRun: 40, providerCreditCapUsd: 5, targetType: "all",
     retryPolicy: { maxAttemptsPerJob: 3 },
     estimatedCreditUse: {
-      vertexCalls, openaiCalls, pdlCandidates, estimatedUsd, expectedPeople, expectedCommunitiesOrganizations,
+      vertexCalls, openaiCalls, pdlCandidates: (includePdlPersonSearch ? maxPdlPersonSearchCredits : 0) + maxPdlCrossReferenceCredits,
+      estimatedUsd, expectedPeople, expectedCommunitiesOrganizations,
+      maxPdlPersonSearchCredits: includePdlPersonSearch ? maxPdlPersonSearchCredits : 0,
+      maxPdlCrossReferenceCredits,
       budgetWarning: computeBudgetWarning(5),
-      note: "Rough estimate only, assuming every generated query runs its full page limit and PDL cross-reference finds a full batch — actual spend depends on real results and the caps set at approval.",
+      note: "Rough estimate only, assuming every generated query runs its full page limit and PDL cross-reference finds a full batch — actual spend depends on real results and the caps set at approval. PDL credits are tracked separately and are never converted into the web cash estimate above.",
     },
-    spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, estimatedUsd: 0 },
+    spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, pdlPersonSearchCredits: 0, pdlCrossReferenceCredits: 0, estimatedUsd: 0 },
     runSummary: emptyRunSummary(),
+    includePdlPersonSearch, maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits,
     pdlCrossReferenceDone: false, includePdlCrossReference: true,
+    enabledSources: ["vertex", "openai_web_search"],
     createdByUserId: userId, correlationId: clean(correlationId, 255),
   });
   return run;
@@ -249,41 +290,49 @@ async function proposeStudentSearchPreset({ workspaceId, userId, auth, programNo
   const byCategory = new Map(families.map((family) => [family.category, family.queries]));
   const toJobs = (category, queries) => (queries || []).map((q) => ({ category, query: q.query, source: q.source, locationHint: q.locationHint, status: "pending", page: 0, maxPages: 1, attempts: 0, resultsCount: 0, acceptedCount: 0 }));
 
-  // Tier 1: PDL Person Search — independent, paginated, never limited to
-  // enrichment/cross-reference. `query` is a descriptive label only; the
-  // real search criteria come from the program's ICP (see runPdlDirectJob).
-  const pdlTier = [{ category: "people", query: `PDL Person Search: ideal prospective students for ${programName || "this program"}`, source: "pdl_person_search", locationHint: (locations || [])[0] || "", status: "pending", page: 0, maxPages: 1, attempts: 0, resultsCount: 0, acceptedCount: 0 }];
-  // Tier 2: recent problem/intent discussions.
+  // Priority 1: recent problem/intent discussions.
   const intentTier = interleaveJobsRoundRobin(toJobs("intent_discussions", byCategory.get("intent_discussions")));
-  // Tier 3: aspiring/beginner-investor people searches.
+  // Priority 2: aspiring/beginner-investor people searches.
   const peopleTier = interleaveJobsRoundRobin(toJobs("people", byCategory.get("people")));
-  // Tier 4: relevant communities and groups — separately labeled, never
+  // Priority 3: relevant communities and groups — separately labeled, never
   // filtered by the seller/vendor exclusion (see isStudentSearchContext).
   const communityTier = interleaveJobsRoundRobin([...toJobs("facebook_groups", byCategory.get("facebook_groups")), ...toJobs("communities", byCategory.get("communities"))]);
 
-  const jobs = [...pdlTier, ...intentTier, ...peopleTier, ...communityTier];
+  // PDL Person Search is NOT a member of `jobs` — it's an independent,
+  // boolean-gated phase (includePdlPersonSearch / runPdlPersonSearchPhase)
+  // that always runs first, before any web job, so it keeps its top
+  // priority without occupying a query-limit slot or being removable via
+  // job-list editing (see model comment on includePdlPersonSearch for why).
+  const jobs = [...intentTier, ...peopleTier, ...communityTier];
   const vertexCalls = jobs.filter((j) => j.source === "vertex").reduce((sum, j) => sum + j.maxPages, 0);
   const openaiCalls = jobs.filter((j) => j.source === "openai_web_search").reduce((sum, j) => sum + j.maxPages, 0);
-  const pdlCandidates = 25;
-  const estimatedUsd = Math.round(((vertexCalls + openaiCalls) * COST_PER_GROUNDED_CALL_USD + pdlCandidates * COST_PER_PDL_CANDIDATE_USD) * 100) / 100;
+  const estimatedUsd = Math.round((vertexCalls + openaiCalls) * COST_PER_GROUNDED_CALL_USD * 100) / 100;
   const { expectedPeople, expectedCommunitiesOrganizations } = estimateExpectedCounts(jobs, true);
   const providerCreditCapUsd = 1;
+  const includePdlPersonSearch = true;
+  const maxPdlPersonSearchCredits = 25;
+  const maxPdlCrossReferenceCredits = 25;
 
   const run = await Model.create({
     workspaceId, programNoteId, programName, status: "draft", jobs, nextJobIndex: 0,
     // Defaults for the first run of this preset: 25 unique PEOPLE (not a
     // mix with communities — targetType:"person"), one page per query,
-    // one retry (2 attempts total), and a $1 hard cap.
+    // one retry (2 attempts total), and a $1 hard WEB CASH cap (Vertex +
+    // OpenAI only — PDL's own credit ceiling is separate, see above).
     dailyCandidateTarget: 25, targetType: "person", pageLimitPerQuery: 1, queryLimitPerRun: Math.max(jobs.length, 20), providerCreditCapUsd,
     retryPolicy: { maxAttemptsPerJob: 2 },
     estimatedCreditUse: {
-      vertexCalls, openaiCalls, pdlCandidates, estimatedUsd, expectedPeople, expectedCommunitiesOrganizations,
+      vertexCalls, openaiCalls, pdlCandidates: maxPdlPersonSearchCredits, // cross-reference is off by default for this preset — see below.
+      estimatedUsd, expectedPeople, expectedCommunitiesOrganizations,
+      maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: 0,
       budgetWarning: computeBudgetWarning(providerCreditCapUsd),
-      note: "Find prospective students preset: PDL runs as an independent candidate source (tier 1), then recent intent discussions, then aspiring/beginner people searches, then communities/groups — coaches, course sellers, syndicators, brokers, lenders, vendors, and capital-raising services are excluded from the people/intent/PDL tiers, never from community discovery.",
+      note: "Find prospective students preset: PDL Person Search runs first as an independent candidate source (its own credit ceiling, never counted as web cash), then recent intent discussions, then aspiring/beginner people searches, then communities/groups — coaches, course sellers, syndicators, brokers, lenders, vendors, and capital-raising services are excluded from the people/intent/PDL results, never from community discovery.",
     },
-    spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, estimatedUsd: 0 },
+    spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, pdlPersonSearchCredits: 0, pdlCrossReferenceCredits: 0, estimatedUsd: 0 },
     runSummary: emptyRunSummary(),
-    pdlCrossReferenceDone: false, includePdlCrossReference: false, // PDL already runs directly as tier 1 — cross-reference would be redundant here.
+    includePdlPersonSearch, maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits,
+    pdlCrossReferenceDone: false, includePdlCrossReference: false, // PDL already runs directly — cross-reference would be redundant here.
+    enabledSources: ["vertex", "openai_web_search"],
     createdByUserId: userId, correlationId: clean(correlationId, 255),
   });
   return run;
@@ -294,25 +343,41 @@ async function proposeStudentSearchPreset({ workspaceId, userId, auth, programNo
  * caps) and moves the run from "draft" to "queued" — nothing is spent
  * until a processNextBatch() tick actually runs.
  */
-async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, dailyCandidateTarget, pageLimitPerQuery, queryLimitPerRun, providerCreditCapUsd, includePdlCrossReference, sources, maxAttemptsPerJob }, dependencies = {}) {
+async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, dailyCandidateTarget, pageLimitPerQuery, queryLimitPerRun, providerCreditCapUsd, includePdlCrossReference, includePdlPersonSearch, maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits, sources, maxAttemptsPerJob }, dependencies = {}) {
   const Model = dependencies.PublicWebDiscoveryRun || PublicWebDiscoveryRun;
   const run = await Model.findOne({ _id: runId, workspaceId });
   if (!run) { const error = new Error("Discovery run not found"); error.code = "DISCOVERY_RUN_NOT_FOUND"; throw error; }
   if (run.status !== "draft") { const error = new Error("This run has already been approved or run"); error.code = "DISCOVERY_RUN_ALREADY_APPROVED"; throw error; }
 
+  // includePdlPersonSearch is the ONLY thing that controls whether the
+  // direct PDL phase runs (see model comment) — a `pdl_person_search`
+  // entry in a submitted `jobs` payload is always stripped out here
+  // regardless of client state, so a stale/edited job list can never
+  // silently re-enable or disable it. `sources`/queryLimitPerRun apply only
+  // to the real web (Vertex/OpenAI) query list.
+  const allowedSources = Array.isArray(sources) && sources.length ? sources.filter((s) => GROUNDED_SEARCH_SOURCES.includes(s)) : null;
   if (Array.isArray(jobs) && jobs.length) {
-    // `sources` is meant to toggle the grounded-search providers
-    // (vertex/openai_web_search) — a direct PDL job is a fundamentally
-    // different kind of source and is never controlled by that toggle;
-    // it's included/excluded only by whether it's present in `jobs`.
-    const allowedSources = Array.isArray(sources) && sources.length ? sources.filter((s) => JOB_SOURCES.includes(s)) : null;
-    run.jobs = jobs
-      .filter((j) => JOB_CATEGORIES.includes(j.category) && String(j.query || "").trim() && JOB_SOURCES.includes(j.source))
-      .filter((j) => j.source === "pdl_person_search" || !allowedSources || allowedSources.includes(j.source))
+    const webJobs = jobs
+      .filter((j) => JOB_CATEGORIES.includes(j.category) && String(j.query || "").trim() && GROUNDED_SEARCH_SOURCES.includes(j.source))
+      .filter((j) => !allowedSources || allowedSources.includes(j.source));
+    // Round-robin by source GLOBALLY (not just within a category) right
+    // before the queryLimitPerRun slice — this is the exact point where a
+    // low query limit previously starved OpenAI entirely because PDL and
+    // Vertex happened to occupy the first slots (the reported incident:
+    // limit 2, PDL job 1, Vertex job 2, 0 OpenAI calls).
+    run.jobs = roundRobinBySourceGlobally(webJobs)
       .slice(0, Math.max(1, Math.min(500, Number(queryLimitPerRun) || run.queryLimitPerRun)))
       .map((j) => ({ category: j.category, query: clean(j.query, 500), source: j.source, locationHint: clean(j.locationHint, 200), status: "pending", page: 0, maxPages: Math.max(1, Math.min(10, Number(pageLimitPerQuery) || run.pageLimitPerQuery)), attempts: 0, resultsCount: 0, acceptedCount: 0 }));
   } else {
-    for (const job of run.jobs) job.maxPages = Math.max(1, Math.min(10, Number(pageLimitPerQuery) || job.maxPages));
+    // No edited job list submitted — keep the existing web jobs (already
+    // never includes PDL — see proposePublicWebDiscoveryRun/
+    // proposeStudentSearchPreset), just re-round-robin+re-slice them the
+    // same way so query-limit/source edits made without touching `jobs`
+    // still get fair provider scheduling.
+    const existingWebJobs = run.jobs.filter((j) => GROUNDED_SEARCH_SOURCES.includes(j.source) && (!allowedSources || allowedSources.includes(j.source)));
+    run.jobs = roundRobinBySourceGlobally(existingWebJobs)
+      .slice(0, Math.max(1, Math.min(500, Number(queryLimitPerRun) || run.queryLimitPerRun)))
+      .map((j) => ({ category: j.category, query: j.query, source: j.source, locationHint: j.locationHint, status: "pending", page: 0, maxPages: Math.max(1, Math.min(10, Number(pageLimitPerQuery) || j.maxPages)), attempts: 0, resultsCount: 0, acceptedCount: 0 }));
   }
   if (!run.jobs.length) { const error = new Error("At least one search-family query is required to approve this run"); error.code = "DISCOVERY_RUN_NO_JOBS"; throw error; }
 
@@ -321,7 +386,11 @@ async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, 
   if (queryLimitPerRun != null) run.queryLimitPerRun = Math.max(1, Math.min(500, Number(queryLimitPerRun) || run.queryLimitPerRun));
   if (providerCreditCapUsd != null) run.providerCreditCapUsd = Math.max(0, Math.min(1000, Number(providerCreditCapUsd) || run.providerCreditCapUsd));
   if (includePdlCrossReference != null) run.includePdlCrossReference = Boolean(includePdlCrossReference);
+  if (includePdlPersonSearch != null) run.includePdlPersonSearch = Boolean(includePdlPersonSearch);
+  if (maxPdlPersonSearchCredits != null) run.maxPdlPersonSearchCredits = Math.max(0, Math.min(500, Number(maxPdlPersonSearchCredits) || 0));
+  if (maxPdlCrossReferenceCredits != null) run.maxPdlCrossReferenceCredits = Math.max(0, Math.min(500, Number(maxPdlCrossReferenceCredits) || 0));
   if (maxAttemptsPerJob != null) run.retryPolicy.maxAttemptsPerJob = Math.max(1, Math.min(10, Number(maxAttemptsPerJob) || run.retryPolicy.maxAttemptsPerJob));
+  run.enabledSources = allowedSources || run.enabledSources || ["vertex", "openai_web_search"];
 
   run.nextJobIndex = 0;
   run.status = "queued";
@@ -408,21 +477,6 @@ function tallyMergeOutcome(run, merge, candidateType) {
 }
 
 /**
- * Reserves enough of the remaining budget for at least one still-pending
- * Vertex query and one still-pending OpenAI query (when either exists in
- * this run's job list) — PDL is an independent sourcing provider, but it
- * must never be allowed to consume the entire public-web budget before
- * those queries get a turn. "Still-pending" means not yet completed or
- * failed, regardless of position in the job list, so this reserves
- * correctly however priority tiers are ordered.
- */
-function computeReservedWebBudget(run) {
-  const hasVertexPending = (run.jobs || []).some((j) => j.source === "vertex" && j.status !== "completed" && j.status !== "failed");
-  const hasOpenaiPending = (run.jobs || []).some((j) => j.source === "openai_web_search" && j.status !== "completed" && j.status !== "failed");
-  return (hasVertexPending ? COST_PER_GROUNDED_CALL_USD : 0) + (hasOpenaiPending ? COST_PER_GROUNDED_CALL_USD : 0);
-}
-
-/**
  * The safety-net invariant from the reported incident: a provider that
  * returns N candidates must account for every one of them in exactly one
  * bucket — accepted, merged, or a named rejection reason. Any shortfall
@@ -446,14 +500,21 @@ function tallyFreshnessTier(run, tier) {
 
 /**
  * Runs one search-family job's current "page" (see module header re:
- * pagination) and merges every result. Branches early for a direct PDL
- * Person Search job — an INDEPENDENT candidate source (see module header),
- * never only enrichment/cross-reference — which has no citation pages to
- * crawl and derives its own SQL from the program's ICP rather than using
- * job.query as a literal search string.
+ * pagination) and merges every result. `run.jobs` only ever holds
+ * Vertex/OpenAI web-search jobs now — PDL Person Search is an independent,
+ * boolean-gated phase (includePdlPersonSearch / runPdlPersonSearchPhase)
+ * that never occupies a job-array slot or a queryLimitPerRun budget.
  */
 async function runJob({ workspaceId, userId, auth, run, job, selfSignals, correlationId }, dependencies = {}) {
-  if (job.source === "pdl_person_search") return runPdlDirectJob({ workspaceId, userId, auth, run, job, selfSignals, correlationId }, dependencies);
+  if (job.source === "pdl_person_search") {
+    // A run created before this fix may still have a legacy PDL job row
+    // queued from when PDL was a job-array member — never execute it (it
+    // has no query to run and would otherwise be mis-dispatched to
+    // OpenAI); the independent PDL phase already covers this run's PDL
+    // sourcing via includePdlPersonSearch. No-op: no call, no charge.
+    job.lastError = "Superseded by the independent PDL Person Search phase — not executed.";
+    return;
+  }
 
   const vertex = dependencies.vertexGroundingService || vertexGroundingService;
   const openaiWebSearch = dependencies.openaiWebSearchService || openaiWebSearchService;
@@ -501,68 +562,63 @@ async function runJob({ workspaceId, userId, auth, run, job, selfSignals, correl
 }
 
 /**
- * The direct PDL Person Search job: an independent candidate source, not
- * only enrichment/cross-reference. "Pagination" here means requesting a
- * cumulatively larger `size` and taking only the newly-revealed slice —
- * PDL's SQL search has no separate offset/cursor parameter exposed by
- * services/peopleDataLabsService.js, and this deliberately does not
- * change that service (see module instructions: "do not change or run
- * providers").
+ * The direct PDL Person Search phase: an independent candidate source, not
+ * only enrichment/cross-reference (see model comment on
+ * includePdlPersonSearch). Runs at most once per run, before any web job,
+ * gated SOLELY by run.includePdlPersonSearch — never by a removable job
+ * row, and never charged against the web cash cap
+ * (providerCreditCapUsd/spend.estimatedUsd). Sized against its own credit
+ * ceiling (maxPdlPersonSearchCredits) instead: the reported incident's
+ * root cause was billing PDL's FULL returned batch as cash BEFORE
+ * evaluating any candidate, which let one call blow past a $0.10 cap by
+ * itself and starve Vertex/OpenAI — separating credits from cash removes
+ * that failure mode entirely rather than reserving around it.
  */
-async function runPdlDirectJob({ workspaceId, userId, auth, run, job, selfSignals, correlationId }, dependencies = {}) {
+async function runPdlPersonSearchPhase({ workspaceId, userId, auth, run, selfSignals, correlationId }, dependencies = {}) {
   const pdl = dependencies.peopleDataLabsService || peopleDataLabsService;
+  if (!run.includePdlPersonSearch) return; // off — never enqueued, called, estimated, or charged.
+
   const perSourceEntry = {
-    source: "pdl_person_search", category: job.category, queriesRun: 0, entitiesExtracted: 0, accepted: 0, error: null,
+    source: "pdl_person_search", category: "people", queriesRun: 0, entitiesExtracted: 0, accepted: 0, error: null,
     acceptedNew: 0, merged: 0, rejectedSelf: 0, rejectedCrm: 0, rejectedDismissed: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedBudgetCap: 0, unexplained: 0,
   };
-  try {
-    // HARD CAP, enforced BEFORE the call: PDL is billed per candidate
-    // requested/returned, so the only safe way to guarantee the cap is
-    // never exceeded is to compute how many candidates are actually
-    // affordable and request exactly that — never the full page size and
-    // check afterward, which is what let a single PDL call charge $1.20
-    // against a $1 cap in the reported incident. Also reserves enough
-    // budget for at least one still-pending Vertex query and one
-    // still-pending OpenAI query — PDL is an independent source, not one
-    // allowed to consume the entire public-web budget before those run.
-    const reservedForWeb = computeReservedWebBudget(run);
-    const affordableBudget = Math.max(0, run.providerCreditCapUsd - run.spend.estimatedUsd - reservedForWeb);
-    const affordableCount = Math.floor(affordableBudget / COST_PER_PDL_CANDIDATE_USD);
-    if (affordableCount <= 0) {
-      perSourceEntry.error = `Skipped — $${affordableBudget.toFixed(2)} remains after reserving $${reservedForWeb.toFixed(2)} for pending Vertex/OpenAI queries (cap: $${run.providerCreditCapUsd}, spent so far: $${run.spend.estimatedUsd}). No PDL call was made — nothing was charged.`;
-      return;
-    }
+  const remainingCredits = Math.max(0, run.maxPdlPersonSearchCredits - run.spend.pdlPersonSearchCredits);
+  const remainingTarget = Math.max(0, run.dailyCandidateTarget - acceptedCountForTarget(run));
+  const desiredCount = Math.min(remainingCredits, remainingTarget, 100);
+  if (desiredCount <= 0) {
+    perSourceEntry.error = remainingCredits <= 0
+      ? `Skipped — the ${run.maxPdlPersonSearchCredits}-credit PDL Person Search limit for this run was already reached. No PDL call was made — no credits were used.`
+      : `Skipped — the daily candidate target (${run.dailyCandidateTarget}) was already reached. No PDL call was made.`;
+    run.runSummary.perSource = [...(run.runSummary.perSource || []), perSourceEntry];
+    run.pdlPersonSearchDone = true; // attempted (and skipped) exactly once — never re-queried on a later tick.
+    return;
+  }
 
+  try {
     const icp = await derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlationId }, dependencies);
     const sql = leadGenerationCoordinatorService.buildPdlSql(icp);
     if (!sql) throw Object.assign(new Error("No realistic ICP criteria (titles, locations, or industries) could be derived from the program for PDL."), { code: "PDL_ICP_EMPTY" });
-    const baseSize = Math.min(100, Math.max(1, run.dailyCandidateTarget));
-    const desiredNewCount = Math.min(baseSize, affordableCount);
-    const cumulativeSize = Math.min(100, job.page * baseSize + desiredNewCount);
     perSourceEntry.queriesRun = 1;
-    const outcome = await pdl.searchPeople({ workspaceId, userId, sql, size: cumulativeSize, correlationId });
-    const newPeople = outcome.people.slice(job.page * baseSize);
-    perSourceEntry.entitiesExtracted = newPeople.length;
-    job.resultsCount += newPeople.length;
-    run.spend.pdlCandidates += newPeople.length;
-    run.spend.estimatedUsd = Math.round((run.spend.estimatedUsd + newPeople.length * COST_PER_PDL_CANDIDATE_USD) * 100) / 100;
+    const outcome = await pdl.searchPeople({ workspaceId, userId, sql, size: desiredCount, correlationId });
+    perSourceEntry.entitiesExtracted = outcome.people.length;
+    run.spend.pdlPersonSearchCredits += outcome.people.length;
+    run.spend.pdlCandidates += outcome.people.length; // legacy aggregate — kept in sync
 
-    for (const person of newPeople) {
+    for (const person of outcome.people) {
       // Defensive only — correct pre-sizing above should make this
-      // unreachable, but if a provider ever returns more than requested,
-      // every remaining candidate is counted honestly rather than
-      // silently vanishing the way the original bug did.
-      if (run.spend.estimatedUsd > run.providerCreditCapUsd || acceptedCountForTarget(run) >= run.dailyCandidateTarget) {
+      // unreachable, but every remaining candidate is counted honestly
+      // rather than silently vanishing.
+      if (run.spend.pdlPersonSearchCredits > run.maxPdlPersonSearchCredits || acceptedCountForTarget(run) >= run.dailyCandidateTarget) {
         perSourceEntry.rejectedBudgetCap += 1;
         run.runSummary.rejectedBudgetCap += 1;
         continue;
       }
       const candidate = leadGenerationCoordinatorService.normalizePdlCandidate(person);
-      candidate.discoveryCategory = job.category;
+      candidate.discoveryCategory = "people";
       candidate.providers = [candidate.provider];
       // eslint-disable-next-line no-await-in-loop
       const merge = await mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, selfSignals, isStudentSearch: true, correlationId }, dependencies);
-      if (merge.outcome === "created" || merge.outcome === "merged") { job.acceptedCount += 1; perSourceEntry.accepted += 1; tallyFreshnessTier(run, merge.row.freshnessTier); }
+      if (merge.outcome === "created" || merge.outcome === "merged") { perSourceEntry.accepted += 1; tallyFreshnessTier(run, merge.row.freshnessTier); }
       if (merge.outcome === "created") perSourceEntry.acceptedNew += 1;
       else if (merge.outcome === "merged") perSourceEntry.merged += 1;
       else if (merge.outcome === "rejected_self") perSourceEntry.rejectedSelf += 1;
@@ -574,11 +630,14 @@ async function runPdlDirectJob({ workspaceId, userId, auth, run, job, selfSignal
     }
     reconcileUnexplainedRejections(run, perSourceEntry, perSourceEntry.entitiesExtracted);
   } catch (error) {
+    // Unlike a web job, the direct PDL phase is not a retryable job-array
+    // member — an ICP-derivation or PDL API failure is recorded and the
+    // phase is simply marked done, matching how cross-reference already
+    // handles its own failures.
     perSourceEntry.error = clean(error.message, 300);
-    throw error; // let processNextBatch's existing retry/failure handling apply, same as a grounded-search job failure.
   } finally {
     run.runSummary.perSource = [...(run.runSummary.perSource || []), perSourceEntry];
-    job.lastRunAt = new Date();
+    run.pdlPersonSearchDone = true;
   }
 }
 
@@ -631,47 +690,43 @@ async function derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlat
 async function runPdlCrossReference({ workspaceId, userId, auth, run, selfSignals, correlationId }, dependencies = {}) {
   const pdl = dependencies.peopleDataLabsService || peopleDataLabsService;
   if (!run.includePdlCrossReference) return;
-  const remaining = Math.max(0, run.dailyCandidateTarget - acceptedCountForTarget(run));
-  if (remaining <= 0) return;
-  // No pending Vertex/OpenAI jobs remain by the time cross-reference runs
-  // (it only fires after every job in the run has completed or failed),
-  // so computeReservedWebBudget() correctly reserves nothing here — the
-  // same pre-call affordability check as the direct PDL job still
-  // applies, so this can never overspend the cap either.
-  const affordableBudget = Math.max(0, run.providerCreditCapUsd - run.spend.estimatedUsd - computeReservedWebBudget(run));
-  const affordableCount = Math.floor(affordableBudget / COST_PER_PDL_CANDIDATE_USD);
-  if (affordableCount <= 0) {
-    run.runSummary.perSource = [...(run.runSummary.perSource || []), { source: "pdl_person_search", category: "cross_reference", queriesRun: 0, entitiesExtracted: 0, accepted: 0, error: `Skipped — $${affordableBudget.toFixed(2)} remains (cap: $${run.providerCreditCapUsd}). No PDL call was made — nothing was charged.` }];
-    return;
-  }
 
   const perSourceEntry = {
     source: "pdl_person_search", category: "cross_reference", queriesRun: 0, entitiesExtracted: 0, accepted: 0, error: null,
     acceptedNew: 0, merged: 0, rejectedSelf: 0, rejectedCrm: 0, rejectedDismissed: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedBudgetCap: 0, unexplained: 0,
   };
+  const remainingCredits = Math.max(0, run.maxPdlCrossReferenceCredits - run.spend.pdlCrossReferenceCredits);
+  const remainingTarget = Math.max(0, run.dailyCandidateTarget - acceptedCountForTarget(run));
+  const desiredCount = Math.min(remainingCredits, remainingTarget, 25);
+  if (desiredCount <= 0) {
+    perSourceEntry.error = remainingCredits <= 0
+      ? `Skipped — the ${run.maxPdlCrossReferenceCredits}-credit PDL cross-reference limit for this run was already reached. No PDL call was made — no credits were used.`
+      : `Skipped — the daily candidate target (${run.dailyCandidateTarget}) was already reached. No PDL call was made.`;
+    run.runSummary.perSource = [...(run.runSummary.perSource || []), perSourceEntry];
+    run.pdlCrossReferenceDone = true;
+    return;
+  }
+
   let icp;
   try {
     icp = await derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlationId }, dependencies);
   } catch (error) {
     perSourceEntry.error = clean(error.message, 300);
     run.runSummary.perSource = [...(run.runSummary.perSource || []), perSourceEntry];
+    run.pdlCrossReferenceDone = true;
     return;
   }
   const sql = leadGenerationCoordinatorService.buildPdlSql(icp);
-  if (!sql) { perSourceEntry.error = "No realistic ICP criteria could be derived for PDL — skipped."; run.runSummary.perSource = [...(run.runSummary.perSource || []), perSourceEntry]; return; }
+  if (!sql) { perSourceEntry.error = "No realistic ICP criteria could be derived for PDL — skipped."; run.runSummary.perSource = [...(run.runSummary.perSource || []), perSourceEntry]; run.pdlCrossReferenceDone = true; return; }
 
   try {
-    // HARD CAP, enforced BEFORE the call — see runPdlDirectJob() for why
-    // charging AFTER the call (based on how many were returned) let a
-    // single PDL call overshoot the cap in the reported incident.
-    const size = Math.min(remaining, 25, affordableCount);
     perSourceEntry.queriesRun = 1;
-    const outcome = await pdl.searchPeople({ workspaceId, userId, sql, size, correlationId });
+    const outcome = await pdl.searchPeople({ workspaceId, userId, sql, size: desiredCount, correlationId });
     perSourceEntry.entitiesExtracted = outcome.people.length;
-    run.spend.pdlCandidates += outcome.people.length;
-    run.spend.estimatedUsd = Math.round((run.spend.estimatedUsd + outcome.people.length * COST_PER_PDL_CANDIDATE_USD) * 100) / 100;
+    run.spend.pdlCrossReferenceCredits += outcome.people.length;
+    run.spend.pdlCandidates += outcome.people.length; // legacy aggregate — kept in sync
     for (const person of outcome.people) {
-      if (run.spend.estimatedUsd > run.providerCreditCapUsd || acceptedCountForTarget(run) >= run.dailyCandidateTarget) {
+      if (run.spend.pdlCrossReferenceCredits > run.maxPdlCrossReferenceCredits || acceptedCountForTarget(run) >= run.dailyCandidateTarget) {
         perSourceEntry.rejectedBudgetCap += 1;
         run.runSummary.rejectedBudgetCap += 1;
         continue;
@@ -693,7 +748,7 @@ async function runPdlCrossReference({ workspaceId, userId, auth, run, selfSignal
     }
     reconcileUnexplainedRejections(run, perSourceEntry, perSourceEntry.entitiesExtracted);
   } catch (error) {
-    perSourceEntry.error = error.message;
+    perSourceEntry.error = clean(error.message, 300);
   }
   run.runSummary.perSource = [...(run.runSummary.perSource || []), perSourceEntry];
   run.pdlCrossReferenceDone = true;
@@ -723,12 +778,21 @@ async function processNextBatch({ workspaceId, userId = null, auth = null, runId
   let stoppedReason = "";
   let stepsRun = 0;
 
+  // The direct PDL Person Search phase runs at most once per run, before
+  // any web job, and independently of the web job loop/queryLimitPerRun —
+  // gated solely by includePdlPersonSearch (see model comment) and priced
+  // in its own credits, never the web cash cap below.
+  if (run.includePdlPersonSearch && !run.pdlPersonSearchDone) {
+    await runPdlPersonSearchPhase({ workspaceId, userId, auth, run, selfSignals, correlationId }, dependencies);
+    stepsRun += 1;
+  }
+
   while (stepsRun < batchSize) {
     if (acceptedCountForTarget(run) >= run.dailyCandidateTarget) { stoppedReason = "daily_candidate_target_reached"; break; }
     if (run.nextJobIndex >= run.jobs.length) {
       if (run.includePdlCrossReference && !run.pdlCrossReferenceDone) {
-        // runPdlCrossReference() does its own precise pre-call
-        // affordability check internally — no separate gate needed here.
+        // runPdlCrossReference() does its own precise pre-call credit check
+        // internally — no separate gate needed here.
         // eslint-disable-next-line no-await-in-loop
         await runPdlCrossReference({ workspaceId, userId, auth, run, selfSignals, correlationId }, dependencies);
       }
@@ -736,15 +800,11 @@ async function processNextBatch({ workspaceId, userId = null, auth = null, runId
       break;
     }
     const job = run.jobs[run.nextJobIndex];
-    // A real HARD cap: stop before the next call would push spend over it,
-    // not only after it already has. A grounded-search call has a fixed
-    // known cost, so it's gated here directly. A PDL call's cost depends
-    // on how many candidates it requests, which runPdlDirectJob() itself
-    // sizes to whatever's actually affordable (and reserves budget for
-    // any still-pending Vertex/OpenAI query) — so it only needs to be
-    // blocked here once there is genuinely no room left at all.
-    if (job.source !== "pdl_person_search" && run.spend.estimatedUsd + COST_PER_GROUNDED_CALL_USD > run.providerCreditCapUsd) { stoppedReason = "provider_credit_cap_reached"; break; }
-    if (job.source === "pdl_person_search" && run.spend.estimatedUsd >= run.providerCreditCapUsd) { stoppedReason = "provider_credit_cap_reached"; break; }
+    // run.jobs only ever holds Vertex/OpenAI web-search jobs now (PDL is
+    // the independent phase above) — a real HARD cap: stop before the next
+    // call would push web cash spend over providerCreditCapUsd, not only
+    // after it already has.
+    if (run.spend.estimatedUsd + COST_PER_GROUNDED_CALL_USD > run.providerCreditCapUsd) { stoppedReason = "provider_credit_cap_reached"; break; }
     job.status = "in_progress";
     job.attempts += 1;
     try {
@@ -774,16 +834,20 @@ async function processNextBatch({ workspaceId, userId = null, auth = null, runId
   if (externallyChanged && (externallyChanged.status === "paused" || externallyChanged.status === "canceled")) {
     run.status = externallyChanged.status;
   } else {
-    const allDone = run.nextJobIndex >= run.jobs.length && (!run.includePdlCrossReference || run.pdlCrossReferenceDone);
+    const allDone = run.nextJobIndex >= run.jobs.length
+      && (!run.includePdlCrossReference || run.pdlCrossReferenceDone)
+      && (!run.includePdlPersonSearch || run.pdlPersonSearchDone);
     if (stoppedReason === "provider_credit_cap_reached") {
       // Distinct from "completed" — a run stopped early by the budget cap
       // must never be reported the same way as one that finished all its
       // queued work.
       run.status = "stopped_at_cap";
       run.runSummary.explanation = buildRunExplanation(run, stoppedReason);
+      run.runSummary.zeroCallReasons = explainZeroCallProviders(run);
     } else if (stoppedReason === "daily_candidate_target_reached" || allDone) {
       run.status = "completed";
       run.runSummary.explanation = buildRunExplanation(run, stoppedReason || "all_jobs_complete");
+      run.runSummary.zeroCallReasons = explainZeroCallProviders(run);
     } else {
       run.status = "queued"; // still has work left for the next tick
     }
@@ -798,10 +862,46 @@ async function processNextBatch({ workspaceId, userId = null, auth = null, runId
   return { done: run.status === "completed" || run.status === "stopped_at_cap", stepsRun, run };
 }
 
+/**
+ * Per-provider "why zero calls" reasons for every provider the owner
+ * actually enabled — computed once a run reaches a terminal status so an
+ * enabled provider that ended up with zero calls/credits is never left
+ * unexplained the way the reported incident was (OpenAI enabled, 0 calls,
+ * no reason given anywhere in the report).
+ */
+function explainZeroCallProviders(run) {
+  const notes = [];
+  const SOURCE_LABEL = { vertex: "Vertex", openai_web_search: "OpenAI Web Search" };
+  for (const source of run.enabledSources || []) {
+    if (!GROUNDED_SEARCH_SOURCES.includes(source)) continue;
+    const calls = source === "vertex" ? run.spend.vertexCalls : run.spend.openaiCalls;
+    if (calls > 0) continue;
+    const hasJobs = (run.jobs || []).some((j) => j.source === source);
+    if (!hasJobs) { notes.push(`${SOURCE_LABEL[source]} was enabled but no queries for it were included in this run's job list (check the query limit or your edits).`); continue; }
+    const sourceJobs = run.jobs.filter((j) => j.source === source);
+    if (sourceJobs.every((j) => j.status === "failed")) {
+      const firstError = sourceJobs.find((j) => j.lastError)?.lastError;
+      notes.push(`${SOURCE_LABEL[source]} was enabled but every one of its queries failed${firstError ? `: ${firstError}` : "."}`);
+      continue;
+    }
+    if (run.status === "stopped_at_cap") { notes.push(`${SOURCE_LABEL[source]} was enabled but the $${run.providerCreditCapUsd} web cash cap was reached before any of its queries ran.`); continue; }
+    notes.push(`${SOURCE_LABEL[source]} was enabled but received zero calls for an undetermined reason — this may be a bug.`);
+  }
+  if (run.includePdlPersonSearch && run.spend.pdlPersonSearchCredits === 0) {
+    const entry = (run.runSummary.perSource || []).find((p) => p.source === "pdl_person_search" && p.category !== "cross_reference");
+    notes.push(`PDL Person Search was enabled but used 0 credits${entry?.error ? `: ${entry.error}` : "."}`);
+  }
+  if (run.includePdlCrossReference && run.spend.pdlCrossReferenceCredits === 0) {
+    const entry = (run.runSummary.perSource || []).find((p) => p.category === "cross_reference");
+    notes.push(`PDL cross-reference was enabled but used 0 credits${entry?.error ? `: ${entry.error}` : "."}`);
+  }
+  return notes;
+}
+
 function buildRunExplanation(run, stoppedReason) {
   const total = run.runSummary.created + run.runSummary.merged;
   const reasonText = {
-    provider_credit_cap_reached: `Stopped at budget cap — the $${run.providerCreditCapUsd} provider credit cap was reached ($${run.spend.estimatedUsd} spent)`,
+    provider_credit_cap_reached: `Stopped at budget cap — the $${run.providerCreditCapUsd} web search cash cap (Vertex + OpenAI only; PDL credits are tracked separately) was reached ($${run.spend.estimatedUsd} spent)`,
     daily_candidate_target_reached: `stopped because the daily target of ${run.dailyCandidateTarget} was reached`,
     all_jobs_complete: "completed every queued search-family query",
   }[stoppedReason] || "completed";
@@ -843,7 +943,7 @@ async function runDueDiscoverySchedules(dependencies = {}) {
           // eslint-disable-next-line no-await-in-loop
           run = await proposePublicWebDiscoveryRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, programNoteId: claimed.programNoteId, locations: [] }, dependencies);
           // eslint-disable-next-line no-await-in-loop
-          run = await approvePublicWebDiscoveryRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, runId: run._id, dailyCandidateTarget: claimed.dailyCandidateTarget, pageLimitPerQuery: claimed.pageLimitPerQuery, queryLimitPerRun: claimed.queryLimitPerRun, providerCreditCapUsd: claimed.providerCreditCapUsd, includePdlCrossReference: claimed.includePdlCrossReference, sources: claimed.sources, maxAttemptsPerJob: claimed.maxAttemptsPerJob }, dependencies);
+          run = await approvePublicWebDiscoveryRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, runId: run._id, dailyCandidateTarget: claimed.dailyCandidateTarget, pageLimitPerQuery: claimed.pageLimitPerQuery, queryLimitPerRun: claimed.queryLimitPerRun, providerCreditCapUsd: claimed.providerCreditCapUsd, includePdlCrossReference: claimed.includePdlCrossReference, includePdlPersonSearch: claimed.includePdlPersonSearch, maxPdlPersonSearchCredits: claimed.maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: claimed.maxPdlCrossReferenceCredits, sources: claimed.sources, maxAttemptsPerJob: claimed.maxAttemptsPerJob }, dependencies);
           claimed.currentRunId = run._id;
         }
         // eslint-disable-next-line no-await-in-loop
@@ -901,12 +1001,13 @@ module.exports = {
   CATEGORY_RESULT_TYPES,
   // Exported for direct unit testing — pure/deterministic helpers.
   interleaveJobsRoundRobin,
+  roundRobinBySourceGlobally,
   estimateExpectedCounts,
   computeBudgetWarning,
   isLikelySellerOrVendor,
   isStudentSearchContext,
   acceptedCountForTarget,
-  computeReservedWebBudget,
   reconcileUnexplainedRejections,
   buildRunExplanation,
+  explainZeroCallProviders,
 };
