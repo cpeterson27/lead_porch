@@ -131,7 +131,7 @@ async function proposePublicWebDiscoveryRun({ workspaceId, userId, auth, program
  * caps) and moves the run from "draft" to "queued" — nothing is spent
  * until a processNextBatch() tick actually runs.
  */
-async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, dailyCandidateTarget, pageLimitPerQuery, queryLimitPerRun, providerCreditCapUsd, includePdlCrossReference, sources }, dependencies = {}) {
+async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, dailyCandidateTarget, pageLimitPerQuery, queryLimitPerRun, providerCreditCapUsd, includePdlCrossReference, sources, maxAttemptsPerJob }, dependencies = {}) {
   const Model = dependencies.PublicWebDiscoveryRun || PublicWebDiscoveryRun;
   const run = await Model.findOne({ _id: runId, workspaceId });
   if (!run) { const error = new Error("Discovery run not found"); error.code = "DISCOVERY_RUN_NOT_FOUND"; throw error; }
@@ -154,6 +154,7 @@ async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, 
   if (queryLimitPerRun != null) run.queryLimitPerRun = Math.max(1, Math.min(500, Number(queryLimitPerRun) || run.queryLimitPerRun));
   if (providerCreditCapUsd != null) run.providerCreditCapUsd = Math.max(0, Math.min(1000, Number(providerCreditCapUsd) || run.providerCreditCapUsd));
   if (includePdlCrossReference != null) run.includePdlCrossReference = Boolean(includePdlCrossReference);
+  if (maxAttemptsPerJob != null) run.retryPolicy.maxAttemptsPerJob = Math.max(1, Math.min(10, Number(maxAttemptsPerJob) || run.retryPolicy.maxAttemptsPerJob));
 
   run.nextJobIndex = 0;
   run.status = "queued";
@@ -408,12 +409,26 @@ async function processNextBatch({ workspaceId, userId = null, auth = null, runId
     stepsRun += 1;
   }
 
-  const allDone = run.nextJobIndex >= run.jobs.length && (!run.includePdlCrossReference || run.pdlCrossReferenceDone);
-  if (stoppedReason === "provider_credit_cap_reached" || stoppedReason === "daily_candidate_target_reached" || allDone) {
-    run.status = "completed";
-    run.runSummary.explanation = buildRunExplanation(run, stoppedReason || "all_jobs_complete");
+  // The owner may have clicked Pause or Cancel WHILE this batch's own
+  // provider/crawl calls were still in flight — the pause/cancel endpoints
+  // don't hold this run's lease, so they can (and should be able to)
+  // change status without waiting for us. Re-check the persisted status
+  // right before committing so this tick's own "queued"/"completed"
+  // conclusion never silently overwrites an externally-requested pause or
+  // cancel — the real progress made this tick (jobs advanced, candidates
+  // staged, spend counted) is still saved either way, just under whichever
+  // status the owner actually asked for.
+  const externallyChanged = await Model.findOne({ _id: run._id, workspaceId });
+  if (externallyChanged && (externallyChanged.status === "paused" || externallyChanged.status === "canceled")) {
+    run.status = externallyChanged.status;
   } else {
-    run.status = "queued"; // still has work left for the next tick
+    const allDone = run.nextJobIndex >= run.jobs.length && (!run.includePdlCrossReference || run.pdlCrossReferenceDone);
+    if (stoppedReason === "provider_credit_cap_reached" || stoppedReason === "daily_candidate_target_reached" || allDone) {
+      run.status = "completed";
+      run.runSummary.explanation = buildRunExplanation(run, stoppedReason || "all_jobs_complete");
+    } else {
+      run.status = "queued"; // still has work left for the next tick
+    }
   }
   run.leaseOwner = "";
   run.leaseExpiresAt = null;
@@ -460,7 +475,7 @@ async function runDueDiscoverySchedules(dependencies = {}) {
           // eslint-disable-next-line no-await-in-loop
           run = await proposePublicWebDiscoveryRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, programNoteId: claimed.programNoteId, locations: [] }, dependencies);
           // eslint-disable-next-line no-await-in-loop
-          run = await approvePublicWebDiscoveryRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, runId: run._id, dailyCandidateTarget: claimed.dailyCandidateTarget, pageLimitPerQuery: claimed.pageLimitPerQuery, queryLimitPerRun: claimed.queryLimitPerRun, providerCreditCapUsd: claimed.providerCreditCapUsd, includePdlCrossReference: claimed.includePdlCrossReference, sources: claimed.sources }, dependencies);
+          run = await approvePublicWebDiscoveryRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, runId: run._id, dailyCandidateTarget: claimed.dailyCandidateTarget, pageLimitPerQuery: claimed.pageLimitPerQuery, queryLimitPerRun: claimed.queryLimitPerRun, providerCreditCapUsd: claimed.providerCreditCapUsd, includePdlCrossReference: claimed.includePdlCrossReference, sources: claimed.sources, maxAttemptsPerJob: claimed.maxAttemptsPerJob }, dependencies);
           claimed.currentRunId = run._id;
         }
         // eslint-disable-next-line no-await-in-loop

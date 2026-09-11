@@ -1170,6 +1170,39 @@ export const proposeLeadGenerationMonitor = (searchId) =>
 export const fetchLeadGenerationMonitorSuggestions = () =>
   api.get("/lead-generation/monitor-suggestions").then((res) => res.data);
 
+// High-volume Public Web Discovery engine (services/publicWebDiscoveryEngineService.js):
+// many editable search-family queries per approved program, run through a
+// queued/checkpointed worker, crawled citations, PDL cross-reference,
+// freshness tiers, hard spending caps, and an owner-controlled scheduler.
+// Every accepted candidate lands in the SAME GroundingResearchResult review
+// queue the endpoints above already read/write — nothing new to fetch there.
+export const proposePublicWebDiscoveryRun = (payload) =>
+  api.post("/public-web-discovery/runs/propose", payload, { timeout: 60000 }).then((res) => res.data);
+export const fetchPublicWebDiscoveryRun = (runId) =>
+  api.get(`/public-web-discovery/runs/${runId}`).then((res) => res.data);
+export const fetchPublicWebDiscoveryRuns = () =>
+  api.get("/public-web-discovery/runs").then((res) => res.data);
+export const approvePublicWebDiscoveryRun = (runId, overrides = {}) =>
+  api.post(`/public-web-discovery/runs/${runId}/approve`, overrides).then((res) => res.data);
+export const processPublicWebDiscoveryRunBatch = (runId, batchSize) =>
+  api.post(`/public-web-discovery/runs/${runId}/process-next-batch`, { batchSize }, { timeout: 60000 }).then((res) => res.data);
+export const pausePublicWebDiscoveryRun = (runId) =>
+  api.post(`/public-web-discovery/runs/${runId}/pause`).then((res) => res.data);
+export const resumePublicWebDiscoveryRun = (runId) =>
+  api.post(`/public-web-discovery/runs/${runId}/resume`).then((res) => res.data);
+export const cancelPublicWebDiscoveryRun = (runId) =>
+  api.post(`/public-web-discovery/runs/${runId}/cancel`).then((res) => res.data);
+export const createDiscoverySchedule = (payload) =>
+  api.post("/public-web-discovery/schedules", payload).then((res) => res.data);
+export const fetchDiscoverySchedules = () =>
+  api.get("/public-web-discovery/schedules").then((res) => res.data);
+export const enableDiscoverySchedule = (scheduleId) =>
+  api.post(`/public-web-discovery/schedules/${scheduleId}/enable`).then((res) => res.data);
+export const disableDiscoverySchedule = (scheduleId) =>
+  api.post(`/public-web-discovery/schedules/${scheduleId}/disable`).then((res) => res.data);
+export const runDiscoveryScheduleNow = (scheduleId) =>
+  api.post(`/public-web-discovery/schedules/${scheduleId}/run-now`).then((res) => res.data);
+
 export const startExternalMarketResearch = (payload) =>
   api.post("/audience/research/run", payload).then((res) => res.data);
 

@@ -780,3 +780,135 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Public Web Discovery engine's own owner-only production interface. */
+.leadgen-run-intro {
+  color: #68736f;
+  margin: 0 0 1rem;
+  max-width: 68ch;
+}
+
+.leadgen-run-locations {
+  display: grid;
+  gap: 0.35rem;
+  margin-bottom: 1rem;
+  max-width: 420px;
+}
+
+.leadgen-run-locations input {
+  border: 1px solid #ccd7d2;
+  border-radius: 10px;
+  padding: 0.5rem 0.75rem;
+  font: inherit;
+}
+
+.leadgen-run-disclosure {
+  color: #68736f;
+  font-size: 0.82rem;
+  margin: 0.4rem 0 0;
+  max-width: 68ch;
+}
+
+.leadgen-run-panel {
+  border: 1px solid #ded7ca;
+  border-radius: 14px;
+  padding: 1rem 1.1rem;
+  margin-top: 1.25rem;
+  background: #fff;
+}
+
+.leadgen-run-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.leadgen-run-panel__header h4 {
+  margin: 0;
+}
+
+.leadgen-run-status {
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: capitalize;
+  background: #ede6d8;
+  color: #263f36;
+}
+
+.leadgen-run-status--running,
+.leadgen-run-status--queued {
+  background: #dcecd8;
+  color: #1f5c33;
+}
+
+.leadgen-run-status--paused {
+  background: #f3e3c4;
+  color: #7a5a10;
+}
+
+.leadgen-run-status--failed {
+  background: #f5d9d5;
+  color: #8a2f22;
+}
+
+.leadgen-run-status--completed {
+  background: #d8e6f2;
+  color: #1c4a68;
+}
+
+.leadgen-job-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 140px auto;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  align-items: center;
+}
+
+.leadgen-job-row input,
+.leadgen-job-row select {
+  border: 1px solid #ccd7d2;
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.leadgen-run-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.leadgen-schedule-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  border-top: 1px solid #ede6d8;
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+}
+
+.leadgen-schedule-form select {
+  border: 1px solid #ccd7d2;
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+  font-size: 0.85rem;
+}
+
+.leadgen-run-status-detail p {
+  margin: 0 0 0.4rem;
+  font-size: 0.9rem;
+}
+
+@media (max-width: 640px) {
+  .leadgen-job-row {
+    grid-template-columns: 1fr;
+  }
+}

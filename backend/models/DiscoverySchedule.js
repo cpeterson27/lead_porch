@@ -29,6 +29,7 @@ const discoveryScheduleSchema = new mongoose.Schema({
   providerCreditCapUsd: { type: Number, default: 5, min: 0, max: 1000 },
   sources: { type: [String], enum: ["vertex", "openai_web_search"], default: ["vertex", "openai_web_search"] },
   includePdlCrossReference: { type: Boolean, default: true },
+  maxAttemptsPerJob: { type: Number, default: 3, min: 1, max: 10 },
   nextRunAt: { type: Date, default: null },
   runRequestedAt: { type: Date, default: null },
   lastRunAt: { type: Date, default: null },

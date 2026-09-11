@@ -190,11 +190,15 @@ function testStripHtmlToTextRemovesTagsAndDecodesEntities() {
 
 function testComputeFreshnessTierBoundaries() {
   const now = Date.now();
+  // Boundary cases use a small buffer (rather than an exact multiple of
+  // 86400000ms) so the assertion never races against the real wall-clock
+  // milliseconds that elapse between capturing `now` here and
+  // computeFreshnessTier's own internal Date.now() call.
   assert.equal(computeFreshnessTier(null), "evergreen", "undated must be evergreen, never dropped");
   assert.equal(computeFreshnessTier(new Date(now - 10 * 86400000)), "recent");
-  assert.equal(computeFreshnessTier(new Date(now - 90 * 86400000)), "recent", "exactly 90 days is still recent");
-  assert.equal(computeFreshnessTier(new Date(now - 91 * 86400000)), "aging");
-  assert.equal(computeFreshnessTier(new Date(now - 365 * 86400000)), "aging", "exactly 365 days is still aging");
+  assert.equal(computeFreshnessTier(new Date(now - 90 * 86400000 + 60000)), "recent", "just under 90 days is still recent");
+  assert.equal(computeFreshnessTier(new Date(now - 90 * 86400000 - 60000)), "aging", "just over 90 days is already aging");
+  assert.equal(computeFreshnessTier(new Date(now - 365 * 86400000 + 60000)), "aging", "just under 365 days is still aging");
   assert.equal(computeFreshnessTier(new Date(now - 400 * 86400000)), "evergreen");
 }
 
@@ -407,6 +411,56 @@ async function testProcessNextBatchRefusesADoubleLeaseWhileAlreadyRunning() {
   assert.equal(run.nextJobIndex, 0, "a currently-leased run must never be double-processed concurrently");
 }
 
+/**
+ * Simulates exactly what a Render restart looks like from the database's
+ * point of view: a run left "running" with a lease from a worker that no
+ * longer exists (the process died mid-batch), where that lease has since
+ * expired. A fresh processNextBatch() call — e.g. from the scheduler's
+ * next tick after the new process boots — must reclaim it and resume
+ * from the exact job it had already reached, never restart from job 0 and
+ * never sit stuck forever because a dead worker still "owns" it.
+ */
+async function testProcessNextBatchResumesARunLeftRunningByADeadWorkerAfterARestart() {
+  const staleRun = buildQueuedRun({
+    status: "running",
+    leaseOwner: "old-process-that-crashed",
+    leaseExpiresAt: new Date(Date.now() - 1000), // already expired
+    nextJobIndex: 1, // it had already finished job 0 before dying
+  });
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([staleRun]);
+  const GroundingResearchResult = fakeGroundingResultModel();
+  const openaiWebSearchService = { groundedSearch: async () => ({ results: [{ type: "forum", name: "Resumed Find", organizationName: "", organizationDomain: "", summary: "", evidenceUrls: [], evidenceDate: null, confidence: "single_source" }], groundingCitations: [] }) };
+  const dependencies = { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, GroundingResearchResult, vertexGroundingService: { groundedSearch: async () => ({ results: [], groundingCitations: [] }) }, openaiWebSearchService, Contact: fakeLookupModel([]), Organization: fakeLookupModel([]), getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }), isSelfMatch: () => ({ isSelf: false, reasons: [] }) };
+
+  const outcome = await processNextBatch({ workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-1", batchSize: 1 }, dependencies);
+  assert.notEqual(outcome.reason, "not_runnable_or_leased", "an EXPIRED lease from a dead worker must never permanently block a run");
+  assert.equal(staleRun.nextJobIndex, 2, "processing must resume from the checkpoint (job 1) it had already reached, not restart from job 0");
+  assert.equal(GroundingResearchResult.rows.length, 1, "the job that runs after resuming must still stage its result normally");
+  assert.equal(staleRun.leaseOwner, "", "the new worker must release its own lease when it finishes its tick");
+}
+
+/**
+ * Pause/Cancel don't hold this run's processing lease, so the owner
+ * clicking Pause while a batch's provider call is still in flight is a
+ * real possible race — the tick must never silently overwrite that
+ * externally-requested status back to "queued"/"completed" once it
+ * finishes its own work a moment later.
+ */
+async function testProcessNextBatchRespectsAConcurrentPauseRequestedMidBatch() {
+  const run = buildQueuedRun();
+  run.jobs = [run.jobs[0]];
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([run]);
+  const GroundingResearchResult = fakeGroundingResultModel();
+  const vertexGroundingService = { groundedSearch: async () => {
+    run.status = "paused"; // the concurrent Pause click, landing mid-call
+    return { results: [], groundingCitations: [] };
+  } };
+  const dependencies = { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, GroundingResearchResult, vertexGroundingService, openaiWebSearchService: { groundedSearch: async () => ({ results: [], groundingCitations: [] }) }, Contact: fakeLookupModel([]), Organization: fakeLookupModel([]), getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }), isSelfMatch: () => ({ isSelf: false, reasons: [] }) };
+
+  await processNextBatch({ workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-1", batchSize: 1 }, dependencies);
+  assert.equal(run.status, "paused", "a pause requested mid-batch must never be silently overwritten back to queued/completed once this tick finishes");
+}
+
 // ==================== scheduler: disabled by default, real when enabled ====================
 
 async function testRunDueDiscoverySchedulesSkipsDisabledSchedules() {
@@ -463,6 +517,8 @@ async function run() {
   await testProcessNextBatchStopsAtProviderCreditCap();
   await testProcessNextBatchRetriesAFailedJobThenGivesUp();
   await testProcessNextBatchRefusesADoubleLeaseWhileAlreadyRunning();
+  await testProcessNextBatchResumesARunLeftRunningByADeadWorkerAfterARestart();
+  await testProcessNextBatchRespectsAConcurrentPauseRequestedMidBatch();
   await testRunDueDiscoverySchedulesSkipsDisabledSchedules();
   await testRunDueDiscoverySchedulesProcessesAnEnabledDueSchedule();
   console.log("Public Web Discovery engine: robots.txt/rate-limit/login-wall/Facebook-LinkedIn-denylist crawler compliance (fails closed on unverifiable robots.txt, never fetches the page when disallowed), freshness TIERING (labels recent/aging/evergreen — never drops an old or undated lead), dedup against self-match/CRM/dismissed-records/previous-runs, checkpointed+resumable+retryable batch processing with a hard provider-credit-cap stop and an honest explanation, and a scheduler that never acts on a disabled schedule but genuinely runs an enabled+due one — all passed.");

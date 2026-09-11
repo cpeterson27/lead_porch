@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import Button from "../components/Button.jsx";
 import DashboardCard from "../components/DashboardCard.jsx";
 import Modal from "../components/Modal.jsx";
+import PublicWebDiscoveryPanel from "./PublicWebDiscoveryPanel.jsx";
 import {
   createAudienceDefinition,
   createResearchMonitor,
@@ -1535,6 +1536,8 @@ export default function Discovery() {
           </div>
         </div>
       </details>
+
+      <PublicWebDiscoveryPanel onResultsChanged={() => { loadGroundingResults("pending_review"); setGroundingResultsStatus("pending_review"); }} />
 
       <DashboardCard title="Review queue">
         <p className="people-preview-intro">
