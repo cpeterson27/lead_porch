@@ -1196,6 +1196,11 @@ export const fetchPublicWebDiscoveryRuns = () =>
   api.get("/public-web-discovery/runs").then((res) => res.data);
 export const approvePublicWebDiscoveryRun = (runId, overrides = {}) =>
   api.post(`/public-web-discovery/runs/${runId}/approve`, overrides).then((res) => res.data);
+// Free, pure preview of the EXACT finalized (round-robined, query-limit
+// sliced) job plan approving with these settings would produce — never
+// estimate from the unsliced draft query collection in the UI itself.
+export const previewPublicWebDiscoveryRunPlan = (payload) =>
+  api.post("/public-web-discovery/runs/preview", payload).then((res) => res.data);
 export const processPublicWebDiscoveryRunBatch = (runId, batchSize) =>
   api.post(`/public-web-discovery/runs/${runId}/process-next-batch`, { batchSize }, { timeout: 60000 }).then((res) => res.data);
 export const pausePublicWebDiscoveryRun = (runId) =>

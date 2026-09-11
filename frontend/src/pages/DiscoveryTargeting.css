@@ -665,6 +665,11 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+  align-items: center;
+}
+
+.leadgen-run-inline-error {
+  font-size: 0.85rem;
 }
 
 .leadgen-run-summary {

@@ -19,7 +19,7 @@ const { parseRobotsTxt, evaluateCrawlability, fetchPage, isNeverCrawlHost, looks
 const {
   computeFreshnessTier, extractIntentSignals, mergeDiscoveryCandidate, proposePublicWebDiscoveryRun, approvePublicWebDiscoveryRun, processNextBatch, runDueDiscoverySchedules,
   proposeStudentSearchPreset, interleaveJobsRoundRobin, roundRobinBySourceGlobally, estimateExpectedCounts, computeBudgetWarning, isLikelySellerOrVendor, isStudentSearchContext, acceptedCountForTarget,
-  reconcileUnexplainedRejections, buildRunExplanation, explainZeroCallProviders,
+  reconcileUnexplainedRejections, buildRunExplanation, explainZeroCallProviders, computeRunPlanPreview,
 } = publicWebDiscoveryEngineService;
 
 // ---- tiny generic in-memory Mongo-like helpers (shared across fakes) ----
@@ -875,6 +875,56 @@ async function testToggledOffPdlNeverRunsAndALowQueryLimitStillGivesEachWebProvi
   assert.equal(outcome.run.status, "completed");
 }
 
+// ==================== reported incident: pre-run preview showed the unsliced draft collection, not the finalized plan ====================
+
+function testComputeRunPlanPreviewUsesTheExactFinalizedJobPlanNotTheUnslicedDraftCollection() {
+  // The exact reported production screenshot: a draft collection of 20
+  // Vertex + 2 OpenAI queries, both providers enabled, a web query limit
+  // of 2, page limit 1, and a retry limit of 1 (no retries) — the OLD
+  // preview reported "Maximum Vertex calls: 22" / "Maximum OpenAI calls: 2"
+  // (the unsliced draft totals) even though a 2-query round-robin run can
+  // only ever execute one Vertex query and one OpenAI query.
+  const jobs = [
+    ...Array.from({ length: 20 }, (_, i) => ({ category: "people", query: `v${i}`, source: "vertex", locationHint: "" })),
+    { category: "intent_discussions", query: "o1", source: "openai_web_search", locationHint: "" },
+    { category: "intent_discussions", query: "o2", source: "openai_web_search", locationHint: "" },
+  ];
+  const preview = computeRunPlanPreview({
+    jobs, sources: ["vertex", "openai_web_search"], queryLimitPerRun: 2, pageLimitPerQuery: 1,
+    providerCreditCapUsd: 1, includePdlPersonSearch: false, maxPdlPersonSearchCredits: 25,
+    includePdlCrossReference: false, maxPdlCrossReferenceCredits: 25, maxAttemptsPerJob: 1,
+  });
+
+  assert.equal(preview.maxPdlPersonSearchCredits, 0, "PDL Person Search is off — its maximum must be exactly 0");
+  assert.equal(preview.maxPdlCrossReferenceCredits, 0, "PDL cross-reference is off — its maximum must be exactly 0");
+  assert.equal(preview.maxVertexCallsInitial, 1, "a 2-query round-robin run can execute at most one Vertex query — never the unsliced draft collection's 20");
+  assert.equal(preview.maxOpenaiCallsInitial, 1, "the same 2-query limit leaves exactly one OpenAI query, never a count taken from the unsliced collection");
+  assert.equal(preview.maxVertexRetryExposure, 0, "a retry limit of 1 (no retries) must show zero additional retry exposure — never silently folded into the maximum");
+  assert.equal(preview.maxOpenaiRetryExposure, 0);
+  assert.equal(preview.maxWebCashInitial, 0.06, "initial web cash must reflect exactly the 2 real finalized calls at $0.03 each, not 22");
+  assert.equal(preview.maxWebCashEnforced, 0.06, "with room under the $1 cap, the enforced maximum equals the real initial estimate");
+  assert.equal(preview.validationError, "", "a legitimate, affordable 2-query plan must not be flagged as a conflict");
+
+  // A cap too small to afford even one query is a real conflict — the
+  // "Run once now" button must be disabled with a stated reason rather
+  // than silently producing a run that can never make a single web call.
+  const brokenPreview = computeRunPlanPreview({
+    jobs, sources: ["vertex", "openai_web_search"], queryLimitPerRun: 2, pageLimitPerQuery: 1,
+    providerCreditCapUsd: 0.01, includePdlPersonSearch: false, maxPdlPersonSearchCredits: 0,
+    includePdlCrossReference: false, maxPdlCrossReferenceCredits: 0, maxAttemptsPerJob: 1,
+  });
+  assert.ok(brokenPreview.validationError, "a cap below the cost of a single query, with web jobs present and PDL off, must be flagged as a conflict");
+
+  // No web queries at all and both PDL sources off is the other real
+  // conflict: nothing at all would run.
+  const nothingConfiguredPreview = computeRunPlanPreview({
+    jobs: [], sources: ["vertex", "openai_web_search"], queryLimitPerRun: 2, pageLimitPerQuery: 1,
+    providerCreditCapUsd: 5, includePdlPersonSearch: false, maxPdlPersonSearchCredits: 0,
+    includePdlCrossReference: false, maxPdlCrossReferenceCredits: 0, maxAttemptsPerJob: 1,
+  });
+  assert.ok(nothingConfiguredPreview.validationError, "no web queries and both PDL sources off must be flagged as a conflict — nothing is configured to run");
+}
+
 async function run() {
   testIsNeverCrawlHostBlocksFacebookAndLinkedinAlways();
   testParseRobotsTxtRespectsDisallowAllowAndLongestMatch();
@@ -920,6 +970,7 @@ async function run() {
   await testProcessNextBatchNeverLetsPdlShareTheWebCashCapAnymore();
   await testRunPdlPersonSearchPhaseSkipsTheCallEntirelyWhenCreditLimitReached();
   await testToggledOffPdlNeverRunsAndALowQueryLimitStillGivesEachWebProviderATurn();
+  testComputeRunPlanPreviewUsesTheExactFinalizedJobPlanNotTheUnslicedDraftCollection();
   await testRunDueDiscoverySchedulesSkipsDisabledSchedules();
   await testRunDueDiscoverySchedulesProcessesAnEnabledDueSchedule();
   console.log("Public Web Discovery engine: robots.txt/rate-limit/login-wall/Facebook-LinkedIn-denylist crawler compliance (fails closed on unverifiable robots.txt, never fetches the page when disallowed), freshness TIERING (labels recent/aging/evergreen — never drops an old or undated lead), dedup against self-match/CRM/dismissed-records/previous-runs, checkpointed+resumable+retryable batch processing with a hard provider-credit-cap stop and an honest explanation, and a scheduler that never acts on a disabled schedule but genuinely runs an enabled+due one — all passed.");

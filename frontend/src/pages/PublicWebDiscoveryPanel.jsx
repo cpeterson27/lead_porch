@@ -7,6 +7,7 @@ import {
   proposePublicWebDiscoveryRun,
   proposeStudentSearchPreset,
   approvePublicWebDiscoveryRun,
+  previewPublicWebDiscoveryRunPlan,
   processPublicWebDiscoveryRunBatch,
   pausePublicWebDiscoveryRun,
   resumePublicWebDiscoveryRun,
@@ -79,6 +80,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
   const [runBusy, setRunBusy] = useState({}); // runId -> action label in flight
   const [schedules, setSchedules] = useState([]);
   const [scheduleBusy, setScheduleBusy] = useState({});
+  const [planPreviewByRun, setPlanPreviewByRun] = useState({}); // runId -> the EXACT finalized-job-plan preview from the backend
   const stopFlags = useRef({});
 
   useEffect(() => {
@@ -86,6 +88,41 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
     fetchLeadGenerationProviderAvailability().then((res) => setProviderAvailability(res.data)).catch(() => {});
     fetchDiscoverySchedules().then((res) => setSchedules(res.data || [])).catch(() => {});
   }, []);
+
+  // Recomputes the pre-run plan preview from the SAME finalization the
+  // backend uses when approving (round-robin by source, then sliced to
+  // queryLimitPerRun) whenever a draft run's relevant settings change —
+  // never estimated locally from the unsliced draft query collection.
+  const draftPreviewInputsKey = JSON.stringify(
+    runs.filter((r) => r.status === "draft").map((r) => ({
+      id: r._id,
+      jobs: r.jobs.map((j) => ({ category: j.category, query: j.query, source: j.source, locationHint: j.locationHint })),
+      sources: r.sources || ["vertex", "openai_web_search"],
+      queryLimitPerRun: r.queryLimitPerRun, pageLimitPerQuery: r.pageLimitPerQuery, providerCreditCapUsd: r.providerCreditCapUsd,
+      includePdlPersonSearch: r.includePdlPersonSearch, maxPdlPersonSearchCredits: r.maxPdlPersonSearchCredits,
+      includePdlCrossReference: r.includePdlCrossReference, maxPdlCrossReferenceCredits: r.maxPdlCrossReferenceCredits,
+      maxAttemptsPerJob: r.retryPolicy?.maxAttemptsPerJob,
+    })),
+  );
+  useEffect(() => {
+    const draftRuns = runs.filter((r) => r.status === "draft");
+    if (!draftRuns.length) return undefined;
+    const timeoutId = setTimeout(() => {
+      draftRuns.forEach((run) => {
+        previewPublicWebDiscoveryRunPlan({
+          jobs: run.jobs, sources: run.sources || ["vertex", "openai_web_search"],
+          queryLimitPerRun: run.queryLimitPerRun, pageLimitPerQuery: run.pageLimitPerQuery, providerCreditCapUsd: run.providerCreditCapUsd,
+          includePdlPersonSearch: run.includePdlPersonSearch, maxPdlPersonSearchCredits: run.maxPdlPersonSearchCredits,
+          includePdlCrossReference: run.includePdlCrossReference, maxPdlCrossReferenceCredits: run.maxPdlCrossReferenceCredits,
+          maxAttemptsPerJob: run.retryPolicy?.maxAttemptsPerJob,
+        }).then((response) => {
+          setPlanPreviewByRun((current) => ({ ...current, [run._id]: response.data }));
+        }).catch(() => {});
+      });
+    }, 300);
+    return () => clearTimeout(timeoutId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftPreviewInputsKey]);
 
   const toggleProgram = (noteId) => {
     setSelectedProgramNoteIds((current) => (current.includes(noteId) ? current.filter((id) => id !== noteId) : [...current, noteId]));
@@ -311,6 +348,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
         const jobGroups = groupJobsByCategory(run.jobs);
         const busy = runBusy[run._id];
         const sources = run.sources || ["vertex", "openai_web_search"];
+        const preview = planPreviewByRun[run._id];
         const totalJobs = run.jobs.length;
         const currentJob = run.jobs[run.nextJobIndex];
         const schedule = schedules.find((s) => s.programNoteId === run.programNoteId);
@@ -380,17 +418,18 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
                   <dt>Expected people</dt><dd>~{run.estimatedCreditUse?.expectedPeople ?? "?"} (rough estimate — direct outreach candidates)</dd>
                   <dt>Expected communities/organizations</dt><dd>~{run.estimatedCreditUse?.expectedCommunitiesOrganizations ?? "?"} (rough estimate — need an organizer/partnership approach, not direct outreach)</dd>
                   <dt>Target</dt><dd>{run.dailyCandidateTarget} {run.targetType === "person" ? "unique people specifically" : "candidates of any type"}</dd>
-                  <dt>Maximum PDL Person Search credits</dt><dd>{run.includePdlPersonSearch ? run.maxPdlPersonSearchCredits : "0 (off)"}</dd>
-                  <dt>Maximum PDL cross-reference credits</dt><dd>{run.includePdlCrossReference ? run.maxPdlCrossReferenceCredits : "0 (off)"}</dd>
-                  <dt>Maximum Vertex calls</dt><dd>{sources.includes("vertex") ? (run.estimatedCreditUse?.vertexCalls ?? "?") : "0 (off)"}</dd>
-                  <dt>Maximum OpenAI Web Search calls</dt><dd>{sources.includes("openai_web_search") ? (run.estimatedCreditUse?.openaiCalls ?? "?") : "0 (off)"}</dd>
-                  <dt>Maximum estimated web cash</dt><dd>${run.estimatedCreditUse?.estimatedUsd ?? "?"} (Vertex + OpenAI only — PDL credits above are never converted into this figure)</dd>
+                  <dt>Maximum PDL Person Search credits</dt><dd>{preview ? preview.maxPdlPersonSearchCredits : "…"}</dd>
+                  <dt>Maximum PDL cross-reference credits</dt><dd>{preview ? preview.maxPdlCrossReferenceCredits : "…"}</dd>
+                  <dt>Maximum Vertex calls</dt><dd>{preview ? `${preview.maxVertexCallsInitial} initial` : "…"}{preview?.maxVertexRetryExposure ? ` (up to ${preview.maxVertexRetryExposure} more only if a query fails and is retried)` : ""}</dd>
+                  <dt>Maximum OpenAI Web Search calls</dt><dd>{preview ? `${preview.maxOpenaiCallsInitial} initial` : "…"}{preview?.maxOpenaiRetryExposure ? ` (up to ${preview.maxOpenaiRetryExposure} more only if a query fails and is retried)` : ""}</dd>
+                  <dt>Maximum estimated web cash</dt><dd>{preview ? `$${preview.maxWebCashEnforced} (initial calls: $${preview.maxWebCashInitial}${preview.maxWebCashWithRetries !== preview.maxWebCashInitial ? `, up to $${preview.maxWebCashWithRetries} if every retry occurs` : ""}, capped at your $${preview.providerCreditCapUsd} hard cap)` : "…"} — Vertex + OpenAI only, PDL credits above are never converted into this figure</dd>
                 </dl>
                 {run.estimatedCreditUse?.budgetWarning ? <p className="form-error">{run.estimatedCreditUse.budgetWarning}</p> : null}
                 <p className="leadgen-run-disclosure">Destination: the review queue below — nothing is imported into the CRM, enriched, monitored, or contacted automatically. {run.estimatedCreditUse?.note}</p>
 
                 <div className="leadgen-review-actions">
-                  <Button loading={busy === "running"} onClick={() => runOnceNow(run)}>Run once now</Button>
+                  <Button loading={busy === "running"} disabled={Boolean(preview?.validationError)} onClick={() => runOnceNow(run)}>Run once now</Button>
+                  {preview?.validationError ? <span className="form-error leadgen-run-inline-error">{preview.validationError}</span> : null}
                 </div>
 
                 <div className="leadgen-schedule-form">

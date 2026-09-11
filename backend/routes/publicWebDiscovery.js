@@ -46,6 +46,26 @@ router.post("/runs/propose-student-preset", async (req, res) => {
   }
 });
 
+/**
+ * Free, pure, no-DB-write preview of the EXACT finalized job plan
+ * approving with these exact settings would produce — uses the same
+ * finalizeWebJobPlan()/computeRunPlanPreview() functions
+ * approvePublicWebDiscoveryRun itself uses, so this can never show a
+ * different number than what "Run once now" will actually do.
+ */
+router.post("/runs/preview", (req, res) => {
+  try {
+    const data = publicWebDiscoveryEngineService.computeRunPlanPreview({
+      jobs: req.body?.jobs, sources: req.body?.sources, queryLimitPerRun: req.body?.queryLimitPerRun, pageLimitPerQuery: req.body?.pageLimitPerQuery,
+      providerCreditCapUsd: req.body?.providerCreditCapUsd, includePdlPersonSearch: req.body?.includePdlPersonSearch, maxPdlPersonSearchCredits: req.body?.maxPdlPersonSearchCredits,
+      includePdlCrossReference: req.body?.includePdlCrossReference, maxPdlCrossReferenceCredits: req.body?.maxPdlCrossReferenceCredits, maxAttemptsPerJob: req.body?.maxAttemptsPerJob,
+    });
+    return res.json({ success: true, data });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message || "Unable to compute the run plan preview" });
+  }
+});
+
 router.get("/runs/:id", async (req, res) => {
   try {
     const run = await PublicWebDiscoveryRun.findOne({ _id: req.params.id, workspaceId: req.auth.workspaceId }).lean();

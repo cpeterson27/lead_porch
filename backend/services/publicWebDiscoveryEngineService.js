@@ -343,6 +343,89 @@ async function proposeStudentSearchPreset({ workspaceId, userId, auth, programNo
  * caps) and moves the run from "draft" to "queued" — nothing is spent
  * until a processNextBatch() tick actually runs.
  */
+/**
+ * The SINGLE finalization step for the web (Vertex/OpenAI) job list:
+ * filters to real, enabled-source web queries, round-robins them by
+ * source GLOBALLY (not just within a category — see
+ * roundRobinBySourceGlobally), and slices to queryLimitPerRun, applying
+ * pageLimitPerQuery as every surviving job's maxPages. PDL is never a
+ * candidate here — it's excluded by the source filter itself.
+ *
+ * Used identically by approvePublicWebDiscoveryRun (what actually runs)
+ * and computeRunPlanPreview (what the draft editor shows before running),
+ * so the pre-run plan can never diverge from execution again — a low
+ * query limit previously starved a whole provider (or, before PDL became
+ * an independent phase, got squeezed out entirely by a PDL job) because
+ * the shown estimate was computed from the unsliced draft query
+ * collection instead of this exact finalized list.
+ */
+function finalizeWebJobPlan({ jobs, sources, queryLimitPerRun, pageLimitPerQuery, fallbackQueryLimit = 40, fallbackPageLimit = 2 }) {
+  const allowedSources = Array.isArray(sources) && sources.length ? sources.filter((s) => GROUNDED_SEARCH_SOURCES.includes(s)) : null;
+  const webJobs = (jobs || [])
+    .filter((j) => JOB_CATEGORIES.includes(j.category) && String(j.query || "").trim() && GROUNDED_SEARCH_SOURCES.includes(j.source))
+    .filter((j) => !allowedSources || allowedSources.includes(j.source));
+  const resolvedPageLimit = Math.max(1, Math.min(10, Number(pageLimitPerQuery) || fallbackPageLimit));
+  const resolvedQueryLimit = Math.max(1, Math.min(500, Number(queryLimitPerRun) || fallbackQueryLimit));
+  return roundRobinBySourceGlobally(webJobs)
+    .slice(0, resolvedQueryLimit)
+    .map((j) => ({ category: j.category, query: clean(j.query, 500), source: j.source, locationHint: clean(j.locationHint, 200), status: "pending", page: 0, maxPages: resolvedPageLimit, attempts: 0, resultsCount: 0, acceptedCount: 0 }));
+}
+
+/**
+ * The exact pre-run plan the owner sees before approving — built from
+ * finalizeWebJobPlan(), the SAME finalization step approvePublicWebDiscoveryRun
+ * uses, so this can never diverge from what a "Run once now" click will
+ * actually do (the reported bug: the draft preview showed the unsliced
+ * draft query collection's totals — e.g. "22 Vertex calls" — while a
+ * query limit of 2 meant execution could only ever make 1 Vertex + 1
+ * OpenAI call).
+ *
+ * Distinguishes INITIAL planned calls (what will definitely be attempted)
+ * from RETRY EXPOSURE (extra calls only consumed if an initial attempt
+ * fails) — the two must never be silently summed into one "maximum",
+ * since retries are conditional, not guaranteed spend. The web cash
+ * figure is clamped to providerCreditCapUsd because execution enforces
+ * that as a hard stop regardless of how many retries occur, so a number
+ * larger than the cap could never actually happen.
+ */
+function computeRunPlanPreview({ jobs, sources, queryLimitPerRun, pageLimitPerQuery, providerCreditCapUsd, includePdlPersonSearch, maxPdlPersonSearchCredits, includePdlCrossReference, maxPdlCrossReferenceCredits, maxAttemptsPerJob }) {
+  const finalJobs = finalizeWebJobPlan({ jobs, sources, queryLimitPerRun, pageLimitPerQuery });
+  const maxVertexCallsInitial = finalJobs.filter((j) => j.source === "vertex").reduce((sum, j) => sum + j.maxPages, 0);
+  const maxOpenaiCallsInitial = finalJobs.filter((j) => j.source === "openai_web_search").reduce((sum, j) => sum + j.maxPages, 0);
+
+  const attempts = Math.max(1, Math.min(10, Number(maxAttemptsPerJob) || 1));
+  const retryMultiplier = attempts - 1; // extra attempts beyond the guaranteed first one, only spent on failure
+  const maxVertexRetryExposure = maxVertexCallsInitial * retryMultiplier;
+  const maxOpenaiRetryExposure = maxOpenaiCallsInitial * retryMultiplier;
+
+  const cap = Math.max(0, Number(providerCreditCapUsd) || 0);
+  const maxWebCashInitial = Math.round((maxVertexCallsInitial + maxOpenaiCallsInitial) * COST_PER_GROUNDED_CALL_USD * 100) / 100;
+  const maxWebCashWithRetries = Math.round((maxVertexCallsInitial + maxVertexRetryExposure + maxOpenaiCallsInitial + maxOpenaiRetryExposure) * COST_PER_GROUNDED_CALL_USD * 100) / 100;
+  const maxWebCashEnforced = Math.min(maxWebCashWithRetries, cap);
+
+  const resolvedMaxPdlPersonSearchCredits = includePdlPersonSearch ? Math.max(0, Math.min(500, Number(maxPdlPersonSearchCredits) || 0)) : 0;
+  const resolvedMaxPdlCrossReferenceCredits = includePdlCrossReference ? Math.max(0, Math.min(500, Number(maxPdlCrossReferenceCredits) || 0)) : 0;
+
+  const anyWebJobs = maxVertexCallsInitial > 0 || maxOpenaiCallsInitial > 0;
+  let validationError = "";
+  if (!anyWebJobs && !includePdlPersonSearch && !includePdlCrossReference) {
+    validationError = "Nothing is configured to run: no Vertex/OpenAI queries survived your provider/query-limit settings, and both PDL sources are off.";
+  } else if (anyWebJobs && cap < COST_PER_GROUNDED_CALL_USD) {
+    validationError = `The web cash cap ($${cap}) is below the cost of a single query ($${COST_PER_GROUNDED_CALL_USD}) — no Vertex/OpenAI query could ever run at this cap. Raise the cap or disable these providers.`;
+  }
+
+  return {
+    maxPdlPersonSearchCredits: resolvedMaxPdlPersonSearchCredits,
+    maxPdlCrossReferenceCredits: resolvedMaxPdlCrossReferenceCredits,
+    maxVertexCallsInitial, maxOpenaiCallsInitial,
+    maxVertexRetryExposure, maxOpenaiRetryExposure,
+    maxWebCashInitial, maxWebCashWithRetries, maxWebCashEnforced,
+    providerCreditCapUsd: cap,
+    finalJobCount: finalJobs.length,
+    validationError,
+  };
+}
+
 async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, dailyCandidateTarget, pageLimitPerQuery, queryLimitPerRun, providerCreditCapUsd, includePdlCrossReference, includePdlPersonSearch, maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits, sources, maxAttemptsPerJob }, dependencies = {}) {
   const Model = dependencies.PublicWebDiscoveryRun || PublicWebDiscoveryRun;
   const run = await Model.findOne({ _id: runId, workspaceId });
@@ -354,31 +437,15 @@ async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, 
   // entry in a submitted `jobs` payload is always stripped out here
   // regardless of client state, so a stale/edited job list can never
   // silently re-enable or disable it. `sources`/queryLimitPerRun apply only
-  // to the real web (Vertex/OpenAI) query list.
+  // to the real web (Vertex/OpenAI) query list, via finalizeWebJobPlan.
   const allowedSources = Array.isArray(sources) && sources.length ? sources.filter((s) => GROUNDED_SEARCH_SOURCES.includes(s)) : null;
-  if (Array.isArray(jobs) && jobs.length) {
-    const webJobs = jobs
-      .filter((j) => JOB_CATEGORIES.includes(j.category) && String(j.query || "").trim() && GROUNDED_SEARCH_SOURCES.includes(j.source))
-      .filter((j) => !allowedSources || allowedSources.includes(j.source));
-    // Round-robin by source GLOBALLY (not just within a category) right
-    // before the queryLimitPerRun slice — this is the exact point where a
-    // low query limit previously starved OpenAI entirely because PDL and
-    // Vertex happened to occupy the first slots (the reported incident:
-    // limit 2, PDL job 1, Vertex job 2, 0 OpenAI calls).
-    run.jobs = roundRobinBySourceGlobally(webJobs)
-      .slice(0, Math.max(1, Math.min(500, Number(queryLimitPerRun) || run.queryLimitPerRun)))
-      .map((j) => ({ category: j.category, query: clean(j.query, 500), source: j.source, locationHint: clean(j.locationHint, 200), status: "pending", page: 0, maxPages: Math.max(1, Math.min(10, Number(pageLimitPerQuery) || run.pageLimitPerQuery)), attempts: 0, resultsCount: 0, acceptedCount: 0 }));
-  } else {
-    // No edited job list submitted — keep the existing web jobs (already
-    // never includes PDL — see proposePublicWebDiscoveryRun/
-    // proposeStudentSearchPreset), just re-round-robin+re-slice them the
-    // same way so query-limit/source edits made without touching `jobs`
-    // still get fair provider scheduling.
-    const existingWebJobs = run.jobs.filter((j) => GROUNDED_SEARCH_SOURCES.includes(j.source) && (!allowedSources || allowedSources.includes(j.source)));
-    run.jobs = roundRobinBySourceGlobally(existingWebJobs)
-      .slice(0, Math.max(1, Math.min(500, Number(queryLimitPerRun) || run.queryLimitPerRun)))
-      .map((j) => ({ category: j.category, query: j.query, source: j.source, locationHint: j.locationHint, status: "pending", page: 0, maxPages: Math.max(1, Math.min(10, Number(pageLimitPerQuery) || j.maxPages)), attempts: 0, resultsCount: 0, acceptedCount: 0 }));
-  }
+  const submittedJobs = Array.isArray(jobs) && jobs.length ? jobs : run.jobs;
+  run.jobs = finalizeWebJobPlan({
+    jobs: submittedJobs, sources,
+    queryLimitPerRun: queryLimitPerRun != null ? queryLimitPerRun : run.queryLimitPerRun,
+    pageLimitPerQuery: pageLimitPerQuery != null ? pageLimitPerQuery : run.pageLimitPerQuery,
+    fallbackQueryLimit: run.queryLimitPerRun, fallbackPageLimit: run.pageLimitPerQuery,
+  });
   if (!run.jobs.length) { const error = new Error("At least one search-family query is required to approve this run"); error.code = "DISCOVERY_RUN_NO_JOBS"; throw error; }
 
   if (dailyCandidateTarget != null) run.dailyCandidateTarget = Math.max(1, Math.min(500, Number(dailyCandidateTarget) || run.dailyCandidateTarget));
@@ -991,6 +1058,8 @@ module.exports = {
   proposePublicWebDiscoveryRun,
   proposeStudentSearchPreset,
   approvePublicWebDiscoveryRun,
+  finalizeWebJobPlan,
+  computeRunPlanPreview,
   processNextBatch,
   mergeDiscoveryCandidate,
   computeFreshnessTier,
