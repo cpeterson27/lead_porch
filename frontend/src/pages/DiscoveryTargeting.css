@@ -667,6 +667,44 @@
   gap: 0.5rem;
 }
 
+.leadgen-run-summary {
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid #ded7ca;
+  border-radius: 12px;
+  background: #fbf9f4;
+}
+
+.leadgen-run-explanation {
+  margin: 0 0 0.5rem;
+  color: #263f36;
+  font-weight: 600;
+}
+
+.leadgen-provider-breakdown-wrap {
+  overflow-x: auto;
+}
+
+.leadgen-provider-breakdown {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.leadgen-provider-breakdown th,
+.leadgen-provider-breakdown td {
+  padding: 0.35rem 0.6rem;
+  text-align: left;
+  border-bottom: 1px solid #ede6d8;
+  white-space: nowrap;
+}
+
+.leadgen-provider-breakdown th {
+  font-weight: 700;
+  color: #68736f;
+}
+
 /* Advanced manual search — a plain, native disclosure (keyboard-operable by
    default) kept visually secondary to the guided Jarvis flow above it. */
 .leadgen-advanced-search {

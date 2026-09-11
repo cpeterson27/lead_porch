@@ -148,17 +148,24 @@ function mergeAcrossSources(sourcedResults) {
  * duplicating it. Caps the number of NEW person-type results this call can
  * stage at MAX_INITIAL_PEOPLE, regardless of source count.
  */
-async function search({ workspaceId, userId, auth, query, resultTypes, source = "both", correlationId = "" }, dependencies = {}) {
+async function search({ workspaceId, userId, auth, query, resultTypes, source = "both", correlationId = "", maxPeople }, dependencies = {}) {
   const Model = dependencies.GroundingResearchResult || GroundingResearchResult;
   const vertex = dependencies.vertexGroundingService || vertexGroundingService;
   const openaiWebSearch = dependencies.openaiWebSearchService || openaiWebSearchService;
   const selectedSource = SOURCES.includes(source) ? source : "both";
+  // The Discovery lead-generation coordinator passes the owner's actual
+  // requested count (5/10/25) here; every other, older caller (the
+  // Advanced manual search box, ad hoc Jarvis tool use) omits it and keeps
+  // the original MAX_INITIAL_PEOPLE=5 default unchanged.
+  const peopleCap = Number.isFinite(Number(maxPeople)) && Number(maxPeople) > 0 ? Math.floor(Number(maxPeople)) : MAX_INITIAL_PEOPLE;
 
   const sourcedResults = [];
   const sourceErrors = [];
   let groundingCitations = [];
+  const activeProviders = [];
 
   if (selectedSource === "vertex" || selectedSource === "both") {
+    activeProviders.push("vertex_grounding");
     try {
       const outcome = await vertex.groundedSearch({ workspaceId, userId, query, resultTypes, correlationId }, dependencies);
       for (const result of outcome.results) sourcedResults.push({ result, provider: "vertex_grounding" });
@@ -169,8 +176,9 @@ async function search({ workspaceId, userId, auth, query, resultTypes, source = 
     }
   }
   if (selectedSource === "openai_web_search" || selectedSource === "both") {
+    activeProviders.push("openai_web_search");
     try {
-      const outcome = await openaiWebSearch.groundedSearch({ workspaceId, userId, query, resultTypes, maxResults: MAX_INITIAL_PEOPLE, correlationId }, dependencies);
+      const outcome = await openaiWebSearch.groundedSearch({ workspaceId, userId, query, resultTypes, maxResults: peopleCap, correlationId }, dependencies);
       for (const result of outcome.results) sourcedResults.push({ result, provider: "openai_web_search" });
       groundingCitations = groundingCitations.concat(outcome.groundingCitations || []);
     } catch (error) {
@@ -185,28 +193,50 @@ async function search({ workspaceId, userId, auth, query, resultTypes, source = 
     throw error;
   }
 
+  // Raw, pre-merge count returned by each provider — used below for the
+  // per-provider run-summary breakdown so "how many did this provider
+  // actually return" is never lost once results are merged/deduped.
+  const returnedByProvider = {};
+  for (const provider of activeProviders) returnedByProvider[provider] = sourcedResults.filter((r) => r.provider === provider).length;
+
   const mergedResults = mergeAcrossSources(sourcedResults);
   // SERVER-SIDE self-match exclusion — before anything else, so a self-
-  // match never occupies one of the limited MAX_INITIAL_PEOPLE slots. The
+  // match never occupies one of the limited people-cap slots. The
   // workspace owner, its team, its own business, and its own domain are
   // never real prospects, regardless of which provider (or how many
   // independent providers) reported them.
   const selfSignals = await (dependencies.getWorkspaceSelfSignals || workspaceSelfExclusionService.getWorkspaceSelfSignals)({ workspaceId }, dependencies);
-  const { kept: nonSelfResults, excludedCount: excludedForSelfMatch } = (dependencies.excludeSelfMatches || workspaceSelfExclusionService.excludeSelfMatches)(mergedResults, selfSignals);
+  const { kept: nonSelfResults, excludedCount: excludedForSelfMatch, excluded: selfExcludedRows } = (dependencies.excludeSelfMatches || workspaceSelfExclusionService.excludeSelfMatches)(mergedResults, selfSignals);
   // SERVER-SIDE freshness validation — independent of provider prompt
   // compliance. A "person" result without a verifiable evidenceDate, or
   // dated older than PERSON_FRESHNESS_DAYS, is excluded before it ever
   // reaches the review queue. Non-person types are unaffected.
   const cutoffDate = new Date(Date.now() - PERSON_FRESHNESS_DAYS * 24 * 60 * 60 * 1000);
   const isFreshPerson = (row) => row.type !== "person" || (row.evidenceDate instanceof Date && row.evidenceDate >= cutoffDate);
-  const excludedForFreshness = nonSelfResults.filter((row) => !isFreshPerson(row)).length;
+  const freshnessExcludedRows = nonSelfResults.filter((row) => !isFreshPerson(row));
+  const excludedForFreshness = freshnessExcludedRows.length;
   const freshResults = nonSelfResults.filter(isFreshPerson);
   // Hard cap regardless of provider prompt compliance — "the initial
-  // request" for people stays at MAX_INITIAL_PEOPLE no matter how many
-  // sources contributed or how many each returned.
-  const people = freshResults.filter((row) => row.type === "person").slice(0, MAX_INITIAL_PEOPLE);
+  // request" for people stays at peopleCap no matter how many sources
+  // contributed or how many each returned.
+  const peopleAll = freshResults.filter((row) => row.type === "person");
+  const people = peopleAll.slice(0, peopleCap);
+  const capExcludedRows = peopleAll.slice(peopleCap);
   const nonPeople = freshResults.filter((row) => row.type !== "person");
   const combinedResults = [...people, ...nonPeople];
+
+  // Attributes one merged row's outcome (self/freshness/cap-rejected, or
+  // accepted/deduped once staged below) to every provider that actually
+  // contributed to it, for the per-provider run-summary breakdown. A row
+  // corroborated by two providers legitimately counts toward both — this
+  // is transparency about who contributed, not double-billing.
+  const providerStats = {};
+  for (const provider of activeProviders) providerStats[provider] = { provider, requested: peopleCap, returned: returnedByProvider[provider] || 0, rejectedSelf: 0, rejectedFreshness: 0, rejectedForCapacity: 0, rejectedDedup: 0, accepted: 0, error: null };
+  const attribute = (row, bucket) => { for (const p of (row.providers || [])) { if (providerStats[p]) providerStats[p][bucket] += 1; } };
+  for (const row of selfExcludedRows) attribute(row, "rejectedSelf");
+  for (const row of freshnessExcludedRows) attribute(row, "rejectedFreshness");
+  for (const row of capExcludedRows) attribute(row, "rejectedForCapacity");
+  for (const error of sourceErrors) { if (providerStats[error.source]) providerStats[error.source].error = error.message; }
 
   const existing = await Model.find({ workspaceId, status: "pending_review" }).select("type name organizationDomain evidenceUrls evidenceDate confidence providers").lean();
   const existingByKey = new Map(existing.map((row) => [fingerprintKey(row), row]));
@@ -223,6 +253,7 @@ async function search({ workspaceId, userId, auth, query, resultTypes, source = 
       // eslint-disable-next-line no-await-in-loop
       await Model.updateOne({ _id: match._id }, { $set: { evidenceUrls: mergedUrls, evidenceDate: mergedEvidenceDate, confidence: result.confidence === "corroborated" || match.confidence === "corroborated" ? "corroborated" : "single_source", summary: result.summary || match.summary, providers: mergedProviders } });
       mergedCount += 1;
+      attribute(result, "rejectedDedup");
       continue;
     }
     // eslint-disable-next-line no-await-in-loop
@@ -233,9 +264,10 @@ async function search({ workspaceId, userId, auth, query, resultTypes, source = 
       status: "pending_review", createdByUserId: userId, correlationId, providers: result.providers,
     });
     created += 1;
+    attribute(result, "accepted");
   }
 
-  return { created, merged: mergedCount, total: combinedResults.length, source: selectedSource, groundingCitations, sourceErrors, excludedForFreshness, excludedForSelfMatch, personFreshnessDays: PERSON_FRESHNESS_DAYS };
+  return { created, merged: mergedCount, total: combinedResults.length, source: selectedSource, groundingCitations, sourceErrors, excludedForFreshness, excludedForSelfMatch, personFreshnessDays: PERSON_FRESHNESS_DAYS, providerStats: Object.values(providerStats) };
 }
 
 async function listResults({ workspaceId, status, type }, dependencies = {}) {

@@ -497,10 +497,11 @@ export default function Discovery() {
       };
       const response = await approveLeadGenerationSearch(leadGenProposal._id, { icp: icpOverride, requestedCount: leadGenRequestedCount, sources: leadGenSelectedSources });
       const summary = response.data.runSummary || {};
-      const staleNote = summary.excludedForFreshness ? ` ${summary.excludedForFreshness} excluded for missing/stale evidence.` : "";
-      const selfMatchNote = summary.excludedForSelfMatch ? ` ${summary.excludedForSelfMatch} excluded as a self-match (workspace owner/team/business).` : "";
-      const errorNote = summary.sourceErrors?.length ? ` ${summary.sourceErrors.length} source(s) reported an issue.` : "";
-      setNotice(`Search ${response.data.status}: ${summary.created || 0} new, ${summary.merged || 0} merged, ${summary.withConflicts || 0} flagged with conflicts.${staleNote}${selfMatchNote}${errorNote}`);
+      // The explanation already states the true survived count and why —
+      // see the per-provider breakdown table rendered below for detail —
+      // so the notice never leads with a generic count that could imply
+      // the full requested amount was found.
+      setNotice(`Search ${response.data.status}: ${summary.explanation || `${summary.created || 0} new, ${summary.merged || 0} merged, ${summary.withConflicts || 0} flagged with conflicts.`}`);
       setLeadGenProposal(response.data);
       setGroundingResultsStatus("pending_review");
       await loadGroundingResults("pending_review");
@@ -1415,6 +1416,35 @@ export default function Discovery() {
               </dd>
               <dt>Destination</dt><dd>Review queue below — nothing is imported into the CRM automatically.</dd>
             </dl>
+
+            {leadGenProposal.status !== "proposed" && leadGenProposal.runSummary ? (
+              <div className="leadgen-run-summary">
+                <p className="leadgen-run-explanation">{leadGenProposal.runSummary.explanation || `${leadGenProposal.runSummary.created || 0} new, ${leadGenProposal.runSummary.merged || 0} merged.`}</p>
+                {leadGenProposal.runSummary.providerBreakdown?.length ? (
+                  <div className="leadgen-provider-breakdown-wrap">
+                    <table className="leadgen-provider-breakdown">
+                      <thead>
+                        <tr><th>Provider</th><th>Requested</th><th>Returned</th><th>Rejected: self</th><th>Rejected: freshness</th><th>Rejected: dedup</th><th>Accepted</th><th>Error</th></tr>
+                      </thead>
+                      <tbody>
+                        {leadGenProposal.runSummary.providerBreakdown.map((row, index) => (
+                          <tr key={`${row.provider}-${index}`}>
+                            <td>{row.provider}</td>
+                            <td>{row.requested}</td>
+                            <td>{row.returned}</td>
+                            <td>{row.rejectedSelf}</td>
+                            <td>{row.rejectedFreshness}</td>
+                            <td>{row.rejectedDedup}</td>
+                            <td>{row.accepted}</td>
+                            <td>{row.error ? <span className="form-error">{row.error}</span> : "—"}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
 
             {leadGenProposal.status === "proposed" ? (
               <div className="leadgen-review-actions">

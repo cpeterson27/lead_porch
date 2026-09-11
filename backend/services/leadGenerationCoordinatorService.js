@@ -88,7 +88,7 @@ const ICP_RESPONSE_SCHEMA = {
     icp: {
       type: "object",
       properties: {
-        titles: { type: "array", items: { type: "string" } },
+        titles: { type: "array", items: { type: "string" }, description: "Real, searchable professional job titles only (e.g. 'Marketing Manager', 'Small Business Owner', 'Registered Nurse') — never skill levels, experience descriptors, or audience labels such as 'beginner', 'intermediate', 'expert', 'student', or 'buyer'. If the request only describes a skill level or audience with no real job title implied, leave this empty and rely on keywords/industries instead." },
         industries: { type: "array", items: { type: "string" } },
         locations: { type: "array", items: { type: "string" } },
         keywords: { type: "array", items: { type: "string" } },
@@ -207,6 +207,28 @@ async function getSearchSuggestionsForProgram({ workspaceId, programNoteId }, de
   return { noteId: String(note._id), title, suggestions: templates.slice(0, MAX_SUGGESTIONS_PER_PROGRAM).map((query) => ({ query })) };
 }
 
+// Skill levels, experience descriptors, and audience labels a loose LLM
+// parse can mistake for a job title (e.g. "beginner" from a request like
+// "find beginner yoga students") — these are never real, searchable job
+// titles, and PDL/Apollo's title fields expect actual professional titles.
+// Filtered out at the single sanitizeIcp() choke point used by both a
+// freshly-parsed ICP and an owner-edited one, so a bad title never reaches
+// either provider's query, and the cleaned list is also what the review
+// panel displays back to the owner (never silently filtered only at query
+// build time).
+const NON_JOB_TITLE_PHRASES = new Set([
+  "beginner", "beginners", "intermediate", "advanced", "expert", "experts",
+  "novice", "newbie", "amateur", "aspiring", "entry level", "entry-level",
+  "student", "students", "buyer", "buyers", "customer", "customers",
+  "prospect", "prospects", "lead", "leads", "member", "members",
+]);
+
+function isRealisticJobTitle(title) {
+  const normalized = String(title || "").trim().toLowerCase();
+  if (!normalized || !/[a-z]/i.test(normalized)) return false;
+  return !NON_JOB_TITLE_PHRASES.has(normalized);
+}
+
 /**
  * Shared sanitization for an ICP object, whether freshly parsed by the LLM
  * (proposeSearch) or edited by the owner in the review panel and sent as
@@ -216,7 +238,7 @@ async function getSearchSuggestionsForProgram({ workspaceId, programNoteId }, de
  */
 function sanitizeIcp(rawIcp = {}, reasoningNotes = "") {
   return {
-    titles: (rawIcp.titles || []).slice(0, 20).map((v) => clean(v, 120)),
+    titles: (rawIcp.titles || []).slice(0, 20).map((v) => clean(v, 120)).filter(isRealisticJobTitle),
     industries: (rawIcp.industries || []).slice(0, 20).map((v) => clean(v, 120)),
     locations: (rawIcp.locations || []).slice(0, 20).map((v) => clean(v, 120)),
     keywords: (rawIcp.keywords || []).slice(0, 20).map((v) => clean(v, 120)),
@@ -461,6 +483,7 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
     ? ["vertex", "openai_web_search", "pdl_person_search", "apollo_person_search"]
     : search.sources;
   const sourceErrors = [];
+  const providerBreakdown = [];
   let created = 0, merged = 0, withConflicts = 0, excludedForFreshness = 0, excludedForSelfMatch = 0;
   // Same server-side self-match exclusion vertexGroundingDiscoveryService.js
   // applies for Vertex/OpenAI — fetched once here and applied to every
@@ -474,56 +497,71 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
     try {
       const groundingQuery = `${search.icp.titles.join(", ") || "prospective students"} interested in ${search.programName || "this program"}${search.icp.locations.length ? ` in ${search.icp.locations.join(", ")}` : ""}`.trim();
       const groundingSource = includesVertex && includesOpenai ? "both" : includesVertex ? "vertex" : "openai_web_search";
-      const outcome = await vertexDiscovery.search({ workspaceId, userId, auth, query: groundingQuery, resultTypes: ["person"], source: groundingSource, correlationId }, dependencies);
+      const outcome = await vertexDiscovery.search({ workspaceId, userId, auth, query: groundingQuery, resultTypes: ["person"], source: groundingSource, maxPeople: search.requestedCount, correlationId }, dependencies);
       created += outcome.created;
       merged += outcome.merged;
       excludedForFreshness += outcome.excludedForFreshness || 0;
       excludedForSelfMatch += outcome.excludedForSelfMatch || 0;
       if (outcome.sourceErrors?.length) sourceErrors.push(...outcome.sourceErrors);
+      if (outcome.providerStats?.length) providerBreakdown.push(...outcome.providerStats);
     } catch (error) {
+      const failedProviders = includesVertex && includesOpenai ? ["vertex_grounding", "openai_web_search"] : [includesVertex ? "vertex_grounding" : "openai_web_search"];
       sourceErrors.push({ source: includesVertex && includesOpenai ? "vertex+openai_web_search" : groundingSourceLabel(includesVertex), code: error.code || "GROUNDING_SEARCH_FAILED", message: error.message });
+      for (const provider of failedProviders) providerBreakdown.push({ provider, requested: search.requestedCount, returned: 0, rejectedSelf: 0, rejectedFreshness: 0, rejectedForCapacity: 0, rejectedDedup: 0, accepted: 0, error: error.message });
     }
   }
 
   if (effectiveSources.includes("pdl_person_search")) {
+    const stats = { provider: "pdl_person_search", requested: search.requestedCount, returned: 0, rejectedSelf: 0, rejectedFreshness: 0, rejectedForCapacity: 0, rejectedDedup: 0, accepted: 0, error: null };
     try {
       const sql = buildPdlSql(search.icp);
       if (!sql) throw Object.assign(new Error("The ICP has no criteria PDL can search on (titles, locations, or industries required)"), { code: "PDL_ICP_EMPTY" });
       const outcome = await pdl.searchPeople({ workspaceId, userId, sql, size: search.requestedCount, correlationId });
+      stats.returned = outcome.people.length;
       for (const person of outcome.people) {
         const candidate = normalizePdlCandidate(person);
-        if (isSelfMatchCheck(candidate, selfSignals).isSelf) { excludedForSelfMatch += 1; continue; }
+        if (isSelfMatchCheck(candidate, selfSignals).isSelf) { excludedForSelfMatch += 1; stats.rejectedSelf += 1; continue; }
         // eslint-disable-next-line no-await-in-loop
         const result = await mergeIcpMatchCandidate({ workspaceId, userId, searchId: search._id, correlationId, candidate }, dependencies);
-        if (result.created) created += 1; else merged += 1;
+        if (result.created) { created += 1; stats.accepted += 1; } else { merged += 1; stats.rejectedDedup += 1; }
         if (result.row.conflicts?.length) withConflicts += 1;
       }
     } catch (error) {
       sourceErrors.push({ source: "pdl_person_search", code: error.code || "PDL_SEARCH_FAILED", message: error.message });
+      stats.error = error.message;
     }
+    providerBreakdown.push(stats);
   }
 
   if (effectiveSources.includes("apollo_person_search")) {
+    const stats = { provider: "apollo_person_search", requested: search.requestedCount, returned: 0, rejectedSelf: 0, rejectedFreshness: 0, rejectedForCapacity: 0, rejectedDedup: 0, accepted: 0, error: null };
     try {
       const filters = buildApolloFilters(search.icp);
       if (!Object.keys(filters).length) throw Object.assign(new Error("The ICP has no criteria Apollo can search on (titles, locations, seniority, or keywords required)"), { code: "APOLLO_ICP_EMPTY" });
       const outcome = await apollo.searchPeople({ workspaceId, userId, filters, perPage: search.requestedCount, correlationId });
+      stats.returned = outcome.people.length;
       for (const person of outcome.people) {
         const candidate = normalizeApolloCandidate(person);
-        if (isSelfMatchCheck(candidate, selfSignals).isSelf) { excludedForSelfMatch += 1; continue; }
+        if (isSelfMatchCheck(candidate, selfSignals).isSelf) { excludedForSelfMatch += 1; stats.rejectedSelf += 1; continue; }
         // eslint-disable-next-line no-await-in-loop
         const result = await mergeIcpMatchCandidate({ workspaceId, userId, searchId: search._id, correlationId, candidate }, dependencies);
-        if (result.created) created += 1; else merged += 1;
+        if (result.created) { created += 1; stats.accepted += 1; } else { merged += 1; stats.rejectedDedup += 1; }
         if (result.row.conflicts?.length) withConflicts += 1;
       }
     } catch (error) {
       sourceErrors.push({ source: "apollo_person_search", code: error.code || "APOLLO_SEARCH_FAILED", message: error.message });
+      stats.error = error.message;
     }
+    providerBreakdown.push(stats);
   }
 
   const allFailed = sourceErrors.length >= effectiveSources.length && created === 0 && merged === 0;
   search.status = allFailed ? "failed" : "completed";
-  search.runSummary = { created, merged, withConflicts, excludedForFreshness, excludedForSelfMatch, sourceErrors };
+  search.runSummary = {
+    created, merged, withConflicts, excludedForFreshness, excludedForSelfMatch, sourceErrors,
+    providerBreakdown,
+    explanation: buildRunExplanation({ requestedCount: search.requestedCount, created, merged, excludedForSelfMatch, excludedForFreshness, sourceErrors }),
+  };
   await search.save();
 
   await auditService.record({ workspaceId, actorUserId: userId, action: "provider.request", targetType: "DiscoverySearch", targetId: search._id, after: { status: search.status, created, merged }, provider: "lead_generation_coordinator", success: !allFailed });
@@ -531,6 +569,29 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
 }
 
 function groundingSourceLabel(includesVertex) { return includesVertex ? "vertex" : "openai_web_search"; }
+
+/**
+ * Plain-language explanation of why this run's genuinely NEW candidate
+ * count (created — never counting a merge into an already-existing
+ * pending_review row as "new") did or didn't reach what the owner
+ * requested — so the UI never implies "5 found" when only 1 actually
+ * survived filtering. `created` alone (not created+merged) is used as the
+ * "survived" count on purpose: a merge means the candidate was already in
+ * the queue, not a new find from this run.
+ */
+function buildRunExplanation({ requestedCount, created, merged, excludedForSelfMatch, excludedForFreshness, sourceErrors }) {
+  if (created >= requestedCount) {
+    return `Requested ${requestedCount}; ${created} new candidate${created === 1 ? "" : "s"} added to the review queue${merged ? ` (plus ${merged} more that matched and updated existing queue entries).` : "."}`;
+  }
+  const reasons = [];
+  if (excludedForSelfMatch) reasons.push(`${excludedForSelfMatch} excluded as a self-match (you, your team, or your own business)`);
+  if (excludedForFreshness) reasons.push(`${excludedForFreshness} excluded for being outside the freshness window`);
+  if (merged) reasons.push(`${merged} matched candidates already in your review queue (updated rather than added as new)`);
+  const erroredSources = [...new Set(sourceErrors.map((e) => e.source).filter(Boolean))];
+  if (erroredSources.length) reasons.push(`${erroredSources.join(", ")} failed and returned nothing (see the error for each below)`);
+  const reasonText = reasons.length ? ` ${reasons.join("; ")}.` : " See the per-provider breakdown below for why.";
+  return `Requested ${requestedCount}, but only ${created} new candidate${created === 1 ? "" : "s"} survived filtering and were added to the review queue.${reasonText}`;
+}
 
 /**
  * Explicit, per-row Apollo enrichment for a still-pending PERSON result —
@@ -652,4 +713,10 @@ module.exports = {
   qualifyAndRecommend,
   proposeMonitorSuggestion,
   ICP_SOURCES,
+  // Exported for direct unit testing — pure, no side effects.
+  sanitizeIcp,
+  isRealisticJobTitle,
+  buildPdlSql,
+  buildApolloFilters,
+  buildRunExplanation,
 };

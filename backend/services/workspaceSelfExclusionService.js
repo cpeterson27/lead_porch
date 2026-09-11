@@ -48,6 +48,38 @@ function hostOf(url) {
 }
 
 /**
+ * Web-grounded results (Vertex/OpenAI) often report a person's name with
+ * role/company context appended by the model's own summarization — e.g.
+ * "Ellie Baxter, Founder of Ellie's Coaching" or "Ellie Baxter (Ellie's
+ * Coaching)" — never a bare name the way PDL/Apollo's structured fields do.
+ * This strips that trailing context at the first clear separator so the
+ * EXACT-match check below still catches it. It never fuzzily shortens an
+ * unrelated name: with no separator present, the string is returned as-is.
+ */
+function stripTrailingContext(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const cut = raw.search(/\s*[,(|]|\s[-–—]\s|\bat\b/i);
+  return (cut > 0 ? raw.slice(0, cut) : raw).trim();
+}
+
+/**
+ * Reads a Mongoose model's own schema-declared defaults for the given
+ * field names — used when a workspace has no WorkspaceConfig document yet,
+ * so a still-unconfigured workspace's business name (e.g. this app's own
+ * "Ellie's Coaching" default) is never silently missing from self-match
+ * signals just because no config row was ever saved. Generic: reads
+ * whatever the schema actually declares, never a hardcoded business name.
+ */
+function schemaDefault(Model, field, workspaceId) {
+  try {
+    return new Model({ workspaceId }).get(field);
+  } catch {
+    return "";
+  }
+}
+
+/**
  * Gathers this workspace's own identity signals: active team members'
  * names/emails/email-domains, the workspace's configured business
  * name(s) and website domain, and approved Offers & Programs brand names.
@@ -72,7 +104,16 @@ async function getWorkspaceSelfSignals({ workspaceId }, dependencies = {}) {
   const names = new Set(users.map((u) => normalize(u.name)).filter(Boolean));
   const emails = new Set(users.map((u) => normalize(u.email)).filter(Boolean));
   const domains = new Set(users.map((u) => domainOf(u.email)).filter(Boolean));
-  const websiteHost = hostOf(config?.websiteUrl);
+  // A workspace with no saved WorkspaceConfig document (never configured,
+  // or configured before this row existed) still has real schema-default
+  // values for workspaceName/legalBusinessName — falling back to those
+  // rather than leaving this signal empty is what made this app's own
+  // default business name ("Ellie's Coaching") invisible to self-match
+  // checks for a workspace that never explicitly saved a config row.
+  const websiteUrl = config?.websiteUrl || "";
+  const workspaceName = config?.workspaceName || (config ? "" : schemaDefault(ConfigModel, "workspaceName", workspaceId));
+  const legalBusinessName = config?.legalBusinessName || (config ? "" : schemaDefault(ConfigModel, "legalBusinessName", workspaceId));
+  const websiteHost = hostOf(websiteUrl);
   if (websiteHost) domains.add(websiteHost);
   for (const host of (workspace?.publicHosts || [])) {
     const hostName = hostOf(host);
@@ -80,7 +121,7 @@ async function getWorkspaceSelfSignals({ workspaceId }, dependencies = {}) {
   }
 
   const businessNames = new Set(
-    [config?.workspaceName, config?.legalBusinessName, workspace?.name, ...programNotes.map((note) => note.title)]
+    [workspaceName, legalBusinessName, workspace?.name, ...programNotes.map((note) => note.title)]
       .map(normalize)
       .filter(Boolean),
   );
@@ -97,17 +138,27 @@ function isSelfMatch(candidate = {}, signals) {
   if (!signals) return { isSelf: false, reasons: [] };
   const reasons = [];
   const name = normalize(candidate.name);
+  // Web-grounded (Vertex/OpenAI) candidates often carry role/company context
+  // appended to the name itself (e.g. "Ellie Baxter, Founder of Ellie's
+  // Coaching") — an exact match against the bare name alone would miss
+  // this, so the trailing-context-stripped form is checked too. Still an
+  // EXACT set-membership check, never substring/fuzzy — a name that merely
+  // shares a first name or contains a signal name as a substring never
+  // matches.
+  const strippedName = normalize(stripTrailingContext(candidate.name));
   const email = normalize(candidate.email);
   const emailDomain = domainOf(candidate.email);
   const orgDomain = normalize(candidate.organizationDomain);
   const orgName = normalize(candidate.organizationName);
 
   if (name && signals.names.has(name)) reasons.push("name matches a workspace team member");
+  else if (strippedName && strippedName !== name && signals.names.has(strippedName)) reasons.push("name matches a workspace team member");
   if (email && signals.emails.has(email)) reasons.push("email matches a workspace team member");
   if (emailDomain && signals.domains.has(emailDomain)) reasons.push("email domain matches the workspace's own domain");
   if (orgDomain && signals.domains.has(orgDomain)) reasons.push("organization domain matches the workspace's own domain");
   if (orgName && signals.businessNames.has(orgName)) reasons.push("organization name matches the workspace's own business");
   if (name && signals.businessNames.has(name)) reasons.push("name matches the workspace's own business");
+  else if (strippedName && strippedName !== name && signals.businessNames.has(strippedName)) reasons.push("name matches the workspace's own business");
 
   return { isSelf: reasons.length > 0, reasons };
 }
@@ -119,13 +170,13 @@ function isSelfMatch(candidate = {}, signals) {
  */
 function excludeSelfMatches(candidates, signals) {
   const kept = [];
-  let excludedCount = 0;
+  const excluded = [];
   for (const candidate of candidates) {
     const { isSelf } = isSelfMatch(candidate, signals);
-    if (isSelf) excludedCount += 1;
+    if (isSelf) excluded.push(candidate);
     else kept.push(candidate);
   }
-  return { kept, excludedCount };
+  return { kept, excludedCount: excluded.length, excluded };
 }
 
 module.exports = { getWorkspaceSelfSignals, isSelfMatch, excludeSelfMatches };

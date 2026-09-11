@@ -55,6 +55,15 @@ const discoverySearchSchema = new mongoose.Schema({
     excludedForFreshness: { type: Number, default: 0 },
     excludedForSelfMatch: { type: Number, default: 0 },
     sourceErrors: { type: mongoose.Schema.Types.Mixed, default: [] },
+    // Per-provider transparency: for each selected provider, requested/
+    // returned/rejected(self, freshness, capacity, dedup)/accepted/error —
+    // see leadGenerationCoordinatorService.js's approveAndRunSearch(). Mixed
+    // rather than a rigid sub-schema since provider set varies per run.
+    providerBreakdown: { type: mongoose.Schema.Types.Mixed, default: [] },
+    // Plain-language reason the survived count fell short of requestedCount,
+    // set whenever fewer new candidates were created than requested — never
+    // implies the full requested count was found when it wasn't.
+    explanation: { type: String, default: "", trim: true, maxlength: 1000 },
   },
   monitorSuggestionId: { type: mongoose.Schema.Types.ObjectId, ref: "LeadMonitorSuggestion", default: null },
   correlationId: { type: String, default: "", trim: true, maxlength: 255 },
