@@ -219,7 +219,15 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
       let current = run.status === "draft" ? await approveRun(run) : run;
       let iterations = 0;
       while (!stopFlags.current[current._id] && RUN_ACTIVE_STATUSES.has(current.status) && iterations < MAX_BATCH_ITERATIONS) {
-        const outcome = await processPublicWebDiscoveryRunBatch(current._id, 3);
+        // One job per request, not three — a single Vertex call alone can
+        // legitimately take up to 75s server-side, so bounding each
+        // request to one job keeps its worst case predictable instead of
+        // stacking multiple slow provider calls (plus their citation
+        // crawling) into one round trip. The loop still keeps calling
+        // this repeatedly until the run reports done, so total throughput
+        // is unaffected — each step is just smaller and less likely to
+        // run out the clock.
+        const outcome = await processPublicWebDiscoveryRunBatch(current._id, 1);
         current = outcome.data.run;
         updateRunInState(current);
         iterations += 1;

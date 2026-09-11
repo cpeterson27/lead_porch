@@ -38,7 +38,7 @@ assert.ok(/runs\.filter\(\(run\) => run\.status !== "draft"\)\.map\(renderRun\)/
 
 const runOnceNowSrc = panelSrc.slice(panelSrc.indexOf("const runOnceNow ="), panelSrc.indexOf("const pauseRun ="));
 assert.ok(runOnceNowSrc.includes('run.status === "draft" ? await approveRun(run) : run'), "approveRun (which regenerates the finalized job plan) must be skipped entirely for anything already persisted as non-draft — Continue must not reapprove or reset the checkpoint");
-assert.ok(runOnceNowSrc.includes("processPublicWebDiscoveryRunBatch(current._id, 3)"), "Continue must call process-next-batch against the run's own existing _id");
+assert.ok(runOnceNowSrc.includes("processPublicWebDiscoveryRunBatch(current._id, 1)"), "Continue must call process-next-batch against the run's own existing _id");
 assert.ok(runOnceNowSrc.includes("runInFlight.current[run._id]"), "the existing synchronous guard must still gate every Continue/Run-once-now click against duplicate in-flight requests");
 
 // ---- 4. Terminal runs remain viewable but never expose an invalid Continue ----

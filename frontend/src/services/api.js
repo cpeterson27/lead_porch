@@ -1201,8 +1201,18 @@ export const approvePublicWebDiscoveryRun = (runId, overrides = {}) =>
 // estimate from the unsliced draft query collection in the UI itself.
 export const previewPublicWebDiscoveryRunPlan = (payload) =>
   api.post("/public-web-discovery/runs/preview", payload).then((res) => res.data);
+// A single Vertex grounded-search call is allowed up to 75s server-side
+// (services/vertexGroundingService.js's GROUNDING_TIMEOUT_MS — a real
+// grounded search legitimately takes that long), plus per-result citation
+// crawling on top of that. The previous 60s client timeout was SHORTER
+// than that single-call ceiling, so the browser gave up before the
+// backend's own, deliberately generous timeout ever could — the backend
+// kept working and genuinely completing/saving each tick a little later,
+// which is why it looked like a silent, unexplained failure with nothing
+// wrong to find in server logs. 150s gives real headroom above the
+// worst realistic case for one batch step.
 export const processPublicWebDiscoveryRunBatch = (runId, batchSize) =>
-  api.post(`/public-web-discovery/runs/${runId}/process-next-batch`, { batchSize }, { timeout: 60000 }).then((res) => res.data);
+  api.post(`/public-web-discovery/runs/${runId}/process-next-batch`, { batchSize }, { timeout: 150000 }).then((res) => res.data);
 export const pausePublicWebDiscoveryRun = (runId) =>
   api.post(`/public-web-discovery/runs/${runId}/pause`).then((res) => res.data);
 export const resumePublicWebDiscoveryRun = (runId) =>
