@@ -52,10 +52,45 @@ function meetsMatchThreshold(likelihood) {
   return Number(likelihood) >= MIN_LIKELIHOOD;
 }
 
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * PDL's `work_email` field is documented as a plain string, but real
+ * responses have been observed returning it as an object (e.g.
+ * `{ address, first_seen, last_seen }`) or as an array of such entries —
+ * a shape variance that previously reached `.toLowerCase()` downstream
+ * uncaught (`candidate.email.toLowerCase is not a function`), crashing
+ * mid-run after PDL had already returned real candidates. This extracts
+ * a plain, validated email STRING from any of those shapes — a bare
+ * string, an array (first valid entry wins), or an object (checked under
+ * its common field names) — and returns "" for anything that doesn't
+ * resolve to a real address. It never calls String()/toString() on an
+ * object or array, which would fabricate a garbage value like
+ * "[object Object]" and silently pass it off as a real email.
+ */
+function extractEmailString(value) {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return EMAIL_PATTERN.test(trimmed) ? trimmed : "";
+  }
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      const extracted = extractEmailString(entry);
+      if (extracted) return extracted;
+    }
+    return "";
+  }
+  if (value && typeof value === "object") {
+    return extractEmailString(value.address || value.email || value.value || "");
+  }
+  return "";
+}
+
 /** PDL's top-level `work_email` is PDL-validated, never independently verified. */
 function classifyWorkEmail(email) {
-  if (!email) return { email: "", state: "unavailable" };
-  return { email, state: "provider_validated" };
+  const value = extractEmailString(email);
+  if (!value) return { email: "", state: "unavailable" };
+  return { email: value, state: "provider_validated" };
 }
 
 function normalizePerson(raw = {}) {
@@ -188,4 +223,4 @@ async function healthCheck({ workspaceId, userId = null, correlationId = "" } = 
   }
 }
 
-module.exports = { MIN_LIKELIHOOD, isEnabled, assertEnabled, meetsMatchThreshold, classifyWorkEmail, normalizePerson, normalizeCompany, searchPeople, enrichPerson, enrichCompany, healthCheck, resetPdlCache };
+module.exports = { MIN_LIKELIHOOD, isEnabled, assertEnabled, meetsMatchThreshold, classifyWorkEmail, extractEmailString, normalizePerson, normalizeCompany, searchPeople, enrichPerson, enrichCompany, healthCheck, resetPdlCache };

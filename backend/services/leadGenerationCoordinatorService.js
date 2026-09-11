@@ -351,15 +351,33 @@ function buildApolloFilters(icp) {
   return filters;
 }
 
+/**
+ * Both PDL and Apollo can hand back an email field that isn't a bare
+ * string — PDL has been observed returning an object or an array of
+ * objects for what's normally a plain address — and every email-based
+ * dedup key below calls .toLowerCase() on this value. Reusing
+ * peopleDataLabsService's own shape-tolerant extractor here (rather than
+ * trusting person.email is already a string) means a candidate object
+ * NEVER carries a non-string email past this point, so identityKey() and
+ * mergeIcpMatchCandidate()'s dedup lookups below can never crash on it
+ * again — and a candidate whose email fails to resolve to a real address
+ * gets emailState cleared to match, rather than claiming a validated
+ * email that isn't actually present.
+ */
+function sanitizeEmailValue(value) {
+  return peopleDataLabsService.extractEmailString(value);
+}
+
 function normalizePdlCandidate(person) {
+  const email = sanitizeEmailValue(person.email);
   return {
     type: "person",
     name: clean(person.fullName, 200),
     organizationName: clean(person.company, 200),
     organizationDomain: clean((person.companyDomain || "").replace(/^https?:\/\/(www\.)?/i, "").replace(/\/$/, ""), 200),
     linkedinUrl: isHttpUrl(person.linkedinUrl) ? person.linkedinUrl : "",
-    email: person.email || "",
-    emailState: person.emailState || "",
+    email,
+    emailState: email ? (person.emailState || "") : "",
     summary: [person.title, person.location].filter(Boolean).join(" · "),
     provider: "pdl_person_search",
     pdlLikelihood: person.likelihood ?? null,
@@ -367,21 +385,23 @@ function normalizePdlCandidate(person) {
 }
 
 function normalizeApolloCandidate(person) {
+  const email = sanitizeEmailValue(person.email);
   return {
     type: "person",
     name: clean(person.fullName, 200),
     organizationName: clean(person.company, 200),
     organizationDomain: clean((person.companyDomain || "").replace(/^https?:\/\/(www\.)?/i, "").replace(/\/$/, ""), 200),
     linkedinUrl: isHttpUrl(person.linkedinUrl) ? person.linkedinUrl : "",
-    email: person.email || "",
-    emailState: person.emailState || "",
+    email,
+    emailState: email ? (person.emailState || "") : "",
     summary: [person.title, person.location].filter(Boolean).join(" · "),
     provider: "apollo_person_search",
   };
 }
 
 function identityKey(candidate) {
-  if (candidate.email) return `email:${candidate.email.toLowerCase()}`;
+  const email = sanitizeEmailValue(candidate.email);
+  if (email) return `email:${email.toLowerCase()}`;
   if (candidate.linkedinUrl) return `linkedin:${candidate.linkedinUrl.toLowerCase().replace(/\/$/, "")}`;
   return `namecompany:${String(candidate.name || "").trim().toLowerCase()}:${String(candidate.organizationName || candidate.location || "").trim().toLowerCase()}`;
 }
@@ -398,8 +418,9 @@ function identityKey(candidate) {
 async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlationId, candidate }, dependencies = {}) {
   const Model = dependencies.GroundingResearchResult || GroundingResearchResult;
   const key = identityKey(candidate);
+  const candidateEmail = sanitizeEmailValue(candidate.email);
   const orClauses = [];
-  if (candidate.email) orClauses.push({ email: candidate.email.toLowerCase() }, { "pdlEnrichment.email": candidate.email.toLowerCase() }, { "apolloEnrichment.email": candidate.email.toLowerCase() });
+  if (candidateEmail) orClauses.push({ email: candidateEmail.toLowerCase() }, { "pdlEnrichment.email": candidateEmail.toLowerCase() }, { "apolloEnrichment.email": candidateEmail.toLowerCase() });
   if (candidate.linkedinUrl) orClauses.push({ linkedinUrl: candidate.linkedinUrl });
   orClauses.push({ type: "person", name: new RegExp(`^${candidate.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"), organizationName: candidate.organizationName || "" });
 
@@ -409,8 +430,8 @@ async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlati
     const created = await Model.create({
       workspaceId, query: `icp_match:${key}`, type: "person",
       name: candidate.name, organizationName: candidate.organizationName, organizationDomain: candidate.organizationDomain,
-      email: candidate.email, emailState: candidate.emailState,
-      emailVerificationStatus: candidate.emailState || "",
+      email: candidateEmail, emailState: candidateEmail ? candidate.emailState : "",
+      emailVerificationStatus: candidateEmail ? (candidate.emailState || "") : "",
       linkedinUrl: candidate.linkedinUrl, summary: candidate.summary,
       evidenceUrls: [], evidenceDate: null, confidence: "single_source",
       discoveryMode: "icp_match", providers: [candidate.provider], discoverySearchId: searchId,
@@ -424,16 +445,16 @@ async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlati
   if (candidate.organizationName && existing.organizationName && candidate.organizationName.toLowerCase() !== existing.organizationName.toLowerCase()) {
     conflicts.push(`Company mismatch: "${existing.organizationName}" vs "${candidate.organizationName}" from ${candidate.provider}.`);
   }
-  if (candidate.email && existing.email && candidate.email.toLowerCase() !== existing.email.toLowerCase()) {
-    conflicts.push(`Email mismatch: "${existing.email}" vs "${candidate.email}" from ${candidate.provider}.`);
+  if (candidateEmail && existing.email && candidateEmail.toLowerCase() !== existing.email.toLowerCase()) {
+    conflicts.push(`Email mismatch: "${existing.email}" vs "${candidateEmail}" from ${candidate.provider}.`);
   }
 
   const providers = [...new Set([...(existing.providers || []), candidate.provider])];
-  const bothVerified = candidate.emailState === "verified" || existing.email === candidate.email;
+  const bothVerified = candidate.emailState === "verified" || existing.email === candidateEmail;
   existing.providers = providers;
-  existing.email = existing.email || candidate.email;
-  existing.emailState = existing.emailState || candidate.emailState;
-  existing.emailVerificationStatus = existing.emailVerificationStatus || candidate.emailState || "";
+  existing.email = existing.email || candidateEmail;
+  existing.emailState = existing.emailState || (candidateEmail ? candidate.emailState : "");
+  existing.emailVerificationStatus = existing.emailVerificationStatus || (candidateEmail ? candidate.emailState : "") || "";
   existing.linkedinUrl = existing.linkedinUrl || candidate.linkedinUrl;
   existing.organizationName = existing.organizationName || candidate.organizationName;
   existing.organizationDomain = existing.organizationDomain || candidate.organizationDomain;
