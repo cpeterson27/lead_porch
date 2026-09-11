@@ -42,8 +42,17 @@ const intentSignalSchema = new mongoose.Schema({
     observedAt: { type: Date, default: Date.now },
   }],
   // Discovery-track bucket. Distinct from `status` (CRM review lifecycle):
-  // this is where the result belongs in the discovery UI.
+  // this is where the result belongs in the discovery UI. Recomputed from
+  // the current eligibility/scoring rules on every fetch (see
+  // routes/audience.js's GET /research/signals) — UNLESS
+  // manualBucketOverride is set, in which case the owner's own decision
+  // always wins over the automatic classifier.
   bucket: { type: String, enum: ["live_lead", "watchlist", "community_opportunity", "rejected"], default: "live_lead", index: true },
+  // An owner's explicit "move this" decision (e.g. Watchlist → Live Leads,
+  // or "Not a fit" on any track) — null means no manual decision has been
+  // made and the automatic classifier's result is used as-is. Set via
+  // PATCH /research/signals/:signalId's optional `bucket` field.
+  manualBucketOverride: { type: String, enum: ["live_lead", "watchlist", "community_opportunity", "rejected", null], default: null },
   rejectionReason: {
     type: String,
     enum: ["", "seller_or_promoter", "vendor_lender_agent_recruiter", "wrong_industry", "too_experienced", "no_coaching_intent", "generic_discussion", "homework_or_hypothetical", "old_content", "wrong_location", "no_current_need", "not_a_person", "bot_or_automated", "other"],

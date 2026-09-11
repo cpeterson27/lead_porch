@@ -31,6 +31,7 @@ import {
   runResearchMonitor,
   updateResearchMonitor,
   updateIntentSignal,
+  moveIntentSignal,
   researchIntentSignalIdentity,
   convertIntentSignal,
   generateBiggerPocketsPublicResponse,
@@ -697,6 +698,25 @@ export default function Discovery() {
     }
   };
 
+  /**
+   * A persistent, explicit human override — always wins over the automatic
+   * classifier from now on (see routes/audience.js's GET /research/signals).
+   * Refreshes the current track afterward so the moved item disappears
+   * from it immediately, and the tab counts reflect the change right away.
+   */
+  const moveTrackSignal = async (signal, bucket) => {
+    if (signalBusyId) return;
+    setSignalBusyId(signal._id);
+    try {
+      await moveIntentSignal(signal._id, bucket);
+      await loadDiscoveryTrack(discoveryTrack);
+    } catch (err) {
+      setTrackError(err.response?.data?.error || "Unable to move this result.");
+    } finally {
+      setSignalBusyId("");
+    }
+  };
+
   useEffect(() => {
     refreshResearchRef.current = () => {
       loadResearchHistory();
@@ -1222,12 +1242,17 @@ export default function Discovery() {
     <section className="discovery-track-tabs" aria-label="Discovery track">{[["live_lead", "Live Leads", bucketSummary.live_lead], ["watchlist", "Watchlist", bucketSummary.watchlist], ["community_opportunity", "Community Opportunities", bucketSummary.community_opportunity], ["rejected", "Rejected", bucketSummary.rejected]].map(([id, label, count]) => <button key={id} type="button" className={discoveryTrack === id ? "is-active" : ""} onClick={() => loadDiscoveryTrack(id)}>{label} {count}</button>)}</section>
     {discoveryTrack !== "live_lead" ? <DashboardCard title={discoveryTrack === "watchlist" ? "Watchlist — relevant people without confirmed current intent" : discoveryTrack === "community_opportunity" ? "Community Opportunities" : "Rejected — recorded reason for every irrelevant result"}>
       {trackError ? <p className="form-error" role="alert">{trackError}</p> : null}
-      {trackLoading ? <p>Loading…</p> : trackSignals.length ? <div className="intent-signal-list">{trackSignals.map((signal) => <article key={signal._id}>
+      {trackLoading ? <p>Loading…</p> : trackSignals.length ? <div className="intent-signal-list">{trackSignals.map((signal) => <article key={signal._id} className="track-signal">
         <div className="intent-signal-main"><div><span>{intentSourceLabel(signal)} · {signal.monitorName}</span><small>{signal.publishedAt ? new Date(signal.publishedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) : "Date unavailable"}</small></div><h3>{displayText(signal.title) || "Public evidence requiring review"}</h3><p>{displayText(signal.excerpt) || "Open the original source to review the context."}</p>
           {discoveryTrack === "rejected" ? <div className="signal-why"><strong>Rejected: {String(signal.rejectionReason || "other").replaceAll("_", " ")}</strong><span>{(signal.scoreReasons || []).slice(0, 3).join(" · ")}</span></div> : null}
           {discoveryTrack === "watchlist" ? <div className="signal-why"><strong>Score {signal.score}/100 — relevant but no confirmed current need yet</strong><span>{(signal.scoreReasons || []).slice(0, 4).join(" · ")}</span></div> : null}
           {discoveryTrack === "community_opportunity" ? <div className="signal-why"><strong>{signal.communityProfile?.platform || "Community"}</strong><span>Audience: {signal.communityProfile?.audienceFit || "Real-estate investing"} · Organizer: {signal.communityProfile?.organizerEvidence || "Not yet identified"}</span><span>Promotion rules: {signal.communityProfile?.promotionRules}</span><span>Recommended approach: {signal.communityProfile?.recommendedApproach}</span></div> : null}
           <a href={signal.sourceUrl} target="_blank" rel="noreferrer">View exact public evidence ↗</a>
+        </div>
+        <div className="intent-signal-actions">
+          {discoveryTrack === "watchlist" ? <Button size="sm" loading={signalBusyId === signal._id} onClick={() => moveTrackSignal(signal, "live_lead")}>Move to Live Leads</Button> : null}
+          {discoveryTrack === "community_opportunity" ? <Button size="sm" loading={signalBusyId === signal._id} onClick={() => moveTrackSignal(signal, "live_lead")}>Move to Live Leads</Button> : null}
+          {discoveryTrack !== "rejected" ? <Button size="sm" variant="outline" disabled={signalBusyId === signal._id} onClick={() => moveTrackSignal(signal, "rejected")}>Not a fit</Button> : <Button size="sm" variant="outline" disabled={signalBusyId === signal._id} onClick={() => moveTrackSignal(signal, "watchlist")}>Restore to Watchlist</Button>}
         </div>
       </article>)}</div> : <div className="friendly-empty"><strong>Nothing here yet</strong><p>{discoveryTrack === "rejected" ? "Rejected results and their reasons will appear here as monitors run." : discoveryTrack === "watchlist" ? "People with relevant background but no confirmed current need will appear here." : "Public community groups, organizers, and partners will appear here as monitors run."}</p></div>}
     </DashboardCard> : <>

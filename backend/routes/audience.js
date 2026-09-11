@@ -24,7 +24,7 @@ const { previewOrganizationImport, importOrganizations } = require("../services/
 const { compileMarketQuestion } = require("../services/marketResearchService");
 const { sourceStatus } = require("../services/businessDataSourceService");
 const { runMarketResearchJob } = require("../services/externalMarketResearchService");
-const { classifySignalBucket, deduplicateSignals, requestResearchMonitorRun, runResearchMonitor, scoreSignal, signalEligibility } = require("../services/researchMonitorService");
+const { applyManualBucketOverride, classifySignalBucket, deduplicateSignals, requestResearchMonitorRun, runResearchMonitor, scoreSignal, signalEligibility } = require("../services/researchMonitorService");
 const { ensureLinks, generateIntentEmailDraft } = require("../services/intentEmailDraftService");
 const { researchAudienceForSignal } = require("../services/researchAudienceTemplates");
 const { researchPublicWebsite } = require("../services/publicWebsiteResearchService");
@@ -278,7 +278,8 @@ router.get("/research/signals", async (req, res) => {
     const monitor = monitorMap.get(String(signal.monitorId));
     const eligibility = signalEligibility(signal, monitor, programProfiles);
     const ranking = monitor ? scoreSignal(signal, monitor, programProfiles) : null;
-    const { bucket, rejectionReason } = monitor ? classifySignalBucket({ signal, monitor, eligibility, ranking }) : { bucket: signal.bucket || "live_lead", rejectionReason: signal.rejectionReason || "" };
+    const automatic = monitor ? classifySignalBucket({ signal, monitor, eligibility, ranking }) : { bucket: signal.bucket || "live_lead", rejectionReason: signal.rejectionReason || "" };
+    const { bucket, rejectionReason } = applyManualBucketOverride(automatic, signal.manualBucketOverride);
     return { signal, eligibility, ranking, bucket, rejectionReason };
   });
   // Watchlist / Community Opportunities / Rejected are separate discovery-track result areas,
@@ -294,11 +295,15 @@ router.get("/research/signals", async (req, res) => {
     });
     return res.json({ success: true, signals: trackSignals, bucketSummary, summary: { total: trackSignals.length } });
   }
-  const rejected = assessed.filter((item) => !item.eligibility.eligible || (item.ranking && item.ranking.score < 45));
-  if (rejected.length) await Promise.all(rejected.map(({ signal, eligibility, bucket, rejectionReason }) => IntentSignal.updateOne({ _id: signal._id }, { $set: { audienceEligible: false, audienceRejectionReason: eligibility.reason, status: "dismissed", classification: "irrelevant", classificationReason: eligibility.reason, bucket, rejectionReason } })));
+  // A manual override (Move to Live Leads / Not a fit / Restore) is an
+  // explicit human decision — it must never be silently re-dismissed or
+  // excluded from the review queue by the automatic eligibility/score
+  // gates below, which only apply to signals nobody has reviewed yet.
+  const rejected = assessed.filter((item) => (item.signal.manualBucketOverride ? item.signal.manualBucketOverride === "rejected" : (!item.eligibility.eligible || (item.ranking && item.ranking.score < 45))));
+  if (rejected.length) await Promise.all(rejected.map(({ signal, eligibility, bucket, rejectionReason }) => IntentSignal.updateOne({ _id: signal._id }, { $set: { audienceEligible: false, audienceRejectionReason: signal.manualBucketOverride ? "Manually marked not a fit." : eligibility.reason, status: "dismissed", classification: "irrelevant", classificationReason: signal.manualBucketOverride ? "Manually marked not a fit." : eligibility.reason, bucket, rejectionReason } })));
   const rebucketed = assessed.filter((item) => item.eligibility.eligible && item.signal.bucket !== item.bucket);
   if (rebucketed.length) await Promise.all(rebucketed.map(({ signal, bucket, rejectionReason }) => IntentSignal.updateOne({ _id: signal._id }, { $set: { bucket, rejectionReason } })));
-  const accepted = assessed.filter((item) => item.eligibility.eligible && (!item.ranking || item.ranking.score >= 45) && item.signal.audienceEligible !== false);
+  const accepted = assessed.filter((item) => item.signal.manualBucketOverride === "live_lead" || (!item.signal.manualBucketOverride && item.eligibility.eligible && (!item.ranking || item.ranking.score >= 45) && item.signal.audienceEligible !== false));
   if (accepted.length) await Promise.all(accepted.filter((item) => item.ranking && (item.signal.score !== item.ranking.score || JSON.stringify(item.signal.scoreReasons || []) !== JSON.stringify(item.ranking.reasons))).map(({ signal, ranking }) => IntentSignal.updateOne({ _id: signal._id }, { $set: { score: ranking.score, scoreReasons: ranking.reasons } })));
   const acceptedSignals = deduplicateSignals(accepted.map(({ signal, ranking, bucket, rejectionReason }) => ({ ...signal, ...(ranking ? { score: ranking.score, scoreReasons: ranking.reasons } : {}), bucket, rejectionReason })));
   const drafts = await IntentEmailDraft.find({ workspaceId: req.auth.workspaceId, signalId: { $in: acceptedSignals.map((signal) => signal._id) } }).sort({ updatedAt: -1 }).lean();
@@ -342,6 +347,25 @@ router.patch("/research/signals/:signalId", async (req, res) => {
   const signal = await IntentSignal.findOneAndUpdate({ _id: req.params.signalId, workspaceId: req.auth.workspaceId }, { $set: { status } }, { new: true });
   if (!signal) return res.status(404).json({ success: false, error: "Signal not found." });
   if (status === "qualified") await InAppNotification.create({ workspaceId: req.auth.workspaceId, userId: req.auth.user?._id || null, monitorId: signal.monitorId, signalId: signal._id, type: "qualified_lead", title: "Qualified lead ready for review", message: `${signal.title || "A public lead"} was qualified. CRM import still requires individual approval.` });
+  return res.json({ success: true, signal });
+});
+
+/**
+ * An explicit, persistent human override of which discovery track a signal
+ * belongs in — "Move to Live Leads", "Not a fit" (moves to Rejected), or
+ * "Restore" (bucket: null, clears the override so the automatic classifier
+ * decides again). This always wins over the automatic eligibility/scoring
+ * classification on every future fetch (see GET /research/signals above) —
+ * without it, a manual decision here would be silently reclassified back
+ * the next time signals are re-assessed.
+ */
+router.post("/research/signals/:signalId/move", async (req, res) => {
+  const bucket = req.body?.bucket === null ? null : String(req.body?.bucket || "");
+  if (bucket !== null && !["live_lead", "watchlist", "community_opportunity", "rejected"].includes(bucket)) {
+    return res.status(400).json({ success: false, error: "Choose a valid track: live_lead, watchlist, community_opportunity, rejected, or null to restore automatic classification." });
+  }
+  const signal = await IntentSignal.findOneAndUpdate({ _id: req.params.signalId, workspaceId: req.auth.workspaceId }, { $set: { manualBucketOverride: bucket } }, { new: true });
+  if (!signal) return res.status(404).json({ success: false, error: "Signal not found." });
   return res.json({ success: true, signal });
 });
 

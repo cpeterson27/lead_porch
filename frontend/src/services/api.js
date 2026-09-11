@@ -1079,6 +1079,13 @@ export const updateIntentSignal = (signalId, status) =>
     .patch(`/audience/research/signals/${signalId}`, { status })
     .then((res) => res.data);
 
+// Explicit, persistent "Move to Live Leads" / "Not a fit" / "Restore"
+// override — always wins over the automatic Watchlist/Rejected/Community
+// classification on every future load. Pass bucket: null to restore
+// automatic classification.
+export const moveIntentSignal = (signalId, bucket) =>
+  api.post(`/audience/research/signals/${signalId}/move`, { bucket }).then((res) => res.data);
+
 export const researchIntentSignalIdentity = (signalId, payload = {}) =>
   api
     .post(`/audience/research/signals/${signalId}/identity-research`, payload)

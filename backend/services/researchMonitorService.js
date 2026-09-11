@@ -84,6 +84,19 @@ function scoreSignal(signal, monitor, programProfiles = []) {
  * rejections) exactly why. This is the single source of truth other code
  * should use — never re-derive bucket logic elsewhere.
  */
+/**
+ * An owner's explicit "Move to Live Leads" / "Not a fit" / "Restore"
+ * decision (IntentSignal.manualBucketOverride) always wins over the
+ * automatic classifier below — otherwise a manual decision would be
+ * silently reclassified back to whatever the rules say on the very next
+ * fetch, since bucket is recomputed from scratch every time. Returns the
+ * automatic result unchanged when no override is set.
+ */
+function applyManualBucketOverride(automatic, manualBucketOverride) {
+  if (!manualBucketOverride) return automatic;
+  return { bucket: manualBucketOverride, rejectionReason: manualBucketOverride === "rejected" ? "other" : "" };
+}
+
 function classifySignalBucket({ signal, monitor, eligibility, ranking }) {
   if (isCommunityPartnerMonitor(monitor)) {
     if (!eligibility.eligible || !ranking.matched.length) return { bucket: "rejected", rejectionReason: eligibility.exclusionReason || "generic_discussion" };
@@ -408,4 +421,4 @@ function startResearchMonitorRunner() {
   return timer;
 }
 
-module.exports = { audienceEligibility, buildCommunityProfile, buyerIntentAssessment, classifySignal, classifySignalBucket, communityPartnerAssessment, deduplicateSignals, investorProfileAssessment, mapAiRejection, requestResearchMonitorRun, runResearchMonitor, runDueResearchMonitors, signalEligibility, startResearchMonitorRunner, scoreSignal };
+module.exports = { applyManualBucketOverride, audienceEligibility, buildCommunityProfile, buyerIntentAssessment, classifySignal, classifySignalBucket, communityPartnerAssessment, deduplicateSignals, investorProfileAssessment, mapAiRejection, requestResearchMonitorRun, runResearchMonitor, runDueResearchMonitors, signalEligibility, startResearchMonitorRunner, scoreSignal };

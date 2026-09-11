@@ -129,6 +129,13 @@
 .intent-signal-list { gap: .8rem; }
 .intent-signal-list > article { align-items: start; background: #fff; border: 1px solid #dfe5e2; border-left: 4px solid #d39b35; border-radius: 14px; display: grid; gap: 1.1rem; grid-template-columns: 100px minmax(280px, 1fr) minmax(190px, .42fr) minmax(210px,.5fr); padding: 1rem; }
 .intent-signal-list > article.is-qualified { border-left-color: #278261; }
+/* Watchlist/Rejected/Community-Opportunity cards (routes/audience.js's
+   bucket tracks) have only two children — main content and actions — never
+   the priority badge or contact aside the 4-column grid above assumes.
+   Without this override, that single main-content child was placed into
+   the grid's first, 100px-wide column by default auto-placement, cramming
+   the whole title/excerpt into a sliver and wrapping it word-by-word. */
+.intent-signal-list > article.track-signal { grid-template-columns: minmax(0, 1fr) minmax(150px, 220px); }
 .signal-priority { background: #f8f3e8; border-radius: 10px; display: grid; gap: .15rem; padding: .7rem; }
 .signal-priority span { color: #7f6c45; font-size: .65rem; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
 .signal-priority strong { color: #755416; font-size: 1.05rem; }
@@ -221,6 +228,7 @@
   .people-search-guide { grid-template-columns: 1fr; }
   .intent-signal-list > article { grid-template-columns: 90px minmax(0, 1fr) 180px; }
   .intent-signal-actions { grid-column: 2 / -1; }
+  .intent-signal-list > article.track-signal { grid-template-columns: minmax(0, 1fr) 150px; }
 }
 @media (max-width: 760px) {
   .monitoring-guide,
@@ -242,6 +250,7 @@
   .lead-review-stats > div + div { border-top-color: #ffffff25; }
   .lead-view-tabs { display: grid; width: 100%; }
   .intent-signal-list > article { grid-template-columns: 1fr; }
+  .intent-signal-list > article.track-signal { grid-template-columns: 1fr; }
   .signal-priority { grid-template-columns: auto auto 1fr; }
   .signal-contact { border-left: 0; border-top: 1px solid #e5e2da; padding: .7rem 0 0; }
   .intent-signal-actions { flex-direction: column; grid-column: auto; }
