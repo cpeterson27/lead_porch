@@ -162,19 +162,58 @@ const groundingResearchResultSchema = new mongoose.Schema({
   // is a real, correctly-identified person (derived from email-verification
   // strength and whether multiple providers independently matched the same
   // identity) — kept distinct rather than overloading `confidence`.
-  identityConfidence: { type: String, enum: ["low", "medium", "high"], default: "low" },
+  // "conflict" added: providers disagree on a material identity field (see
+  // `conflicts` below) — a distinct state from "low", since the problem
+  // isn't insufficient evidence, it's contradictory evidence that needs a
+  // human decision. Computed deterministically from real signals
+  // (provider count, evidence corroboration, verified identifiers,
+  // conflicts) — see computeIdentityConfidence() in
+  // vertexGroundingDiscoveryService.js — never trusted from an LLM guess.
+  identityConfidence: { type: String, enum: ["low", "medium", "high", "conflict"], default: "low" },
   // Field-level disagreements between providers on the same merged
   // identity (e.g. differing company/title) — a non-empty list keeps the
   // row in pending_review for closer human attention rather than letting
   // automatic corroboration paper over a real conflict.
   conflicts: { type: [String], default: [] },
+  // `programNoteId` is set ONLY to a real, currently-approved Offers &
+  // Programs note's own _id — never free text the model could invent.
+  // See leadGenerationCoordinatorService.js's qualifyAndRecommend(): the
+  // schema constrains the model to choose from the workspace's actual
+  // approved program IDs (or "none"), and the result is discarded rather
+  // than stored if it doesn't match a real, still-approved program.
   recommendedProgram: {
+    programNoteId: { type: mongoose.Schema.Types.ObjectId, ref: "JarvisMemoryNote", default: null },
     name: { type: String, default: "", trim: true, maxlength: 200 },
     reason: { type: String, default: "", trim: true, maxlength: 1000 },
   },
+  // `fitScore`/`fitReasons` = PROGRAM FIT specifically (does this person
+  // resemble the program's intended buyer) — deliberately a separate axis
+  // from `identityConfidence` (is this the right person) and
+  // `buyerIntentLevel` below (does the evidence show they currently want/
+  // need help). A job title or real-estate role alone affects fit, never
+  // buyer intent.
   fitScore: { type: Number, default: null, min: 0, max: 100 },
   fitReasons: { type: [String], default: [] },
   fitEvaluatedAt: { type: Date, default: null },
+  // Third distinct qualification axis: evidence the person currently
+  // wants/needs help, never inferred from a title/role alone.
+  buyerIntentLevel: { type: String, enum: ["", "strong", "weak", "none"], default: "" },
+  buyerIntentEvidence: { type: String, default: "", trim: true, maxlength: 1000 },
+  // The combined, human-facing qualification verdict — computed from all
+  // three axes together (see qualifyAndRecommend()), never just the
+  // program-fit score alone.
+  qualificationLabel: { type: String, enum: ["", "qualified", "needs_review", "not_a_fit"], default: "" },
+  // ICP exclusions this candidate appears to match (coach, broker, lender,
+  // vendor, wrong_country, established_syndicator, no_personal_investing_evidence,
+  // etc.) — surfaced for review, never silently used to auto-dismiss.
+  exclusionFlags: { type: [String], default: [] },
+  recommendedNextAction: { type: String, default: "", trim: true, maxlength: 300 },
+  // True ONLY when identity is sufficiently reliable AND program fit is
+  // genuine AND there is real buyer-intent evidence — never based on a
+  // title/role alone. Still just a recommendation surfaced for the human
+  // reviewer; nothing here ever sends outreach automatically.
+  outreachRecommended: { type: Boolean, default: false },
+  outreachDraft: { type: String, default: "", trim: true, maxlength: 2000 },
   createdByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   reviewedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   reviewedAt: { type: Date, default: null },

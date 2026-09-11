@@ -106,6 +106,36 @@ const RANK_RESPONSE_SCHEMA = {
   additionalProperties: false,
 };
 
+/**
+ * Deterministic identity-confidence rules — never trusted from an LLM
+ * guess, computed the same way for every discovery mode (public-web
+ * evidence here; PDL/Apollo ICP matches in
+ * leadGenerationCoordinatorService.js's mergeIcpMatchCandidate() use the
+ * same categories via their own verified-identifier signals):
+ *   - "conflict": providers disagree on a material identity field.
+ *   - "high": strong identity agreement from multiple INDEPENDENT
+ *     providers, or a verified contact/profile identifier that
+ *     consistently matches name and company.
+ *   - "medium": one provider with strong matching public evidence
+ *     (independently-corroborated citations) or sufficiently complete
+ *     matching identifiers (e.g. a LinkedIn profile plus organization).
+ *   - "low": one uncorroborated structured record, or incomplete
+ *     identifiers.
+ * This is why a row found by both Vertex and OpenAI, or backed by 2+
+ * independent citation domains, must never be left at the schema's "low"
+ * default — a row that never runs through here (or whose providers/
+ * confidence/conflicts never change) simply never gets upgraded, which is
+ * the exact bug this function exists to fix.
+ */
+function computeIdentityConfidence({ providers = [], confidence, conflicts = [], linkedinUrl = "", organizationName = "", verifiedIdentifier = false }) {
+  if ((conflicts || []).length) return "conflict";
+  const uniqueProviderCount = new Set(providers).size;
+  const hasCompleteIdentifiers = Boolean(linkedinUrl) && Boolean(organizationName);
+  if (uniqueProviderCount >= 2 || verifiedIdentifier) return "high";
+  if (confidence === "corroborated" || hasCompleteIdentifiers) return "medium";
+  return "low";
+}
+
 function fingerprintKey({ type, name, organizationDomain }) {
   return `${type}:${String(name || "").trim().toLowerCase()}:${String(organizationDomain || "").trim().toLowerCase()}`;
 }
@@ -238,7 +268,7 @@ async function search({ workspaceId, userId, auth, query, resultTypes, source = 
   for (const row of capExcludedRows) attribute(row, "rejectedForCapacity");
   for (const error of sourceErrors) { if (providerStats[error.source]) providerStats[error.source].error = error.message; }
 
-  const existing = await Model.find({ workspaceId, status: "pending_review" }).select("type name organizationDomain evidenceUrls evidenceDate confidence providers").lean();
+  const existing = await Model.find({ workspaceId, status: "pending_review" }).select("type name organizationDomain evidenceUrls evidenceDate confidence providers conflicts linkedinUrl organizationName").lean();
   const existingByKey = new Map(existing.map((row) => [fingerprintKey(row), row]));
 
   let created = 0, mergedCount = 0;
@@ -250,8 +280,9 @@ async function search({ workspaceId, userId, auth, query, resultTypes, source = 
       const mergedProviders = [...new Set([...(match.providers || []), ...(result.providers || [])])];
       const matchEvidenceDate = match.evidenceDate ? new Date(match.evidenceDate) : null;
       const mergedEvidenceDate = result.evidenceDate && (!matchEvidenceDate || result.evidenceDate > matchEvidenceDate) ? result.evidenceDate : matchEvidenceDate;
+      const mergedConfidence = result.confidence === "corroborated" || match.confidence === "corroborated" ? "corroborated" : "single_source";
       // eslint-disable-next-line no-await-in-loop
-      await Model.updateOne({ _id: match._id }, { $set: { evidenceUrls: mergedUrls, evidenceDate: mergedEvidenceDate, confidence: result.confidence === "corroborated" || match.confidence === "corroborated" ? "corroborated" : "single_source", summary: result.summary || match.summary, providers: mergedProviders } });
+      await Model.updateOne({ _id: match._id }, { $set: { evidenceUrls: mergedUrls, evidenceDate: mergedEvidenceDate, confidence: mergedConfidence, summary: result.summary || match.summary, providers: mergedProviders, identityConfidence: computeIdentityConfidence({ providers: mergedProviders, confidence: mergedConfidence, conflicts: match.conflicts, linkedinUrl: result.linkedinUrl || match.linkedinUrl, organizationName: result.organizationName || match.organizationName }) } });
       mergedCount += 1;
       attribute(result, "rejectedDedup");
       continue;
@@ -261,6 +292,7 @@ async function search({ workspaceId, userId, auth, query, resultTypes, source = 
       workspaceId, query: String(query || "").slice(0, 2000), type: result.type, name: result.name,
       organizationName: result.organizationName, organizationDomain: result.organizationDomain,
       summary: result.summary, evidenceUrls: result.evidenceUrls, evidenceDate: result.evidenceDate || null, confidence: result.confidence,
+      identityConfidence: computeIdentityConfidence({ providers: result.providers, confidence: result.confidence, linkedinUrl: result.linkedinUrl, organizationName: result.organizationName }),
       status: "pending_review", createdByUserId: userId, correlationId, providers: result.providers,
     });
     created += 1;
@@ -483,4 +515,4 @@ async function dismissResult({ workspaceId, userId, resultId }, dependencies = {
   return row;
 }
 
-module.exports = { search, listResults, saveResult, dismissResult, enrichWithPdl, rankForProgramFit, getSuggestedSearches };
+module.exports = { search, listResults, saveResult, dismissResult, enrichWithPdl, rankForProgramFit, getSuggestedSearches, computeIdentityConfidence };

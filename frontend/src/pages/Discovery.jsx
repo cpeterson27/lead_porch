@@ -48,7 +48,6 @@ import {
   saveVertexGroundingResult,
   dismissVertexGroundingResult,
   enrichVertexGroundingResultWithPdl,
-  rankVertexGroundingResultsForProgramFit,
   fetchLeadGenerationProviderAvailability,
   fetchLeadGenerationPrograms,
   fetchLeadGenerationProgramSearchSuggestions,
@@ -312,8 +311,11 @@ export default function Discovery() {
   const [groundingResultsLoading, setGroundingResultsLoading] = useState(false);
   const [groundingResultsStatus, setGroundingResultsStatus] = useState("pending_review");
   const [pdlEnrichBusyId, setPdlEnrichBusyId] = useState("");
-  const [rankBusy, setRankBusy] = useState(false);
   const [selectedGroundingIds, setSelectedGroundingIds] = useState([]);
+  const [reviewFilters, setReviewFilters] = useState({ run: "all", newOnly: false, provider: "all", qualification: "all", location: "", freshness: "all", identityConfidence: "all" });
+  const [expandedResultIds, setExpandedResultIds] = useState([]);
+  const [qualifySummary, setQualifySummary] = useState(null);
+  const [qualifyOutcomeFilter, setQualifyOutcomeFilter] = useState("all");
   const [draftSignal, setDraftSignal] = useState(null);
   const [draftCampaignId, setDraftCampaignId] = useState("");
   const [draftEditor, setDraftEditor] = useState(null);
@@ -535,12 +537,23 @@ export default function Discovery() {
     }
   };
 
+  // The single "Have Jarvis qualify selected leads" action — replaces the
+  // old separate "Rank for program fit" / "Qualify & recommend" buttons.
+  // Jarvis scores identity confidence (recomputed from real signals),
+  // program fit against ONLY this workspace's real approved programs, and
+  // buyer-intent evidence as three separate signals, then combines them
+  // into one qualificationLabel — see leadGenerationCoordinatorService.js's
+  // qualifyAndRecommend()/computeQualificationOutcome(). Shows an accurate
+  // completion summary and refreshes the cards so the change is visible.
   const qualifySelectedGroundingResults = async () => {
     if (!selectedGroundingIds.length || qualifyBusy) return;
     setQualifyBusy(true);
+    setQualifySummary(null);
     try {
       const res = await qualifyLeadGenerationResults(selectedGroundingIds);
-      setNotice(`Jarvis qualified ${res.data.qualified} of ${res.data.requested} selected result(s) — recommended program, next action, and a draft outreach message are attached to each.`);
+      const s = res.data.summary || { processed: res.data.qualified || 0, qualified: res.data.qualified || 0, needsReview: 0, notAFit: 0, failed: 0 };
+      setQualifySummary(s);
+      setNotice(`Jarvis processed ${s.processed} of ${res.data.requested} selected: ${s.qualified} qualified, ${s.needsReview} needs review, ${s.notAFit} not a fit${s.failed ? `, ${s.failed} failed` : ""}.`);
       setSelectedGroundingIds([]);
       await loadGroundingResults();
     } catch (err) {
@@ -628,20 +641,65 @@ export default function Discovery() {
     setSelectedGroundingIds((current) => current.includes(id) ? current.filter((row) => row !== id) : [...current, id]);
   };
 
-  const rankSelectedGroundingResults = async () => {
-    if (!selectedGroundingIds.length || rankBusy) return;
-    setRankBusy(true);
-    try {
-      const res = await rankVertexGroundingResultsForProgramFit(selectedGroundingIds);
-      setNotice(`Ranked ${res.data.ranked} of ${res.data.requested} selected result(s) for program fit.`);
-      setSelectedGroundingIds([]);
-      loadGroundingResults();
-    } catch (err) {
-      setNotice(err.response?.data?.error || "Ranking failed.");
-    } finally {
-      setRankBusy(false);
-    }
+  const runKeyOf = (result) => result.discoverySearchId || result.discoveryRunId || "manual";
+
+  const toggleDetails = (id) => {
+    setExpandedResultIds((current) => current.includes(id) ? current.filter((row) => row !== id) : [...current, id]);
   };
+
+  const selectAllNewFromRun = () => {
+    setSelectedGroundingIds(visibleGroundingResults.filter((r) => r.isNew).map((r) => r._id));
+  };
+  const selectAllVisible = () => {
+    setSelectedGroundingIds(visibleGroundingResults.map((r) => r._id));
+  };
+  const clearGroundingSelection = () => setSelectedGroundingIds([]);
+
+  const saveSelectedQualified = async () => {
+    const qualifiedIds = visibleGroundingResults.filter((r) => selectedGroundingIds.includes(r._id) && r.qualificationLabel === "qualified").map((r) => r._id);
+    if (!qualifiedIds.length) return;
+    for (const id of qualifiedIds) {
+      await saveGroundingResult(id);
+    }
+    setSelectedGroundingIds((current) => current.filter((id) => !qualifiedIds.includes(id)));
+  };
+  const dismissSelected = async () => {
+    if (!selectedGroundingIds.length) return;
+    for (const id of selectedGroundingIds) {
+      await dismissGroundingResult(id);
+    }
+    setSelectedGroundingIds([]);
+  };
+
+  // One entry per distinct run (a DiscoverySearch or PublicWebDiscoveryRun)
+  // present in the currently-loaded results, newest first — so the owner
+  // can filter to exactly today's batch and never accidentally select an
+  // older run's results alongside it.
+  const runOptions = useMemo(() => {
+    const groups = new Map();
+    for (const r of groundingResults) {
+      const key = runKeyOf(r);
+      if (!groups.has(key)) groups.set(key, { key, count: 0, latest: r.createdAt, kind: r.discoverySearchId ? "search" : r.discoveryRunId ? "high-volume run" : "manual/other" });
+      const g = groups.get(key);
+      g.count += 1;
+      if (new Date(r.createdAt) > new Date(g.latest)) g.latest = r.createdAt;
+    }
+    return [...groups.values()].sort((a, b) => new Date(b.latest) - new Date(a.latest));
+  }, [groundingResults]);
+
+  const providerOptions = useMemo(() => [...new Set(groundingResults.flatMap((r) => r.providers || []))].sort(), [groundingResults]);
+
+  const visibleGroundingResults = useMemo(() => groundingResults.filter((r) => {
+    if (reviewFilters.run !== "all" && runKeyOf(r) !== reviewFilters.run) return false;
+    if (reviewFilters.newOnly && !r.isNew) return false;
+    if (reviewFilters.provider !== "all" && !(r.providers || []).includes(reviewFilters.provider)) return false;
+    if (reviewFilters.qualification !== "all" && (r.qualificationLabel || "unscored") !== reviewFilters.qualification) return false;
+    if (reviewFilters.location.trim() && !`${r.summary || ""} ${r.organizationName || ""}`.toLowerCase().includes(reviewFilters.location.trim().toLowerCase())) return false;
+    if (reviewFilters.freshness !== "all" && (r.freshnessTier || "n/a") !== reviewFilters.freshness) return false;
+    if (reviewFilters.identityConfidence !== "all" && (r.identityConfidence || "low") !== reviewFilters.identityConfidence) return false;
+    if (qualifyOutcomeFilter !== "all" && (r.qualificationLabel || "") !== qualifyOutcomeFilter) return false;
+    return true;
+  }), [groundingResults, reviewFilters, qualifyOutcomeFilter]);
 
   useEffect(() => {
     if (activeTab !== "people") return undefined;
@@ -1480,16 +1538,19 @@ export default function Discovery() {
             ) : (
               <div>
                 {!monitorSuggestion ? (
-                  <Button size="sm" variant="outline" loading={monitorProposeBusy} onClick={proposeMonitorForLeadGenSearch}>Suggest a recurring monitor for this search</Button>
+                  <div>
+                    <Button size="sm" variant="outline" loading={monitorProposeBusy} onClick={proposeMonitorForLeadGenSearch}>Save this search as a disabled recurring monitor</Button>
+                    <p className="leadgen-run-disclosure">Saving spends nothing and does not run until you separately enable it.</p>
+                  </div>
                 ) : (
                   <div className="leadgen-monitor-suggestion">
-                    <strong>Monitor suggestion created — disabled</strong>
+                    <strong>Saved — disabled recurring monitor</strong>
                     <p>{monitorSuggestion.name}</p>
                     <small>
                       Query: {monitorSuggestion.query} · Providers: {monitorSuggestion.sources.join(", ")} · Schedule: {monitorSuggestion.scheduleDescription} ·
                       Cap: {monitorSuggestion.capPerRun}/run · Destination: {monitorSuggestion.destination.replace("_", " ")}
                     </small>
-                    <p className="form-error">Scheduled execution for this monitor type isn&apos;t built yet — this suggestion is saved and stays disabled; enabling it does not run anything.</p>
+                    <p className="form-error">Saving spends nothing and does not run until separately enabled. Scheduled execution for this monitor type isn&apos;t built yet — this suggestion stays disabled; enabling it does not run anything.</p>
                   </div>
                 )}
               </div>
@@ -1571,60 +1632,137 @@ export default function Discovery() {
         </p>
         <div className="discovery-review-filters">
           {["pending_review", "saved", "dismissed"].map((status) => (
-            <Button key={status} size="sm" variant={groundingResultsStatus === status ? "primary" : "outline"} onClick={() => { setGroundingResultsStatus(status); setSelectedGroundingIds([]); loadGroundingResults(status); }}>
+            <Button key={status} size="sm" variant={groundingResultsStatus === status ? "primary" : "outline"} onClick={() => { setGroundingResultsStatus(status); setSelectedGroundingIds([]); setQualifySummary(null); loadGroundingResults(status); }}>
               {status.replace("_", " ")}
             </Button>
           ))}
           <Button size="sm" variant="outline" loading={groundingResultsLoading} onClick={() => loadGroundingResults()}>Refresh</Button>
-          {groundingResultsStatus === "pending_review" ? (
-            <div className="leadgen-bulk-qualify">
-              <span>Qualify:</span>
-              <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} loading={rankBusy} onClick={rankSelectedGroundingResults}>
-                Rank {selectedGroundingIds.length || ""} selected for program fit (OpenAI/Jarvis)
-              </Button>
-              <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} loading={qualifyBusy} onClick={qualifySelectedGroundingResults}>
-                Qualify &amp; recommend {selectedGroundingIds.length || ""} selected (Jarvis)
-              </Button>
-            </div>
-          ) : null}
         </div>
 
-        {groundingResults.length ? <div className="people-preview-list">
-          {groundingResults.map((result) => (
-            <article key={result._id} className={`people-preview-batch is-${result.status}`}>
-              <header>
-                <div>
+        {groundingResultsStatus === "pending_review" ? (
+          <div className="review-queue-toolbar">
+            <div className="review-queue-filter-row">
+              <label><span>Run</span><select value={reviewFilters.run} onChange={(e) => setReviewFilters((c) => ({ ...c, run: e.target.value }))}>
+                <option value="all">All runs</option>
+                {runOptions.map((r) => <option key={r.key} value={r.key}>{r.key === "manual" ? "Manual search" : `${r.kind} · ${new Date(r.latest).toLocaleString()}`} ({r.count})</option>)}
+              </select></label>
+              <label className="review-queue-checkbox-filter"><input type="checkbox" checked={reviewFilters.newOnly} onChange={(e) => setReviewFilters((c) => ({ ...c, newOnly: e.target.checked }))} /><span>New only</span></label>
+              <label><span>Provider</span><select value={reviewFilters.provider} onChange={(e) => setReviewFilters((c) => ({ ...c, provider: e.target.value }))}>
+                <option value="all">All providers</option>
+                {providerOptions.map((p) => <option key={p} value={p}>{p}</option>)}
+              </select></label>
+              <label><span>Qualification</span><select value={reviewFilters.qualification} onChange={(e) => setReviewFilters((c) => ({ ...c, qualification: e.target.value }))}>
+                <option value="all">Any status</option>
+                <option value="qualified">Qualified</option>
+                <option value="needs_review">Needs review</option>
+                <option value="not_a_fit">Not a fit</option>
+                <option value="unscored">Not yet qualified</option>
+              </select></label>
+              <label><span>Location contains</span><input type="text" value={reviewFilters.location} onChange={(e) => setReviewFilters((c) => ({ ...c, location: e.target.value }))} placeholder="e.g. Texas" /></label>
+              <label><span>Freshness</span><select value={reviewFilters.freshness} onChange={(e) => setReviewFilters((c) => ({ ...c, freshness: e.target.value }))}>
+                <option value="all">Any freshness</option>
+                <option value="recent">Recent (0-90d)</option>
+                <option value="aging">Aging (91-365d)</option>
+                <option value="evergreen">Evergreen/undated</option>
+                <option value="n/a">Not applicable (ICP match)</option>
+              </select></label>
+              <label><span>Identity confidence</span><select value={reviewFilters.identityConfidence} onChange={(e) => setReviewFilters((c) => ({ ...c, identityConfidence: e.target.value }))}>
+                <option value="all">Any confidence</option>
+                <option value="high">High</option>
+                <option value="medium">Medium</option>
+                <option value="low">Low</option>
+                <option value="conflict">Conflict / needs review</option>
+              </select></label>
+            </div>
+
+            <div className="review-queue-selection-row">
+              <Button size="sm" variant="outline" onClick={selectAllNewFromRun}>Select all new from this run</Button>
+              <Button size="sm" variant="outline" onClick={selectAllVisible}>Select all visible</Button>
+              <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} onClick={clearGroundingSelection}>Clear selection</Button>
+              <span className="review-queue-selected-count">{selectedGroundingIds.length} selected of {visibleGroundingResults.length} shown</span>
+              <Button size="sm" disabled={!selectedGroundingIds.length} loading={qualifyBusy} onClick={qualifySelectedGroundingResults}>
+                Have Jarvis qualify {selectedGroundingIds.length || ""} selected leads
+              </Button>
+            </div>
+            {qualifyBusy ? <p className="review-queue-progress" role="status">Jarvis is qualifying {selectedGroundingIds.length} candidate(s) against your approved programs — this can take up to a minute. Please wait; the button is disabled to prevent duplicate submissions.</p> : null}
+            {qualifySummary ? (
+              <div className="review-queue-summary" role="status">
+                <strong>Qualification complete</strong>
+                <span>{qualifySummary.processed} processed · {qualifySummary.qualified} qualified · {qualifySummary.needsReview} needs review · {qualifySummary.notAFit} not a fit{qualifySummary.failed ? ` · ${qualifySummary.failed} failed` : ""}</span>
+              </div>
+            ) : null}
+            <div className="review-queue-bulk-actions">
+              {[["all", "All"], ["qualified", "View Qualified"], ["needs_review", "View Needs review"], ["not_a_fit", "View Not a fit"]].map(([value, label]) => (
+                <Button key={value} size="sm" variant={qualifyOutcomeFilter === value ? "primary" : "outline"} onClick={() => setQualifyOutcomeFilter(value)}>{label}</Button>
+              ))}
+              <Button size="sm" variant="outline" disabled={!selectedGroundingIds.some((id) => visibleGroundingResults.find((r) => r._id === id)?.qualificationLabel === "qualified")} onClick={saveSelectedQualified}>Save selected qualified candidates</Button>
+              <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} onClick={dismissSelected}>Dismiss selected</Button>
+            </div>
+          </div>
+        ) : null}
+
+        {visibleGroundingResults.length ? <div className="review-queue-grid">
+          {visibleGroundingResults.map((result) => {
+            const expanded = expandedResultIds.includes(result._id);
+            const sourceLabel = result.discoveryMode === "icp_match" ? `${(result.providers || []).includes("apollo_person_search") ? "Apollo" : "PDL"} structured ICP match`
+              : result.discoveryMode === "public_web_high_volume" ? "Public-web evidence (high-volume discovery)"
+                : "Public-web evidence";
+            const corroborated = (result.providers || []).length >= 2;
+            return (
+              <article key={result._id} className={`review-card is-${result.status} qualification-${result.qualificationLabel || "unscored"}`}>
+                <header className="review-card__header">
                   {result.status === "pending_review" ? (
-                    <input type="checkbox" checked={selectedGroundingIds.includes(result._id)} onChange={() => toggleGroundingSelection(result._id)} aria-label={`Select ${result.name} for ranking`} />
+                    <button type="button" className={`review-card__check${selectedGroundingIds.includes(result._id) ? " is-checked" : ""}`} onClick={() => toggleGroundingSelection(result._id)} aria-pressed={selectedGroundingIds.includes(result._id)} aria-label={`Select ${result.name}`} />
                   ) : null}
-                  {result.isNew ? <span className="leadgen-badge-new">New</span> : null}
-                  <span>{result.type} · {result.confidence.replace("_", " ")} · {result.discoveryMode === "icp_match" ? "ICP match" : "public-web evidence"} · via {(result.providers || []).join(", ") || "vertex_grounding"}</span>
-                  <strong>{result.name}</strong>
-                  <small>{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
-                  {result.linkedinUrl ? <small><a href={result.linkedinUrl} target="_blank" rel="noreferrer">LinkedIn profile</a></small> : null}
-                  <small>Discovered {new Date(result.createdAt).toLocaleDateString()} · Identity confidence: {result.identityConfidence || "low"}</small>
-                  {result.email ? <small>Email: {result.email} ({result.emailVerificationStatus || result.emailState || "unverified"})</small> : null}
-                  {result.conflicts?.length ? <small className="form-error">Conflicts: {result.conflicts.join(" ")}</small> : null}
-                  {result.recommendedProgram?.name ? <small className="grounding-fit-score">Recommended program: {result.recommendedProgram.name} — {result.recommendedProgram.reason}</small> : null}
-                  {result.fitScore != null ? <small className="grounding-fit-score">Program fit: {result.fitScore}/100 — {(result.fitReasons || []).join("; ")}</small> : null}
-                  {result.type === "person" && result.discoveryMode !== "icp_match" ? (
-                    <small>{result.evidenceDate ? `Evidence date: ${new Date(result.evidenceDate).toLocaleDateString()} (${result.evidenceAgeDays} day${result.evidenceAgeDays === 1 ? "" : "s"} old)` : "No verifiable evidence date"}</small>
-                  ) : null}
-                  {result.pdlEnrichment?.attempted ? (
-                    <small>
-                      {result.pdlEnrichment.error ? `PDL error: ${result.pdlEnrichment.errorMessage || "unknown error"}`
-                        : result.pdlEnrichment.matched ? `PDL verified: ${result.pdlEnrichment.email || "match found, no email"}`
-                          : "PDL: no confident match"}
-                    </small>
-                  ) : null}
-                  {result.apolloEnrichment?.attempted ? (
-                    <small>
-                      {result.apolloEnrichment.error ? `Apollo error: ${result.apolloEnrichment.errorMessage || "unknown error"}`
-                        : result.apolloEnrichment.matched ? `Apollo verified: ${result.apolloEnrichment.email || "match found, no email"}`
-                          : "Apollo: no confident match"}
-                    </small>
-                  ) : null}
+                  <div className="review-card__title">
+                    <strong>{result.name}</strong>
+                    {result.isNew ? <span className="leadgen-badge-new">New</span> : null}
+                  </div>
+                  {result.qualificationLabel ? <span className={`review-card__qual-badge qual-${result.qualificationLabel}`}>{result.qualificationLabel.replace("_", " ")}</span> : null}
+                </header>
+
+                <div className="review-card__source-line">
+                  <span>{sourceLabel}{corroborated ? " · cross-provider corroboration" : ""}</span>
+                  <span className={`review-card__identity-badge identity-${result.identityConfidence || "low"}`}>Identity: {(result.identityConfidence || "low").replace("_", " ")}</span>
                 </div>
+
+                <small>{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
+                {result.linkedinUrl ? <small><a href={result.linkedinUrl} target="_blank" rel="noreferrer">Profile URL ↗</a></small> : null}
+                {result.email ? <small>Contact: {result.email} ({result.emailVerificationStatus || result.emailState || "unverified"})</small> : null}
+                {result.type === "person" && result.discoveryMode !== "icp_match" ? (
+                  <small>{result.evidenceDate ? `Evidence date: ${new Date(result.evidenceDate).toLocaleDateString()} (${result.evidenceAgeDays} day${result.evidenceAgeDays === 1 ? "" : "s"} old)` : "No verifiable evidence date"}{result.freshnessTier ? ` · ${result.freshnessTier}` : ""}</small>
+                ) : result.discoveryMode === "icp_match" ? <small>Structured database match — not a dated public post, never described as recent intent.</small> : null}
+                {result.conflicts?.length ? <small className="form-error">Conflicts: {result.conflicts.join(" ")}</small> : null}
+                {result.exclusionFlags?.length ? <small className="form-error">ICP exclusion flags: {result.exclusionFlags.join(", ")}</small> : null}
+
+                {result.recommendedProgram?.name ? <small className="grounding-fit-score">Program: {result.recommendedProgram.name} — fit {result.fitScore}/100</small> : result.fitScore != null ? <small className="grounding-fit-score">Program fit: {result.fitScore}/100 (no approved program judged a genuine fit)</small> : null}
+                {result.buyerIntentLevel ? <small>Buyer intent: {result.buyerIntentLevel}{result.buyerIntentEvidence ? ` — ${result.buyerIntentEvidence}` : ""}</small> : null}
+
+                <button type="button" className="review-card__details-toggle" onClick={() => toggleDetails(result._id)} aria-expanded={expanded}>
+                  {expanded ? "Hide details" : "View details"}
+                </button>
+                {expanded ? (
+                  <div className="review-card__details">
+                    <small>Summary</small>
+                    <p>{result.summary || "No summary provided."}</p>
+                    {result.fitReasons?.length ? <><small>Program fit reasons</small><p>{result.fitReasons.join("; ")}</p></> : null}
+                    {result.recommendedNextAction ? <><small>Recommended next action</small><p>{result.recommendedNextAction}</p></> : null}
+                    {result.outreachRecommended && result.outreachDraft ? <><small>Draft outreach (not sent)</small><p>{result.outreachDraft}</p></> : null}
+                    <small>Discovered {new Date(result.createdAt).toLocaleDateString()} · via {(result.providers || []).join(", ") || "vertex_grounding"}</small>
+                    <small>Citations</small>
+                    <div className="grounding-citations">
+                      {(result.evidenceUrls || []).map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}
+                      {!result.evidenceUrls?.length && result.discoveryMode === "icp_match" ? <span className="people-preview-footnote">No public-web citation — this is a structured ICP match, not a public-web find.</span> : null}
+                    </div>
+                    {result.pdlEnrichment?.attempted ? (
+                      <small>{result.pdlEnrichment.error ? `PDL error: ${result.pdlEnrichment.errorMessage || "unknown error"}` : result.pdlEnrichment.matched ? `PDL verified: ${result.pdlEnrichment.email || "match found, no email"}` : "PDL: no confident match"}</small>
+                    ) : null}
+                    {result.apolloEnrichment?.attempted ? (
+                      <small>{result.apolloEnrichment.error ? `Apollo error: ${result.apolloEnrichment.errorMessage || "unknown error"}` : result.apolloEnrichment.matched ? `Apollo verified: ${result.apolloEnrichment.email || "match found, no email"}` : "Apollo: no confident match"}</small>
+                    ) : null}
+                  </div>
+                ) : null}
+
                 {result.status === "pending_review" ? (
                   <div className="leadgen-row-actions">
                     {(result.type === "person" && (!result.pdlEnrichment?.attempted || !result.apolloEnrichment?.attempted)) ? (
@@ -1642,19 +1780,10 @@ export default function Discovery() {
                     <Button size="sm" variant="outline" onClick={() => dismissGroundingResult(result._id)}>Dismiss</Button>
                   </div>
                 ) : <span className="people-preview-footnote">{result.status === "saved" ? "Saved" : "Dismissed"}</span>}
-              </header>
-              <div className="people-preview-evidence">
-                <small>Summary</small>
-                <p>{result.summary || "No summary provided."}</p>
-                <small>Citations</small>
-                <div className="grounding-citations">
-                  {(result.evidenceUrls || []).map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}
-                  {!result.evidenceUrls?.length && result.discoveryMode === "icp_match" ? <span className="people-preview-footnote">No public-web citation — this is a structured ICP match, not a public-web find.</span> : null}
-                </div>
-              </div>
-            </article>
-          ))}
-        </div> : <div className="table-state table-state--empty">No {groundingResultsStatus.replace("_", " ")} results in the review queue yet.</div>}
+              </article>
+            );
+          })}
+        </div> : <div className="table-state table-state--empty">No {groundingResultsStatus.replace("_", " ")} results match the current filters.</div>}
       </DashboardCard>
     </div> : null}
 

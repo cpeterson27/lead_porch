@@ -105,30 +105,72 @@ const ICP_RESPONSE_SCHEMA = {
   additionalProperties: false,
 };
 
-const QUALIFY_RESPONSE_SCHEMA = {
-  type: "object",
-  properties: {
-    qualifications: {
-      type: "array",
-      items: {
-        type: "object",
-        properties: {
-          resultId: { type: "string" },
-          intentQualified: { type: "boolean", description: "True only if the evidence actually supports real buyer intent or ICP fit — never guess generously." },
-          fitScore: { type: "number", description: "Integer 0-100, never a 0-10 scale. 100 = perfect program fit." },
-          recommendedProgramName: { type: "string" },
-          recommendedProgramReason: { type: "string" },
-          nextAction: { type: "string", description: "One concrete next step, e.g. 'Enrich via PDL then send intro email.'" },
-          outreachDraft: { type: "string", description: "A short, personalized draft outreach message based strictly on the evidence given — never invent facts not present." },
+// Coaches, mentors, course sellers, syndicators/GPs, brokers, lenders,
+// attorneys, and vendors are professionals who serve this same audience,
+// not prospective students/buyers themselves — a deterministic pre-
+// screen applied before qualification even asks the model. A separate,
+// near-identical list lives in publicWebDiscoveryEngineService.js; not
+// imported from there because that module already requires THIS one
+// (normalizePdlCandidate/buildPdlSql/isRealisticJobTitle), and importing
+// it back here would create a circular dependency.
+const QUALIFY_EXCLUSION_PATTERNS = [
+  [/\bcoach(ing)?\b/i, "coach"], [/\bmentor(ing|ship)?\b/i, "coach"], [/\bcourse (creator|seller)\b/i, "course_seller"],
+  [/\bsyndicat(or|ion sponsor)\b/i, "established_syndicator"], [/\bgeneral partner\b/i, "established_syndicator"], [/\bfund manager\b/i, "established_syndicator"],
+  [/\bbroker\b/i, "broker"], [/\breal estate broker\b/i, "broker"], [/\bmortgage broker\b/i, "broker"],
+  [/\blender\b/i, "lender"], [/\bhard money\b/i, "lender"], [/\bprivate money lend/i, "lender"],
+  [/\battorney\b/i, "attorney"], [/\blawyer\b/i, "attorney"],
+  [/\bvendor\b/i, "vendor"], [/\bsupplier\b/i, "vendor"], [/\bsoftware provider\b/i, "vendor"],
+  [/\bcapital rais(ing|er)\b/i, "capital_raising_service"], [/\bcapital partner(s)?\b/i, "capital_raising_service"],
+];
+
+/** Deterministic ICP-exclusion pre-screen — a hint for the model, not a silent auto-reject; the human reviewer always sees the flag either way. */
+function detectExclusionFlags(candidate) {
+  const text = `${candidate.name || ""} ${candidate.organizationName || ""} ${candidate.summary || ""}`;
+  const flags = new Set();
+  for (const [pattern, flag] of QUALIFY_EXCLUSION_PATTERNS) if (pattern.test(text)) flags.add(flag);
+  return [...flags];
+}
+
+/**
+ * Built per-call from the workspace's REAL approved programs — never a
+ * static list — so `recommendedProgramId`'s enum can only ever be one of
+ * those exact IDs (or "none"). This is the actual fix for Jarvis
+ * inventing a program like "Real Estate Investor Growth Program": the
+ * schema itself makes that value impossible to return, and
+ * qualifyAndRecommend() below discards anything that still doesn't match
+ * before it's ever persisted.
+ */
+function buildQualifyResponseSchema(programIds) {
+  return {
+    type: "object",
+    properties: {
+      qualifications: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            resultId: { type: "string" },
+            identityNotes: { type: "string", description: "Brief note on whether the public evidence you were given consistently matches this person's name/company — identity confidence itself is computed separately from real provider signals, not from your guess." },
+            programFitScore: { type: "number", description: "Integer 0-100, never a 0-10 scale. 100 = this person closely resembles the recommended program's intended buyer. A job title or real-estate role alone does not by itself justify a high score without other matching evidence." },
+            programFitReasons: { type: "array", items: { type: "string" } },
+            recommendedProgramId: { type: "string", enum: [...programIds, "none"], description: "The EXACT approved program ID from the list you were given that this person best fits, or the literal string 'none' if no approved program is a genuine fit. NEVER return a program name or ID that is not in the given list." },
+            buyerIntentLevel: { type: "string", enum: ["strong", "weak", "none"], description: "Evidence-based ONLY. 'strong' requires explicit, current evidence the person wants/needs help (e.g. asking for recommendations, describing a specific current problem this program solves). A job title, role, or being 'in the industry' is NEVER by itself buyer intent — that alone is 'none'." },
+            buyerIntentEvidence: { type: "string", description: "The specific evidence for the buyerIntentLevel given, or state plainly that none was found." },
+            exclusionFlags: { type: "array", items: { type: "string" }, description: "Any ICP exclusion this candidate appears to match: coach, course_seller, broker, lender, attorney, vendor, established_syndicator, capital_raising_service, wrong_country, unrelated_corporate_employee, no_personal_investing_evidence. Empty array if none apply." },
+            qualificationLabel: { type: "string", enum: ["qualified", "needs_review", "not_a_fit"], description: "'qualified' requires reliable identity AND genuine program fit AND real buyer-intent evidence. 'not_a_fit' if any ICP exclusion clearly applies, the country/location is wrong, or there is no evidence of personal investing interest. Otherwise 'needs_review'." },
+            recommendedNextAction: { type: "string", description: "One concrete next step. If evidence is thin, say so explicitly, e.g. 'Needs manual validation — no buyer-intent evidence found yet.'" },
+            outreachRecommended: { type: "boolean", description: "True ONLY if identity is reliable AND program fit is genuine AND there is real buyer-intent evidence (not just a matching title). Otherwise false." },
+            outreachDraft: { type: "string", description: "A short, personalized draft outreach message based strictly on the evidence given — never invent facts not present. Empty string if outreachRecommended is false." },
+          },
+          required: ["resultId", "identityNotes", "programFitScore", "programFitReasons", "recommendedProgramId", "buyerIntentLevel", "buyerIntentEvidence", "exclusionFlags", "qualificationLabel", "recommendedNextAction", "outreachRecommended", "outreachDraft"],
+          additionalProperties: false,
         },
-        required: ["resultId", "intentQualified", "fitScore", "recommendedProgramName", "recommendedProgramReason", "nextAction", "outreachDraft"],
-        additionalProperties: false,
       },
     },
-  },
-  required: ["qualifications"],
-  additionalProperties: false,
-};
+    required: ["qualifications"],
+    additionalProperties: false,
+  };
+}
 
 function isHttpUrl(value) {
   try { const url = new URL(String(value)); return url.protocol === "http:" || url.protocol === "https:"; } catch { return false; }
@@ -511,14 +553,20 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
   // PDL/Apollo candidate before it's ever merged into the review queue.
   const selfSignals = await (dependencies.getWorkspaceSelfSignals || workspaceSelfExclusionService.getWorkspaceSelfSignals)({ workspaceId }, dependencies);
   const isSelfMatchCheck = dependencies.isSelfMatch || workspaceSelfExclusionService.isSelfMatch;
+  // The owner's requested count is an OVERALL cap across every selected
+  // provider combined — never a separate per-provider allowance. Each
+  // provider block below is asked for only what's still remaining after
+  // whatever earlier providers already accepted, and is skipped entirely
+  // (with an honest reason) once nothing remains.
+  const requestRemaining = () => Math.max(0, search.requestedCount - (created + merged));
 
   const includesVertex = effectiveSources.includes("vertex");
   const includesOpenai = effectiveSources.includes("openai_web_search");
-  if (includesVertex || includesOpenai) {
+  if ((includesVertex || includesOpenai) && requestRemaining() > 0) {
     try {
       const groundingQuery = `${search.icp.titles.join(", ") || "prospective students"} interested in ${search.programName || "this program"}${search.icp.locations.length ? ` in ${search.icp.locations.join(", ")}` : ""}`.trim();
       const groundingSource = includesVertex && includesOpenai ? "both" : includesVertex ? "vertex" : "openai_web_search";
-      const outcome = await vertexDiscovery.search({ workspaceId, userId, auth, query: groundingQuery, resultTypes: ["person"], source: groundingSource, maxPeople: search.requestedCount, correlationId }, dependencies);
+      const outcome = await vertexDiscovery.search({ workspaceId, userId, auth, query: groundingQuery, resultTypes: ["person"], source: groundingSource, maxPeople: requestRemaining(), correlationId }, dependencies);
       created += outcome.created;
       merged += outcome.merged;
       excludedForFreshness += outcome.excludedForFreshness || 0;
@@ -533,13 +581,19 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
   }
 
   if (effectiveSources.includes("pdl_person_search")) {
-    const stats = { provider: "pdl_person_search", requested: search.requestedCount, returned: 0, rejectedSelf: 0, rejectedFreshness: 0, rejectedForCapacity: 0, rejectedDedup: 0, accepted: 0, error: null };
+    const remainingBeforePdl = requestRemaining();
+    const stats = { provider: "pdl_person_search", requested: remainingBeforePdl, returned: 0, rejectedSelf: 0, rejectedFreshness: 0, rejectedForCapacity: 0, rejectedDedup: 0, accepted: 0, error: null };
+    if (remainingBeforePdl <= 0) {
+      stats.error = `Skipped — the overall requested count of ${search.requestedCount} was already reached by an earlier provider.`;
+      providerBreakdown.push(stats);
+    } else {
     try {
       const sql = buildPdlSql(search.icp);
       if (!sql) throw Object.assign(new Error("The ICP has no criteria PDL can search on (titles, locations, or industries required)"), { code: "PDL_ICP_EMPTY" });
-      const outcome = await pdl.searchPeople({ workspaceId, userId, sql, size: search.requestedCount, correlationId });
+      const outcome = await pdl.searchPeople({ workspaceId, userId, sql, size: remainingBeforePdl, correlationId });
       stats.returned = outcome.people.length;
       for (const person of outcome.people) {
+        if (requestRemaining() <= 0) break;
         const candidate = normalizePdlCandidate(person);
         if (isSelfMatchCheck(candidate, selfSignals).isSelf) { excludedForSelfMatch += 1; stats.rejectedSelf += 1; continue; }
         // eslint-disable-next-line no-await-in-loop
@@ -552,16 +606,23 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
       stats.error = error.message;
     }
     providerBreakdown.push(stats);
+    }
   }
 
   if (effectiveSources.includes("apollo_person_search")) {
-    const stats = { provider: "apollo_person_search", requested: search.requestedCount, returned: 0, rejectedSelf: 0, rejectedFreshness: 0, rejectedForCapacity: 0, rejectedDedup: 0, accepted: 0, error: null };
+    const remainingBeforeApollo = requestRemaining();
+    const stats = { provider: "apollo_person_search", requested: remainingBeforeApollo, returned: 0, rejectedSelf: 0, rejectedFreshness: 0, rejectedForCapacity: 0, rejectedDedup: 0, accepted: 0, error: null };
+    if (remainingBeforeApollo <= 0) {
+      stats.error = `Skipped — the overall requested count of ${search.requestedCount} was already reached by an earlier provider.`;
+      providerBreakdown.push(stats);
+    } else {
     try {
       const filters = buildApolloFilters(search.icp);
       if (!Object.keys(filters).length) throw Object.assign(new Error("The ICP has no criteria Apollo can search on (titles, locations, seniority, or keywords required)"), { code: "APOLLO_ICP_EMPTY" });
-      const outcome = await apollo.searchPeople({ workspaceId, userId, filters, perPage: search.requestedCount, correlationId });
+      const outcome = await apollo.searchPeople({ workspaceId, userId, filters, perPage: remainingBeforeApollo, correlationId });
       stats.returned = outcome.people.length;
       for (const person of outcome.people) {
+        if (requestRemaining() <= 0) break;
         const candidate = normalizeApolloCandidate(person);
         if (isSelfMatchCheck(candidate, selfSignals).isSelf) { excludedForSelfMatch += 1; stats.rejectedSelf += 1; continue; }
         // eslint-disable-next-line no-await-in-loop
@@ -574,6 +635,7 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
       stats.error = error.message;
     }
     providerBreakdown.push(stats);
+    }
   }
 
   const allFailed = sourceErrors.length >= effectiveSources.length && created === 0 && merged === 0;
@@ -646,49 +708,131 @@ async function enrichWithApollo({ workspaceId, userId, resultId, correlationId =
 }
 
 /**
- * Jarvis qualifies intent, recommends the best program, explains its
- * reasoning, suggests the next action, and drafts personalized outreach
- * for up to 20 selected still-pending results — extends the existing
- * rankForProgramFit() pattern (kept unchanged) with a richer output
- * contract rather than modifying it.
+ * Combines every axis into ONE deterministic, server-enforced verdict —
+ * never trusted purely from the model's own qualificationLabel/
+ * outreachRecommended output. This is what makes item 9's rule real: an
+ * outreach recommendation is only ever true when identity is reliable AND
+ * program fit is genuine AND there's real buyer-intent evidence — a
+ * matching job title alone can never produce "qualified" or
+ * outreachRecommended on its own.
+ */
+function computeQualificationOutcome({ identityConfidence, programFitScore, recommendedProgramId, buyerIntentLevel, exclusionFlags }) {
+  const hasExclusion = (exclusionFlags || []).length > 0;
+  const hasRealProgram = Boolean(recommendedProgramId) && recommendedProgramId !== "none";
+  const poorFit = !hasRealProgram || programFitScore < 40;
+  const genuineFit = hasRealProgram && programFitScore >= 65;
+  const identityReliable = identityConfidence === "high" || identityConfidence === "medium";
+  const hasIntentEvidence = buyerIntentLevel === "strong";
+
+  let qualificationLabel;
+  if (hasExclusion || poorFit) qualificationLabel = "not_a_fit";
+  else if (identityConfidence === "conflict") qualificationLabel = "needs_review";
+  else if (identityReliable && genuineFit && hasIntentEvidence) qualificationLabel = "qualified";
+  else qualificationLabel = "needs_review";
+
+  return { qualificationLabel, outreachRecommended: qualificationLabel === "qualified" };
+}
+
+/**
+ * Jarvis qualifies each of up to 20 selected still-pending results against
+ * THIS workspace's real approved Offers & Programs — never a program it
+ * invents — scoring identity confidence, program fit, and buyer intent as
+ * three SEPARATE signals (see computeQualificationOutcome above for how
+ * they combine into one label), flags ICP exclusions, and drafts outreach
+ * only when actually recommended. Supersedes the older, narrower
+ * rankForProgramFit() (services/vertexGroundingDiscoveryService.js, kept
+ * unchanged and still callable) as the one action the review-queue UI
+ * exposes — this covers everything that one did and more, so the owner
+ * never has to run two separate actions.
  */
 async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, correlationId = "" }, dependencies = {}) {
   const Model = dependencies.GroundingResearchResult || GroundingResearchResult;
   const runAgent = dependencies.runAgent || agentExecutionService.runAgent;
+  const listPrograms = dependencies.listApprovedPrograms || listApprovedPrograms;
   const ids = (Array.isArray(resultIds) ? resultIds : []).slice(0, 20);
   if (!ids.length) { const error = new Error("Select at least one pending result to qualify"); error.code = "DISCOVERY_QUALIFY_SELECTION_REQUIRED"; throw error; }
   const rows = await Model.find({ _id: { $in: ids }, workspaceId, status: "pending_review" }).lean();
-  if (!rows.length) return { qualified: 0 };
+  if (!rows.length) return { qualified: 0, requested: ids.length, summary: { processed: 0, qualified: 0, needsReview: 0, notAFit: 0, failed: ids.length } };
 
-  const candidates = rows.map((row) => ({ resultId: String(row._id), name: row.name, organizationName: row.organizationName, summary: row.summary, evidenceUrls: row.evidenceUrls, conflicts: row.conflicts || [] }));
+  const programs = await listPrograms({ workspaceId }, dependencies);
+  const programById = new Map(programs.map((p) => [p.noteId, p]));
+  const programIds = programs.map((p) => p.noteId);
+
+  const candidates = rows.map((row) => {
+    const deterministicFlags = detectExclusionFlags(row);
+    // Self-healing: recomputed fresh from this row's CURRENT providers/
+    // confidence/conflicts every time qualification runs, so a row created
+    // before computeIdentityConfidence() existed (or whose identity
+    // signals have since improved) is corrected here rather than staying
+    // stuck at whatever it was — or the schema default of "low" — forever.
+    const identityConfidence = vertexGroundingDiscoveryService.computeIdentityConfidence({
+      providers: row.providers, confidence: row.confidence, conflicts: row.conflicts,
+      linkedinUrl: row.linkedinUrl, organizationName: row.organizationName,
+      verifiedIdentifier: row.pdlEnrichment?.matched || row.apolloEnrichment?.matched || row.emailVerificationStatus === "verified",
+    });
+    return {
+      resultId: String(row._id), name: row.name, organizationName: row.organizationName, organizationDomain: row.organizationDomain,
+      summary: row.summary, evidenceUrls: row.evidenceUrls, conflicts: row.conflicts || [],
+      discoveryMode: row.discoveryMode, identityConfidence, preScreenedExclusionFlags: deterministicFlags,
+    };
+  });
+
   const result = await runAgent({
     workspaceId, userId, auth, agent: "lead", task: "qualify_and_recommend_leads", correlationId,
-    operationalContext: `Using the approved program/ICP knowledge already provided to you, qualify each candidate's real buyer intent, recommend the single best-fit program, explain your reasoning, suggest one concrete next action, and draft a short personalized outreach message strictly grounded in the evidence given. Never invent facts. A candidate with a listed conflict should be treated cautiously, not scored generously.\n\nCandidates:\n${JSON.stringify(candidates, null, 2)}`,
-    input: { candidateCount: candidates.length },
-    options: { responseSchema: QUALIFY_RESPONSE_SCHEMA, schemaName: "lead_qualification" },
+    operationalContext: `Qualify each candidate below against ONLY this workspace's real approved programs listed here — never invent or generalize a program name:\n${programIds.length ? programIds.map((id) => `- ${id}: "${programById.get(id).title}"`).join("\n") : "(No approved programs are currently available — recommendedProgramId must be 'none' for every candidate.)"}\n\nEach candidate already carries a computed "identityConfidence" (low/medium/high/conflict) — this is fixed, real data; do not second-guess it, just note in identityNotes whether the given evidence is consistent with it. Score programFitScore on whether this person resembles the recommended program's real intended buyer — 0-100, never a 0-10 scale. Assess buyerIntentLevel STRICTLY from evidence of a CURRENT need or want (asking for recommendations, describing a specific problem this program solves) — a job title, real-estate role, or being "in the industry" is NEVER by itself buyer intent. Each candidate also carries "preScreenedExclusionFlags" from a keyword pre-screen (coach/broker/lender/etc.) — verify against the real evidence and include in your own exclusionFlags if still applicable, or omit if the pre-screen was a false positive; also add wrong_country, unrelated_corporate_employee, or no_personal_investing_evidence yourself when the evidence supports it. A candidate with listed conflicts should be treated cautiously. Draft a short, personalized outreach message strictly grounded in the evidence given only when you believe outreach is genuinely warranted — never invent facts not present.\n\nCandidates:\n${JSON.stringify(candidates, null, 2)}`,
+    input: { candidateCount: candidates.length, approvedProgramCount: programIds.length },
+    options: { responseSchema: buildQualifyResponseSchema(programIds), schemaName: "lead_qualification" },
   });
 
   const validIds = new Set(candidates.map((row) => row.resultId));
-  let qualified = 0;
-  for (const q of (result.output.qualifications || [])) {
-    if (!validIds.has(q.resultId)) continue;
-    const fitScore = Math.max(0, Math.min(100, Number(q.fitScore) || 0));
-    // eslint-disable-next-line no-await-in-loop
-    await Model.updateOne(
-      { _id: q.resultId, workspaceId },
-      { $set: {
-        fitScore, fitReasons: [clean(q.recommendedProgramReason, 500), clean(q.nextAction, 300)].filter(Boolean),
-        fitEvaluatedAt: new Date(),
-        recommendedProgram: { name: clean(q.recommendedProgramName, 200), reason: clean(q.recommendedProgramReason, 1000) },
-      }, $addToSet: { providers: "openai_jarvis" } },
-    );
-    // Outreach draft/intent flag are exposed via a separate note-style field on
-    // the row rather than overloading `summary` — kept here on the response
-    // only to avoid growing the schema further for a draft that a human must
-    // still explicitly choose to use (owner-approved outreach stays separate).
-    qualified += 1;
+  const byResultId = new Map(candidates.map((c) => [c.resultId, c]));
+  const summary = { processed: 0, qualified: 0, needsReview: 0, notAFit: 0, failed: 0 };
+  const outputById = new Map((result.output.qualifications || []).filter((q) => validIds.has(q.resultId)).map((q) => [q.resultId, q]));
+
+  for (const resultId of ids.map(String)) {
+    // Not found, or no longer pending_review (already reviewed elsewhere) —
+    // still an honest "failed" outcome for THIS request, never silently
+    // dropped from the completion summary the owner sees.
+    if (!validIds.has(resultId)) { summary.failed += 1; continue; }
+    const q = outputById.get(resultId);
+    if (!q) { summary.failed += 1; continue; }
+    try {
+      const candidate = byResultId.get(resultId);
+      // Defensive re-check even though the schema's enum already constrains
+      // this — a program that's since been un-approved between listing and
+      // now must still never be persisted.
+      const recommendedProgramId = q.recommendedProgramId !== "none" && programById.has(q.recommendedProgramId) ? q.recommendedProgramId : null;
+      const program = recommendedProgramId ? programById.get(recommendedProgramId) : null;
+      const programFitScore = Math.max(0, Math.min(100, Number(q.programFitScore) || 0));
+      const buyerIntentLevel = ["strong", "weak", "none"].includes(q.buyerIntentLevel) ? q.buyerIntentLevel : "none";
+      const exclusionFlags = [...new Set([...(candidate.preScreenedExclusionFlags || []), ...(q.exclusionFlags || [])])].slice(0, 15);
+      const { qualificationLabel, outreachRecommended } = computeQualificationOutcome({
+        identityConfidence: candidate.identityConfidence, programFitScore, recommendedProgramId, buyerIntentLevel, exclusionFlags,
+      });
+
+      // eslint-disable-next-line no-await-in-loop
+      await Model.updateOne(
+        { _id: resultId, workspaceId },
+        { $set: {
+          identityConfidence: candidate.identityConfidence,
+          fitScore: programFitScore, fitReasons: (q.programFitReasons || []).slice(0, 10).map((r) => clean(r, 300)),
+          fitEvaluatedAt: new Date(),
+          recommendedProgram: program ? { programNoteId: program.noteId, name: program.title, reason: clean(q.programFitReasons?.[0] || "", 1000) } : { programNoteId: null, name: "", reason: "" },
+          buyerIntentLevel, buyerIntentEvidence: clean(q.buyerIntentEvidence, 1000),
+          qualificationLabel, exclusionFlags,
+          recommendedNextAction: clean(q.recommendedNextAction, 300),
+          outreachRecommended, outreachDraft: outreachRecommended ? clean(q.outreachDraft, 2000) : "",
+        }, $addToSet: { providers: "openai_jarvis" } },
+      );
+      summary.processed += 1;
+      if (qualificationLabel === "qualified") summary.qualified += 1;
+      else if (qualificationLabel === "not_a_fit") summary.notAFit += 1;
+      else summary.needsReview += 1;
+    } catch (error) {
+      summary.failed += 1;
+    }
   }
-  return { qualified, requested: ids.length, drafts: (result.output.qualifications || []).filter((q) => validIds.has(q.resultId)).map((q) => ({ resultId: q.resultId, intentQualified: q.intentQualified, nextAction: q.nextAction, outreachDraft: q.outreachDraft })) };
+  return { qualified: summary.qualified, requested: ids.length, summary };
 }
 
 /**
@@ -745,4 +889,8 @@ module.exports = {
   // (and email-shape-sanitized) by the exact same, already-tested logic
   // used here, rather than a second copy that could silently drift.
   normalizePdlCandidate,
+  // Exported for direct unit testing — pure, no side effects.
+  detectExclusionFlags,
+  buildQualifyResponseSchema,
+  computeQualificationOutcome,
 };
