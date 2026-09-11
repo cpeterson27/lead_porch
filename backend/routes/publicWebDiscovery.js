@@ -120,6 +120,11 @@ router.post("/runs/:id/process-next-batch", async (req, res) => {
     });
     return res.json({ success: true, data });
   } catch (error) {
+    // processNextBatch now catches and persists almost everything onto the
+    // run itself, so reaching here means even that failed — log it too,
+    // since previously nothing about this route ever appeared in server
+    // logs at all, leaving an operator nothing to check.
+    console.error(`[PublicWebDiscovery] POST /runs/${req.params.id}/process-next-batch failed:`, error);
     return res.status(error.code ? 400 : 502).json({ success: false, error: error.message || "Unable to process this discovery run", code: error.code || "DISCOVERY_RUN_PROCESS_FAILED" });
   }
 });

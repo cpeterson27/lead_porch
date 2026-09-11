@@ -1053,6 +1053,53 @@ async function testProcessNextBatchPersistsAFailureEvenWhenTheLeaseAcquiringQuer
   assert.equal(run.leaseOwner, "", "the lease must never be left held after a failed acquisition attempt");
 }
 
+/**
+ * A third reported occurrence: the run showed real progress (real PDL
+ * credits, Vertex/OpenAI calls, spend, and accepted candidates from
+ * earlier successful ticks) but was left stuck at status "running" with
+ * the generic banner and no explanation. The lease-acquiring call and
+ * the per-tick work both already have their own recovery paths — the one
+ * remaining unguarded step was the tick's own final run.save() call
+ * itself. If THAT throws (e.g. a validation error on this large,
+ * long-lived document), the try/catch above already decided the correct
+ * "queued"/"failed" outcome, but persisting it failed too, leaving
+ * whatever the original lease-acquiring findOneAndUpdate wrote
+ * ("running", with a live lease) as the only thing ever actually saved.
+ */
+async function testProcessNextBatchFallsBackToARawUpdateWhenRunSaveItselfFails() {
+  const run = buildQueuedRun();
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([run]);
+  let saveAttempts = 0;
+  run.save = async function throwingSave() {
+    saveAttempts += 1;
+    const error = new Error("document failed validation: some field");
+    error.code = "ValidationError";
+    throw error;
+  };
+  const GroundingResearchResult = fakeGroundingResultModel();
+  const vertexGroundingService = { groundedSearch: async () => ({ results: [{ type: "person", name: "Real Prospect", organizationName: "", organizationDomain: "", summary: "", evidenceUrls: [], evidenceDate: new Date(), confidence: "single_source" }], groundingCitations: [] }) };
+  const openaiWebSearchService = { groundedSearch: async () => ({ results: [], groundingCitations: [] }) };
+  const dependencies = {
+    PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, GroundingResearchResult, vertexGroundingService, openaiWebSearchService,
+    Contact: fakeLookupModel([]), Organization: fakeLookupModel([]),
+    getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }),
+    isSelfMatch: () => ({ isSelf: false, reasons: [] }),
+  };
+
+  const outcome = await processNextBatch({ workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-1", batchSize: 1 }, dependencies);
+
+  assert.equal(saveAttempts, 1, "the normal save path must have been attempted and must have failed");
+  assert.notEqual(outcome.run.status, "running", "the run must never be left stuck in \"running\" just because save() itself failed — that is exactly the reported incident");
+  assert.equal(outcome.run.status, "queued", "a single save failure must stay safely resumable, same as any other pre-conclusion failure");
+  assert.equal(outcome.run.leaseOwner, "", "the lease must be released via the raw-update fallback even though save() itself failed");
+  assert.equal(outcome.run.lastFailureCode, "ValidationError");
+  assert.ok(outcome.run.lastFailureMessage.includes("document failed validation"), "the real save error must be surfaced, not silently lost");
+  // The fallback must have actually reached the persisted row, not only
+  // the in-memory return value.
+  assert.equal(run.status, "queued");
+  assert.equal(run.leaseOwner, "");
+}
+
 async function run() {
   testIsNeverCrawlHostBlocksFacebookAndLinkedinAlways();
   testParseRobotsTxtRespectsDisallowAllowAndLongestMatch();
@@ -1102,6 +1149,7 @@ async function run() {
   await testProcessNextBatchPersistsASanitizedFailureAndStaysSafelyResumableForAPreProviderCrash();
   await testProcessNextBatchClearsAPriorFailureRecordOnceATickSucceeds();
   await testProcessNextBatchPersistsAFailureEvenWhenTheLeaseAcquiringQueryItselfThrows();
+  await testProcessNextBatchFallsBackToARawUpdateWhenRunSaveItselfFails();
   await testRunDueDiscoverySchedulesSkipsDisabledSchedules();
   await testRunDueDiscoverySchedulesProcessesAnEnabledDueSchedule();
   console.log("Public Web Discovery engine: robots.txt/rate-limit/login-wall/Facebook-LinkedIn-denylist crawler compliance (fails closed on unverifiable robots.txt, never fetches the page when disallowed), freshness TIERING (labels recent/aging/evergreen — never drops an old or undated lead), dedup against self-match/CRM/dismissed-records/previous-runs, checkpointed+resumable+retryable batch processing with a hard provider-credit-cap stop and an honest explanation, and a scheduler that never acts on a disabled schedule but genuinely runs an enabled+due one — all passed.");

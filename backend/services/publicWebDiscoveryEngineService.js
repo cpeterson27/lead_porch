@@ -853,11 +853,18 @@ async function processNextBatch({ workspaceId, userId = null, auth = null, runId
     // still shows a real, actionable message.
     const sanitizedCode = clean(error.code || "LEASE_ACQUIRE_FAILED", 100);
     const sanitizedMessage = clean(error.message || "Unable to load this run.", 500);
+    // This class of failure was previously invisible in server logs
+    // entirely (only ever swallowed into a JSON response) — always log it
+    // server-side too, since a run's own persisted lastFailureMessage is
+    // necessarily short/sanitized and a Render log line with the real
+    // stack is what an operator actually needs to diagnose it.
+    console.error(`[PublicWebDiscovery] processNextBatch lease-acquire failed for run ${runId}:`, error);
     try {
       await Model.findOneAndUpdate({ _id: runId, workspaceId }, { $set: { lastFailureCode: sanitizedCode, lastFailureMessage: sanitizedMessage, lastFailureAt: new Date(), leaseOwner: "", leaseExpiresAt: null } });
-    } catch (_persistError) {
+    } catch (persistError) {
       // Best-effort only — if even this fails, the caller's own sanitized
       // error below is still returned; nothing further can be done here.
+      console.error(`[PublicWebDiscovery] processNextBatch could not even persist the lease-acquire failure for run ${runId}:`, persistError);
     }
     const sanitizedError = new Error(sanitizedMessage);
     sanitizedError.code = sanitizedCode;
@@ -969,6 +976,7 @@ async function processNextBatch({ workspaceId, userId = null, auth = null, runId
     // of failure has now happened several ticks in a row, since retrying
     // a persistent, non-transient problem indefinitely would just waste
     // the owner's clicks with no real chance of succeeding.
+    console.error(`[PublicWebDiscovery] processNextBatch tick failed for run ${runId} (workspace ${workspaceId}):`, error);
     const failCount = (run.consecutiveFailureCount || 0) + 1;
     run.lastFailureCode = clean(error.code || "PROCESS_BATCH_FAILED", 100);
     run.lastFailureMessage = clean(error.message || "An unexpected error stopped this run before any provider call.", 500);
@@ -979,7 +987,38 @@ async function processNextBatch({ workspaceId, userId = null, auth = null, runId
   }
   run.leaseOwner = "";
   run.leaseExpiresAt = null;
-  await run.save();
+  try {
+    await run.save();
+  } catch (saveError) {
+    // The try/catch above already decided the right outcome, but PERSISTING
+    // that decision failed too — this is exactly how a run was reported
+    // stuck "running" with real spend/progress from earlier successful
+    // ticks and no explanation: the original lease-acquiring
+    // findOneAndUpdate already wrote "running" directly to the database,
+    // and if this later full-document save() then fails for any reason,
+    // that "running" status (and its live lease) was the only thing ever
+    // actually persisted. Fall back to a raw $set (bypasses full-document
+    // schema validation, so it succeeds even when some other field on
+    // this large, long-lived document is what's actually invalid) so the
+    // run can never be left stuck with a live lease no matter what.
+    console.error(`[PublicWebDiscovery] processNextBatch could not save run ${runId} after this tick — falling back to a raw status/lease update:`, saveError);
+    const fallbackCode = clean(saveError.code || "RUN_SAVE_FAILED", 100);
+    const fallbackMessage = clean(saveError.message || "This run's progress could not be saved.", 500);
+    const failCount = (run.consecutiveFailureCount || 0) + 1;
+    const fallbackStatus = failCount >= 3 ? "failed" : "queued";
+    try {
+      await Model.findOneAndUpdate(
+        { _id: run._id, workspaceId },
+        { $set: { status: fallbackStatus, leaseOwner: "", leaseExpiresAt: null, lastFailureCode: fallbackCode, lastFailureMessage: fallbackMessage, lastFailureAt: new Date(), consecutiveFailureCount: failCount } },
+      );
+      run.status = fallbackStatus;
+      run.lastFailureCode = fallbackCode;
+      run.lastFailureMessage = fallbackMessage;
+      run.consecutiveFailureCount = failCount;
+    } catch (finalError) {
+      console.error(`[PublicWebDiscovery] processNextBatch could not persist ANY recovery for run ${runId} — it may remain stuck until its lease naturally expires in ${LEASE_MS}ms:`, finalError);
+    }
+  }
 
   if (run.status === "completed" || run.status === "stopped_at_cap") {
     try {
