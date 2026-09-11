@@ -38,7 +38,11 @@ const FREQUENCY_OPTIONS = [
   { label: "Weekly", value: 10080 },
 ];
 const RUN_ACTIVE_STATUSES = new Set(["queued", "running"]);
-const RUN_TERMINAL_STATUSES = new Set(["completed", "failed", "canceled"]);
+const RUN_TERMINAL_STATUSES = new Set(["completed", "stopped_at_cap", "failed", "canceled"]);
+// "stopped_at_cap" must never render as "Completed" — the run stopped early
+// because the provider credit cap was reached, not because it finished all
+// its queued work (see publicWebDiscoveryEngineService.js's buildRunExplanation).
+const RUN_STATUS_LABELS = { stopped_at_cap: "Stopped at budget cap" };
 const MAX_BATCH_ITERATIONS = 500;
 
 function groupJobsByCategory(jobs) {
@@ -51,7 +55,7 @@ function groupJobsByCategory(jobs) {
 }
 
 function StatusBadge({ status }) {
-  return <span className={`leadgen-run-status leadgen-run-status--${status}`}>{status}</span>;
+  return <span className={`leadgen-run-status leadgen-run-status--${status}`}>{RUN_STATUS_LABELS[status] || status}</span>;
 }
 
 /**

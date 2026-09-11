@@ -346,6 +346,7 @@ async function mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, se
   const OrganizationModel = dependencies.Organization || Organization;
   const isSelfMatchCheck = dependencies.isSelfMatch || workspaceSelfExclusionService.isSelfMatch;
 
+  if (!candidate.name || !String(candidate.name).trim()) return { outcome: "rejected_invalid_identity" };
   if (isSelfMatchCheck(candidate, selfSignals).isSelf) return { outcome: "rejected_self" };
   if (isStudentSearch && isLikelySellerOrVendor(candidate)) return { outcome: "rejected_seller_or_vendor" };
 
@@ -403,6 +404,38 @@ function tallyMergeOutcome(run, merge, candidateType) {
   else if (merge.outcome === "rejected_crm") run.runSummary.rejectedCrmDuplicate += 1;
   else if (merge.outcome === "rejected_dismissed") run.runSummary.rejectedPreviouslyDismissed += 1;
   else if (merge.outcome === "rejected_seller_or_vendor") run.runSummary.rejectedSellerOrVendor += 1;
+  else if (merge.outcome === "rejected_invalid_identity") run.runSummary.rejectedInvalidIdentity += 1;
+}
+
+/**
+ * Reserves enough of the remaining budget for at least one still-pending
+ * Vertex query and one still-pending OpenAI query (when either exists in
+ * this run's job list) — PDL is an independent sourcing provider, but it
+ * must never be allowed to consume the entire public-web budget before
+ * those queries get a turn. "Still-pending" means not yet completed or
+ * failed, regardless of position in the job list, so this reserves
+ * correctly however priority tiers are ordered.
+ */
+function computeReservedWebBudget(run) {
+  const hasVertexPending = (run.jobs || []).some((j) => j.source === "vertex" && j.status !== "completed" && j.status !== "failed");
+  const hasOpenaiPending = (run.jobs || []).some((j) => j.source === "openai_web_search" && j.status !== "completed" && j.status !== "failed");
+  return (hasVertexPending ? COST_PER_GROUNDED_CALL_USD : 0) + (hasOpenaiPending ? COST_PER_GROUNDED_CALL_USD : 0);
+}
+
+/**
+ * The safety-net invariant from the reported incident: a provider that
+ * returns N candidates must account for every one of them in exactly one
+ * bucket — accepted, merged, or a named rejection reason. Any shortfall
+ * is a bug in the accounting itself and must be surfaced explicitly,
+ * never silently folded into "0 accepted" with no explanation.
+ */
+function reconcileUnexplainedRejections(run, perSourceEntry, foundCount) {
+  const accountedFor = perSourceEntry.acceptedNew + perSourceEntry.merged + perSourceEntry.rejectedSelf + perSourceEntry.rejectedCrm
+    + perSourceEntry.rejectedDismissed + perSourceEntry.rejectedSellerOrVendor + perSourceEntry.rejectedInvalidIdentity + perSourceEntry.rejectedBudgetCap;
+  const unexplained = Math.max(0, foundCount - accountedFor);
+  perSourceEntry.unexplained = unexplained;
+  if (unexplained > 0) run.runSummary.unexplainedRejections += unexplained;
+  return unexplained;
 }
 
 function tallyFreshnessTier(run, tier) {
@@ -478,13 +511,34 @@ async function runJob({ workspaceId, userId, auth, run, job, selfSignals, correl
  */
 async function runPdlDirectJob({ workspaceId, userId, auth, run, job, selfSignals, correlationId }, dependencies = {}) {
   const pdl = dependencies.peopleDataLabsService || peopleDataLabsService;
-  const perSourceEntry = { source: "pdl_person_search", category: job.category, queriesRun: 0, entitiesExtracted: 0, accepted: 0, error: null };
+  const perSourceEntry = {
+    source: "pdl_person_search", category: job.category, queriesRun: 0, entitiesExtracted: 0, accepted: 0, error: null,
+    acceptedNew: 0, merged: 0, rejectedSelf: 0, rejectedCrm: 0, rejectedDismissed: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedBudgetCap: 0, unexplained: 0,
+  };
   try {
+    // HARD CAP, enforced BEFORE the call: PDL is billed per candidate
+    // requested/returned, so the only safe way to guarantee the cap is
+    // never exceeded is to compute how many candidates are actually
+    // affordable and request exactly that — never the full page size and
+    // check afterward, which is what let a single PDL call charge $1.20
+    // against a $1 cap in the reported incident. Also reserves enough
+    // budget for at least one still-pending Vertex query and one
+    // still-pending OpenAI query — PDL is an independent source, not one
+    // allowed to consume the entire public-web budget before those run.
+    const reservedForWeb = computeReservedWebBudget(run);
+    const affordableBudget = Math.max(0, run.providerCreditCapUsd - run.spend.estimatedUsd - reservedForWeb);
+    const affordableCount = Math.floor(affordableBudget / COST_PER_PDL_CANDIDATE_USD);
+    if (affordableCount <= 0) {
+      perSourceEntry.error = `Skipped — $${affordableBudget.toFixed(2)} remains after reserving $${reservedForWeb.toFixed(2)} for pending Vertex/OpenAI queries (cap: $${run.providerCreditCapUsd}, spent so far: $${run.spend.estimatedUsd}). No PDL call was made — nothing was charged.`;
+      return;
+    }
+
     const icp = await derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlationId }, dependencies);
     const sql = leadGenerationCoordinatorService.buildPdlSql(icp);
     if (!sql) throw Object.assign(new Error("No realistic ICP criteria (titles, locations, or industries) could be derived from the program for PDL."), { code: "PDL_ICP_EMPTY" });
     const baseSize = Math.min(100, Math.max(1, run.dailyCandidateTarget));
-    const cumulativeSize = Math.min(100, baseSize * (job.page + 1));
+    const desiredNewCount = Math.min(baseSize, affordableCount);
+    const cumulativeSize = Math.min(100, job.page * baseSize + desiredNewCount);
     perSourceEntry.queriesRun = 1;
     const outcome = await pdl.searchPeople({ workspaceId, userId, sql, size: cumulativeSize, correlationId });
     const newPeople = outcome.people.slice(job.page * baseSize);
@@ -494,16 +548,31 @@ async function runPdlDirectJob({ workspaceId, userId, auth, run, job, selfSignal
     run.spend.estimatedUsd = Math.round((run.spend.estimatedUsd + newPeople.length * COST_PER_PDL_CANDIDATE_USD) * 100) / 100;
 
     for (const person of newPeople) {
-      if (run.spend.estimatedUsd >= run.providerCreditCapUsd) break;
-      if (acceptedCountForTarget(run) >= run.dailyCandidateTarget) break;
+      // Defensive only — correct pre-sizing above should make this
+      // unreachable, but if a provider ever returns more than requested,
+      // every remaining candidate is counted honestly rather than
+      // silently vanishing the way the original bug did.
+      if (run.spend.estimatedUsd > run.providerCreditCapUsd || acceptedCountForTarget(run) >= run.dailyCandidateTarget) {
+        perSourceEntry.rejectedBudgetCap += 1;
+        run.runSummary.rejectedBudgetCap += 1;
+        continue;
+      }
       const candidate = leadGenerationCoordinatorService.normalizePdlCandidate(person);
       candidate.discoveryCategory = job.category;
       candidate.providers = [candidate.provider];
       // eslint-disable-next-line no-await-in-loop
       const merge = await mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, selfSignals, isStudentSearch: true, correlationId }, dependencies);
       if (merge.outcome === "created" || merge.outcome === "merged") { job.acceptedCount += 1; perSourceEntry.accepted += 1; tallyFreshnessTier(run, merge.row.freshnessTier); }
+      if (merge.outcome === "created") perSourceEntry.acceptedNew += 1;
+      else if (merge.outcome === "merged") perSourceEntry.merged += 1;
+      else if (merge.outcome === "rejected_self") perSourceEntry.rejectedSelf += 1;
+      else if (merge.outcome === "rejected_crm") perSourceEntry.rejectedCrm += 1;
+      else if (merge.outcome === "rejected_dismissed") perSourceEntry.rejectedDismissed += 1;
+      else if (merge.outcome === "rejected_seller_or_vendor") perSourceEntry.rejectedSellerOrVendor += 1;
+      else if (merge.outcome === "rejected_invalid_identity") perSourceEntry.rejectedInvalidIdentity += 1;
       tallyMergeOutcome(run, merge, "person");
     }
+    reconcileUnexplainedRejections(run, perSourceEntry, perSourceEntry.entitiesExtracted);
   } catch (error) {
     perSourceEntry.error = clean(error.message, 300);
     throw error; // let processNextBatch's existing retry/failure handling apply, same as a grounded-search job failure.
@@ -562,11 +631,24 @@ async function derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlat
 async function runPdlCrossReference({ workspaceId, userId, auth, run, selfSignals, correlationId }, dependencies = {}) {
   const pdl = dependencies.peopleDataLabsService || peopleDataLabsService;
   if (!run.includePdlCrossReference) return;
-  if (run.spend.estimatedUsd >= run.providerCreditCapUsd) return;
   const remaining = Math.max(0, run.dailyCandidateTarget - acceptedCountForTarget(run));
   if (remaining <= 0) return;
+  // No pending Vertex/OpenAI jobs remain by the time cross-reference runs
+  // (it only fires after every job in the run has completed or failed),
+  // so computeReservedWebBudget() correctly reserves nothing here — the
+  // same pre-call affordability check as the direct PDL job still
+  // applies, so this can never overspend the cap either.
+  const affordableBudget = Math.max(0, run.providerCreditCapUsd - run.spend.estimatedUsd - computeReservedWebBudget(run));
+  const affordableCount = Math.floor(affordableBudget / COST_PER_PDL_CANDIDATE_USD);
+  if (affordableCount <= 0) {
+    run.runSummary.perSource = [...(run.runSummary.perSource || []), { source: "pdl_person_search", category: "cross_reference", queriesRun: 0, entitiesExtracted: 0, accepted: 0, error: `Skipped — $${affordableBudget.toFixed(2)} remains (cap: $${run.providerCreditCapUsd}). No PDL call was made — nothing was charged.` }];
+    return;
+  }
 
-  const perSourceEntry = { source: "pdl_person_search", category: "cross_reference", queriesRun: 0, entitiesExtracted: 0, accepted: 0, error: null };
+  const perSourceEntry = {
+    source: "pdl_person_search", category: "cross_reference", queriesRun: 0, entitiesExtracted: 0, accepted: 0, error: null,
+    acceptedNew: 0, merged: 0, rejectedSelf: 0, rejectedCrm: 0, rejectedDismissed: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedBudgetCap: 0, unexplained: 0,
+  };
   let icp;
   try {
     icp = await derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlationId }, dependencies);
@@ -579,22 +661,37 @@ async function runPdlCrossReference({ workspaceId, userId, auth, run, selfSignal
   if (!sql) { perSourceEntry.error = "No realistic ICP criteria could be derived for PDL — skipped."; run.runSummary.perSource = [...(run.runSummary.perSource || []), perSourceEntry]; return; }
 
   try {
+    // HARD CAP, enforced BEFORE the call — see runPdlDirectJob() for why
+    // charging AFTER the call (based on how many were returned) let a
+    // single PDL call overshoot the cap in the reported incident.
+    const size = Math.min(remaining, 25, affordableCount);
     perSourceEntry.queriesRun = 1;
-    const outcome = await pdl.searchPeople({ workspaceId, userId, sql, size: Math.min(remaining, 25), correlationId });
+    const outcome = await pdl.searchPeople({ workspaceId, userId, sql, size, correlationId });
     perSourceEntry.entitiesExtracted = outcome.people.length;
     run.spend.pdlCandidates += outcome.people.length;
     run.spend.estimatedUsd = Math.round((run.spend.estimatedUsd + outcome.people.length * COST_PER_PDL_CANDIDATE_USD) * 100) / 100;
     for (const person of outcome.people) {
-      if (run.spend.estimatedUsd >= run.providerCreditCapUsd) break;
-      if (acceptedCountForTarget(run) >= run.dailyCandidateTarget) break;
+      if (run.spend.estimatedUsd > run.providerCreditCapUsd || acceptedCountForTarget(run) >= run.dailyCandidateTarget) {
+        perSourceEntry.rejectedBudgetCap += 1;
+        run.runSummary.rejectedBudgetCap += 1;
+        continue;
+      }
       const candidate = leadGenerationCoordinatorService.normalizePdlCandidate(person);
       candidate.discoveryCategory = "people";
       candidate.providers = [candidate.provider];
       // eslint-disable-next-line no-await-in-loop
       const merge = await mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, selfSignals, isStudentSearch: true, correlationId }, dependencies);
       if (merge.outcome === "created" || merge.outcome === "merged") { perSourceEntry.accepted += 1; tallyFreshnessTier(run, merge.row.freshnessTier); }
+      if (merge.outcome === "created") perSourceEntry.acceptedNew += 1;
+      else if (merge.outcome === "merged") perSourceEntry.merged += 1;
+      else if (merge.outcome === "rejected_self") perSourceEntry.rejectedSelf += 1;
+      else if (merge.outcome === "rejected_crm") perSourceEntry.rejectedCrm += 1;
+      else if (merge.outcome === "rejected_dismissed") perSourceEntry.rejectedDismissed += 1;
+      else if (merge.outcome === "rejected_seller_or_vendor") perSourceEntry.rejectedSellerOrVendor += 1;
+      else if (merge.outcome === "rejected_invalid_identity") perSourceEntry.rejectedInvalidIdentity += 1;
       tallyMergeOutcome(run, merge, "person");
     }
+    reconcileUnexplainedRejections(run, perSourceEntry, perSourceEntry.entitiesExtracted);
   } catch (error) {
     perSourceEntry.error = error.message;
   }
@@ -627,13 +724,11 @@ async function processNextBatch({ workspaceId, userId = null, auth = null, runId
   let stepsRun = 0;
 
   while (stepsRun < batchSize) {
-    // A real HARD cap: stop before the next call would push spend over it,
-    // not only after it already has — the job's own source determines
-    // which per-call estimate applies.
-    if (run.spend.estimatedUsd + COST_PER_GROUNDED_CALL_USD > run.providerCreditCapUsd) { stoppedReason = "provider_credit_cap_reached"; break; }
     if (acceptedCountForTarget(run) >= run.dailyCandidateTarget) { stoppedReason = "daily_candidate_target_reached"; break; }
     if (run.nextJobIndex >= run.jobs.length) {
       if (run.includePdlCrossReference && !run.pdlCrossReferenceDone) {
+        // runPdlCrossReference() does its own precise pre-call
+        // affordability check internally — no separate gate needed here.
         // eslint-disable-next-line no-await-in-loop
         await runPdlCrossReference({ workspaceId, userId, auth, run, selfSignals, correlationId }, dependencies);
       }
@@ -641,6 +736,15 @@ async function processNextBatch({ workspaceId, userId = null, auth = null, runId
       break;
     }
     const job = run.jobs[run.nextJobIndex];
+    // A real HARD cap: stop before the next call would push spend over it,
+    // not only after it already has. A grounded-search call has a fixed
+    // known cost, so it's gated here directly. A PDL call's cost depends
+    // on how many candidates it requests, which runPdlDirectJob() itself
+    // sizes to whatever's actually affordable (and reserves budget for
+    // any still-pending Vertex/OpenAI query) — so it only needs to be
+    // blocked here once there is genuinely no room left at all.
+    if (job.source !== "pdl_person_search" && run.spend.estimatedUsd + COST_PER_GROUNDED_CALL_USD > run.providerCreditCapUsd) { stoppedReason = "provider_credit_cap_reached"; break; }
+    if (job.source === "pdl_person_search" && run.spend.estimatedUsd >= run.providerCreditCapUsd) { stoppedReason = "provider_credit_cap_reached"; break; }
     job.status = "in_progress";
     job.attempts += 1;
     try {
@@ -671,7 +775,13 @@ async function processNextBatch({ workspaceId, userId = null, auth = null, runId
     run.status = externallyChanged.status;
   } else {
     const allDone = run.nextJobIndex >= run.jobs.length && (!run.includePdlCrossReference || run.pdlCrossReferenceDone);
-    if (stoppedReason === "provider_credit_cap_reached" || stoppedReason === "daily_candidate_target_reached" || allDone) {
+    if (stoppedReason === "provider_credit_cap_reached") {
+      // Distinct from "completed" — a run stopped early by the budget cap
+      // must never be reported the same way as one that finished all its
+      // queued work.
+      run.status = "stopped_at_cap";
+      run.runSummary.explanation = buildRunExplanation(run, stoppedReason);
+    } else if (stoppedReason === "daily_candidate_target_reached" || allDone) {
       run.status = "completed";
       run.runSummary.explanation = buildRunExplanation(run, stoppedReason || "all_jobs_complete");
     } else {
@@ -682,16 +792,16 @@ async function processNextBatch({ workspaceId, userId = null, auth = null, runId
   run.leaseExpiresAt = null;
   await run.save();
 
-  if (run.status === "completed") {
+  if (run.status === "completed" || run.status === "stopped_at_cap") {
     await auditService.record({ workspaceId, actorUserId: userId, action: "provider.request", targetType: "PublicWebDiscoveryRun", targetId: run._id, after: { status: run.status, created: run.runSummary.created, merged: run.runSummary.merged }, provider: "public_web_discovery_engine", success: true });
   }
-  return { done: run.status === "completed", stepsRun, run };
+  return { done: run.status === "completed" || run.status === "stopped_at_cap", stepsRun, run };
 }
 
 function buildRunExplanation(run, stoppedReason) {
   const total = run.runSummary.created + run.runSummary.merged;
   const reasonText = {
-    provider_credit_cap_reached: `stopped early because the $${run.providerCreditCapUsd} provider credit cap was reached`,
+    provider_credit_cap_reached: `Stopped at budget cap — the $${run.providerCreditCapUsd} provider credit cap was reached ($${run.spend.estimatedUsd} spent)`,
     daily_candidate_target_reached: `stopped because the daily target of ${run.dailyCandidateTarget} was reached`,
     all_jobs_complete: "completed every queued search-family query",
   }[stoppedReason] || "completed";
@@ -701,8 +811,17 @@ function buildRunExplanation(run, stoppedReason) {
     run.runSummary.rejectedCrmDuplicate ? `${run.runSummary.rejectedCrmDuplicate} already in CRM` : "",
     run.runSummary.rejectedPreviouslyDismissed ? `${run.runSummary.rejectedPreviouslyDismissed} previously dismissed` : "",
     run.runSummary.rejectedSellerOrVendor ? `${run.runSummary.rejectedSellerOrVendor} coach/seller/vendor excluded from student search` : "",
+    run.runSummary.rejectedInvalidIdentity ? `${run.runSummary.rejectedInvalidIdentity} missing a usable name` : "",
+    run.runSummary.rejectedBudgetCap ? `${run.runSummary.rejectedBudgetCap} found but never evaluated (budget cap reached mid-batch)` : "",
   ].filter(Boolean).join(", ");
-  return `This run ${reasonText}: ${total} new/updated review-queue entries (${run.runSummary.created} new, ${run.runSummary.merged} merged) — ${tierText}. Only the recent tier may be treated as recent intent.${rejectedText ? ` Excluded: ${rejectedText}.` : ""}`;
+  // This must never happen after the cap fix above — surfaced loudly
+  // rather than silently folded into "0 accepted" the way the reported
+  // incident shipped (24 PDL candidates found, 0 accepted, no reason
+  // given anywhere in the report).
+  const invariantWarning = run.runSummary.unexplainedRejections
+    ? ` BUG: ${run.runSummary.unexplainedRejections} candidate(s) were found but not accounted for in any known outcome — this is an accounting defect, not a legitimate result.`
+    : "";
+  return `This run ${reasonText}: ${total} new/updated review-queue entries (${run.runSummary.created} new, ${run.runSummary.merged} merged) — ${tierText}. Only the recent tier may be treated as recent intent.${rejectedText ? ` Excluded: ${rejectedText}.` : ""}${invariantWarning}`;
 }
 
 async function runDueDiscoverySchedules(dependencies = {}) {
@@ -787,4 +906,7 @@ module.exports = {
   isLikelySellerOrVendor,
   isStudentSearchContext,
   acceptedCountForTarget,
+  computeReservedWebBudget,
+  reconcileUnexplainedRejections,
+  buildRunExplanation,
 };

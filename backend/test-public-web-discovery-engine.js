@@ -19,6 +19,7 @@ const { parseRobotsTxt, evaluateCrawlability, fetchPage, isNeverCrawlHost, looks
 const {
   computeFreshnessTier, extractIntentSignals, mergeDiscoveryCandidate, proposePublicWebDiscoveryRun, approvePublicWebDiscoveryRun, processNextBatch, runDueDiscoverySchedules,
   proposeStudentSearchPreset, interleaveJobsRoundRobin, estimateExpectedCounts, computeBudgetWarning, isLikelySellerOrVendor, isStudentSearchContext, acceptedCountForTarget,
+  computeReservedWebBudget, reconcileUnexplainedRejections, buildRunExplanation,
 } = publicWebDiscoveryEngineService;
 
 // ---- tiny generic in-memory Mongo-like helpers (shared across fakes) ----
@@ -382,9 +383,10 @@ async function testProcessNextBatchStopsAtProviderCreditCap() {
   const dependencies = { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, GroundingResearchResult, vertexGroundingService, openaiWebSearchService, Contact: fakeLookupModel([]), Organization: fakeLookupModel([]), getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }), isSelfMatch: () => ({ isSelf: false, reasons: [] }) };
 
   const outcome = await processNextBatch({ workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-1", batchSize: 5 }, dependencies);
-  assert.equal(outcome.run.status, "completed");
-  assert.ok(outcome.run.runSummary.explanation.includes("provider credit cap"), "the explanation must say the cap stopped the run, never imply everything was searched");
+  assert.equal(outcome.run.status, "stopped_at_cap", "a cap-stopped run must be labeled distinctly from a genuinely completed one");
+  assert.ok(outcome.run.runSummary.explanation.includes("Stopped at budget cap"), "the explanation must say the cap stopped the run, never imply everything was searched");
   assert.equal(run.nextJobIndex, 0, "the cap must stop the run BEFORE even the first job spends anything");
+  assert.equal(outcome.done, true, "a cap-stopped run must still be reported as done — no further automatic processing will occur");
 }
 
 async function testProcessNextBatchRetriesAFailedJobThenGivesUp() {
@@ -685,6 +687,118 @@ async function testRunPdlCrossReferenceIsLabeledDistinctlyFromTheDirectSource() 
   assert.equal(perSourceEntry.category, "cross_reference", "the cross-reference pass must be labeled distinctly from a direct PDL candidate-search job");
 }
 
+// ==================== reported incident: $1 cap, 24 PDL found, 0 accepted, 0 web calls ====================
+
+function testComputeReservedWebBudgetReservesForPendingVertexAndOpenai() {
+  const bothPending = { jobs: [{ source: "vertex", status: "pending" }, { source: "openai_web_search", status: "pending" }] };
+  assert.equal(computeReservedWebBudget(bothPending), 0.06, "both pending must reserve one call's cost each");
+  const onlyVertexPending = { jobs: [{ source: "vertex", status: "pending" }, { source: "openai_web_search", status: "completed" }] };
+  assert.equal(computeReservedWebBudget(onlyVertexPending), 0.03, "a completed job's source must no longer be reserved for");
+  const nonePending = { jobs: [{ source: "vertex", status: "completed" }, { source: "openai_web_search", status: "failed" }] };
+  assert.equal(computeReservedWebBudget(nonePending), 0, "nothing left to reserve once every web job is finished");
+  const pdlOnly = { jobs: [{ source: "pdl_person_search", status: "pending" }] };
+  assert.equal(computeReservedWebBudget(pdlOnly), 0, "a run with no web jobs at all reserves nothing");
+}
+
+function testReconcileUnexplainedRejectionsCatchesTheExactReportedGap() {
+  // The exact reported shape: PDL found 24, and — before this fix — none
+  // of them were ever evaluated (0 accepted, 0 named rejections).
+  const run = { runSummary: { unexplainedRejections: 0 } };
+  const perSourceEntry = { acceptedNew: 0, merged: 0, rejectedSelf: 0, rejectedCrm: 0, rejectedDismissed: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedBudgetCap: 0 };
+  const unexplained = reconcileUnexplainedRejections(run, perSourceEntry, 24);
+  assert.equal(unexplained, 24, "24 found with nothing accounted for must surface as exactly 24 unexplained, never silently reported as 0 accepted with no reason");
+  assert.equal(run.runSummary.unexplainedRejections, 24);
+  assert.equal(perSourceEntry.unexplained, 24);
+}
+
+function testReconcileUnexplainedRejectionsIsZeroWhenEveryCandidateIsAccountedFor() {
+  const run = { runSummary: { unexplainedRejections: 0 } };
+  const perSourceEntry = { acceptedNew: 5, merged: 2, rejectedSelf: 1, rejectedCrm: 1, rejectedDismissed: 1, rejectedSellerOrVendor: 1, rejectedInvalidIdentity: 1, rejectedBudgetCap: 0 };
+  const unexplained = reconcileUnexplainedRejections(run, perSourceEntry, 12);
+  assert.equal(unexplained, 0, "every candidate accounted for across accepted/merged/rejection buckets must leave zero unexplained");
+  assert.equal(run.runSummary.unexplainedRejections, 0);
+}
+
+function testBuildRunExplanationLabelsACapStopDistinctlyAndFlagsTheInvariantBug() {
+  const cappedRun = { providerCreditCapUsd: 1, spend: { estimatedUsd: 1 }, runSummary: { created: 0, merged: 0, byFreshnessTier: { recent: 0, aging: 0, evergreen: 0 }, rejectedSelfMatch: 0, rejectedCrmDuplicate: 0, rejectedPreviouslyDismissed: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedBudgetCap: 0, unexplainedRejections: 0 } };
+  const explanation = buildRunExplanation(cappedRun, "provider_credit_cap_reached");
+  assert.ok(explanation.includes("Stopped at budget cap"), "a cap-stopped run's explanation must say so explicitly, not just 'completed'");
+
+  const buggyRun = { providerCreditCapUsd: 1, spend: { estimatedUsd: 1 }, runSummary: { created: 0, merged: 0, byFreshnessTier: { recent: 0, aging: 0, evergreen: 0 }, rejectedSelfMatch: 0, rejectedCrmDuplicate: 0, rejectedPreviouslyDismissed: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedBudgetCap: 0, unexplainedRejections: 24 } };
+  const buggyExplanation = buildRunExplanation(buggyRun, "provider_credit_cap_reached");
+  assert.ok(/BUG/.test(buggyExplanation), "a nonzero unexplainedRejections must be called out explicitly as a bug in the explanation text, never silently absorbed");
+  assert.ok(buggyExplanation.includes("24"));
+}
+
+async function testProcessNextBatchReproducesTheReportedDollarCapPdlIncident() {
+  // Exact reported production shape: $1 hard cap, student-preset job
+  // order (PDL first, then one Vertex and one OpenAI intent-discussion
+  // query), PDL has 24 real candidates available.
+  const run = fakePublicWebDiscoveryRunModel([{
+    _id: "run-incident", workspaceId: WORKSPACE_ID, status: "queued",
+    jobs: [
+      { category: "people", query: "PDL Person Search", source: "pdl_person_search", locationHint: "", status: "pending", page: 0, maxPages: 1, attempts: 0, resultsCount: 0, acceptedCount: 0 },
+      { category: "intent_discussions", query: "recent post asking for help", source: "vertex", locationHint: "", status: "pending", page: 0, maxPages: 1, attempts: 0, resultsCount: 0, acceptedCount: 0 },
+      { category: "intent_discussions", query: "recent post asking for help (openai)", source: "openai_web_search", locationHint: "", status: "pending", page: 0, maxPages: 1, attempts: 0, resultsCount: 0, acceptedCount: 0 },
+    ],
+    nextJobIndex: 0, dailyCandidateTarget: 25, targetType: "person", pageLimitPerQuery: 1, queryLimitPerRun: 10, providerCreditCapUsd: 1,
+    includePdlCrossReference: false, pdlCrossReferenceDone: false, retryPolicy: { maxAttemptsPerJob: 2 },
+    estimatedCreditUse: {}, spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, estimatedUsd: 0 },
+    runSummary: { created: 0, merged: 0, rejectedSelfMatch: 0, rejectedCrmDuplicate: 0, rejectedPreviouslyDismissed: 0, rejectedAlreadyInQueue: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedBudgetCap: 0, unexplainedRejections: 0, personAccepted: 0, crawlBlockedByRobots: 0, crawlSkippedLoginWall: 0, crawlErrors: 0, byFreshnessTier: { recent: 0, aging: 0, evergreen: 0 }, perSource: [], explanation: "" },
+    programNoteId: "note-1",
+  }]).rows[0];
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([run]);
+  const GroundingResearchResult = fakeGroundingResultModel();
+  const JarvisMemoryNote = fakeNoteModel({ _id: "note-1", workspaceId: WORKSPACE_ID, title: "4-Month Multifamily Mentorship", content: "A coaching program for real estate investors." });
+  const runAgent = async () => ({ output: { titles: ["Real Estate Agent"], locations: [], industries: [] } });
+  let requestedPdlSize = null;
+  const peopleDataLabsService = { searchPeople: async ({ size }) => {
+    requestedPdlSize = size;
+    // A real provider that genuinely has 24 candidates available and
+    // respects the requested `size`, same as the reported incident.
+    return { people: Array.from({ length: Math.min(size, 24) }, (_, i) => ({ fullName: `Prospect ${i}`, company: "", companyDomain: "", linkedinUrl: `pdl-${i}`, email: "", emailState: "" })) };
+  } };
+  let vertexCalled = false;
+  let openaiCalled = false;
+  const vertexGroundingService = { groundedSearch: async () => { vertexCalled = true; return { results: [], groundingCitations: [] }; } };
+  const openaiWebSearchService = { groundedSearch: async () => { openaiCalled = true; return { results: [], groundingCitations: [] }; } };
+  const dependencies = { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, GroundingResearchResult, peopleDataLabsService, vertexGroundingService, openaiWebSearchService, runAgent, JarvisMemoryNote, Contact: fakeLookupModel([]), Organization: fakeLookupModel([]), getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }), isSelfMatch: () => ({ isSelf: false, reasons: [] }) };
+
+  const outcome = await processNextBatch({ workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-incident", batchSize: 5 }, dependencies);
+
+  assert.ok(requestedPdlSize < 25, `PDL must never be asked for the full daily target (25) when that would exceed the $1 cap once Vertex/OpenAI are reserved for — requested ${requestedPdlSize}`);
+  assert.ok(outcome.run.spend.estimatedUsd <= 1, `spend ($${outcome.run.spend.estimatedUsd}) must never exceed the $1 cap — the reported incident hit $1.20`);
+  assert.equal(vertexCalled, true, "at least one Vertex call must happen within the same $1 budget — PDL must not consume the entire cap before public-web discovery gets a turn");
+  assert.equal(openaiCalled, true, "at least one OpenAI call must happen within the same $1 budget");
+  assert.equal(outcome.run.runSummary.unexplainedRejections, 0, "every PDL candidate found must land in a real accepted/merged/rejected bucket — zero unexplained, unlike the reported incident");
+  const pdlEntry = outcome.run.runSummary.perSource.find((e) => e.source === "pdl_person_search" && e.category === "people");
+  assert.ok(pdlEntry, "the direct PDL job's contribution must be reported");
+  const accountedFor = pdlEntry.acceptedNew + pdlEntry.merged + pdlEntry.rejectedSelf + pdlEntry.rejectedCrm + pdlEntry.rejectedDismissed + pdlEntry.rejectedSellerOrVendor + pdlEntry.rejectedInvalidIdentity + pdlEntry.rejectedBudgetCap;
+  assert.equal(pdlEntry.entitiesExtracted, accountedFor, "every found PDL candidate must be accounted for in a named bucket, never silently reported as 0 accepted with no reason");
+  assert.ok(pdlEntry.acceptedNew > 0, "with real, non-excluded candidates, some must actually be accepted — not zero the way the reported incident showed");
+}
+
+async function testRunPdlDirectJobSkipsTheCallEntirelyWhenNoBudgetRemains() {
+  const run = fakePublicWebDiscoveryRunModel([{
+    _id: "run-nobudget", workspaceId: WORKSPACE_ID, status: "queued",
+    jobs: [{ category: "people", query: "PDL Person Search", source: "pdl_person_search", locationHint: "", status: "pending", page: 0, maxPages: 1, attempts: 0, resultsCount: 0, acceptedCount: 0 }],
+    nextJobIndex: 0, dailyCandidateTarget: 25, targetType: "person", pageLimitPerQuery: 1, queryLimitPerRun: 10, providerCreditCapUsd: 1,
+    includePdlCrossReference: false, pdlCrossReferenceDone: false, retryPolicy: { maxAttemptsPerJob: 2 },
+    estimatedCreditUse: {}, spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, estimatedUsd: 1 }, // already at the cap
+    runSummary: { created: 0, merged: 0, rejectedSelfMatch: 0, rejectedCrmDuplicate: 0, rejectedPreviouslyDismissed: 0, rejectedAlreadyInQueue: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedBudgetCap: 0, unexplainedRejections: 0, personAccepted: 0, crawlBlockedByRobots: 0, crawlSkippedLoginWall: 0, crawlErrors: 0, byFreshnessTier: { recent: 0, aging: 0, evergreen: 0 }, perSource: [], explanation: "" },
+    programNoteId: "note-1",
+  }]).rows[0];
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([run]);
+  let pdlCalled = false;
+  const peopleDataLabsService = { searchPeople: async () => { pdlCalled = true; return { people: [] }; } };
+  const dependencies = { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, GroundingResearchResult: fakeGroundingResultModel(), peopleDataLabsService, getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }), isSelfMatch: () => ({ isSelf: false, reasons: [] }) };
+
+  const outcome = await processNextBatch({ workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-nobudget", batchSize: 1 }, dependencies);
+
+  assert.equal(pdlCalled, false, "no PDL call may be made at all once there is genuinely no budget left — never begin a call whose cost would exceed the remaining cap");
+  assert.equal(outcome.run.status, "stopped_at_cap");
+}
+
 async function run() {
   testIsNeverCrawlHostBlocksFacebookAndLinkedinAlways();
   testParseRobotsTxtRespectsDisallowAllowAndLongestMatch();
@@ -723,6 +837,12 @@ async function run() {
   await testProposeStudentSearchPresetOrdersTiersAndAppliesSafeDefaults();
   await testRunPdlDirectJobActsAsIndependentCandidateSourceNotOnlyCrossReference();
   await testRunPdlCrossReferenceIsLabeledDistinctlyFromTheDirectSource();
+  testComputeReservedWebBudgetReservesForPendingVertexAndOpenai();
+  testReconcileUnexplainedRejectionsCatchesTheExactReportedGap();
+  testReconcileUnexplainedRejectionsIsZeroWhenEveryCandidateIsAccountedFor();
+  testBuildRunExplanationLabelsACapStopDistinctlyAndFlagsTheInvariantBug();
+  await testProcessNextBatchReproducesTheReportedDollarCapPdlIncident();
+  await testRunPdlDirectJobSkipsTheCallEntirelyWhenNoBudgetRemains();
   await testRunDueDiscoverySchedulesSkipsDisabledSchedules();
   await testRunDueDiscoverySchedulesProcessesAnEnabledDueSchedule();
   console.log("Public Web Discovery engine: robots.txt/rate-limit/login-wall/Facebook-LinkedIn-denylist crawler compliance (fails closed on unverifiable robots.txt, never fetches the page when disallowed), freshness TIERING (labels recent/aging/evergreen — never drops an old or undated lead), dedup against self-match/CRM/dismissed-records/previous-runs, checkpointed+resumable+retryable batch processing with a hard provider-credit-cap stop and an honest explanation, and a scheduler that never acts on a disabled schedule but genuinely runs an enabled+due one — all passed.");

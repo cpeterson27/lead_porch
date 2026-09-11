@@ -35,7 +35,10 @@ const JOB_CATEGORIES = ["people", "facebook_groups", "communities", "organizatio
 // "Find prospective students" preset, which puts it first in priority.
 const JOB_SOURCES = ["vertex", "openai_web_search", "pdl_person_search"];
 const JOB_STATUSES = ["pending", "in_progress", "completed", "failed", "skipped"];
-const RUN_STATUSES = ["draft", "queued", "running", "paused", "completed", "failed", "canceled"];
+// "stopped_at_cap" is distinct from "completed" — a run that stopped
+// early because the provider credit cap was reached must never be
+// reported the same way as one that genuinely finished all its work.
+const RUN_STATUSES = ["draft", "queued", "running", "paused", "completed", "stopped_at_cap", "failed", "canceled"];
 
 const jobSchema = new mongoose.Schema({
   category: { type: String, enum: JOB_CATEGORIES, required: true },
@@ -126,6 +129,28 @@ const publicWebDiscoveryRunSchema = new mongoose.Schema({
     // include organizers, brokers, etc., and stay in their own
     // separately-labeled category.
     rejectedSellerOrVendor: { type: Number, default: 0 },
+    // A candidate PDL/Apollo returned with no usable name — cannot be
+    // staged as a review-queue row (name is required) — rejected here
+    // explicitly rather than throwing and silently failing the whole job.
+    rejectedInvalidIdentity: { type: Number, default: 0 },
+    // A candidate a provider genuinely returned but that was never
+    // evaluated because the credit cap was reached mid-batch — distinct
+    // from every rejection reason above, which all mean a candidate WAS
+    // evaluated and didn't qualify. Should be rare-to-zero now that the
+    // cap is enforced BEFORE each call (see computeReservedWebBudget()/
+    // the pre-call affordability check in
+    // publicWebDiscoveryEngineService.js) — kept as an honest fallback
+    // bucket rather than ever silently dropping a found-but-unprocessed
+    // candidate the way the original bug did (24 found, 0 accepted, no
+    // reason given).
+    rejectedBudgetCap: { type: Number, default: 0 },
+    // Safety-net invariant: found candidates that ended up in NEITHER an
+    // accepted/merged outcome NOR any named rejection bucket above. This
+    // must always be 0 — a nonzero value is a bug in the accounting
+    // itself, never a legitimate outcome, and is called out explicitly in
+    // the run explanation rather than being folded into "0 accepted" with
+    // no reason, which is exactly what shipped in the reported incident.
+    unexplainedRejections: { type: Number, default: 0 },
     // Accepted (created OR merged) candidates of type "person" specifically
     // — the basis for targetType:"person" runs, where the target is a
     // people count, not a mix of people and communities/organizations.
