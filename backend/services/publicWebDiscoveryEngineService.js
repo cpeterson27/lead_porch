@@ -841,92 +841,137 @@ async function processNextBatch({ workspaceId, userId = null, auth = null, runId
   );
   if (!run) return { done: true, reason: "not_runnable_or_leased" };
 
-  const selfSignals = await (dependencies.getWorkspaceSelfSignals || workspaceSelfExclusionService.getWorkspaceSelfSignals)({ workspaceId }, dependencies);
-  let stoppedReason = "";
+  // Everything below (self-exclusion lookup, the PDL phase, the web-job
+  // loop, and deciding the final status) is wrapped in one try/catch — a
+  // failure ANYWHERE in here previously propagated uncaught out of this
+  // function, leaving the run stuck with the "running" lease acquired
+  // above (or, from the owner's view, stale at whatever it was before)
+  // and no persisted explanation: a generic "Unable to run this
+  // discovery run" with nothing to act on. Every failure now gets
+  // sanitized, persisted onto the run (lastFailureCode/lastFailureMessage),
+  // and the lease is always released, so a pre-provider-call failure is
+  // never left looking like a normal, silent "queued" state.
   let stepsRun = 0;
+  try {
+    const selfSignals = await (dependencies.getWorkspaceSelfSignals || workspaceSelfExclusionService.getWorkspaceSelfSignals)({ workspaceId }, dependencies);
+    let stoppedReason = "";
 
-  // The direct PDL Person Search phase runs at most once per run, before
-  // any web job, and independently of the web job loop/queryLimitPerRun —
-  // gated solely by includePdlPersonSearch (see model comment) and priced
-  // in its own credits, never the web cash cap below.
-  if (run.includePdlPersonSearch && !run.pdlPersonSearchDone) {
-    await runPdlPersonSearchPhase({ workspaceId, userId, auth, run, selfSignals, correlationId }, dependencies);
-    stepsRun += 1;
-  }
+    // The direct PDL Person Search phase runs at most once per run, before
+    // any web job, and independently of the web job loop/queryLimitPerRun —
+    // gated solely by includePdlPersonSearch (see model comment) and priced
+    // in its own credits, never the web cash cap below.
+    if (run.includePdlPersonSearch && !run.pdlPersonSearchDone) {
+      await runPdlPersonSearchPhase({ workspaceId, userId, auth, run, selfSignals, correlationId }, dependencies);
+      stepsRun += 1;
+    }
 
-  while (stepsRun < batchSize) {
-    if (acceptedCountForTarget(run) >= run.dailyCandidateTarget) { stoppedReason = "daily_candidate_target_reached"; break; }
-    if (run.nextJobIndex >= run.jobs.length) {
-      if (run.includePdlCrossReference && !run.pdlCrossReferenceDone) {
-        // runPdlCrossReference() does its own precise pre-call credit check
-        // internally — no separate gate needed here.
-        // eslint-disable-next-line no-await-in-loop
-        await runPdlCrossReference({ workspaceId, userId, auth, run, selfSignals, correlationId }, dependencies);
+    while (stepsRun < batchSize) {
+      if (acceptedCountForTarget(run) >= run.dailyCandidateTarget) { stoppedReason = "daily_candidate_target_reached"; break; }
+      if (run.nextJobIndex >= run.jobs.length) {
+        if (run.includePdlCrossReference && !run.pdlCrossReferenceDone) {
+          // runPdlCrossReference() does its own precise pre-call credit check
+          // internally — no separate gate needed here.
+          // eslint-disable-next-line no-await-in-loop
+          await runPdlCrossReference({ workspaceId, userId, auth, run, selfSignals, correlationId }, dependencies);
+        }
+        stoppedReason = "all_jobs_complete";
+        break;
       }
-      stoppedReason = "all_jobs_complete";
-      break;
+      const job = run.jobs[run.nextJobIndex];
+      // run.jobs only ever holds Vertex/OpenAI web-search jobs now (PDL is
+      // the independent phase above) — a real HARD cap: stop before the next
+      // call would push web cash spend over providerCreditCapUsd, not only
+      // after it already has.
+      if (run.spend.estimatedUsd + COST_PER_GROUNDED_CALL_USD > run.providerCreditCapUsd) { stoppedReason = "provider_credit_cap_reached"; break; }
+      job.status = "in_progress";
+      job.attempts += 1;
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        await runJob({ workspaceId, userId, auth, run, job, selfSignals, correlationId }, dependencies);
+        job.status = job.page + 1 >= job.maxPages ? "completed" : "pending";
+        if (job.status === "pending") job.page += 1; else run.nextJobIndex += 1;
+      } catch (error) {
+        job.lastError = clean(error.message, 500);
+        if (job.attempts >= run.retryPolicy.maxAttemptsPerJob) { job.status = "failed"; run.nextJobIndex += 1; }
+        else job.status = "pending";
+        run.runSummary.crawlErrors += 1;
+      }
+      stepsRun += 1;
     }
-    const job = run.jobs[run.nextJobIndex];
-    // run.jobs only ever holds Vertex/OpenAI web-search jobs now (PDL is
-    // the independent phase above) — a real HARD cap: stop before the next
-    // call would push web cash spend over providerCreditCapUsd, not only
-    // after it already has.
-    if (run.spend.estimatedUsd + COST_PER_GROUNDED_CALL_USD > run.providerCreditCapUsd) { stoppedReason = "provider_credit_cap_reached"; break; }
-    job.status = "in_progress";
-    job.attempts += 1;
-    try {
-      // eslint-disable-next-line no-await-in-loop
-      await runJob({ workspaceId, userId, auth, run, job, selfSignals, correlationId }, dependencies);
-      job.status = job.page + 1 >= job.maxPages ? "completed" : "pending";
-      if (job.status === "pending") job.page += 1; else run.nextJobIndex += 1;
-    } catch (error) {
-      job.lastError = clean(error.message, 500);
-      if (job.attempts >= run.retryPolicy.maxAttemptsPerJob) { job.status = "failed"; run.nextJobIndex += 1; }
-      else job.status = "pending";
-      run.runSummary.crawlErrors += 1;
-    }
-    stepsRun += 1;
-  }
 
-  // The owner may have clicked Pause or Cancel WHILE this batch's own
-  // provider/crawl calls were still in flight — the pause/cancel endpoints
-  // don't hold this run's lease, so they can (and should be able to)
-  // change status without waiting for us. Re-check the persisted status
-  // right before committing so this tick's own "queued"/"completed"
-  // conclusion never silently overwrites an externally-requested pause or
-  // cancel — the real progress made this tick (jobs advanced, candidates
-  // staged, spend counted) is still saved either way, just under whichever
-  // status the owner actually asked for.
-  const externallyChanged = await Model.findOne({ _id: run._id, workspaceId });
-  if (externallyChanged && (externallyChanged.status === "paused" || externallyChanged.status === "canceled")) {
-    run.status = externallyChanged.status;
-  } else {
-    const allDone = run.nextJobIndex >= run.jobs.length
-      && (!run.includePdlCrossReference || run.pdlCrossReferenceDone)
-      && (!run.includePdlPersonSearch || run.pdlPersonSearchDone);
-    if (stoppedReason === "provider_credit_cap_reached") {
-      // Distinct from "completed" — a run stopped early by the budget cap
-      // must never be reported the same way as one that finished all its
-      // queued work.
-      run.status = "stopped_at_cap";
-      run.runSummary.explanation = buildRunExplanation(run, stoppedReason);
-      run.runSummary.zeroCallReasons = explainZeroCallProviders(run);
-    } else if (stoppedReason === "daily_candidate_target_reached" || allDone) {
-      run.status = "completed";
-      run.runSummary.explanation = buildRunExplanation(run, stoppedReason || "all_jobs_complete");
-      run.runSummary.zeroCallReasons = explainZeroCallProviders(run);
+    // The owner may have clicked Pause or Cancel WHILE this batch's own
+    // provider/crawl calls were still in flight — the pause/cancel endpoints
+    // don't hold this run's lease, so they can (and should be able to)
+    // change status without waiting for us. Re-check the persisted status
+    // right before committing so this tick's own "queued"/"completed"
+    // conclusion never silently overwrites an externally-requested pause or
+    // cancel — the real progress made this tick (jobs advanced, candidates
+    // staged, spend counted) is still saved either way, just under whichever
+    // status the owner actually asked for.
+    const externallyChanged = await Model.findOne({ _id: run._id, workspaceId });
+    if (externallyChanged && (externallyChanged.status === "paused" || externallyChanged.status === "canceled")) {
+      run.status = externallyChanged.status;
     } else {
-      run.status = "queued"; // still has work left for the next tick
+      const allDone = run.nextJobIndex >= run.jobs.length
+        && (!run.includePdlCrossReference || run.pdlCrossReferenceDone)
+        && (!run.includePdlPersonSearch || run.pdlPersonSearchDone);
+      if (stoppedReason === "provider_credit_cap_reached") {
+        // Distinct from "completed" — a run stopped early by the budget cap
+        // must never be reported the same way as one that finished all its
+        // queued work.
+        run.status = "stopped_at_cap";
+        run.runSummary.explanation = buildRunExplanation(run, stoppedReason);
+        run.runSummary.zeroCallReasons = explainZeroCallProviders(run);
+      } else if (stoppedReason === "daily_candidate_target_reached" || allDone) {
+        run.status = "completed";
+        run.runSummary.explanation = buildRunExplanation(run, stoppedReason || "all_jobs_complete");
+        run.runSummary.zeroCallReasons = explainZeroCallProviders(run);
+      } else {
+        run.status = "queued"; // still has work left for the next tick
+      }
     }
+    // This tick reached a normal conclusion — clear any earlier failure
+    // record and the consecutive-failure counter so a transient problem
+    // from a prior tick never lingers on a run that has since recovered.
+    run.lastFailureCode = "";
+    run.lastFailureMessage = "";
+    run.consecutiveFailureCount = 0;
+  } catch (error) {
+    // Everything above failed BEFORE reaching a normal conclusion — no job
+    // progress, spend, or checkpoint change from THIS tick needs undoing
+    // (nothing in the try block persists until the save below), so it is
+    // always safe to resume from the existing checkpoint. Only mark the
+    // run "failed" (stop offering "Continue running") once the SAME class
+    // of failure has now happened several ticks in a row, since retrying
+    // a persistent, non-transient problem indefinitely would just waste
+    // the owner's clicks with no real chance of succeeding.
+    const failCount = (run.consecutiveFailureCount || 0) + 1;
+    run.lastFailureCode = clean(error.code || "PROCESS_BATCH_FAILED", 100);
+    run.lastFailureMessage = clean(error.message || "An unexpected error stopped this run before any provider call.", 500);
+    run.lastFailureAt = new Date();
+    run.consecutiveFailureCount = failCount;
+    run.status = failCount >= 3 ? "failed" : "queued";
+    stepsRun = 0;
   }
   run.leaseOwner = "";
   run.leaseExpiresAt = null;
   await run.save();
 
   if (run.status === "completed" || run.status === "stopped_at_cap") {
-    await auditService.record({ workspaceId, actorUserId: userId, action: "provider.request", targetType: "PublicWebDiscoveryRun", targetId: run._id, after: { status: run.status, created: run.runSummary.created, merged: run.runSummary.merged }, provider: "public_web_discovery_engine", success: true });
+    try {
+      await auditService.record({ workspaceId, actorUserId: userId, action: "provider.request", targetType: "PublicWebDiscoveryRun", targetId: run._id, after: { status: run.status, created: run.runSummary.created, merged: run.runSummary.merged }, provider: "public_web_discovery_engine", success: true });
+    } catch (_auditError) {
+      // Audit logging is best-effort and must never affect a run's own
+      // already-saved outcome — see the "[Audit] write skipped" pattern
+      // auditService itself already logs on failure.
+    }
   }
-  return { done: run.status === "completed" || run.status === "stopped_at_cap", stepsRun, run };
+  const failed = Boolean(run.lastFailureMessage);
+  return {
+    done: run.status === "completed" || run.status === "stopped_at_cap" || run.status === "failed" || failed,
+    stepsRun, run,
+    error: failed ? { code: run.lastFailureCode, message: run.lastFailureMessage } : undefined,
+  };
 }
 
 /**

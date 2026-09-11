@@ -925,6 +925,84 @@ function testComputeRunPlanPreviewUsesTheExactFinalizedJobPlanNotTheUnslicedDraf
   assert.ok(nothingConfiguredPreview.validationError, "no web queries and both PDL sources off must be flagged as a conflict — nothing is configured to run");
 }
 
+// ==================== reported incident: an exception before any provider call left the run stuck with no explanation ====================
+
+/**
+ * Reproduces the exact reported failure: clicking "Run once now" on a
+ * verified-valid plan (PDL off, query limit 2, $0.10 cap) triggered
+ * "Unable to run this discovery run" with zero PDL credits/Vertex
+ * calls/OpenAI calls/spend recorded — i.e. something failed BEFORE
+ * runJob() ever reached a provider, and the run was left looking like
+ * nothing had happened. Simulates that by making getWorkspaceSelfSignals
+ * (the one real, unmocked, un-try/catch-wrapped call before the job loop)
+ * throw, and asserts the run is left safely resumable with a persisted,
+ * actionable failure record instead of silently stuck.
+ */
+async function testProcessNextBatchPersistsASanitizedFailureAndStaysSafelyResumableForAPreProviderCrash() {
+  const run = buildQueuedRun({ providerCreditCapUsd: 0.1, retryPolicy: { maxAttemptsPerJob: 1 } });
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([run]);
+  const vertexGroundingService = { groundedSearch: async () => { throw new Error("must never be called before the pre-loop failure is handled"); } };
+  const openaiWebSearchService = { groundedSearch: async () => { throw new Error("must never be called before the pre-loop failure is handled"); } };
+  const failingDependencies = {
+    PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, GroundingResearchResult: fakeGroundingResultModel(), vertexGroundingService, openaiWebSearchService,
+    Contact: fakeLookupModel([]), Organization: fakeLookupModel([]),
+    getWorkspaceSelfSignals: async () => { const error = new Error("Self-exclusion lookup failed: WorkspaceConfig connection reset"); error.code = "SELF_SIGNALS_LOOKUP_FAILED"; throw error; },
+    isSelfMatch: () => ({ isSelf: false, reasons: [] }),
+  };
+
+  const outcome1 = await processNextBatch({ workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-1", batchSize: 3 }, failingDependencies);
+
+  assert.equal(outcome1.done, true, "a pre-provider failure must be reported as done — the frontend must stop retrying internally and surface the error instead of looping");
+  assert.ok(outcome1.error, "the outcome must carry a structured, actionable error");
+  assert.equal(outcome1.error.code, "SELF_SIGNALS_LOOKUP_FAILED");
+  assert.ok(outcome1.error.message.includes("Self-exclusion lookup failed"), "the real sanitized message must be surfaced, not a generic string");
+  assert.equal(outcome1.run.lastFailureCode, "SELF_SIGNALS_LOOKUP_FAILED", "the failure code must be persisted on the run itself, not only on the transient response");
+  assert.equal(outcome1.run.lastFailureMessage, "Self-exclusion lookup failed: WorkspaceConfig connection reset");
+  assert.equal(outcome1.run.status, "queued", "a single pre-provider failure must stay safely resumable, never silently look like a normal queued run with no explanation");
+  assert.equal(outcome1.run.leaseOwner, "", "the lease must always be released, even on failure — never left stuck");
+  assert.equal(outcome1.run.nextJobIndex, 0, "the checkpoint must be untouched — nothing was actually attempted, so Continue must resume the SAME jobs, never regenerate or skip any");
+  assert.equal(outcome1.run.spend.vertexCalls, 0, "no provider call may have happened — the failure occurred before any");
+  assert.equal(outcome1.run.spend.openaiCalls, 0);
+  assert.equal(outcome1.run.spend.estimatedUsd, 0);
+  assert.equal(outcome1.run.consecutiveFailureCount, 1);
+
+  // A second and third consecutive failure (still no provider ever
+  // called) must eventually stop offering automatic resumption — a
+  // persistent problem should tell the owner plainly rather than invite
+  // indefinite retrying.
+  await processNextBatch({ workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-1", batchSize: 3 }, failingDependencies);
+  const outcome3 = await processNextBatch({ workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-1", batchSize: 3 }, failingDependencies);
+  assert.equal(outcome3.run.consecutiveFailureCount, 3);
+  assert.equal(outcome3.run.status, "failed", "three consecutive pre-provider failures must mark the run failed rather than resumable forever");
+
+  // A "failed" run must not be silently picked up again — no lease can be
+  // acquired for it (status is no longer queued/running).
+  const outcomeAfterFailed = await processNextBatch({ workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-1", batchSize: 3 }, failingDependencies);
+  assert.equal(outcomeAfterFailed.reason, "not_runnable_or_leased", "a run already marked failed must never be auto-resumed");
+}
+
+/** A run that recovers on its very next tick must have its failure record cleared, not left stale forever. */
+async function testProcessNextBatchClearsAPriorFailureRecordOnceATickSucceeds() {
+  const run = buildQueuedRun({ lastFailureCode: "SELF_SIGNALS_LOOKUP_FAILED", lastFailureMessage: "stale error from a prior tick", consecutiveFailureCount: 1 });
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([run]);
+  const GroundingResearchResult = fakeGroundingResultModel();
+  const dependencies = {
+    PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, GroundingResearchResult,
+    vertexGroundingService: { groundedSearch: async () => ({ results: [], groundingCitations: [] }) },
+    openaiWebSearchService: { groundedSearch: async () => ({ results: [], groundingCitations: [] }) },
+    Contact: fakeLookupModel([]), Organization: fakeLookupModel([]),
+    getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }),
+    isSelfMatch: () => ({ isSelf: false, reasons: [] }),
+  };
+
+  const outcome = await processNextBatch({ workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-1", batchSize: 5 }, dependencies);
+
+  assert.equal(outcome.run.lastFailureCode, "", "a successful tick must clear a stale failure code from an earlier attempt");
+  assert.equal(outcome.run.lastFailureMessage, "");
+  assert.equal(outcome.run.consecutiveFailureCount, 0);
+  assert.equal(outcome.error, undefined, "a successful outcome must carry no error");
+}
+
 async function run() {
   testIsNeverCrawlHostBlocksFacebookAndLinkedinAlways();
   testParseRobotsTxtRespectsDisallowAllowAndLongestMatch();
@@ -971,6 +1049,8 @@ async function run() {
   await testRunPdlPersonSearchPhaseSkipsTheCallEntirelyWhenCreditLimitReached();
   await testToggledOffPdlNeverRunsAndALowQueryLimitStillGivesEachWebProviderATurn();
   testComputeRunPlanPreviewUsesTheExactFinalizedJobPlanNotTheUnslicedDraftCollection();
+  await testProcessNextBatchPersistsASanitizedFailureAndStaysSafelyResumableForAPreProviderCrash();
+  await testProcessNextBatchClearsAPriorFailureRecordOnceATickSucceeds();
   await testRunDueDiscoverySchedulesSkipsDisabledSchedules();
   await testRunDueDiscoverySchedulesProcessesAnEnabledDueSchedule();
   console.log("Public Web Discovery engine: robots.txt/rate-limit/login-wall/Facebook-LinkedIn-denylist crawler compliance (fails closed on unverifiable robots.txt, never fetches the page when disallowed), freshness TIERING (labels recent/aging/evergreen — never drops an old or undated lead), dedup against self-match/CRM/dismissed-records/previous-runs, checkpointed+resumable+retryable batch processing with a hard provider-credit-cap stop and an honest explanation, and a scheduler that never acts on a disabled schedule but genuinely runs an enabled+due one — all passed.");

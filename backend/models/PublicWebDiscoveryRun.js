@@ -213,6 +213,20 @@ const publicWebDiscoveryRunSchema = new mongoose.Schema({
   // the scheduler) processing the same run concurrently.
   leaseOwner: { type: String, default: "" },
   leaseExpiresAt: { type: Date, default: null },
+  // Set only when a processNextBatch() tick fails for a reason OUTSIDE a
+  // single job's own retryable try/catch (e.g. a self-exclusion lookup or
+  // save failing) — never left as a silently-stuck "running"/"queued" run
+  // with no explanation the way a reported incident did. Cleared on the
+  // next tick that completes without this class of failure.
+  lastFailureCode: { type: String, default: "", trim: true, maxlength: 100 },
+  lastFailureMessage: { type: String, default: "", trim: true, maxlength: 500 },
+  lastFailureAt: { type: Date, default: null },
+  // How many of these cross-cutting failures have happened BACK TO BACK
+  // (reset to 0 by any tick that completes normally) — once this reaches
+  // a small threshold, processNextBatch marks the run "failed" instead of
+  // leaving it "queued" for an owner to keep retrying a persistent,
+  // non-transient problem indefinitely.
+  consecutiveFailureCount: { type: Number, default: 0 },
   approvedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   approvedAt: { type: Date, default: null },
   createdByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },

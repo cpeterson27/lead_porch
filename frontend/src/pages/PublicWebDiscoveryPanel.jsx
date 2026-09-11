@@ -82,6 +82,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
   const [scheduleBusy, setScheduleBusy] = useState({});
   const [planPreviewByRun, setPlanPreviewByRun] = useState({}); // runId -> the EXACT finalized-job-plan preview from the backend
   const stopFlags = useRef({});
+  const runInFlight = useRef({}); // synchronous re-entrancy guard — see runOnceNow
 
   useEffect(() => {
     fetchLeadGenerationPrograms().then((res) => setPrograms(res.data || [])).catch(() => {});
@@ -190,12 +191,19 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
   /**
    * "Run once now": approves the run if still a draft, then repeatedly
    * processes bounded batches — never one giant blocking call — until the
-   * run reports done (completed, a cap was hit, or it failed) or the owner
-   * pauses/cancels. Never activates a schedule; this is a one-off, explicit
-   * run the owner triggered themselves.
+   * run reports done (completed, a cap was hit, failed, or a single tick
+   * failed before reaching any provider) or the owner pauses/cancels.
+   * Never activates a schedule; this is a one-off, explicit run the owner
+   * triggered themselves.
+   *
+   * runInFlight (a ref, checked/set synchronously) is the real guard
+   * against a double-click starting a second overlapping request — the
+   * runBusy STATE below only drives the button's visual disabled/loading
+   * look, which can lag a render behind a very fast second click.
    */
   const runOnceNow = async (run) => {
-    if (runBusy[run._id]) return;
+    if (runInFlight.current[run._id]) return;
+    runInFlight.current[run._id] = true;
     setRunBusy((current) => ({ ...current, [run._id]: "running" }));
     stopFlags.current[run._id] = false;
     setError("");
@@ -207,12 +215,21 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
         current = outcome.data.run;
         updateRunInState(current);
         iterations += 1;
+        // A tick can now fail before reaching any provider call and still
+        // resolve normally (never throwing) — its sanitized, persisted
+        // failure is carried on both outcome.data.error and current
+        // itself (current.lastFailureMessage), so it survives a later
+        // page refresh too. Surface it here immediately and stop this
+        // click's loop — one click, one attempt, never a silent internal
+        // retry storm against a persistent problem.
+        if (outcome.data.error) { setError(outcome.data.error.message || "Unable to run this discovery run."); }
         if (outcome.data.done) break;
       }
       onResultsChanged?.();
     } catch (err) {
       setError(err.response?.data?.error || "Unable to run this discovery run.");
     } finally {
+      runInFlight.current[run._id] = false;
       setRunBusy((current) => ({ ...current, [run._id]: "" }));
     }
   };
@@ -444,6 +461,14 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
             ) : (
               <div className="leadgen-run-status-detail">
                 <p>Checkpoint: job {Math.min(run.nextJobIndex + 1, totalJobs)} of {totalJobs}{currentJob ? ` — "${currentJob.query}" (page ${currentJob.page + 1} of ${currentJob.maxPages})` : ""}</p>
+                {run.lastFailureMessage ? (
+                  <p className="form-error leadgen-run-explanation">
+                    Last attempt failed ({run.lastFailureCode || "error"}): {run.lastFailureMessage}
+                    {run.status === "failed"
+                      ? " — this happened 3 times in a row, so this run will not resume automatically. Review your settings and propose a new run once the underlying problem is fixed."
+                      : " — nothing was spent and your checkpoint is unchanged; Continue running below will safely retry from here."}
+                  </p>
+                ) : null}
                 {run.runSummary?.explanation ? <p className="leadgen-run-explanation">{run.runSummary.explanation}</p> : null}
                 <dl className="leadgen-review-summary">
                   <dt>PDL Person Search credits used</dt><dd>{run.spend?.pdlPersonSearchCredits || 0} of {run.maxPdlPersonSearchCredits} max{!run.includePdlPersonSearch ? " (off)" : ""}</dd>
