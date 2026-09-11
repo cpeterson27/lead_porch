@@ -56,7 +56,10 @@
 const mongoose = require("mongoose");
 const workspacePlugin = require("../tenancy/workspacePlugin");
 
-const RESULT_TYPES = ["person", "organization", "event", "community"];
+// "forum"/"podcast"/"directory" added for the Public Web Discovery engine
+// (services/publicWebDiscoveryEngineService.js) — additive, existing values
+// and every existing row's `type` are unaffected.
+const RESULT_TYPES = ["person", "organization", "event", "community", "forum", "podcast", "directory"];
 
 const groundingResearchResultSchema = new mongoose.Schema({
   query: { type: String, required: true, trim: true, maxlength: 2000 },
@@ -89,8 +92,34 @@ const groundingResearchResultSchema = new mongoose.Schema({
   providers: { type: [String], enum: ["vertex_grounding", "openai_web_search", "people_data_labs", "openai_jarvis", "pdl_person_search", "apollo_person_search", "apollo"], default: [] },
   // "public_web_evidence" (Vertex/OpenAI, subject to the evidenceDate
   // freshness gate) vs "icp_match" (PDL/Apollo Person Search, matched
-  // against a program ICP — no evidence date/URL concept applies).
-  discoveryMode: { type: String, enum: ["public_web_evidence", "icp_match"], default: "public_web_evidence" },
+  // against a program ICP — no evidence date/URL concept applies) vs
+  // "public_web_high_volume" (services/publicWebDiscoveryEngineService.js —
+  // many search-family queries per program, crawled citations, LABELED
+  // freshness tiers instead of a hard evidenceDate cutoff; see
+  // `freshnessTier` below). The high-volume engine writes its own rows
+  // through its own merge path — it never calls into, and never weakens,
+  // vertexGroundingDiscoveryService.js's existing freshness gate.
+  discoveryMode: { type: String, enum: ["public_web_evidence", "icp_match", "public_web_high_volume"], default: "public_web_evidence" },
+  // Which Public Web Discovery search-family category (see
+  // publicWebDiscoveryEngineService.js's JOB_CATEGORIES) produced this row,
+  // if any — purely for per-source/per-category reporting.
+  discoveryCategory: { type: String, default: "", trim: true, maxlength: 60 },
+  // Set only for discoveryMode "public_web_high_volume": a labeled
+  // freshness tier rather than a hard include/exclude gate — an older or
+  // undated identity lead is kept and labeled, never deleted. Only
+  // "recent" (0-90 days) may ever be described to the owner as "recent
+  // intent"; "aging" (91-365 days) and "evergreen" (no date, or older than
+  // 365 days) are shown as exactly that, never mislabeled as recent.
+  freshnessTier: { type: String, enum: ["recent", "aging", "evergreen"], default: null },
+  // Short, evidence-grounded notes on why this row suggests real buyer
+  // intent (e.g. "asked for program recommendations in a public post") —
+  // populated only by the high-volume engine's structured extraction step,
+  // never invented beyond what the cited page actually said.
+  intentSignals: { type: [String], default: [] },
+  // Which Public Web Discovery run (services/publicWebDiscoveryEngineService.js)
+  // produced/merged into this row, if any — nullable, for traceability and
+  // per-run reporting, parallel to discoverySearchId above.
+  discoveryRunId: { type: mongoose.Schema.Types.ObjectId, ref: "PublicWebDiscoveryRun", default: null },
   linkedinUrl: { type: String, default: "", trim: true, maxlength: 500 },
   socialProfileUrls: { type: [String], default: [] },
   // Which discovery search (services/leadGenerationCoordinatorService.js)

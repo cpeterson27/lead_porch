@@ -47,7 +47,11 @@ const Organization = require("../models/Organization");
 const BASE_URL = "https://generativelanguage.googleapis.com/v1beta";
 const CIRCUIT_WORKSPACE_CONTEXT = "gemini_workspace_context";
 const CIRCUIT_GROUNDING = "gemini_grounding";
-const RESULT_TYPES = ["person", "organization", "event", "community", "intent_signal"];
+// "forum"/"podcast"/"directory" added for the Public Web Discovery engine
+// (services/publicWebDiscoveryEngineService.js) — purely additive; every
+// existing caller passes its own explicit subset of resultTypes, so this
+// never changes what an existing search actually requests.
+const RESULT_TYPES = ["person", "organization", "event", "community", "forum", "podcast", "directory", "intent_signal"];
 const clean = (value, length) => String(value || "").trim().slice(0, length);
 
 function masterEnabled() {

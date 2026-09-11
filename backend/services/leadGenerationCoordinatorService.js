@@ -740,4 +740,9 @@ module.exports = {
   buildPdlSql,
   buildApolloFilters,
   buildRunExplanation,
+  // Exported for reuse by services/publicWebDiscoveryEngineService.js's PDL
+  // cross-reference pass — so a PDL candidate found there is normalized
+  // (and email-shape-sanitized) by the exact same, already-tested logic
+  // used here, rather than a second copy that could silently drift.
+  normalizePdlCandidate,
 };

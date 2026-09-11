@@ -55,12 +55,14 @@ const paymentsRouter = require("./routes/payments");
 const systemAgentRouter = require("./routes/systemAgent");
 const providersRouter = require("./routes/providers");
 const leadGenerationRouter = require("./routes/leadGeneration");
+const publicWebDiscoveryRouter = require("./routes/publicWebDiscovery");
 const { requireAuth } = require("./middleware/auth");
 const { restrictNewRoleSurface } = require("./middleware/authorization");
 const { startResearchMonitorRunner } = require("./services/researchMonitorService");
 const { startCommunicationJobRunner } = require("./services/communicationJobRunner");
 const { startAutomationRunner } = require("./services/automationRunner");
 const { startSocialPublishingRunner } = require("./services/socialPublishingRunner");
+const { startPublicWebDiscoveryRunner } = require("./services/publicWebDiscoveryEngineService");
 
 const app = express();
 
@@ -247,6 +249,7 @@ connectDatabase(mongoUri)
     app.use("/api/system-agent", systemAgentRouter);
     app.use("/api/providers", providersRouter);
     app.use("/api/lead-generation", leadGenerationRouter);
+    app.use("/api/public-web-discovery", publicWebDiscoveryRouter);
 
     app.get("/api/health", (req, res) => {
       res.json({
@@ -289,6 +292,10 @@ connectDatabase(mongoUri)
       startCommunicationJobRunner();
       startAutomationRunner();
       startSocialPublishingRunner();
+      // Safe to start unconditionally — see startPublicWebDiscoveryRunner()'s
+      // own header: it only ever acts on DiscoverySchedule docs with
+      // enabled:true, and every schedule defaults to enabled:false.
+      startPublicWebDiscoveryRunner();
     });
 
     server.on("error", (error) => {
