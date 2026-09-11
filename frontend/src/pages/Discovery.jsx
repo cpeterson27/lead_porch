@@ -102,6 +102,28 @@ const displayText = (value) => String(value || "")
   .replace(/&amp;/g, "&").replace(/&quot;/g, '"').replace(/&#39;/g, "'")
   .replace(/\s+/g, " ").trim();
 
+const DISCOVERY_LANES = [
+  ["prospective_students", "Prospective students", "People with a plausible program fit or current learning signal."],
+  ["communities", "Communities & partnerships", "Groups, events, directories, and organizations that need a partnership approach."],
+  ["competitors", "Competitor intelligence", "Coaches, programs, and competing education offers to review—not contact."],
+  ["content", "Content intelligence", "Podcasts, forums, and useful market conversations for research."],
+  ["vendors", "Vendors", "Brokers, lenders, service providers, and sellers kept out of the student lane."],
+  ["irrelevant", "Irrelevant results", "Not-a-fit and dismissed findings retained for review history and deduplication."],
+];
+
+const discoveryLaneOf = (result) => {
+  const text = `${result.name || ""} ${result.organizationName || ""} ${result.summary || ""} ${(result.exclusionFlags || []).join(" ")}`.toLowerCase();
+  if (result.status === "dismissed" || result.qualificationLabel === "not_a_fit") return "irrelevant";
+  if (/\b(vendor|broker|lender|agency|consultant|service provider|software|saas|capital rais|syndicator)\b/.test(text)) return "vendors";
+  if (/\b(competitor|coach|course seller|educator|training program|mastermind)\b/.test(text)) return "competitors";
+  if (["podcast", "forum"].includes(result.type) || result.discoveryCategory === "intent_discussions") return "content";
+  if (["community", "organization", "event", "directory"].includes(result.type) || ["facebook_groups", "communities", "organizations", "events", "directories"].includes(result.discoveryCategory)) return "communities";
+  return result.type === "person" ? "prospective_students" : "content";
+};
+
+const resultImageOf = (result) => result.profileImageUrl || result.profilePictureUrl || result.avatarUrl || result.photoUrl || result.logoUrl || "";
+const initialsOf = (name) => String(name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
+
 const publicAccount = (signal) => {
   const raw = `${signal?.authorName || ""} ${signal?.authorUrl || ""}`;
   const reddit = raw.match(/(?:reddit\.com\/user\/|\/?u\/)([A-Za-z0-9_-]+)/i)?.[1];
@@ -700,6 +722,12 @@ export default function Discovery() {
     if (qualifyOutcomeFilter !== "all" && (r.qualificationLabel || "") !== qualifyOutcomeFilter) return false;
     return true;
   }), [groundingResults, reviewFilters, qualifyOutcomeFilter]);
+
+  const groundingResultsByLane = useMemo(() => {
+    const lanes = Object.fromEntries(DISCOVERY_LANES.map(([key]) => [key, []]));
+    visibleGroundingResults.forEach((result) => lanes[discoveryLaneOf(result)].push(result));
+    return lanes;
+  }, [visibleGroundingResults]);
 
   useEffect(() => {
     if (activeTab !== "people") return undefined;
@@ -1348,8 +1376,8 @@ export default function Discovery() {
       })}</div> : <div className="table-state table-state--empty">No saved research yet. Research started in ChatGPT or on this page will appear here automatically.</div>}
     </DashboardCard></> : null}
 
-    {activeTab === "people" ? <div id="people-research-previews" className="people-research-workspace">
-      <section className="people-search-guide"><div><span>People Research</span><h2>Find named decision-makers at real organizations</h2><p>This is different from Intent Monitoring. Jarvis searches public organization and leadership evidence for owners, founders, executives, and other named roles you describe. A title identifies a person; it does not prove buyer intent.</p></div><div className="people-search-steps"><div><strong>1</strong><span><b>Describe the people</b>Include role, industry, location, and how many you want.</span></div><div><strong>2</strong><span><b>Jarvis researches</b>It finds public evidence, company details, and published emails when available.</span></div><div><strong>3</strong><span><b>You review</b>Nothing enters the CRM until you select and confirm each import.</span></div></div></section>
+    {activeTab === "people" ? <div id="people-research-previews" className="people-research-workspace discovery-workflow">
+      <section className="discovery-workflow-hero"><div><span>Discovery</span><h2>Find the right opportunities. Review every one.</h2><p>A calm, evidence-first workspace for finding prospective students and market intelligence. Nothing enters the CRM or starts outreach without your approval.</p></div><div className="discovery-workflow-steps" aria-label="Discovery workflow"><span className="is-current"><b>1</b> Find Leads</span><span><b>2</b> Today&apos;s Results</span><span><b>3</b> Run Details</span></div></section>
       <DashboardCard title="Start a people search"><div className="people-search-launcher"><label><span>Tell Jarvis exactly who to find</span><textarea value={peopleSearchPrompt} onChange={(event) => setPeopleSearchPrompt(event.target.value)} /></label><div><Button disabled={!peopleSearchPrompt.trim()} onClick={() => navigate(`/jarvis?prompt=${encodeURIComponent(peopleSearchPrompt)}`)}>Open this request in Jarvis</Button><small>Jarvis will show the request before searching. Public emails remain unverified.</small></div></div><div className="people-search-examples"><span>Good requests include:</span><button type="button" onClick={() => setPeopleSearchPrompt("Find 20 owners of property-management companies in the United States with evidence of an active business. Exclude students, job seekers, and companies without a public website.")}>Property-management owners</button><button type="button" onClick={() => setPeopleSearchPrompt("Find 20 founders or CEOs of established service businesses in the United States who may need systems to scale. Require a public leadership or company source.")}>Established service-business founders</button><button type="button" onClick={() => setPeopleSearchPrompt("Find 20 adult real estate investors or multifamily principals in the United States with a public company, portfolio, or leadership page.")}>Real estate investors</button></div></DashboardCard>
       <DashboardCard title="Jarvis research previews" action={<Button variant="outline" loading={peoplePreviewsLoading} onClick={loadPeoplePreviews}>Refresh</Button>}>
         <p className="people-preview-intro">People found by Lead Porch stay here for review before they become CRM contacts. A published email is still unverified and cannot be used for outreach until it passes your verification rules.</p>
@@ -1372,6 +1400,7 @@ export default function Discovery() {
         })}</div> : <div className="table-state table-state--empty">No staged people previews yet. Ask Jarvis to find public-web decision-makers; the preview will appear here automatically.</div>}
       </DashboardCard>
 
+      <section className="discovery-workflow-section" aria-labelledby="find-leads-heading"><header><span>Step 1</span><h2 id="find-leads-heading">Find Leads</h2><p>Choose an approved program and source plan. You will review costs and safeguards before anything runs.</p></header>
       <DashboardCard title="Ask Jarvis to find buyers">
         <p className="people-preview-intro">
           Pick a program, choose your sources, and tell Jarvis who to find. Vertex and OpenAI Web Search look
@@ -1624,7 +1653,9 @@ export default function Discovery() {
       </details>
 
       <PublicWebDiscoveryPanel onResultsChanged={() => { loadGroundingResults("pending_review"); setGroundingResultsStatus("pending_review"); }} />
+      </section>
 
+      <section className="discovery-workflow-section discovery-results-section" aria-labelledby="todays-results-heading"><header><span>Step 2</span><h2 id="todays-results-heading">Today&apos;s Results</h2><p>Every finding stays in its own lane so a prospective student is never confused with a vendor, competitor, or community.</p></header>
       <DashboardCard title="Review queue">
         <p className="people-preview-intro">
           Every person Jarvis or the advanced manual search finds lands here first. Nothing enters the CRM,
@@ -1701,8 +1732,10 @@ export default function Discovery() {
           </div>
         ) : null}
 
-        {visibleGroundingResults.length ? <div className="review-queue-grid">
-          {visibleGroundingResults.map((result) => {
+        {visibleGroundingResults.length ? <div className="discovery-lanes">
+          {DISCOVERY_LANES.map(([laneKey, laneLabel, laneDescription]) => groundingResultsByLane[laneKey].length ? <section className={`discovery-lane lane-${laneKey}`} key={laneKey}>
+            <header className="discovery-lane__header"><div><span>{laneLabel}</span><small>{laneDescription}</small></div><strong>{groundingResultsByLane[laneKey].length}</strong></header>
+            <div className="review-queue-grid">{groundingResultsByLane[laneKey].map((result) => {
             const expanded = expandedResultIds.includes(result._id);
             const sourceLabel = result.discoveryMode === "icp_match" ? `${(result.providers || []).includes("apollo_person_search") ? "Apollo" : "PDL"} structured ICP match`
               : result.discoveryMode === "public_web_high_volume" ? "Public-web evidence (high-volume discovery)"
@@ -1714,6 +1747,9 @@ export default function Discovery() {
                   {result.status === "pending_review" ? (
                     <button type="button" className={`review-card__check${selectedGroundingIds.includes(result._id) ? " is-checked" : ""}`} onClick={() => toggleGroundingSelection(result._id)} aria-pressed={selectedGroundingIds.includes(result._id)} aria-label={`Select ${result.name}`} />
                   ) : null}
+                  <div className="review-card__avatar" aria-hidden="true">
+                    {resultImageOf(result) ? <img src={resultImageOf(result)} alt="" loading="lazy" /> : <span>{initialsOf(result.name)}</span>}
+                  </div>
                   <div className="review-card__title">
                     <strong>{result.name}</strong>
                     {result.isNew ? <span className="leadgen-badge-new">New</span> : null}
@@ -1782,9 +1818,11 @@ export default function Discovery() {
                 ) : <span className="people-preview-footnote">{result.status === "saved" ? "Saved" : "Dismissed"}</span>}
               </article>
             );
-          })}
+            })}</div>
+          </section> : null)}
         </div> : <div className="table-state table-state--empty">No {groundingResultsStatus.replace("_", " ")} results match the current filters.</div>}
       </DashboardCard>
+      </section>
     </div> : null}
 
     {activeTab === "company" ? <><DashboardCard title="External research source">

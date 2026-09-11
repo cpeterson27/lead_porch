@@ -1182,3 +1182,82 @@
   margin: 0 0 0.3rem;
   font-size: 0.85rem;
 }
+
+/* Discovery workflow refresh: quiet, product-led hierarchy with Amazon-like
+   scanability and Apple-like spacing. All provider and review controls keep
+   their existing components and handlers; these rules are presentation only. */
+.discovery-workflow { gap: 1.4rem; }
+
+.discovery-workflow-hero {
+  background: radial-gradient(circle at 86% 10%, rgba(132, 168, 209, .2), transparent 28%), linear-gradient(145deg, #101b2b, #173f36 70%);
+  border-radius: 24px;
+  box-shadow: 0 18px 48px rgba(16, 27, 43, .16);
+  color: #fff;
+  display: grid;
+  gap: 2rem;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: clamp(1.5rem, 3vw, 2.5rem);
+}
+
+.discovery-workflow-hero > div:first-child > span,
+.discovery-workflow-section > header > span {
+  color: #d7aa56;
+  font-size: .7rem;
+  font-weight: 850;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.discovery-workflow-hero h2 { font-size: clamp(1.8rem, 3vw, 2.75rem); letter-spacing: -.04em; margin: .35rem 0 .6rem; max-width: 660px; }
+.discovery-workflow-hero p { color: rgba(255,255,255,.72); line-height: 1.55; margin: 0; max-width: 650px; }
+.discovery-workflow-steps { align-content: center; display: grid; gap: .55rem; min-width: 190px; }
+.discovery-workflow-steps span { align-items: center; color: rgba(255,255,255,.62); display: flex; font-size: .82rem; font-weight: 700; gap: .6rem; }
+.discovery-workflow-steps b { align-items: center; border: 1px solid rgba(255,255,255,.25); border-radius: 50%; display: inline-flex; height: 26px; justify-content: center; width: 26px; }
+.discovery-workflow-steps .is-current { color: #fff; }
+.discovery-workflow-steps .is-current b { background: #fff; border-color: #fff; color: #173f36; }
+
+.discovery-workflow-section { display: grid; gap: .8rem; }
+.discovery-workflow-section > header { padding: .2rem .25rem; }
+.discovery-workflow-section > header h2 { color: #17222f; font-size: 1.45rem; letter-spacing: -.025em; margin: .15rem 0 .2rem; }
+.discovery-workflow-section > header p { color: #68736f; margin: 0; }
+.discovery-results-section { scroll-margin-top: 1rem; }
+
+.discovery-lanes { display: grid; gap: 1.2rem; }
+.discovery-lane { background: #f7f8f8; border: 1px solid #e3e7e5; border-radius: 18px; padding: .8rem; }
+.discovery-lane__header { align-items: center; display: flex; justify-content: space-between; padding: .1rem .15rem .75rem; }
+.discovery-lane__header div { display: grid; gap: .1rem; }
+.discovery-lane__header span { color: #17222f; font-size: .95rem; font-weight: 800; }
+.discovery-lane__header small { color: #74807b; }
+.discovery-lane__header > strong { background: #fff; border: 1px solid #dde3e0; border-radius: 999px; color: #173f36; font-size: .76rem; padding: .25rem .55rem; }
+
+.review-queue-grid { gap: .75rem; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.review-card { border-color: #e1e5e3; border-radius: 14px; box-shadow: 0 2px 9px rgba(16,27,43,.045); min-width: 0; padding: .8rem; }
+.review-card__avatar { align-items: center; background: linear-gradient(145deg, #dfe9e5, #edf2f5); border: 1px solid #d8e1dd; border-radius: 50%; color: #28584b; display: flex; flex: 0 0 34px; font-size: .7rem; font-weight: 850; height: 34px; justify-content: center; overflow: hidden; }
+.review-card__avatar img { height: 100%; object-fit: cover; width: 100%; }
+.review-card__header { align-items: center; }
+.review-card__title { align-items: flex-start; flex-direction: column; gap: .18rem; }
+.review-card__title strong { max-width: 100%; }
+.leadgen-row-actions { border-top: 1px solid #edf0ee; margin-top: auto; padding-top: .65rem; }
+
+.discovery-run-details { background: #f7f8f8; border: 1px solid #e0e5e2; border-radius: 16px; padding: 0; }
+.discovery-run-details > summary { align-items: center; cursor: pointer; display: flex; justify-content: space-between; list-style: none; padding: 1rem 1.1rem; }
+.discovery-run-details > summary::-webkit-details-marker { display: none; }
+.discovery-run-details > summary span { color: #17222f; font-weight: 800; }
+.discovery-run-details > summary span b { color: #8a671f; font-size: .68rem; letter-spacing: .08em; margin-right: .5rem; text-transform: uppercase; }
+.discovery-run-details > summary small { color: #74807b; }
+.discovery-run-details[open] { padding-bottom: 1rem; }
+.discovery-run-details[open] > summary { border-bottom: 1px solid #e0e5e2; margin-bottom: 1rem; }
+.discovery-run-details > :not(summary) { margin-left: 1rem; margin-right: 1rem; }
+
+@media (max-width: 900px) {
+  .discovery-workflow-hero { grid-template-columns: 1fr; }
+  .discovery-workflow-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .review-queue-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 640px) {
+  .discovery-workflow-hero { border-radius: 18px; }
+  .discovery-workflow-steps { grid-template-columns: 1fr; }
+  .review-queue-grid { grid-template-columns: 1fr; }
+  .discovery-run-details > summary { align-items: flex-start; flex-direction: column; gap: .3rem; }
+}

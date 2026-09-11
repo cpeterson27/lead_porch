@@ -567,13 +567,13 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
       {runs.filter((run) => run.status === "draft").map(renderRun)}
 
       {runs.filter((run) => run.status !== "draft").length ? (
-        <div className="leadgen-recent-runs">
-          <h4>Recent discovery runs</h4>
+        <details className="leadgen-recent-runs discovery-run-details">
+          <summary><span><b>Step 3</b> Run Details</span><small>{runs.filter((run) => run.status !== "draft").length} saved run{runs.filter((run) => run.status !== "draft").length === 1 ? "" : "s"} · provider usage, budgets, checkpoints, and history</small></summary>
           <p className="leadgen-run-disclosure">
             Reloaded from what's actually persisted for this workspace — a queued, running, or paused run here can be safely continued from its exact checkpoint; nothing is re-approved or regenerated.
           </p>
           {runs.filter((run) => run.status !== "draft").map(renderRun)}
-        </div>
+        </details>
       ) : null}
     </DashboardCard>
   );
