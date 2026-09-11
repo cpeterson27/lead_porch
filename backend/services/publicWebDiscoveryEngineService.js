@@ -834,11 +834,35 @@ async function runPdlCrossReference({ workspaceId, userId, auth, run, selfSignal
 async function processNextBatch({ workspaceId, userId = null, auth = null, runId, batchSize = 1, correlationId = "" }, dependencies = {}) {
   const Model = dependencies.PublicWebDiscoveryRun || PublicWebDiscoveryRun;
   const now = new Date();
-  const run = await Model.findOneAndUpdate(
-    { _id: runId, workspaceId, status: { $in: ["queued", "running"] }, $or: [{ leaseExpiresAt: null }, { leaseExpiresAt: { $lte: now } }] },
-    { $set: { status: "running", leaseOwner: WORKER_ID, leaseExpiresAt: new Date(Date.now() + LEASE_MS) } },
-    { new: true },
-  );
+  let run;
+  try {
+    run = await Model.findOneAndUpdate(
+      { _id: runId, workspaceId, status: { $in: ["queued", "running"] }, $or: [{ leaseExpiresAt: null }, { leaseExpiresAt: { $lte: now } }] },
+      { $set: { status: "running", leaseOwner: WORKER_ID, leaseExpiresAt: new Date(Date.now() + LEASE_MS) } },
+      { new: true },
+    );
+  } catch (error) {
+    // The lease-acquiring query itself failed (e.g. a transient database
+    // error) — there is no locked run document here to attach a full
+    // status decision to, but the failure must still be recorded
+    // somewhere durable rather than existing only in a transient HTTP
+    // response that a network hiccup, timeout, or cold start can lose
+    // entirely, leaving the owner with nothing but a generic banner and a
+    // run that looks unchanged. Best-effort: record it directly onto the
+    // run by id even without the lease/status guard, so a page reload
+    // still shows a real, actionable message.
+    const sanitizedCode = clean(error.code || "LEASE_ACQUIRE_FAILED", 100);
+    const sanitizedMessage = clean(error.message || "Unable to load this run.", 500);
+    try {
+      await Model.findOneAndUpdate({ _id: runId, workspaceId }, { $set: { lastFailureCode: sanitizedCode, lastFailureMessage: sanitizedMessage, lastFailureAt: new Date(), leaseOwner: "", leaseExpiresAt: null } });
+    } catch (_persistError) {
+      // Best-effort only — if even this fails, the caller's own sanitized
+      // error below is still returned; nothing further can be done here.
+    }
+    const sanitizedError = new Error(sanitizedMessage);
+    sanitizedError.code = sanitizedCode;
+    throw sanitizedError;
+  }
   if (!run) return { done: true, reason: "not_runnable_or_leased" };
 
   // Everything below (self-exclusion lookup, the PDL phase, the web-job

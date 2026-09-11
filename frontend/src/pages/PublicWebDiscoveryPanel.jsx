@@ -5,6 +5,7 @@ import {
   fetchLeadGenerationPrograms,
   fetchLeadGenerationProviderAvailability,
   fetchPublicWebDiscoveryRuns,
+  fetchPublicWebDiscoveryRun,
   proposePublicWebDiscoveryRun,
   proposeStudentSearchPreset,
   approvePublicWebDiscoveryRun,
@@ -235,6 +236,19 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
       onResultsChanged?.();
     } catch (err) {
       setError(err.response?.data?.error || "Unable to run this discovery run.");
+      // A network drop, timeout, or cold start can lose this request's
+      // response entirely, leaving the card frozen on stale pre-attempt
+      // data even though the backend may have persisted a real,
+      // actionable failure (lastFailureMessage) for this exact tick.
+      // Re-sync with what's actually saved so the card never keeps
+      // showing 0 usage / no explanation while a generic banner implies
+      // something happened.
+      try {
+        const fresh = await fetchPublicWebDiscoveryRun(run._id);
+        updateRunInState(fresh.data);
+      } catch {
+        // Best-effort only — the generic banner above still stands.
+      }
     } finally {
       runInFlight.current[run._id] = false;
       setRunBusy((current) => ({ ...current, [run._id]: "" }));

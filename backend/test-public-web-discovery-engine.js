@@ -1003,6 +1003,56 @@ async function testProcessNextBatchClearsAPriorFailureRecordOnceATickSucceeds() 
   assert.equal(outcome.error, undefined, "a successful outcome must carry no error");
 }
 
+/**
+ * A second reported occurrence of the same class of bug: the owner saw
+ * the generic "Unable to run this discovery run" banner again with the
+ * card still showing 0 usage and no persisted failure message — meaning
+ * an even earlier failure than the previous fix covered. The one
+ * genuinely unguarded step left was the lease-acquiring
+ * findOneAndUpdate() itself, called BEFORE the try/catch (there is no
+ * locked run document yet to attach a status decision to). If that
+ * query throws, the failure must still be recorded durably by run id —
+ * never only as a transient HTTP error a network drop/timeout/cold
+ * start can lose entirely, leaving a page reload with nothing to show.
+ */
+async function testProcessNextBatchPersistsAFailureEvenWhenTheLeaseAcquiringQueryItselfThrows() {
+  const run = buildQueuedRun();
+  const baseModel = fakePublicWebDiscoveryRunModel([run]);
+  let leaseAttempts = 0;
+  const flakyModel = {
+    ...baseModel,
+    findOneAndUpdate: async (filter, update, options) => {
+      if (filter.status) {
+        // The lease-acquiring call always carries a `status` filter — the
+        // best-effort persist-only call below never does.
+        leaseAttempts += 1;
+        const error = new Error("connection reset while acquiring the run lease");
+        error.code = "MONGO_CONNECTION_RESET";
+        throw error;
+      }
+      return baseModel.findOneAndUpdate(filter, update, options);
+    },
+  };
+
+  await assert.rejects(
+    () => processNextBatch({ workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-1", batchSize: 3 }, { PublicWebDiscoveryRun: flakyModel, GroundingResearchResult: fakeGroundingResultModel() }),
+    (error) => {
+      assert.equal(error.code, "MONGO_CONNECTION_RESET");
+      assert.equal(error.message, "connection reset while acquiring the run lease");
+      return true;
+    },
+  );
+  assert.equal(leaseAttempts, 1);
+
+  // Even though this call threw, the run must now carry a real, durable
+  // record of what happened — recoverable by a plain page reload
+  // (GET /runs), never lost with the failed request's response.
+  assert.equal(run.lastFailureCode, "MONGO_CONNECTION_RESET");
+  assert.equal(run.lastFailureMessage, "connection reset while acquiring the run lease");
+  assert.ok(run.lastFailureAt instanceof Date);
+  assert.equal(run.leaseOwner, "", "the lease must never be left held after a failed acquisition attempt");
+}
+
 async function run() {
   testIsNeverCrawlHostBlocksFacebookAndLinkedinAlways();
   testParseRobotsTxtRespectsDisallowAllowAndLongestMatch();
@@ -1051,6 +1101,7 @@ async function run() {
   testComputeRunPlanPreviewUsesTheExactFinalizedJobPlanNotTheUnslicedDraftCollection();
   await testProcessNextBatchPersistsASanitizedFailureAndStaysSafelyResumableForAPreProviderCrash();
   await testProcessNextBatchClearsAPriorFailureRecordOnceATickSucceeds();
+  await testProcessNextBatchPersistsAFailureEvenWhenTheLeaseAcquiringQueryItselfThrows();
   await testRunDueDiscoverySchedulesSkipsDisabledSchedules();
   await testRunDueDiscoverySchedulesProcessesAnEnabledDueSchedule();
   console.log("Public Web Discovery engine: robots.txt/rate-limit/login-wall/Facebook-LinkedIn-denylist crawler compliance (fails closed on unverifiable robots.txt, never fetches the page when disallowed), freshness TIERING (labels recent/aging/evergreen — never drops an old or undated lead), dedup against self-match/CRM/dismissed-records/previous-runs, checkpointed+resumable+retryable batch processing with a hard provider-credit-cap stop and an honest explanation, and a scheduler that never acts on a disabled schedule but genuinely runs an enabled+due one — all passed.");
