@@ -1043,20 +1043,6 @@
   padding-top: 0.6rem;
 }
 
-.review-queue-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 1rem;
-}
-
-@media (max-width: 1100px) {
-  .review-queue-grid { grid-template-columns: repeat(2, 1fr); }
-}
-
-@media (max-width: 700px) {
-  .review-queue-grid { grid-template-columns: 1fr; }
-}
-
 .review-card {
   background: #fff;
   border: 1px solid #e4ddd0;
@@ -1237,7 +1223,13 @@
 .discovery-lane,
 .review-queue-grid,
 .review-card { min-width: 0; max-width: 100%; }
-.review-queue-grid { display: grid; gap: .75rem; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+/* auto-fit + a real minmax lower bound: fills in as many columns as
+   actually fit (3 on a normal desktop width, fewer as the container
+   narrows), and the 0-based minmax on each card (below) plus overflow-wrap
+   on its text keeps content from ever overflowing/getting cut off,
+   instead of the old fixed 3/2/1 breakpoints that could disagree with the
+   space actually available and clip a card at the edge. */
+.review-queue-grid { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); width: 100%; }
 .review-card { border-color: #e1e5e3; border-radius: 14px; box-shadow: 0 2px 9px rgba(16,27,43,.045); min-width: 0; padding: .8rem; }
 .review-card__avatar { align-items: center; background: linear-gradient(145deg, #dfe9e5, #edf2f5); border: 1px solid #d8e1dd; border-radius: 50%; color: #28584b; display: flex; flex: 0 0 34px; font-size: .7rem; font-weight: 850; height: 34px; justify-content: center; overflow: hidden; }
 .review-card__avatar img { height: 100%; object-fit: cover; width: 100%; }
@@ -1275,14 +1267,12 @@
 @media (max-width: 900px) {
   .discovery-workflow-hero { grid-template-columns: 1fr; }
   .discovery-workflow-steps { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .review-queue-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .review-queue-filter-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 640px) {
   .discovery-workflow-hero { border-radius: 18px; }
   .discovery-workflow-steps { grid-template-columns: 1fr; }
-  .review-queue-grid { grid-template-columns: 1fr; }
   .review-queue-filter-row { grid-template-columns: 1fr; }
   .review-queue-selection-row,
   .review-queue-bulk-actions { align-items: stretch; flex-direction: column; }
