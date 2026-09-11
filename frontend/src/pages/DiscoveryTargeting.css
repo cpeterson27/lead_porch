@@ -834,6 +834,22 @@
   margin: 0;
 }
 
+.leadgen-run-created-at {
+  font-size: 0.8rem;
+  color: #7a7267;
+  white-space: nowrap;
+}
+
+.leadgen-recent-runs {
+  margin-top: 1.5rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid #ded7ca;
+}
+
+.leadgen-recent-runs > h4 {
+  margin: 0 0 0.25rem;
+}
+
 .leadgen-run-status {
   border-radius: 999px;
   padding: 2px 10px;

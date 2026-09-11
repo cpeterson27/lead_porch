@@ -4,6 +4,7 @@ import DashboardCard from "../components/DashboardCard.jsx";
 import {
   fetchLeadGenerationPrograms,
   fetchLeadGenerationProviderAvailability,
+  fetchPublicWebDiscoveryRuns,
   proposePublicWebDiscoveryRun,
   proposeStudentSearchPreset,
   approvePublicWebDiscoveryRun,
@@ -88,6 +89,12 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
     fetchLeadGenerationPrograms().then((res) => setPrograms(res.data || [])).catch(() => {});
     fetchLeadGenerationProviderAvailability().then((res) => setProviderAvailability(res.data)).catch(() => {});
     fetchDiscoverySchedules().then((res) => setSchedules(res.data || [])).catch(() => {});
+    // Reload persisted, non-draft runs (queued/running/paused/completed/
+    // stopped-at-cap/failed) so a resumable run survives a page refresh
+    // or redeployment instead of only ever existing in this component's
+    // in-memory state — this fires before any propose/preset click could
+    // add a session-local draft, so a plain prepend is safe here.
+    fetchPublicWebDiscoveryRuns().then((res) => setRuns((current) => [...(res.data || []), ...current])).catch(() => {});
   }, []);
 
   // Recomputes the pre-run plan preview from the SAME finalization the
@@ -318,6 +325,180 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
     }
   };
 
+  /**
+   * Renders one run — a draft still being edited/approved, or a
+   * queued/running/paused/completed/stopped-at-cap/failed run reloaded
+   * from persistence. Shared by both the in-progress draft-editing list
+   * and the "Recent discovery runs" recovery list below (see the two
+   * runs.filter(...).map(renderRun) calls) so a reloaded persisted run
+   * renders identically to one just approved in this same session —
+   * Continue always calls process-next-batch against run._id alone; it
+   * never re-approves, regenerates queries, or resets the checkpoint.
+   */
+  const renderRun = (run) => {
+    const jobGroups = groupJobsByCategory(run.jobs);
+    const busy = runBusy[run._id];
+    const sources = run.sources || ["vertex", "openai_web_search"];
+    const preview = planPreviewByRun[run._id];
+    const totalJobs = run.jobs.length;
+    const currentJob = run.jobs[run.nextJobIndex];
+    const schedule = schedules.find((s) => s.programNoteId === run.programNoteId);
+    return (
+      <section key={run._id} className="leadgen-run-panel" aria-label={`Discovery run for ${run.programName}`}>
+        <div className="leadgen-run-panel__header">
+          <h4>{run.programName || "Program"}</h4>
+          <StatusBadge status={run.status} />
+          {run.createdAt ? <span className="leadgen-run-created-at">{new Date(run.createdAt).toLocaleString()}</span> : null}
+        </div>
+
+        {run.status === "draft" ? (
+          <>
+            {JOB_CATEGORIES.map(([key, label]) => (jobGroups.get(key)?.length ? (
+              <details key={key} className="leadgen-advanced-search" open>
+                <summary>{label} ({jobGroups.get(key).length})</summary>
+                <div className="leadgen-advanced-search__body">
+                  {run.jobs.map((job, index) => (job.category === key ? (
+                    <div className="leadgen-job-row" key={`${key}-${index}`}>
+                      <input type="text" value={job.query} onChange={(event) => updateJob(run, index, "query", event.target.value)} placeholder="Search query" />
+                      <input type="text" value={job.locationHint} onChange={(event) => updateJob(run, index, "locationHint", event.target.value)} placeholder="Location (optional)" className="leadgen-job-row__location" />
+                      <select value={job.source} onChange={(event) => updateJob(run, index, "source", event.target.value)}>
+                        <option value="vertex">Vertex</option>
+                        <option value="openai_web_search">OpenAI Web Search</option>
+                      </select>
+                      <Button size="sm" variant="outline" onClick={() => removeJob(run, index)}>Remove</Button>
+                    </div>
+                  ) : null))}
+                  <Button size="sm" variant="outline" onClick={() => addJob(run, key)}>+ Add query</Button>
+                </div>
+              </details>
+            ) : null))}
+
+            <div className="leadgen-field-group">
+              <span className="leadgen-field-label">Enabled web providers</span>
+              <div className="leadgen-pill-row">
+                {["vertex", "openai_web_search"].map((source) => {
+                  const availability = providerAvailability?.[source];
+                  const disabledPill = availability && !availability.available;
+                  return (
+                    <button key={source} type="button" disabled={disabledPill} className={`leadgen-pill${sources.includes(source) ? " is-selected" : ""}${disabledPill ? " is-disabled" : ""}`} aria-pressed={sources.includes(source)} onClick={() => toggleRunSource(run, source)}>
+                      {SOURCE_LABELS[source]}{disabledPill ? ` (${availability.reason})` : ""}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="leadgen-field-group">
+              <span className="leadgen-field-label">PDL (People Data Labs) — tracked in its own credits, never converted to web cash</span>
+              <div className="leadgen-review-grid">
+                <label className="leadgen-run-checkbox"><input type="checkbox" checked={run.includePdlPersonSearch} onChange={(event) => updateRunField(run, "includePdlPersonSearch", event.target.checked)} /><span>PDL Person Search (independent candidate source)</span></label>
+                <label><span>Max PDL Person Search credits</span><input type="number" min="0" max="500" disabled={!run.includePdlPersonSearch} value={run.maxPdlPersonSearchCredits} onChange={(event) => updateRunField(run, "maxPdlPersonSearchCredits", Number(event.target.value))} /></label>
+                <label className="leadgen-run-checkbox"><input type="checkbox" checked={run.includePdlCrossReference} onChange={(event) => updateRunField(run, "includePdlCrossReference", event.target.checked)} /><span>Include PDL cross-reference</span></label>
+                <label><span>Max PDL cross-reference credits</span><input type="number" min="0" max="500" disabled={!run.includePdlCrossReference} value={run.maxPdlCrossReferenceCredits} onChange={(event) => updateRunField(run, "maxPdlCrossReferenceCredits", Number(event.target.value))} /></label>
+              </div>
+              <p className="leadgen-run-disclosure">Each toggle above is the ONLY thing that turns its PDL call on or off — when off, nothing is enqueued, called, estimated, or charged for it.</p>
+            </div>
+
+            <div className="leadgen-review-grid">
+              <label><span>Daily candidate target</span><input type="number" min="1" max="500" value={run.dailyCandidateTarget} onChange={(event) => updateRunField(run, "dailyCandidateTarget", Number(event.target.value))} /></label>
+              <label><span>Web search cash cap ($) — Vertex + OpenAI only</span><input type="number" min="0" max="1000" step="0.5" value={run.providerCreditCapUsd} onChange={(event) => updateRunField(run, "providerCreditCapUsd", Number(event.target.value))} /></label>
+              <label><span>Page limit per query</span><input type="number" min="1" max="10" value={run.pageLimitPerQuery} onChange={(event) => updateRunField(run, "pageLimitPerQuery", Number(event.target.value))} /></label>
+              <label><span>Query limit per run (web queries only — never PDL)</span><input type="number" min="1" max="500" value={run.queryLimitPerRun} onChange={(event) => updateRunField(run, "queryLimitPerRun", Number(event.target.value))} /></label>
+              <label><span>Retry attempts per query</span><input type="number" min="1" max="10" value={run.retryPolicy?.maxAttemptsPerJob || 3} onChange={(event) => updateRunInState({ ...run, retryPolicy: { maxAttemptsPerJob: Number(event.target.value) } })} /></label>
+            </div>
+            <dl className="leadgen-review-summary">
+              <dt>Expected people</dt><dd>~{run.estimatedCreditUse?.expectedPeople ?? "?"} (rough estimate — direct outreach candidates)</dd>
+              <dt>Expected communities/organizations</dt><dd>~{run.estimatedCreditUse?.expectedCommunitiesOrganizations ?? "?"} (rough estimate — need an organizer/partnership approach, not direct outreach)</dd>
+              <dt>Target</dt><dd>{run.dailyCandidateTarget} {run.targetType === "person" ? "unique people specifically" : "candidates of any type"}</dd>
+              <dt>Maximum PDL Person Search credits</dt><dd>{preview ? preview.maxPdlPersonSearchCredits : "…"}</dd>
+              <dt>Maximum PDL cross-reference credits</dt><dd>{preview ? preview.maxPdlCrossReferenceCredits : "…"}</dd>
+              <dt>Maximum Vertex calls</dt><dd>{preview ? `${preview.maxVertexCallsInitial} initial` : "…"}{preview?.maxVertexRetryExposure ? ` (up to ${preview.maxVertexRetryExposure} more only if a query fails and is retried)` : ""}</dd>
+              <dt>Maximum OpenAI Web Search calls</dt><dd>{preview ? `${preview.maxOpenaiCallsInitial} initial` : "…"}{preview?.maxOpenaiRetryExposure ? ` (up to ${preview.maxOpenaiRetryExposure} more only if a query fails and is retried)` : ""}</dd>
+              <dt>Maximum estimated web cash</dt><dd>{preview ? `$${preview.maxWebCashEnforced} (initial calls: $${preview.maxWebCashInitial}${preview.maxWebCashWithRetries !== preview.maxWebCashInitial ? `, up to $${preview.maxWebCashWithRetries} if every retry occurs` : ""}, capped at your $${preview.providerCreditCapUsd} hard cap)` : "…"} — Vertex + OpenAI only, PDL credits above are never converted into this figure</dd>
+            </dl>
+            {run.estimatedCreditUse?.budgetWarning ? <p className="form-error">{run.estimatedCreditUse.budgetWarning}</p> : null}
+            <p className="leadgen-run-disclosure">Destination: the review queue below — nothing is imported into the CRM, enriched, monitored, or contacted automatically. {run.estimatedCreditUse?.note}</p>
+
+            <div className="leadgen-review-actions">
+              <Button loading={busy === "running"} disabled={Boolean(preview?.validationError)} onClick={() => runOnceNow(run)}>Run once now</Button>
+              {preview?.validationError ? <span className="form-error leadgen-run-inline-error">{preview.validationError}</span> : null}
+            </div>
+
+            <div className="leadgen-schedule-form">
+              <span className="leadgen-field-label">Schedule (optional)</span>
+              <select value={frequencyByRun[run._id] || 1440} onChange={(event) => setFrequencyByRun((current) => ({ ...current, [run._id]: Number(event.target.value) }))}>
+                {FREQUENCY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+              <Button size="sm" variant="outline" loading={scheduleBusy[run._id] === "saving"} onClick={() => saveScheduleDisabled(run)}>Save disabled</Button>
+              <p className="leadgen-run-disclosure">A saved schedule never runs on its own — it stays disabled until you explicitly enable it below.</p>
+            </div>
+          </>
+        ) : (
+          <div className="leadgen-run-status-detail">
+            <p>Checkpoint: job {Math.min(run.nextJobIndex + 1, totalJobs)} of {totalJobs}{currentJob ? ` — "${currentJob.query}" (page ${currentJob.page + 1} of ${currentJob.maxPages})` : ""}</p>
+            {run.lastFailureMessage ? (
+              <p className="form-error leadgen-run-explanation">
+                Last attempt failed ({run.lastFailureCode || "error"}): {run.lastFailureMessage}
+                {run.status === "failed"
+                  ? " — this happened 3 times in a row, so this run will not resume automatically. Review your settings and propose a new run once the underlying problem is fixed."
+                  : " — nothing was spent and your checkpoint is unchanged; Continue running below will safely retry from here."}
+              </p>
+            ) : null}
+            {run.runSummary?.explanation ? <p className="leadgen-run-explanation">{run.runSummary.explanation}</p> : null}
+            <dl className="leadgen-review-summary">
+              <dt>PDL Person Search credits used</dt><dd>{run.spend?.pdlPersonSearchCredits || 0} of {run.maxPdlPersonSearchCredits} max{!run.includePdlPersonSearch ? " (off)" : ""}</dd>
+              <dt>PDL cross-reference credits used</dt><dd>{run.spend?.pdlCrossReferenceCredits || 0} of {run.maxPdlCrossReferenceCredits} max{!run.includePdlCrossReference ? " (off)" : ""}</dd>
+              <dt>Vertex calls</dt><dd>{run.spend?.vertexCalls || 0}</dd>
+              <dt>OpenAI Web Search calls</dt><dd>{run.spend?.openaiCalls || 0}</dd>
+              <dt>Web cash spent</dt><dd>${run.spend?.estimatedUsd ?? 0} of ${run.providerCreditCapUsd} cap</dd>
+              <dt>Accepted</dt><dd>{run.runSummary?.created || 0} new · {run.runSummary?.merged || 0} merged into existing queue entries</dd>
+              <dt>Freshness</dt><dd>{run.runSummary?.byFreshnessTier?.recent || 0} recent (0-90d) · {run.runSummary?.byFreshnessTier?.aging || 0} aging (91-365d) · {run.runSummary?.byFreshnessTier?.evergreen || 0} evergreen/undated</dd>
+              <dt>Excluded</dt><dd>{run.runSummary?.rejectedSelfMatch || 0} self-match · {run.runSummary?.rejectedCrmDuplicate || 0} already in CRM · {run.runSummary?.rejectedPreviouslyDismissed || 0} previously dismissed</dd>
+              <dt>Crawl</dt><dd>{run.runSummary?.crawlBlockedByRobots || 0} blocked by robots.txt · {run.runSummary?.crawlSkippedLoginWall || 0} skipped (login wall/never-crawled platform) · {run.runSummary?.crawlErrors || 0} errors</dd>
+            </dl>
+            {run.runSummary?.zeroCallReasons?.length ? (
+              <ul className="leadgen-run-zero-call-reasons">
+                {run.runSummary.zeroCallReasons.map((reason, index) => <li key={index} className="form-error">{reason}</li>)}
+              </ul>
+            ) : null}
+            {run.runSummary?.perSource?.length ? (
+              <div className="leadgen-provider-breakdown-wrap">
+                <table className="leadgen-provider-breakdown">
+                  <thead><tr><th>Source</th><th>Category</th><th>Crawled</th><th>Found</th><th>Accepted</th><th>Error</th></tr></thead>
+                  <tbody>
+                    {run.runSummary.perSource.map((entry, index) => (
+                      <tr key={index}>
+                        <td>{entry.source}</td><td>{entry.category}</td><td>{entry.urlsCrawled ?? "—"}</td>
+                        <td>{entry.entitiesExtracted ?? 0}</td><td>{entry.accepted ?? 0}</td>
+                        <td>{entry.error ? <span className="form-error">{entry.error}</span> : "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+            <div className="leadgen-review-actions">
+              {RUN_ACTIVE_STATUSES.has(run.status) ? <Button loading={busy === "running"} onClick={() => runOnceNow(run)}>Continue running</Button> : null}
+              {RUN_ACTIVE_STATUSES.has(run.status) ? <Button variant="outline" onClick={() => pauseRun(run)}>Pause</Button> : null}
+              {run.status === "paused" ? <Button onClick={() => resumeRun(run)}>Resume</Button> : null}
+              {!RUN_TERMINAL_STATUSES.has(run.status) ? <Button variant="outline" onClick={() => cancelRun(run)}>Cancel</Button> : null}
+            </div>
+          </div>
+        )}
+
+        {schedule ? (
+          <div className="leadgen-monitor-suggestion">
+            <p>Schedule "{schedule.name}": <strong>{schedule.enabled ? "enabled" : "disabled"}</strong> — every {schedule.intervalMinutes >= 1440 ? `${Math.round(schedule.intervalMinutes / 1440)} day(s)` : `${schedule.intervalMinutes} min`}. {schedule.nextRunAt ? `Next run: ${new Date(schedule.nextRunAt).toLocaleString()}.` : ""} {schedule.lastRunMessage ? `Last run: ${schedule.lastRunMessage}` : ""}</p>
+            <div className="leadgen-review-actions">
+              {!schedule.enabled ? <Button size="sm" loading={scheduleBusy[schedule._id] === "enabling"} onClick={() => enableSchedule(schedule)}>Enable schedule</Button> : <Button size="sm" variant="outline" loading={scheduleBusy[schedule._id] === "disabling"} onClick={() => disableSchedule(schedule)}>Disable schedule</Button>}
+              <Button size="sm" variant="outline" loading={scheduleBusy[schedule._id] === "running"} onClick={() => runScheduleNow(schedule)}>Run schedule now</Button>
+            </div>
+          </div>
+        ) : null}
+      </section>
+    );
+  };
+
   return (
     <DashboardCard title="High-volume Public Web Discovery">
       <p className="leadgen-run-intro">
@@ -361,168 +542,17 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
       </div>
       {error ? <p className="form-error">{error}</p> : null}
 
-      {runs.map((run) => {
-        const jobGroups = groupJobsByCategory(run.jobs);
-        const busy = runBusy[run._id];
-        const sources = run.sources || ["vertex", "openai_web_search"];
-        const preview = planPreviewByRun[run._id];
-        const totalJobs = run.jobs.length;
-        const currentJob = run.jobs[run.nextJobIndex];
-        const schedule = schedules.find((s) => s.programNoteId === run.programNoteId);
-        return (
-          <section key={run._id} className="leadgen-run-panel" aria-label={`Discovery run for ${run.programName}`}>
-            <div className="leadgen-run-panel__header">
-              <h4>{run.programName || "Program"}</h4>
-              <StatusBadge status={run.status} />
-            </div>
+      {runs.filter((run) => run.status === "draft").map(renderRun)}
 
-            {run.status === "draft" ? (
-              <>
-                {JOB_CATEGORIES.map(([key, label]) => (jobGroups.get(key)?.length ? (
-                  <details key={key} className="leadgen-advanced-search" open>
-                    <summary>{label} ({jobGroups.get(key).length})</summary>
-                    <div className="leadgen-advanced-search__body">
-                      {run.jobs.map((job, index) => (job.category === key ? (
-                        <div className="leadgen-job-row" key={`${key}-${index}`}>
-                          <input type="text" value={job.query} onChange={(event) => updateJob(run, index, "query", event.target.value)} placeholder="Search query" />
-                          <input type="text" value={job.locationHint} onChange={(event) => updateJob(run, index, "locationHint", event.target.value)} placeholder="Location (optional)" className="leadgen-job-row__location" />
-                          <select value={job.source} onChange={(event) => updateJob(run, index, "source", event.target.value)}>
-                            <option value="vertex">Vertex</option>
-                            <option value="openai_web_search">OpenAI Web Search</option>
-                          </select>
-                          <Button size="sm" variant="outline" onClick={() => removeJob(run, index)}>Remove</Button>
-                        </div>
-                      ) : null))}
-                      <Button size="sm" variant="outline" onClick={() => addJob(run, key)}>+ Add query</Button>
-                    </div>
-                  </details>
-                ) : null))}
-
-                <div className="leadgen-field-group">
-                  <span className="leadgen-field-label">Enabled web providers</span>
-                  <div className="leadgen-pill-row">
-                    {["vertex", "openai_web_search"].map((source) => {
-                      const availability = providerAvailability?.[source];
-                      const disabledPill = availability && !availability.available;
-                      return (
-                        <button key={source} type="button" disabled={disabledPill} className={`leadgen-pill${sources.includes(source) ? " is-selected" : ""}${disabledPill ? " is-disabled" : ""}`} aria-pressed={sources.includes(source)} onClick={() => toggleRunSource(run, source)}>
-                          {SOURCE_LABELS[source]}{disabledPill ? ` (${availability.reason})` : ""}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="leadgen-field-group">
-                  <span className="leadgen-field-label">PDL (People Data Labs) — tracked in its own credits, never converted to web cash</span>
-                  <div className="leadgen-review-grid">
-                    <label className="leadgen-run-checkbox"><input type="checkbox" checked={run.includePdlPersonSearch} onChange={(event) => updateRunField(run, "includePdlPersonSearch", event.target.checked)} /><span>PDL Person Search (independent candidate source)</span></label>
-                    <label><span>Max PDL Person Search credits</span><input type="number" min="0" max="500" disabled={!run.includePdlPersonSearch} value={run.maxPdlPersonSearchCredits} onChange={(event) => updateRunField(run, "maxPdlPersonSearchCredits", Number(event.target.value))} /></label>
-                    <label className="leadgen-run-checkbox"><input type="checkbox" checked={run.includePdlCrossReference} onChange={(event) => updateRunField(run, "includePdlCrossReference", event.target.checked)} /><span>Include PDL cross-reference</span></label>
-                    <label><span>Max PDL cross-reference credits</span><input type="number" min="0" max="500" disabled={!run.includePdlCrossReference} value={run.maxPdlCrossReferenceCredits} onChange={(event) => updateRunField(run, "maxPdlCrossReferenceCredits", Number(event.target.value))} /></label>
-                  </div>
-                  <p className="leadgen-run-disclosure">Each toggle above is the ONLY thing that turns its PDL call on or off — when off, nothing is enqueued, called, estimated, or charged for it.</p>
-                </div>
-
-                <div className="leadgen-review-grid">
-                  <label><span>Daily candidate target</span><input type="number" min="1" max="500" value={run.dailyCandidateTarget} onChange={(event) => updateRunField(run, "dailyCandidateTarget", Number(event.target.value))} /></label>
-                  <label><span>Web search cash cap ($) — Vertex + OpenAI only</span><input type="number" min="0" max="1000" step="0.5" value={run.providerCreditCapUsd} onChange={(event) => updateRunField(run, "providerCreditCapUsd", Number(event.target.value))} /></label>
-                  <label><span>Page limit per query</span><input type="number" min="1" max="10" value={run.pageLimitPerQuery} onChange={(event) => updateRunField(run, "pageLimitPerQuery", Number(event.target.value))} /></label>
-                  <label><span>Query limit per run (web queries only — never PDL)</span><input type="number" min="1" max="500" value={run.queryLimitPerRun} onChange={(event) => updateRunField(run, "queryLimitPerRun", Number(event.target.value))} /></label>
-                  <label><span>Retry attempts per query</span><input type="number" min="1" max="10" value={run.retryPolicy?.maxAttemptsPerJob || 3} onChange={(event) => updateRunInState({ ...run, retryPolicy: { maxAttemptsPerJob: Number(event.target.value) } })} /></label>
-                </div>
-                <dl className="leadgen-review-summary">
-                  <dt>Expected people</dt><dd>~{run.estimatedCreditUse?.expectedPeople ?? "?"} (rough estimate — direct outreach candidates)</dd>
-                  <dt>Expected communities/organizations</dt><dd>~{run.estimatedCreditUse?.expectedCommunitiesOrganizations ?? "?"} (rough estimate — need an organizer/partnership approach, not direct outreach)</dd>
-                  <dt>Target</dt><dd>{run.dailyCandidateTarget} {run.targetType === "person" ? "unique people specifically" : "candidates of any type"}</dd>
-                  <dt>Maximum PDL Person Search credits</dt><dd>{preview ? preview.maxPdlPersonSearchCredits : "…"}</dd>
-                  <dt>Maximum PDL cross-reference credits</dt><dd>{preview ? preview.maxPdlCrossReferenceCredits : "…"}</dd>
-                  <dt>Maximum Vertex calls</dt><dd>{preview ? `${preview.maxVertexCallsInitial} initial` : "…"}{preview?.maxVertexRetryExposure ? ` (up to ${preview.maxVertexRetryExposure} more only if a query fails and is retried)` : ""}</dd>
-                  <dt>Maximum OpenAI Web Search calls</dt><dd>{preview ? `${preview.maxOpenaiCallsInitial} initial` : "…"}{preview?.maxOpenaiRetryExposure ? ` (up to ${preview.maxOpenaiRetryExposure} more only if a query fails and is retried)` : ""}</dd>
-                  <dt>Maximum estimated web cash</dt><dd>{preview ? `$${preview.maxWebCashEnforced} (initial calls: $${preview.maxWebCashInitial}${preview.maxWebCashWithRetries !== preview.maxWebCashInitial ? `, up to $${preview.maxWebCashWithRetries} if every retry occurs` : ""}, capped at your $${preview.providerCreditCapUsd} hard cap)` : "…"} — Vertex + OpenAI only, PDL credits above are never converted into this figure</dd>
-                </dl>
-                {run.estimatedCreditUse?.budgetWarning ? <p className="form-error">{run.estimatedCreditUse.budgetWarning}</p> : null}
-                <p className="leadgen-run-disclosure">Destination: the review queue below — nothing is imported into the CRM, enriched, monitored, or contacted automatically. {run.estimatedCreditUse?.note}</p>
-
-                <div className="leadgen-review-actions">
-                  <Button loading={busy === "running"} disabled={Boolean(preview?.validationError)} onClick={() => runOnceNow(run)}>Run once now</Button>
-                  {preview?.validationError ? <span className="form-error leadgen-run-inline-error">{preview.validationError}</span> : null}
-                </div>
-
-                <div className="leadgen-schedule-form">
-                  <span className="leadgen-field-label">Schedule (optional)</span>
-                  <select value={frequencyByRun[run._id] || 1440} onChange={(event) => setFrequencyByRun((current) => ({ ...current, [run._id]: Number(event.target.value) }))}>
-                    {FREQUENCY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                  </select>
-                  <Button size="sm" variant="outline" loading={scheduleBusy[run._id] === "saving"} onClick={() => saveScheduleDisabled(run)}>Save disabled</Button>
-                  <p className="leadgen-run-disclosure">A saved schedule never runs on its own — it stays disabled until you explicitly enable it below.</p>
-                </div>
-              </>
-            ) : (
-              <div className="leadgen-run-status-detail">
-                <p>Checkpoint: job {Math.min(run.nextJobIndex + 1, totalJobs)} of {totalJobs}{currentJob ? ` — "${currentJob.query}" (page ${currentJob.page + 1} of ${currentJob.maxPages})` : ""}</p>
-                {run.lastFailureMessage ? (
-                  <p className="form-error leadgen-run-explanation">
-                    Last attempt failed ({run.lastFailureCode || "error"}): {run.lastFailureMessage}
-                    {run.status === "failed"
-                      ? " — this happened 3 times in a row, so this run will not resume automatically. Review your settings and propose a new run once the underlying problem is fixed."
-                      : " — nothing was spent and your checkpoint is unchanged; Continue running below will safely retry from here."}
-                  </p>
-                ) : null}
-                {run.runSummary?.explanation ? <p className="leadgen-run-explanation">{run.runSummary.explanation}</p> : null}
-                <dl className="leadgen-review-summary">
-                  <dt>PDL Person Search credits used</dt><dd>{run.spend?.pdlPersonSearchCredits || 0} of {run.maxPdlPersonSearchCredits} max{!run.includePdlPersonSearch ? " (off)" : ""}</dd>
-                  <dt>PDL cross-reference credits used</dt><dd>{run.spend?.pdlCrossReferenceCredits || 0} of {run.maxPdlCrossReferenceCredits} max{!run.includePdlCrossReference ? " (off)" : ""}</dd>
-                  <dt>Vertex calls</dt><dd>{run.spend?.vertexCalls || 0}</dd>
-                  <dt>OpenAI Web Search calls</dt><dd>{run.spend?.openaiCalls || 0}</dd>
-                  <dt>Web cash spent</dt><dd>${run.spend?.estimatedUsd ?? 0} of ${run.providerCreditCapUsd} cap</dd>
-                  <dt>Accepted</dt><dd>{run.runSummary?.created || 0} new · {run.runSummary?.merged || 0} merged into existing queue entries</dd>
-                  <dt>Freshness</dt><dd>{run.runSummary?.byFreshnessTier?.recent || 0} recent (0-90d) · {run.runSummary?.byFreshnessTier?.aging || 0} aging (91-365d) · {run.runSummary?.byFreshnessTier?.evergreen || 0} evergreen/undated</dd>
-                  <dt>Excluded</dt><dd>{run.runSummary?.rejectedSelfMatch || 0} self-match · {run.runSummary?.rejectedCrmDuplicate || 0} already in CRM · {run.runSummary?.rejectedPreviouslyDismissed || 0} previously dismissed</dd>
-                  <dt>Crawl</dt><dd>{run.runSummary?.crawlBlockedByRobots || 0} blocked by robots.txt · {run.runSummary?.crawlSkippedLoginWall || 0} skipped (login wall/never-crawled platform) · {run.runSummary?.crawlErrors || 0} errors</dd>
-                </dl>
-                {run.runSummary?.zeroCallReasons?.length ? (
-                  <ul className="leadgen-run-zero-call-reasons">
-                    {run.runSummary.zeroCallReasons.map((reason, index) => <li key={index} className="form-error">{reason}</li>)}
-                  </ul>
-                ) : null}
-                {run.runSummary?.perSource?.length ? (
-                  <div className="leadgen-provider-breakdown-wrap">
-                    <table className="leadgen-provider-breakdown">
-                      <thead><tr><th>Source</th><th>Category</th><th>Crawled</th><th>Found</th><th>Accepted</th><th>Error</th></tr></thead>
-                      <tbody>
-                        {run.runSummary.perSource.map((entry, index) => (
-                          <tr key={index}>
-                            <td>{entry.source}</td><td>{entry.category}</td><td>{entry.urlsCrawled ?? "—"}</td>
-                            <td>{entry.entitiesExtracted ?? 0}</td><td>{entry.accepted ?? 0}</td>
-                            <td>{entry.error ? <span className="form-error">{entry.error}</span> : "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : null}
-                <div className="leadgen-review-actions">
-                  {RUN_ACTIVE_STATUSES.has(run.status) ? <Button loading={busy === "running"} onClick={() => runOnceNow(run)}>Continue running</Button> : null}
-                  {RUN_ACTIVE_STATUSES.has(run.status) ? <Button variant="outline" onClick={() => pauseRun(run)}>Pause</Button> : null}
-                  {run.status === "paused" ? <Button onClick={() => resumeRun(run)}>Resume</Button> : null}
-                  {!RUN_TERMINAL_STATUSES.has(run.status) ? <Button variant="outline" onClick={() => cancelRun(run)}>Cancel</Button> : null}
-                </div>
-              </div>
-            )}
-
-            {schedule ? (
-              <div className="leadgen-monitor-suggestion">
-                <p>Schedule "{schedule.name}": <strong>{schedule.enabled ? "enabled" : "disabled"}</strong> — every {schedule.intervalMinutes >= 1440 ? `${Math.round(schedule.intervalMinutes / 1440)} day(s)` : `${schedule.intervalMinutes} min`}. {schedule.nextRunAt ? `Next run: ${new Date(schedule.nextRunAt).toLocaleString()}.` : ""} {schedule.lastRunMessage ? `Last run: ${schedule.lastRunMessage}` : ""}</p>
-                <div className="leadgen-review-actions">
-                  {!schedule.enabled ? <Button size="sm" loading={scheduleBusy[schedule._id] === "enabling"} onClick={() => enableSchedule(schedule)}>Enable schedule</Button> : <Button size="sm" variant="outline" loading={scheduleBusy[schedule._id] === "disabling"} onClick={() => disableSchedule(schedule)}>Disable schedule</Button>}
-                  <Button size="sm" variant="outline" loading={scheduleBusy[schedule._id] === "running"} onClick={() => runScheduleNow(schedule)}>Run schedule now</Button>
-                </div>
-              </div>
-            ) : null}
-          </section>
-        );
-      })}
+      {runs.filter((run) => run.status !== "draft").length ? (
+        <div className="leadgen-recent-runs">
+          <h4>Recent discovery runs</h4>
+          <p className="leadgen-run-disclosure">
+            Reloaded from what's actually persisted for this workspace — a queued, running, or paused run here can be safely continued from its exact checkpoint; nothing is re-approved or regenerated.
+          </p>
+          {runs.filter((run) => run.status !== "draft").map(renderRun)}
+        </div>
+      ) : null}
     </DashboardCard>
   );
 }

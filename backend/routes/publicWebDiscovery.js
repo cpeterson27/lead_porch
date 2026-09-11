@@ -76,9 +76,18 @@ router.get("/runs/:id", async (req, res) => {
   }
 });
 
+/**
+ * Persisted, non-draft runs (queued/running/paused/completed/
+ * stopped_at_cap/failed) for the "Recent discovery runs" recovery list —
+ * a draft is only ever an in-progress, unapproved edit and is
+ * intentionally excluded here; it exists solely in the owner's current
+ * session via the propose/preset endpoints above. `jobs` is included
+ * (not excluded) so a reloaded run's checkpoint/current-query display
+ * renders identically to one just approved in this same session.
+ */
 router.get("/runs", async (req, res) => {
   try {
-    const runs = await PublicWebDiscoveryRun.find({ workspaceId: req.auth.workspaceId }).sort({ createdAt: -1 }).limit(50).select("-jobs").lean();
+    const runs = await PublicWebDiscoveryRun.find({ workspaceId: req.auth.workspaceId, status: { $ne: "draft" } }).sort({ createdAt: -1 }).limit(50).lean();
     return res.json({ success: true, data: runs });
   } catch (_error) {
     return res.status(500).json({ success: false, error: "Unable to load recent discovery runs." });
