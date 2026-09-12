@@ -482,10 +482,6 @@ function ProgramCards({ programs = [] }) {
           <div className="public-curriculum-label">
             LEARN · SIX-WEEK PROGRAMS
           </div>
-          <p className="public-offer-intro">
-            Choose the skill you need now. Each published intensive uses the
-            price and duration maintained in your coaching dashboard.
-          </p>
           <div
             className={`public-program-row${intensive.some((program) => expanded === String(program.id)) ? " has-expanded" : ""}`}
           >
@@ -811,9 +807,6 @@ export function PublicHome() {
     // introTitleAccent: "real operators" to keep her page identical.
     headlineAccent = p.headlineAccent || "",
     introTitleAccent = p.introTitleAccent || "",
-    // CHANGED: was the unconditional literal "WHY ELLIE COACHING".
-    // For Ellie, set introLabel: "WHY ELLIE COACHING".
-    introLabel = p.introLabel || "WHY CHOOSE US",
     // CHANGED: was the unconditional Ellie-specific pull-quote.
     // For Ellie, set aboutQuote to her existing quote text.
     aboutQuote =
@@ -905,7 +898,6 @@ export function PublicHome() {
 
         <section className="public-why-section" id="about">
           <div className="public-why-title-block">
-            <span className="public-why-label">{introLabel}</span>
             <h2 className="public-why-title">
               <EditorialHeading text={p.introTitle} accent={introTitleAccent} />
             </h2>
@@ -913,7 +905,7 @@ export function PublicHome() {
           </div>
           <div className="public-why-features">
             {(p.valuePropositions || []).map((row, index) => (
-              <div className="public-why-feature" key={`${row.title}-${index}`}>
+              <div className="public-why-feature" data-number={String(index + 1).padStart(2, "0")} key={`${row.title}-${index}`}>
                 <div className="public-why-feature-num">
                   {String(index + 1).padStart(2, "0")}
                 </div>
@@ -1049,14 +1041,19 @@ export function PublicHome() {
         p.communityBody ? (
           <section className="community-section">
             <p className="community-section__word" aria-hidden="true">
-              COMMUNITY
+              SKOOL
             </p>
             <div>
-              <p className="public-kicker">After enrollment</p>
+              <p className="public-kicker">Your private Skool community</p>
               <h2>{p.communityTitle}</h2>
               <p>{p.communityBody}</p>
+              <div className="community-feature-pills" aria-label="Skool community features">
+                {["Program learning", "Deal discussions", "Live coaching calls", "Peer community", "Resource library"].map((feature) => (
+                  <span key={feature}><FiCheck />{feature}</span>
+                ))}
+              </div>
               {p.communityCtaLabel && p.communityCtaUrl ? (
-                <SmartLink className="public-text-link" to={p.communityCtaUrl}>
+                <SmartLink className="public-community-cta" to={p.communityCtaUrl}>
                   {p.communityCtaLabel}
                   <FiArrowRight />
                 </SmartLink>
