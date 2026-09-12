@@ -57,6 +57,9 @@ const visibilityLabels = {
   results: "Show Results page",
   event: "Upcoming event",
   community: "Skool/community",
+  heroCopy: "Hero heading, text & buttons",
+  heroImage: "Hero photo",
+  heroQuote: "Hero pull-quote",
 };
 const lines = (value) => (value || []).join("\n");
 const list = (value) =>
@@ -606,6 +609,64 @@ export default function PublicSiteAdmin({ section = "website" }) {
                       }
                     />
                   </label>
+                  <label className="alt-text-field">
+                    Alt text (for screen readers)
+                    <input
+                      value={config.publicSite.heroMediaAlt || ""}
+                      onChange={(e) =>
+                        patchPublic("heroMediaAlt", e.target.value)
+                      }
+                      placeholder="Describe what's in this image"
+                    />
+                  </label>
+                </div>
+              </article>
+              <article>
+                <div className="homepage-media-preview">
+                  {config.publicSite.stickyBackgroundUrl ? (
+                    <img
+                      src={config.publicSite.stickyBackgroundUrl}
+                      alt="Current sticky background"
+                    />
+                  ) : (
+                    <span>Background</span>
+                  )}
+                </div>
+                <div>
+                  <h4>Sticky background image</h4>
+                  <p>
+                    Stays fixed in place behind the page as visitors scroll
+                    through the site.
+                  </p>
+                  <label className="website-upload-button">
+                    {uploading === "stickyBackgroundUrl"
+                      ? "Uploading…"
+                      : config.publicSite.stickyBackgroundUrl
+                        ? "Replace image"
+                        : "Upload image"}
+                    <input
+                      disabled={Boolean(uploading)}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={(event) =>
+                        uploadSiteImage(
+                          event.target.files?.[0],
+                          "stickyBackgroundUrl",
+                          "Sticky background image",
+                        )
+                      }
+                    />
+                  </label>
+                  <label className="alt-text-field">
+                    Alt text (for screen readers)
+                    <input
+                      value={config.publicSite.stickyBackgroundAlt || ""}
+                      onChange={(e) =>
+                        patchPublic("stickyBackgroundAlt", e.target.value)
+                      }
+                      placeholder="Describe what's in this image"
+                    />
+                  </label>
                 </div>
               </article>
             </div>
@@ -948,6 +1009,14 @@ export default function PublicSiteAdmin({ section = "website" }) {
               <textarea
                 value={config.publicSite.introVideoCopy || ""}
                 onChange={(e) => patchPublic("introVideoCopy", e.target.value)}
+              />
+            </label>
+            <label className="wide">
+              Alt text (for screen readers)
+              <input
+                value={config.publicSite.introVideoAlt || ""}
+                onChange={(e) => patchPublic("introVideoAlt", e.target.value)}
+                placeholder="Describe what this video shows"
               />
             </label>
           </div>

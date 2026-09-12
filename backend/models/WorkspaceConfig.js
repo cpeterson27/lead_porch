@@ -121,8 +121,12 @@ const workspaceConfigSchema = new mongoose.Schema(
       aboutImageUrl: { type: String, default: "", maxlength: 1000 },
       eyebrow: { type: String, default: "", maxlength: 160 },
       heroMediaUrl: { type: String, default: "", maxlength: 1000 },
+      heroMediaAlt: { type: String, default: "", maxlength: 300 },
+      stickyBackgroundUrl: { type: String, default: "", maxlength: 1000 },
+      stickyBackgroundAlt: { type: String, default: "", maxlength: 300 },
       introVideoUrl: { type: String, default: "", maxlength: 1000 },
       introVideoPosterUrl: { type: String, default: "", maxlength: 1000 },
+      introVideoAlt: { type: String, default: "", maxlength: 300 },
       introVideoEyebrow: { type: String, default: "", maxlength: 160 },
       introVideoTitle: { type: String, default: "", maxlength: 300 },
       introVideoCopy: { type: String, default: "", maxlength: 1200 },
@@ -219,6 +223,9 @@ const workspaceConfigSchema = new mongoose.Schema(
         results: { type: Boolean, default: false },
         event: { type: Boolean, default: true },
         community: { type: Boolean, default: true },
+        heroCopy: { type: Boolean, default: true },
+        heroImage: { type: Boolean, default: true },
+        heroQuote: { type: Boolean, default: true },
       },
       trustMetrics: {
         type: [

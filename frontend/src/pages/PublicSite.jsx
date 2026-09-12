@@ -178,6 +178,16 @@ export function PublicLayout({ children }) {
             : '"DM Sans",ui-sans-serif,system-ui,sans-serif',
       }}
     >
+      {site?.publicSite?.stickyBackgroundUrl ? (
+        <div
+          className="public-sticky-background"
+          role="img"
+          aria-label={site.publicSite.stickyBackgroundAlt || ""}
+          style={{
+            backgroundImage: `url(${cloudinaryImage(site.publicSite.stickyBackgroundUrl, 1600)})`,
+          }}
+        />
+      ) : null}
       <header className="public-header">
         <Brand site={site} theme={theme} />
         <button
@@ -604,6 +614,11 @@ function HeroVideoTile({ site }) {
       <button
         type="button"
         className="public-hero__video"
+        aria-label={
+          p.introVideoAlt ||
+          p.introVideoTitle ||
+          `Watch: Welcome to ${workspaceName || "the program"}`
+        }
         style={
           p.introVideoPosterUrl
             ? {
@@ -730,6 +745,10 @@ export function PublicHome() {
   const p = site?.publicSite || {},
     visibility = p.sectionVisibility || {},
     showPrograms = visibility.programs !== false,
+    showHeroCopy = visibility.heroCopy !== false,
+    showHeroImage = visibility.heroImage !== false,
+    showHeroQuote = visibility.heroQuote !== false,
+    videoOnlyHero = !showHeroCopy && !showHeroImage,
     heroImage = p.heroMediaUrl || "",
     workspaceName =
       site?.branding?.publicSiteName || site?.workspace?.name || "",
@@ -762,58 +781,74 @@ export function PublicHome() {
   return (
     <PublicLayout>
       <main id="main-content" className="public-home-wrap">
-        <section className="public-hero-section">
-          <div className="public-hero-left">
-            <div className="public-hero-tags">
-              <span className="public-hero-tag">{heroEyebrow}</span>
+        <section
+          className={`public-hero-section${videoOnlyHero ? " public-hero-section--video-only" : ""}`}
+        >
+          {showHeroCopy ? (
+            <div className="public-hero-left">
+              <div className="public-hero-tags">
+                <span className="public-hero-tag">{heroEyebrow}</span>
+              </div>
+              <h1 className="public-hero-headline">
+                <EditorialHeading text={p.headline} accent={headlineAccent} />
+              </h1>
+              <div className="public-hero-subhead">{p.subheadline}</div>
+              <div className="public-hero-actions">
+                <SmartLink
+                  className="public-hero-btn-primary"
+                  to={
+                    showPrograms ? "#programs" : p.primaryCtaUrl || "#contact"
+                  }
+                >
+                  {showPrograms
+                    ? "Explore programs"
+                    : p.primaryCtaLabel || "Contact us"}
+                </SmartLink>
+                <SmartLink
+                  className="public-hero-btn-secondary"
+                  to={p.secondaryCtaUrl || "/#about"}
+                >
+                  {p.secondaryCtaLabel || "Meet the founder"}
+                </SmartLink>
+              </div>
+              {visibility.video !== false ? (
+                <HeroVideoTile site={site} />
+              ) : null}
             </div>
-            <h1 className="public-hero-headline">
-              <EditorialHeading text={p.headline} accent={headlineAccent} />
-            </h1>
-            <div className="public-hero-subhead">{p.subheadline}</div>
-            <div className="public-hero-actions">
-              <SmartLink
-                className="public-hero-btn-primary"
-                to={showPrograms ? "#programs" : p.primaryCtaUrl || "#contact"}
-              >
-                {showPrograms
-                  ? "Explore programs"
-                  : p.primaryCtaLabel || "Contact us"}
-              </SmartLink>
-              <SmartLink
-                className="public-hero-btn-secondary"
-                to={p.secondaryCtaUrl || "/#about"}
-              >
-                {p.secondaryCtaLabel || "Meet the founder"}
-              </SmartLink>
+          ) : visibility.video !== false ? (
+            <div className="public-hero-video-only">
+              <HeroVideoTile site={site} />
             </div>
-            {visibility.video !== false ? <HeroVideoTile site={site} /> : null}
-          </div>
-          <div className="public-hero-right">
-            <div className="public-hero-img-box">
-              {heroImage ? (
-                <img
-                  className="public-hero-img"
-                  src={cloudinaryImage(heroImage, 960)}
-                  alt=""
-                />
-              ) : (
-                <div
-                  className="public-hero-image-placeholder"
-                  aria-hidden="true"
-                />
-              )}
-              <div className="public-hero-quote-box">
-                <span className="public-hero-quote">
-                  "
-                  {p.heroTagline ||
-                    "Learn what works, build momentum, and get results."}
-                  "
-                </span>
-                <small>— {heroQuoteAttribution}</small>
+          ) : null}
+          {showHeroImage ? (
+            <div className="public-hero-right">
+              <div className="public-hero-img-box">
+                {heroImage ? (
+                  <img
+                    className="public-hero-img"
+                    src={cloudinaryImage(heroImage, 960)}
+                    alt={p.heroMediaAlt || ""}
+                  />
+                ) : (
+                  <div
+                    className="public-hero-image-placeholder"
+                    aria-hidden="true"
+                  />
+                )}
+                {showHeroQuote ? (
+                  <div className="public-hero-quote-box">
+                    <span className="public-hero-quote">
+                      "
+                      {p.heroTagline ||
+                        "Learn what works, build momentum, and get results."}
+                      "
+                    </span>
+                    <small>— {heroQuoteAttribution}</small>
+                  </div>
+                ) : null}
               </div>
             </div>
-          </div>
+          ) : null}
         </section>
 
         <section className="public-why-section" id="about">

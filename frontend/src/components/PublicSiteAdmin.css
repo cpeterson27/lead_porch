@@ -737,6 +737,19 @@
   flex-direction: column;
   gap: 5px;
 }
+.alt-text-field {
+  display: grid;
+  gap: 5px;
+  margin-top: 10px;
+  color: #34423d;
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+.alt-text-field input {
+  font: inherit;
+  font-weight: 400;
+}
+
 @media (max-width: 850px) {
   .homepage-media-uploads {
     grid-template-columns: 1fr;

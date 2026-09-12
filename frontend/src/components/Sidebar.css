@@ -17,7 +17,14 @@
   gap: 1rem;
   z-index: 40;
   transition: transform 0.25s ease;
-  overflow-y: auto;
+  /* overflow-y:auto directly on this element forces overflow-x to auto
+     too (a CSS rule: once one axis isn't visible, "visible" on the other
+     axis computes to auto), which clipped the collapse-toggle button
+     poking out past the right edge at -14px — it was being cut off by
+     this same box instead of floating over the page. The nav list scrolls
+     on its own element (.sidebar__nav) below instead, so this stays
+     visible and the toggle is never clipped. */
+  overflow: visible;
 }
 /* Attached directly to the sidebar's own right edge, vertically
    centered — the same small glossy circular arrow used elsewhere,
@@ -28,22 +35,22 @@
 .sidebar__collapse-toggle {
   position: absolute;
   top: 50%;
-  right: -14px;
+  right: -18px;
   transform: translateY(-50%);
   z-index: 41;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(255, 255, 255, 0.35);
   border-radius: var(--radius-pill);
   background: linear-gradient(155deg, rgba(255, 255, 255, 0.4), rgba(255, 255, 255, 0) 55%), var(--workspace-primary);
   color: #fffdf7;
-  box-shadow: 0 6px 14px rgba(8, 20, 17, 0.3), inset 0 1px rgba(255, 255, 255, 0.35);
+  box-shadow: 0 6px 16px rgba(8, 20, 17, 0.38), inset 0 1px rgba(255, 255, 255, 0.35);
   backdrop-filter: blur(6px);
   cursor: pointer;
-  font-size: 0.95rem;
+  font-size: 1.2rem;
   transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 
@@ -129,6 +136,9 @@
 .sidebar__nav {
   display: grid;
   gap: 0.85rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .sidebar__group {

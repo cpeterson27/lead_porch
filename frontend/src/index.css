@@ -127,13 +127,26 @@ select {
  * hunting down and editing every page individually. A pill radius on a
  * roughly-square element (an icon button, a small toggle) auto-clamps to
  * a perfect circle, so this never conflicts with existing circular
- * buttons/avatars elsewhere.
+ * buttons/avatars elsewhere. Full-screen modal/drawer backdrops are
+ * implemented as <button> elements (for accessible click-to-close) that
+ * cover the entire viewport (inset:0) — a 999px radius on an element that
+ * large stadium-clips it down to a small oval in the middle of the
+ * screen instead of covering the screen, so those are excluded here and
+ * forced back to square. The public-site hero video tile is also a
+ * <button> (for accessible click-to-play) but is a deliberately-shaped
+ * media tile, not a generic control, so it's excluded too and given its
+ * own square shape directly in PublicSite.css.
  */
-button,
+button:not(.modal-backdrop):not(.drawer-backdrop):not(.public-hero__video),
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
 select,
 textarea {
   border-radius: var(--radius-pill) !important;
+}
+
+.modal-backdrop,
+.drawer-backdrop {
+  border-radius: 0 !important;
 }
 
 input[type="file"] {

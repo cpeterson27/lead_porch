@@ -67,6 +67,9 @@ function defaults(workspace) {
       testimonials: true,
       event: true,
       community: true,
+      heroCopy: true,
+      heroImage: true,
+      heroQuote: true,
     },
     genericVisibility = {
       video: false,
@@ -77,6 +80,9 @@ function defaults(workspace) {
       testimonials: false,
       event: false,
       community: false,
+      heroCopy: true,
+      heroImage: true,
+      heroQuote: true,
     };
   return ellie
     ? {
@@ -332,8 +338,12 @@ function sanitizedConfig(workspace, config) {
       heroQuoteAttribution: String(p.heroQuoteAttribution || "").slice(0, 160),
       aboutImageUrl: safeUrl(p.aboutImageUrl),
       heroMediaUrl: safeUrl(p.heroMediaUrl),
+      heroMediaAlt: String(p.heroMediaAlt || "").slice(0, 300),
+      stickyBackgroundUrl: safeUrl(p.stickyBackgroundUrl),
+      stickyBackgroundAlt: String(p.stickyBackgroundAlt || "").slice(0, 300),
       introVideoUrl: safeUrl(p.introVideoUrl),
       introVideoPosterUrl: safeUrl(p.introVideoPosterUrl),
+      introVideoAlt: String(p.introVideoAlt || "").slice(0, 300),
       introVideoEyebrow: String(
         p.introVideoEyebrow || base.publicSite.introVideoEyebrow || "",
       ).slice(0, 160),
