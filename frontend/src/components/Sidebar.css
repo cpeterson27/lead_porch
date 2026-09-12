@@ -84,7 +84,7 @@
   padding-inline: 0.5rem;
 }
 .sidebar--collapsed .sidebar__link--active {
-  box-shadow: inset 2px 0 var(--workspace-accent);
+  box-shadow: inset 2px 0 var(--app-accent, var(--workspace-accent));
 }
 .sidebar--collapsed .sidebar__icon {
   font-size: 1.08rem;
@@ -202,7 +202,7 @@
   font-weight: 700;
   background: rgba(255, 255, 255, 0.075);
   border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: inset 2px 0 var(--workspace-accent);
+  box-shadow: inset 2px 0 var(--app-accent, var(--workspace-accent));
 }
 
 .sidebar__icon {
@@ -269,9 +269,9 @@
 }
 .sidebar__link--active {
   box-shadow:
-    inset 3px 0 var(--workspace-accent),
+    inset 2px 0 var(--app-accent, var(--workspace-accent)),
     0 10px 24px rgba(0, 0, 0, 0.12);
 }
 .sidebar__link--active .sidebar__icon {
-  color: var(--workspace-accent);
+  color: var(--app-accent, var(--workspace-accent));
 }
