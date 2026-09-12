@@ -20,9 +20,10 @@ export default function ProgramWebsiteSettings({ websiteUrl = "/", onChange }) {
     [error, setError] = useState(""),
     [message, setMessage] = useState("");
   const sectionOf = (program) =>
-    Number(program.defaultPrice?.amount || 0) >= 10000
+    program.publicPresentation?.section ||
+    (Number(program.defaultPrice?.amount || 0) >= 10000
       ? "accelerator"
-      : "intensive";
+      : "intensive");
   const orderedPrograms = [...programs].sort((a, b) => {
     const sectionDifference =
       (sectionOf(a) === "accelerator" ? 0 : 1) -

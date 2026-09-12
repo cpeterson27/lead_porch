@@ -6,7 +6,7 @@ const { equalSchedule, validateSchedule } = require("./services/paymentPlanServi
 const root = __dirname;
 const source = (file) => fs.readFileSync(path.join(root, file), "utf8");
 assert.deepStrictEqual(equalSchedule(10000, 3), [3334, 3333, 3333]);
-assert.deepStrictEqual(equalSchedule(179900, 4).reduce((sum, value) => sum + value, 0), 179900);
+assert.deepStrictEqual(equalSchedule(170000, 4).reduce((sum, value) => sum + value, 0), 170000);
 assert.strictEqual(validateSchedule({ totalAmountMinor: 10000, installmentCount: 2, installments: [{ amountMinor: 5000, dueAt: "2026-09-10" }, { amountMinor: 5000, dueAt: "2026-10-10" }] }).length, 2);
 assert.throws(() => validateSchedule({ totalAmountMinor: 10000, installmentCount: 2, installments: [{ amountMinor: 4000, dueAt: "2026-09-10" }, { amountMinor: 5000, dueAt: "2026-10-10" }] }), /published program price/);
 assert.throws(() => validateSchedule({ totalAmountMinor: 10000, installmentCount: 2, installments: [{ amountMinor: 5000, dueAt: "2026-10-10" }, { amountMinor: 5000, dueAt: "2026-09-10" }] }), /chronological/);

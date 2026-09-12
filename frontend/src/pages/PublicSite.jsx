@@ -321,7 +321,9 @@ function ProgramCards({ programs = [] }) {
     (left, right) => Number(left.sortOrder || 0) - Number(right.sortOrder || 0),
   );
   const featured = orderedPrograms.filter(
-    (program) => Number(program.price?.amount || 0) >= 10000,
+    (program) =>
+      program.section === "accelerator" ||
+      (!program.section && Number(program.price?.amount || 0) >= 10000),
   );
   const featuredIds = new Set(featured.map((program) => String(program.id)));
   const intensive = orderedPrograms.filter(
@@ -339,13 +341,48 @@ function ProgramCards({ programs = [] }) {
     if (/bootcamp/i.test(text)) return "BOOTCAMP";
     return "COACHING";
   };
+  const money = (program) =>
+    program.priceVisible !== false && program.price?.amount != null
+      ? new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: program.price.currency || "USD",
+          maximumFractionDigits: 0,
+        }).format(program.price.amount)
+      : "Talk with our team";
+  const acceleratorStage = (program, index) => {
+    const amount = Number(program.price?.amount || 0);
+    if (amount >= 20000) return "ALL-INCLUSIVE";
+    if (amount >= 15000) return "ACQUIRE";
+    if (amount >= 10000) return "IMPLEMENT";
+    return ["IMPLEMENT", "ACQUIRE", "ALL-INCLUSIVE"][index] || "ACCELERATE";
+  };
 
   return (
     <>
+      <nav className="public-offer-path" aria-label="Coaching offer path">
+        {[
+          ["01", "LEARN", "Focused six-week programs"],
+          ["02", "IMPLEMENT", "Build with guided support"],
+          ["03", "ACQUIRE", "Move from strategy to assets"],
+          ["04", "ALL-INCLUSIVE", "Highest-touch partnership"],
+        ].map(([number, title, description]) => (
+          <div key={title}>
+            <span>{number}</span>
+            <strong>{title}</strong>
+            <small>{description}</small>
+          </div>
+        ))}
+      </nav>
       <div className="public-curriculum-group">
         <div className="public-curriculum-label">
-          HIGH PERFORMANCE ACCELERATORS
+          ASSET ACQUISITION ACCELERATOR
         </div>
+        {featured.length > 0 ? (
+          <p className="public-offer-intro">
+            Compare every level at a glance. The all-inclusive option is the
+            highest-touch path; every application is reviewed before payment.
+          </p>
+        ) : null}
         <div
           className={`public-accelerator-row${featured.some((program) => expanded === String(program.id)) ? " has-expanded" : ""}`}
         >
@@ -375,12 +412,25 @@ function ProgramCards({ programs = [] }) {
                 )}
               </div>
               <div className="public-accelerator-content">
+                <div className="public-offer-stage">
+                  {acceleratorStage(program, featured.indexOf(program))}
+                </div>
                 <div className="public-accelerator-meta">
                   {program.duration?.value || ""} {program.duration?.unit || ""}
                   {program.duration?.value ? " · " : ""}
                   {formatLabel(program)}
                 </div>
                 <div className="public-accelerator-title">{program.title}</div>
+                {program.summary ? (
+                  <p className="public-accelerator-summary">{program.summary}</p>
+                ) : null}
+                {program.highlights?.length ? (
+                  <ul className="public-offer-includes" aria-label={`${program.title} includes`}>
+                    {program.highlights.slice(0, 5).map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                ) : null}
                 {expanded === String(program.id) ? (
                   <div
                     className="public-accelerator-desc"
@@ -391,13 +441,7 @@ function ProgramCards({ programs = [] }) {
                 ) : null}
                 <div className="public-accelerator-footer">
                   <span className="public-accelerator-price">
-                    {program.price?.amount != null
-                      ? new Intl.NumberFormat("en-US", {
-                          style: "currency",
-                          currency: program.price.currency || "USD",
-                          maximumFractionDigits: 0,
-                        }).format(program.price.amount)
-                      : "Contact us"}
+                    {money(program)}
                   </span>
                   <button
                     type="button"
@@ -417,15 +461,13 @@ function ProgramCards({ programs = [] }) {
                       : "Learn more"}
                   </button>
                 </div>
-                {expanded === String(program.id) ? (
-                  <button
-                    type="button"
-                    className="public-program-apply"
-                    onClick={() => setApplying(program)}
-                  >
-                    Apply to program <FiArrowRight />
-                  </button>
-                ) : null}
+                <button
+                  type="button"
+                  className="public-program-apply"
+                  onClick={() => setApplying(program)}
+                >
+                  Apply to program <FiArrowRight />
+                </button>
               </div>
             </article>
           ))}
@@ -434,8 +476,12 @@ function ProgramCards({ programs = [] }) {
       {intensive.length > 0 && (
         <div className="public-curriculum-group">
           <div className="public-curriculum-label">
-            INTENSIVE 6-WEEK PROGRAMS
+            LEARN · SIX-WEEK PROGRAMS
           </div>
+          <p className="public-offer-intro">
+            Choose the skill you need now. Each published intensive uses the
+            price and duration maintained in your coaching dashboard.
+          </p>
           <div
             className={`public-program-row${intensive.some((program) => expanded === String(program.id)) ? " has-expanded" : ""}`}
           >
@@ -473,13 +519,7 @@ function ProgramCards({ programs = [] }) {
                   ) : null}
                   <div className="public-program-details">
                     <span className="public-program-price">
-                      {program.price?.amount != null
-                        ? new Intl.NumberFormat("en-US", {
-                            style: "currency",
-                            currency: program.price.currency || "USD",
-                            maximumFractionDigits: 0,
-                          }).format(program.price.amount)
-                        : "Contact us"}
+                      {money(program)}
                     </span>
                     <button
                       type="button"
@@ -499,15 +539,13 @@ function ProgramCards({ programs = [] }) {
                         : "Learn more"}
                     </button>
                   </div>
-                  {expanded === String(program.id) ? (
-                    <button
-                      type="button"
-                      className="public-program-apply"
-                      onClick={() => setApplying(program)}
-                    >
-                      Apply to program <FiArrowRight />
-                    </button>
-                  ) : null}
+                  <button
+                    type="button"
+                    className="public-program-apply"
+                    onClick={() => setApplying(program)}
+                  >
+                    Apply to program <FiArrowRight />
+                  </button>
                 </div>
               </article>
             ))}
