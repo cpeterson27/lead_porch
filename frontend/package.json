@@ -36,6 +36,7 @@
     "test:knowledge-center-pdf-upload": "node test-knowledge-center-pdf-upload.js",
     "test:vertex-grounding-discovery-ui": "node test-vertex-grounding-discovery-ui.js",
     "test:public-web-discovery-run-recovery-ui": "node test-public-web-discovery-run-recovery-ui.js",
+    "test:jarvis-campaign-studio-ui": "node test-jarvis-campaign-studio-ui.js",
     "test:social-ai-inbox-ui": "node test-social-ai-inbox-ui.js",
     "test:social-automation-controls-ui": "node test-social-automation-controls-ui.js",
     "preview": "vite preview"

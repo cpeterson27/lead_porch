@@ -36,6 +36,7 @@
     "test:ai-core": "node test-ai-core.js",
     "test:jarvis-memory-core": "node test-jarvis-memory-core.js",
     "test:agent-framework": "node test-agent-framework.js",
+    "test:jarvis-campaign-studio": "node test-jarvis-campaign-studio.js",
     "test:lead-closer-workflow": "node test-lead-closer-workflow.js",
     "test:coach-onboarding": "node test-coach-onboarding.js",
     "test:invitation-templates": "node test-invitation-templates.js",

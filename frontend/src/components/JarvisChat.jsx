@@ -3,6 +3,7 @@ import { FiMaximize2, FiMinimize2, FiChevronUp, FiChevronDown, FiVolume2 } from 
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useJarvis } from "../hooks/useJarvis";
 import {
+  buildJarvisCampaignPackage,
   confirmJarvisResearchImport,
   createContentBrief,
   fetchJarvisProfile,
@@ -17,6 +18,7 @@ import {
 // promo graphic) rather than just talk about one, so it can be routed to
 // the real OpenAI image generator instead of the normal text chat.
 const IMAGE_REQUEST_PATTERN = /\b(generate|create|design|make|draw)\b[^.!?\n]{0,60}\b(flyer|poster|banner|graphic|image|photo|picture|ad|advertisement)\b/i;
+const isCampaignPackageRequest = (text) => /\b(create|make|build|design|prepare)\b/i.test(text) && /\b(social(?: media)?|campaign|content)\b/i.test(text) && /\b(flyer|graphic|image|program|platform|post)\b/i.test(text);
 
 // Recognizes a request to actually draft reusable email/social copy, so
 // the "Save as email template" / "Save as social draft" buttons only
@@ -109,6 +111,20 @@ function JarvisPublicMentionPreview({ message }) {
   </section>;
 }
 
+function JarvisCampaignPackagePreview({ message, busy, onBuild, onOpen }) {
+  const item = message?.data?.campaignPackage;
+  if (!item) return null;
+  const program = item.programDraft || {};
+  return <section className="jarvis-package-preview">
+    <header><div><span>Jarvis Campaign Studio</span><h3>{item.name}</h3><p>{item.objective}</p></div><strong>{item.status === "ready" ? "Ready for review" : "Proposal"}</strong></header>
+    {item.image?.url ? <img src={item.image.url} alt={`${item.name} generated campaign graphic`} /> : <div className="jarvis-package-preview__flyer"><span>Flyer direction</span><p>{item.flyerPrompt}</p></div>}
+    <div className="jarvis-package-preview__program"><span>{item.existingProgramId ? "Existing program" : "New program draft"}</span><h4>{program.name}</h4><p>{program.summary}</p><dl><div><dt>Audience</dt><dd>{program.audience || "Review before building"}</dd></div><div><dt>Length</dt><dd>{program.durationValue || "—"} {program.durationUnit || ""}</dd></div><div><dt>Price</dt><dd>{program.priceAmount ? `$${Number(program.priceAmount).toLocaleString()}` : "Not set"}</dd></div></dl></div>
+    <div className="jarvis-package-preview__platforms">{(item.socialVariants || []).map((variant) => <article key={variant.provider}><span>{variant.provider}</span><p>{variant.body}</p><small>{(variant.hashtags || []).map((tag) => tag.startsWith("#") ? tag : `#${tag}`).join(" ")}</small></article>)}</div>
+    <p className="jarvis-package-preview__safety"><strong>Draft boundary:</strong> Building creates a hidden program draft when needed, one permanent flyer, and correctly sized social drafts. Nothing is published or sent.</p>
+    {item.status === "ready" ? <button type="button" onClick={onOpen}>Open in AI Content</button> : <button type="button" disabled={busy} onClick={onBuild}>{busy ? "Building campaign package…" : "Approve and build drafts"}</button>}
+  </section>;
+}
+
 // Speech synthesis handles plain prose much better than rendered Markdown.
 // Keep the visual response intact, but remove formatting and add natural pauses
 // before handing a reply to the browser voice.
@@ -168,6 +184,7 @@ export default function JarvisChat() {
   const [savingProfile, setSavingProfile] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
+  const [buildingPackageId, setBuildingPackageId] = useState("");
   // Collapses the voice-settings block (source/OpenAI voice/browser
   // voice/test button) at the bottom of the conversation input — not the
   // big orb header — since that's the part that's genuinely just
@@ -324,7 +341,7 @@ export default function JarvisChat() {
     // normal text chat — the request text itself becomes the image
     // prompt, so mentioning the specific program/offer in the message is
     // what makes the flyer about it.
-    if (IMAGE_REQUEST_PATTERN.test(prompt)) {
+    if (IMAGE_REQUEST_PATTERN.test(prompt) && !isCampaignPackageRequest(prompt)) {
       setGeneratingImage(true);
       try {
         const result = await jarvisGenerateImage(prompt);
@@ -421,7 +438,15 @@ export default function JarvisChat() {
 
   const handleAction = async (action, message = null) => {
     try {
-      if (action === "open_lead_discovery") {
+      if (action === "build_campaign_package") {
+        const packageId = message?.data?.campaignPackage?._id;
+        if (!packageId) return;
+        setBuildingPackageId(String(packageId));
+        const response = await buildJarvisCampaignPackage(packageId);
+        const built = response.data;
+        setMessages((current) => current.map((item) => item.id === message.id ? { ...item, text: `“${built.name}” is ready for review. I created the flyer, platform-specific sizes and copy, and ${built.generatedProgramId ? "a hidden program draft" : "linked your existing program"}. Nothing was published or sent.`, data: { ...item.data, campaignPackage: built }, actions: [] } : item));
+        setBuildingPackageId("");
+      } else if (action === "open_lead_discovery") {
         const question = message?.data?.researchQuestion || "";
         navigate(`/discovery${question ? `?question=${encodeURIComponent(question)}` : ""}`);
       } else if (action === "review_research_preview") {
@@ -489,10 +514,11 @@ export default function JarvisChat() {
         }
       }
     } catch (err) {
+      setBuildingPackageId("");
       const errorMessage = {
         id: nextId,
         type: "error",
-        text: `Error executing action: ${err.message}`,
+        text: `Error executing action: ${err.response?.data?.error || err.message}`,
       };
       setMessages((prev) => [...prev, errorMessage]);
       setNextId(nextId + 1);
@@ -521,6 +547,7 @@ export default function JarvisChat() {
       view_development_requests: "Review Development Request",
       open_lead_discovery: "Review Lead Search",
       review_research_preview: "Review Jarvis Research Preview",
+      build_campaign_package: "Approve and build drafts",
     };
     return labels[action] || action;
   };
@@ -676,7 +703,9 @@ export default function JarvisChat() {
           <p className="jarvis-voice-hint">{listening ? "Speak naturally. Jarvis will respond when you pause." : "Tap the core or press Command + J to begin."}</p>
         </div>
         <div className="jarvis-statuses" aria-label="Jarvis connection status">
-          <span className={status?.openai?.webSearchEnabled ? "is-ready" : ""}>Web research {status?.openai?.webSearchEnabled ? "ready" : "not enabled"}</span>
+          <span className={status?.imageGeneration?.enabled ? "is-ready" : ""}>Images {status?.imageGeneration?.enabled ? "ready" : "not enabled"}</span>
+          <span className={status?.discoveryProviders?.vertex?.available ? "is-ready" : ""}>Vertex {status?.discoveryProviders?.vertex?.available ? "ready" : "not enabled"}</span>
+          <span className={status?.discoveryProviders?.openai_web_search?.available ? "is-ready" : ""}>OpenAI research {status?.discoveryProviders?.openai_web_search?.available ? "ready" : "not enabled"}</span>
           <button type="button" className="jarvis-persona-button" onClick={() => setProfileOpen((value) => !value)}>Personalize</button>
           <button type="button" className="jarvis-fullscreen-button" onClick={toggleFullscreen}>{isFullscreen ? <FiMinimize2 /> : <FiMaximize2 />}<span>{isFullscreen ? "Exit" : "Full screen"}</span></button>
         </div>
@@ -722,6 +751,7 @@ export default function JarvisChat() {
 
               <JarvisResearchPreview message={msg} approval={researchApprovals[String(msg.data?.previewId || "")]} busy={researchActionId === String(msg.data?.previewId || "")} onPrepare={prepareResearchImport} onConfirm={confirmResearchImport} />
               <JarvisPublicMentionPreview message={msg} />
+              <JarvisCampaignPackagePreview message={msg} busy={buildingPackageId === String(msg.data?.campaignPackage?._id || "")} onBuild={() => handleAction("build_campaign_package", msg)} onOpen={() => navigate("/content")} />
 
               {msg.activity?.length ? <div className="jarvis-activity"><p>Jarvis completed</p>{msg.activity.map((step, index) => <div key={`${msg.id}-${index}`}><span>{step.status === "warning" ? "!" : "✓"}</span>{step.label}</div>)}</div> : null}
               {msg.memorySources?.length ? <div className="jarvis-memory-sources"><strong>Vault notes consulted</strong>{msg.memorySources.map((source) => <span key={source}>{source}</span>)}</div> : null}

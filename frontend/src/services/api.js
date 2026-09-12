@@ -1449,6 +1449,18 @@ export const jarvisChat = (message) =>
 export const jarvisGenerateImage = (prompt, options = {}) =>
   api.post("/jarvis/generate-image", { prompt, ...options }, { timeout: 90000 }).then((res) => res.data);
 
+export const buildJarvisCampaignPackage = (packageId) =>
+  api.post(`/jarvis/campaign-packages/${packageId}/build`, {}, { timeout: 120000 }).then((res) => res.data);
+
+export const fetchJarvisCampaignPackages = (limit = 20) =>
+  api.get("/jarvis/campaign-packages", { params: { limit } }).then((res) => res.data);
+
+export const prepareJarvisMorningLeads = (values) =>
+  api.post("/jarvis/morning-leads/prepare", values).then((res) => res.data);
+
+export const fetchJarvisMorningLeadStatus = () =>
+  api.get("/jarvis/morning-leads/status").then((res) => res.data.data);
+
 export const jarvisSummary = () =>
   api.get("/jarvis/summary").then((res) => res.data);
 

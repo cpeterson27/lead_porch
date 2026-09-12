@@ -24,6 +24,10 @@ const { isJarvisWebResearchEnabled, normalizePublicPeople, researchAndStagePubli
 const { applyContactFieldUpdate, availableContactFields, buildContactFieldUpdatePreview } = require("../services/contactFieldUpdateService");
 const { collectMonitorSignals } = require("../services/intentSourceService");
 const imageGenerationService = require("../services/imageGenerationService");
+const jarvisCampaignStudioService = require("../services/jarvisCampaignStudioService");
+const DiscoverySchedule = require("../models/DiscoverySchedule");
+const leadGenerationCoordinatorService = require("../services/leadGenerationCoordinatorService");
+const GroundingResearchResult = require("../models/GroundingResearchResult");
 const { requireCapability, requireRole } = require("../middleware/auth");
 const multer = require("multer");
 const { ingestPdf } = require("../services/pdfKnowledgeIngestionService");
@@ -144,6 +148,32 @@ router.post("/chat", async (req, res) => {
       });
     }
 
+    const recurringLeadRequest = /\b(every (?:morning|day|daily)|each (?:morning|day)|daily|recurring|monitor)\b/i.test(message)
+      && /\b(leads?|prospects?|potential students?|buyers?)\b/i.test(message);
+    if (recurringLeadRequest) {
+      const programs = await leadGenerationCoordinatorService.listApprovedPrograms({ workspaceId: req.auth.workspaceId });
+      const mentioned = programs.filter((program) => message.toLowerCase().includes(String(program.title || program.rawTitle || "").toLowerCase()));
+      const program = mentioned.length === 1 ? mentioned[0] : programs.length === 1 ? programs[0] : null;
+      if (!program) return res.json({ success: true, data: { answer: programs.length ? "I can prepare the morning lead monitor, but I need you to select the approved program so every prospect is scored against the correct offer. Open Discovery and choose the program; the schedule will remain off until you approve its provider budgets." : "Add and approve at least one Offers & Programs note in the Knowledge Center first. Jarvis needs an authoritative program and buyer profile before it can build a responsible morning prospect monitor.", data: { morningLeadSetup: { needsProgramSelection: true, programs } }, actionsAvailable: ["open_lead_discovery"], activity: [{ status: "waiting", label: "Waiting for an approved program selection" }], memorySources: [] } });
+      const requested = Number(message.match(/\b(\d{1,3})\b/)?.[1]) || 100;
+      const target = Math.min(500, Math.max(1, requested));
+      const scheduleName = `${target} prospective students every morning — ${program.title}`;
+      const schedule = await DiscoverySchedule.findOne({ workspaceId: req.auth.workspaceId, programNoteId: program.noteId, name: scheduleName }) || await DiscoverySchedule.create({ workspaceId: req.auth.workspaceId, name: scheduleName, programNoteId: program.noteId, programName: program.title, enabled: false, intervalMinutes: 1440, dailyCandidateTarget: target, pageLimitPerQuery: 2, queryLimitPerRun: Math.max(40, target), providerCreditCapUsd: 10, sources: ["vertex", "openai_web_search"], includePdlPersonSearch: true, maxPdlPersonSearchCredits: target, includePdlCrossReference: true, maxPdlCrossReferenceCredits: target, maxAttemptsPerJob: 3, createdByUserId: req.auth.user?._id });
+      return res.json({ success: true, data: { answer: `I prepared a daily monitor targeting up to ${target} review-ready prospective students for “${program.title}.” It uses Vertex and OpenAI public research plus PDL when configured, removes or merges duplicates in the discovery pipeline, and preserves evidence for review. It is intentionally OFF until you review the $10-per-run web cap and up to ${target} PDL search and ${target} cross-reference credits, then enable it in Discovery.`, data: { morningLeadSetup: { schedule } }, actionsAvailable: ["open_lead_discovery"], activity: [{ status: "complete", label: "Prepared the daily prospect schedule" }, { status: "complete", label: `Set a target of ${target} review-ready candidates` }, { status: "waiting", label: "Waiting for owner budget review and activation" }], memorySources: [] } });
+    }
+
+    const campaignPackageRequest = /\b(create|make|build|design|prepare)\b/i.test(message)
+      && /\b(social(?: media)?|campaign|content)\b/i.test(message)
+      && /\b(flyer|graphic|image|program|platform|post)\b/i.test(message);
+    if (campaignPackageRequest) {
+      const campaignPackage = await jarvisCampaignStudioService.prepare({ workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, request: message, existingProgramId: req.body?.existingProgramId || null, correlationId: req.get("x-request-id") || "" });
+      return res.json({ success: true, data: {
+        answer: `I prepared “${campaignPackage.name}” as one reviewable package. It includes a ${campaignPackage.existingProgramId ? "campaign for your existing program" : "new program draft"}, separate copy for Instagram, Facebook, LinkedIn, and X, and a branded flyer plan. Review it below. Building it will generate the image and save everything to AI Content as drafts; it will not publish, activate the program, or contact anyone.`,
+        data: { campaignPackage }, actionsAvailable: [],
+        activity: [{ status: "complete", label: "Prepared program and campaign strategy" }, { status: "complete", label: "Created four platform-specific copy drafts" }, { status: "waiting", label: "Waiting for approval before generating the flyer and saving records" }], memorySources: [],
+      } });
+    }
+
     const leadResearchRequest = /\b(find|discover|research|search for|build)\b/i.test(message)
       && /\b(leads?|prospects?|business(?:es)?|compan(?:y|ies)|owners?|founders?|decision[- ]makers?|principals?|presidents?|ceos?|attendees?|contacts?)\b/i.test(message);
     if (leadResearchRequest) {
@@ -252,6 +282,50 @@ router.post("/chat", async (req, res) => {
       error: error.message || "Failed to process query",
     });
   }
+});
+
+router.get("/campaign-packages", async (req, res) => {
+  try { return res.json({ success: true, data: await jarvisCampaignStudioService.list({ workspaceId: req.auth.workspaceId, limit: req.query?.limit }) }); }
+  catch (_error) { return res.status(500).json({ success: false, error: "Campaign packages could not be loaded." }); }
+});
+
+router.post("/campaign-packages/prepare", async (req, res) => {
+  try {
+    const item = await jarvisCampaignStudioService.prepare({ workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, request: req.body?.request, existingProgramId: req.body?.existingProgramId || null, correlationId: req.get("x-request-id") || "" });
+    return res.status(201).json({ success: true, data: item });
+  } catch (error) { return res.status(error.code === "STUDIO_PROGRAM_NOT_FOUND" ? 404 : 400).json({ success: false, error: error.message, code: error.code || "" }); }
+});
+
+router.post("/campaign-packages/:id/build", requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const item = await jarvisCampaignStudioService.build({ workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, packageId: req.params.id });
+    return res.json({ success: true, data: item });
+  } catch (error) {
+    const status = error.code === "STUDIO_PACKAGE_NOT_FOUND" ? 404 : error.code === "IMAGE_GENERATION_DISABLED" ? 503 : 400;
+    return res.status(status).json({ success: false, error: error.message, code: error.code || "" });
+  }
+});
+
+/** Create a safe, disabled daily plan. Enabling remains a separate owner action. */
+router.post("/morning-leads/prepare", requireRole("owner", "admin"), async (req, res) => {
+  try {
+    if (!req.body?.programNoteId) return res.status(400).json({ success: false, error: "Choose the approved program Jarvis should find students for." });
+    const schedule = await DiscoverySchedule.create({ workspaceId: req.auth.workspaceId, name: req.body?.name || "100 prospective students every morning", programNoteId: req.body.programNoteId, programName: req.body?.programName || "", enabled: false, intervalMinutes: 1440, dailyCandidateTarget: Math.min(500, Math.max(1, Number(req.body?.dailyCandidateTarget) || 100)), pageLimitPerQuery: Math.min(10, Math.max(1, Number(req.body?.pageLimitPerQuery) || 2)), queryLimitPerRun: Math.min(500, Math.max(1, Number(req.body?.queryLimitPerRun) || 100)), providerCreditCapUsd: Math.min(1000, Math.max(0, Number(req.body?.providerCreditCapUsd) || 10)), sources: Array.isArray(req.body?.sources) ? req.body.sources.filter((s) => ["vertex", "openai_web_search"].includes(s)) : ["vertex", "openai_web_search"], includePdlPersonSearch: req.body?.includePdlPersonSearch !== false, maxPdlPersonSearchCredits: Math.min(500, Math.max(0, Number(req.body?.maxPdlPersonSearchCredits) || 100)), includePdlCrossReference: req.body?.includePdlCrossReference !== false, maxPdlCrossReferenceCredits: Math.min(500, Math.max(0, Number(req.body?.maxPdlCrossReferenceCredits) || 100)), maxAttemptsPerJob: 3, createdByUserId: req.auth.user?._id });
+    return res.status(201).json({ success: true, data: schedule, warning: "This plan is disabled. Review its target and provider budgets, then explicitly enable it in Discovery." });
+  } catch (error) { return res.status(400).json({ success: false, error: error.message || "Morning lead plan could not be prepared." }); }
+});
+
+router.get("/morning-leads/status", async (req, res) => {
+  try {
+    const start = new Date(); start.setHours(0, 0, 0, 0);
+    const [schedules, pendingReview, qualified, foundToday] = await Promise.all([
+      DiscoverySchedule.find({ workspaceId: req.auth.workspaceId }).sort({ enabled: -1, createdAt: -1 }).limit(10).lean(),
+      GroundingResearchResult.countDocuments({ workspaceId: req.auth.workspaceId, status: "pending_review" }),
+      GroundingResearchResult.countDocuments({ workspaceId: req.auth.workspaceId, status: "pending_review", qualificationLabel: "qualified" }),
+      GroundingResearchResult.countDocuments({ workspaceId: req.auth.workspaceId, createdAt: { $gte: start } }),
+    ]);
+    return res.json({ success: true, data: { schedules, pendingReview, qualified, foundToday, activeSchedules: schedules.filter((row) => row.enabled).length } });
+  } catch (_error) { return res.status(500).json({ success: false, error: "Morning lead status could not be loaded." }); }
 });
 
 router.post("/research-previews/:previewId/prepare-import", async (req, res) => {
@@ -498,6 +572,8 @@ router.get("/status", async (req, res) => {
       success: true,
       data: {
         openai: llmService.getStatus(),
+        imageGeneration: { enabled: imageGenerationService.isEnabled(), model: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1" },
+        discoveryProviders: leadGenerationCoordinatorService.checkProviderAvailability(),
         obsidian: memory,
       },
     });
