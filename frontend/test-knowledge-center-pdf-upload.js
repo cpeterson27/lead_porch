@@ -24,13 +24,15 @@ assert.ok(/onClick=\{\(\) => \(showNewForm \? cancelNewKnowledge\(\) : setShowNe
 // A no-op cancel (nothing typed) should not need to ask — hasUnsavedNewKnowledge() gates the confirm.
 assert.ok(/const hasUnsavedNewKnowledge = \(\) => Boolean\(draft\.title\.trim\(\) \|\| draft\.content\.trim\(\) \|\| pendingApproval\);/.test(source), "unsaved-content detection must check title, content, and any pending approval");
 
-// Owner-only multi-PDF upload, separate from the manual "Add approved knowledge" form.
-const uploadCardMatch = source.match(/hasRole\(session, "owner"\) \? \(\s*<DashboardCard title="Upload program PDFs">[\s\S]*?<\/DashboardCard>\s*\) : null/);
+// Owner-only multi-PDF upload, separate from the clearer written-note form.
+const uploadCardMatch = source.match(/hasRole\(session, "owner"\) \? \(\s*<DashboardCard title="Upload new PDFs">[\s\S]*?<\/DashboardCard>\s*\) : null/);
 assert.ok(uploadCardMatch, "Could not locate the owner-only PDF upload card");
 const uploadCard = uploadCardMatch[0];
 assert.ok(/type="file" accept="application\/pdf" multiple/.test(uploadCard), "the file input must accept multiple real PDF files");
 assert.ok(uploadCard.includes("disabled={pdfBusy}"), "the file input must be disabled while an upload is in progress");
 assert.ok(/loading=\{pdfBusy\}/.test(uploadCard), "the upload button must show a loading state while busy");
+assert.ok(uploadCard.includes("Duplicates are blocked automatically"), "the upload area must explain duplicate protection before the user uploads");
+assert.ok(source.includes('title="Your knowledge library"'), "existing knowledge must be presented as a visible library before the upload control");
 
 // The upload call must use its own longer timeout (multi-PDF + AI analysis
 // can take a while), not the shared client's default.

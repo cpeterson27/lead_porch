@@ -300,7 +300,12 @@ function resetRedditPublicState() { redditCache.clear(); redditInFlight.clear();
 
 function bingQueriesFor(monitor) {
   const baseQuery = booleanQueryFor(monitor);
-  return isInvestorProfileMonitor(monitor) ? [
+  const watchedLinkedIn = (monitor.watchedProfiles || []).slice(0, 8).map((profile) => {
+    let slug = "";
+    try { slug = decodeURIComponent(new URL(profile.url).pathname.split("/").filter(Boolean).pop() || "").replace(/[-_]+/g, " "); } catch (_error) {}
+    return slug ? { type: "linkedin_watch", query: `site:linkedin.com/posts ("${slug}") (${baseQuery})` } : null;
+  }).filter(Boolean);
+  const defaults = isInvestorProfileMonitor(monitor) ? [
     { type: "investor_profile", query: `(\"accredited investor\" OR \"limited partner\" OR \"LP investor\" OR \"passive investor\" OR \"multifamily investor\") (physician OR orthodontist OR founder OR \"managing partner\" OR \"software architect\" OR VP OR director)` },
     { type: "professional_profile", query: `(inurl:bio OR inurl:team OR inurl:leadership OR inurl:about) (\"passive investor\" OR \"real estate investor\" OR multifamily) (founder OR physician OR dentist OR executive OR director)` },
     { type: "community", query: `(site:meetup.com OR site:eventbrite.com OR site:biggerpockets.com) (\"passive income\" OR \"multifamily investing\" OR syndication OR \"accredited investor\") (${baseQuery})` },
@@ -312,6 +317,7 @@ function bingQueriesFor(monitor) {
     { type: "forums", query: `(site:discord.com OR site:discord.gg OR inurl:forum OR "real estate investors association" OR "local REIA") (${baseQuery})` },
     { type: "monitor", query: baseQuery },
   ];
+  return [...watchedLinkedIn, ...defaults];
 }
 
 function roundRobinSignals(groups, limit) {

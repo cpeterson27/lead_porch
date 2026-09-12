@@ -109,6 +109,10 @@ router.post("/research/monitors", async (req, res) => {
       locations: (req.body?.locations || []).map(String).map((value) => value.trim()).filter(Boolean).slice(0, 25),
       sources: selectedSources,
       feedUrls: (req.body?.feedUrls || []).map(String).filter((url) => /^https:\/\//i.test(url)).slice(0, 30),
+      watchedProfiles: (req.body?.watchedProfiles || []).map((profile) => ({
+        url: String(profile?.url || "").trim(),
+        role: ["you", "competitor", "teammate", "expert", "partner"].includes(profile?.role) ? profile.role : "expert",
+      })).filter((profile) => /^https:\/\/(?:[a-z]+\.)?linkedin\.com\//i.test(profile.url)).slice(0, 20),
       intervalMinutes: Math.min(10080, Math.max(15, Number(req.body?.intervalMinutes) || 60)),
       maxResultsPerSource: Math.min(100, Math.max(5, Number(req.body?.maxResultsPerSource) || 25)),
       nextRunAt: new Date(),
@@ -129,8 +133,9 @@ router.post("/research/monitors", async (req, res) => {
 router.patch("/research/monitors/:monitorId", async (req, res) => {
   const existingMonitor = await ResearchMonitor.findOne({ _id: req.params.monitorId, workspaceId: req.auth.workspaceId }).select("monitorType").lean();
   if (!existingMonitor) return res.status(404).json({ success: false, error: "Monitor not found." });
-  const allowed = ["name", "monitorType", "query", "keywords", "intentCategories", "negativeKeywords", "locations", "sources", "feedUrls", "enabled", "intervalMinutes", "maxResultsPerSource"];
+  const allowed = ["name", "monitorType", "query", "keywords", "intentCategories", "negativeKeywords", "locations", "sources", "feedUrls", "watchedProfiles", "enabled", "intervalMinutes", "maxResultsPerSource"];
   const update = Object.fromEntries(allowed.filter((key) => req.body?.[key] !== undefined).map((key) => [key, req.body[key]]));
+  if (Array.isArray(update.watchedProfiles)) update.watchedProfiles = update.watchedProfiles.map((profile) => ({ url: String(profile?.url || "").trim(), role: ["you", "competitor", "teammate", "expert", "partner"].includes(profile?.role) ? profile.role : "expert" })).filter((profile) => /^https:\/\/(?:[a-z]+\.)?linkedin\.com\//i.test(profile.url)).slice(0, 20);
   const effectiveType = ["buyer_intent", "community_partner", "investor_profile"].includes(update.monitorType) ? update.monitorType : existingMonitor.monitorType;
   if (Array.isArray(update.sources) && effectiveType !== "community_partner") update.sources = update.sources.filter((source) => !["linkedin_public", "facebook_public", "meetup_public", "community_directories"].includes(source));
   if (Array.isArray(update.sources) && effectiveType === "buyer_intent") update.sources = update.sources.filter((source) => source !== "sec_form_d");

@@ -46,7 +46,7 @@ function localWorkspaceAllowed(workspaceId) {
 async function getStatus(workspaceId) {
   if (memorySource() === "cloud") {
     const configured = process.env.JARVIS_OBSIDIAN_MEMORY_ENABLED === "true" && configuredCredentials().some((item) => String(item.workspaceId) === String(workspaceId));
-    const noteCount = configured && workspaceId ? await JarvisMemoryNote.countDocuments({ workspaceId, source: { $in: ["obsidian_bridge", "approved_memory"] } }) : 0;
+    const noteCount = configured && workspaceId ? await JarvisMemoryNote.countDocuments({ workspaceId, source: { $in: ["obsidian_bridge", "approved_memory", "pdf_upload"] } }) : 0;
     return { configured, enabled: configured, writable: configured, source: "cloud", noteCount };
   }
 
@@ -250,7 +250,7 @@ async function retrieveCloudNotes(query, { workspaceId, categories, limit = 4 } 
   // Only ever serve approved knowledge to agents — a draft (including one
   // synced but not yet reviewed) or rejected/archived note is never used,
   // no matter how well it matches the query.
-  const filter = { workspaceId, source: { $in: ["obsidian_bridge", "approved_memory"] }, status: "approved" };
+  const filter = { workspaceId, source: { $in: ["obsidian_bridge", "approved_memory", "pdf_upload"] }, status: "approved" };
   if (Array.isArray(categories) && categories.length) filter.category = { $in: categories.filter((category) => CATEGORY_FOLDERS[category]) };
   const notes = await Model.find(filter).select("path title content category source approvedAt effectiveDate reviewDate").lean();
   const now = Date.now();

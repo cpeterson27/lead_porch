@@ -23,6 +23,11 @@ const researchMonitorSchema = new mongoose.Schema({
   locations: [{ type: String, trim: true }],
   sources: [{ type: String, enum: ["google_web", "bing_web", "bing_news", "linkedin_public", "facebook_public", "meetup_public", "community_directories", "gdelt", "sec_form_d", "bluesky", "hacker_news", "stack_exchange", "discourse", "rss", "reddit_rss", "duckduckgo"] }],
   feedUrls: [{ type: String, trim: true }],
+  watchedProfiles: [{
+    _id: false,
+    url: { type: String, trim: true, maxlength: 500 },
+    role: { type: String, enum: ["you", "competitor", "teammate", "expert", "partner"], default: "expert" },
+  }],
   enabled: { type: Boolean, default: true, index: true },
   intervalMinutes: { type: Number, default: 60, min: 15, max: 10080 },
   maxResultsPerSource: { type: Number, default: 25, min: 5, max: 100 },

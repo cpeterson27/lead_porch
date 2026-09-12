@@ -65,6 +65,7 @@ async function testSuccessfulIngestionCreatesDraftNoteAndDisabledMonitor(models)
   assert.equal(note.status, "draft", "a PDF-derived note must never be auto-approved");
   assert.equal(note.source, "pdf_upload");
   assert.equal(note.originalFilename, "Ellie 6 Week Program.pdf");
+  assert.ok(note.fileHash, "the exact PDF bytes must be fingerprinted before analysis so duplicate uploads can be blocked");
   assert.equal(String(note.workspaceId), String(workspaceId));
   assert.ok(note.content.includes("AI-Generated Program Summary"));
   assert.ok(note.content.includes(fakeAnalysis.programSummary));
@@ -83,6 +84,25 @@ async function testSuccessfulIngestionCreatesDraftNoteAndDisabledMonitor(models)
   await models.JarvisMemoryNote.deleteMany({ workspaceId });
   await models.ResearchMonitor.deleteMany({ workspaceId });
   await models.AuditLog.deleteMany({ workspaceId });
+}
+
+async function testDuplicatePdfIsBlockedBeforeAiSpend(models) {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  let aiCalls = 0;
+  const dependencies = { pdfParse: fakePdfParse, runAgent: async () => { aiCalls += 1; return { output: fakeAnalysis }; } };
+  try {
+    await ingestPdf({ workspaceId, userId, auth: { workspaceId: String(workspaceId) }, category: "offers-programs", originalFilename: "Program.pdf", buffer: Buffer.from("same-pdf") }, dependencies);
+    await assert.rejects(
+      () => ingestPdf({ workspaceId, userId, auth: { workspaceId: String(workspaceId) }, category: "offers-programs", originalFilename: "Renamed copy.pdf", buffer: Buffer.from("same-pdf") }, dependencies),
+      (error) => error.code === "PDF_DUPLICATE" && Boolean(error.existingNoteId),
+    );
+    assert.equal(aiCalls, 1, "the duplicate must be rejected before a second AI call");
+  } finally {
+    await models.JarvisMemoryNote.deleteMany({ workspaceId });
+    await models.ResearchMonitor.deleteMany({ workspaceId });
+    await models.AuditLog.deleteMany({ workspaceId });
+  }
 }
 
 async function testAiFailureStillCreatesDraftWithHonestFallbackAndNoMonitors(models) {
@@ -136,6 +156,7 @@ async function run() {
   const models = { JarvisMemoryNote, ResearchMonitor, AuditLog };
   try {
     await testSuccessfulIngestionCreatesDraftNoteAndDisabledMonitor(models);
+    await testDuplicatePdfIsBlockedBeforeAiSpend(models);
     await testAiFailureStillCreatesDraftWithHonestFallbackAndNoMonitors(models);
     await testEmptyPdfTextIsRejectedNotSilentlySaved();
     await testRouteRejectsNonOwnerBeforeTouchingAnyFile();

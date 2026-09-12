@@ -127,6 +127,17 @@ async function ingestPdf({ workspaceId, userId, auth, category, originalFilename
   if (!CATEGORY_FOLDERS[category]) { const error = new Error("Select an approved knowledge category"); error.code = "MEMORY_CATEGORY_INVALID"; throw error; }
   if (!Buffer.isBuffer(buffer) || !buffer.length) { const error = new Error(`"${originalFilename}" is empty or unreadable`); error.code = "PDF_EMPTY_FILE"; throw error; }
 
+  const fileHash = crypto.createHash("sha256").update(buffer).digest("hex");
+  if (typeof Model.findOne === "function") {
+    const duplicate = await Model.findOne({ workspaceId, source: "pdf_upload", fileHash }).select?.("_id title originalFilename status updatedAt").lean?.();
+    if (duplicate) {
+      const error = new Error(`This exact PDF is already in your Knowledge Center as “${duplicate.title}” (${duplicate.status}).`);
+      error.code = "PDF_DUPLICATE";
+      error.existingNoteId = duplicate._id;
+      throw error;
+    }
+  }
+
   let extractedText;
   try {
     const parse = dependencies.pdfParse || defaultPdfParse;
@@ -149,7 +160,7 @@ async function ingestPdf({ workspaceId, userId, auth, category, originalFilename
 
   const note = await Model.create({
     workspaceId, source: "pdf_upload", category, path, title, content, contentHash,
-    originalFilename: clean(originalFilename, 300), createdByUserId: userId,
+    originalFilename: clean(originalFilename, 300), fileHash, createdByUserId: userId,
     status: "draft", version: 1, versions: [],
   });
 

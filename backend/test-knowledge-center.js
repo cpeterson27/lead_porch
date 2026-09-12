@@ -69,6 +69,15 @@ async function testReviewWorkflow() {
   }
 }
 
+async function testApprovedPdfIsAvailableToJarvis() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const note = await JarvisMemoryNote.create({ workspaceId, source: "pdf_upload", originalFilename: "Accelerator.pdf", fileHash: "pdf-hash", category: "offers-programs", path: "05 Offers & Programs/PDF Uploads/accelerator.md", title: "Accelerator", content: "multifamily accelerator program details", contentHash: "content-hash", status: "approved" });
+  try {
+    const retrieved = await jarvisMemoryService.retrieveCloudNotes("multifamily accelerator", { workspaceId });
+    assert.ok(retrieved.sources.includes(note.path), "an approved PDF program must be usable by Jarvis, just like typed and Obsidian knowledge");
+  } finally { await JarvisMemoryNote.deleteMany({ workspaceId }); }
+}
+
 async function testRestoreVersion() {
   const workspaceId = new mongoose.Types.ObjectId();
   const userId = new mongoose.Types.ObjectId();
@@ -139,7 +148,8 @@ async function testVaultCredentials() {
 async function run() {
   await mongoose.connect(process.env.MONGO_URI);
   try {
-    await testReviewWorkflow();
+  await testReviewWorkflow();
+  await testApprovedPdfIsAvailableToJarvis();
     await testRestoreVersion();
     await testVaultCredentials();
   } finally {

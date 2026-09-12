@@ -21,6 +21,9 @@ const jarvisMemoryNoteSchema = new mongoose.Schema({
   // uploaded, preserved for provenance even though the stored path is
   // sanitized/generated (see pdfKnowledgeIngestionService.js).
   originalFilename: { type: String, default: "", trim: true, maxlength: 300 },
+  // Hash of the exact uploaded PDF bytes. This is checked before extraction
+  // or AI analysis so the same file cannot consume credits twice.
+  fileHash: { type: String, default: "", trim: true, index: true },
   category: { type: String, enum: ["dashboard/context", "campaigns", "contacts-icp", "partners-affiliates", "offers-programs", "marketing-channels", "sops", "decisions"], required: true, index: true },
   path: { type: String, required: true, trim: true },
   title: { type: String, required: true, trim: true },
@@ -58,6 +61,10 @@ jarvisMemoryNoteSchema.pre("validate", function capVersionHistory() {
 });
 
 jarvisMemoryNoteSchema.index({ workspaceId: 1, source: 1, path: 1 }, { unique: true });
+jarvisMemoryNoteSchema.index(
+  { workspaceId: 1, source: 1, fileHash: 1 },
+  { unique: true, partialFilterExpression: { source: "pdf_upload", fileHash: { $type: "string", $gt: "" } } },
+);
 jarvisMemoryNoteSchema.plugin(workspacePlugin);
 
 module.exports = mongoose.model("JarvisMemoryNote", jarvisMemoryNoteSchema);

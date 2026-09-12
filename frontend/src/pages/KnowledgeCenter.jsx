@@ -31,6 +31,7 @@ const CATEGORIES = [
   ["decisions", "Decisions"],
 ];
 const STATUS_LABELS = { draft: "Draft", approved: "Approved", rejected: "Rejected", archived: "Archived" };
+const SOURCE_LABELS = { obsidian_bridge: "Obsidian sync", approved_memory: "Typed in Lead Porch", pdf_upload: "PDF upload" };
 
 function formatDate(value) {
   return value ? new Date(value).toLocaleString() : "—";
@@ -39,7 +40,7 @@ function formatDate(value) {
 export default function KnowledgeCenter() {
   const { session } = useAuth();
   const [notes, setNotes] = useState([]);
-  const [statusFilter, setStatusFilter] = useState("draft");
+  const [statusFilter, setStatusFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("");
   const [search, setSearch] = useState("");
   const [selectedId, setSelectedId] = useState(null);
@@ -62,14 +63,11 @@ export default function KnowledgeCenter() {
 
   const loadNotes = useCallback(() => {
     fetchKnowledgeNotes({
-      status: statusFilter || undefined,
-      category: categoryFilter || undefined,
-      search: search || undefined,
-      includeArchived: statusFilter === "archived",
+      includeArchived: true,
     })
       .then((res) => setNotes(res.data || []))
       .catch((err) => setError(err.response?.data?.error || "Unable to load knowledge notes."));
-  }, [statusFilter, categoryFilter, search]);
+  }, []);
 
   useEffect(() => { loadNotes(); }, [loadNotes]);
   useEffect(() => {
@@ -247,32 +245,87 @@ export default function KnowledgeCenter() {
     }
   };
 
+  const counts = notes.reduce((result, note) => ({ ...result, [note.status]: (result[note.status] || 0) + 1 }), {});
+  const visibleNotes = notes.filter((note) => {
+    if (statusFilter && note.status !== statusFilter) return false;
+    if (!statusFilter && note.status === "archived") return false;
+    if (categoryFilter && note.category !== categoryFilter) return false;
+    const term = search.trim().toLowerCase();
+    return !term || `${note.title} ${note.originalFilename || ""} ${note.content}`.toLowerCase().includes(term);
+  });
+
   return (
     <div className="knowledge-center-page">
       <header className="knowledge-center-header">
         <p className="page-eyebrow">Settings · Knowledge Center</p>
         <h1>Knowledge Center</h1>
-        <p>
-          The single source of truth Jarvis and every agent use. Nothing here requires Obsidian,
-          a terminal, or server environment variables — Obsidian is an optional mirror, and any
-          change it syncs in lands here as a draft for your review, never live automatically.
-        </p>
+        <p>See everything you have uploaded or written, search it before adding more, and decide what Jarvis is allowed to use.</p>
         <Link to="/settings/workspace">Back to Settings</Link>
       </header>
 
       {error ? <p className="form-error">{error}</p> : null}
       {notice ? <p className="discovery-notice">{notice}</p> : null}
 
+      <section className="knowledge-summary" aria-label="Knowledge library summary">
+        <button type="button" className={!statusFilter ? "is-active" : ""} onClick={() => setStatusFilter("")}><span>Library</span><strong>{notes.filter((note) => note.status !== "archived").length}</strong><small>everything currently stored</small></button>
+        <button type="button" className={statusFilter === "approved" ? "is-active" : ""} onClick={() => setStatusFilter("approved")}><span>Jarvis can use</span><strong>{counts.approved || 0}</strong><small>reviewed and trusted</small></button>
+        <button type="button" className={statusFilter === "draft" ? "is-active" : ""} onClick={() => setStatusFilter("draft")}><span>Needs your review</span><strong>{counts.draft || 0}</strong><small>stored, but not used by Jarvis</small></button>
+        <button type="button" className={statusFilter === "archived" ? "is-active" : ""} onClick={() => setStatusFilter("archived")}><span>Archived</span><strong>{counts.archived || 0}</strong><small>kept out of use</small></button>
+      </section>
+
+      <section className="knowledge-meaning-grid">
+        <article><span>1</span><div><strong>Add it</strong><p>Upload a PDF or type a note. Lead Porch stores it as a draft.</p></div></article>
+        <article><span>2</span><div><strong>Review it</strong><p>Open the item and confirm the facts are accurate.</p></div></article>
+        <article><span>3</span><div><strong>Allow Jarvis to use it</strong><p>Approve means Jarvis may rely on it when creating content or finding buyers.</p></div></article>
+      </section>
+
+      <DashboardCard
+        title="Your knowledge library"
+        action={<Button size="sm" onClick={() => (showNewForm ? cancelNewKnowledge() : setShowNewForm(true))}>{showNewForm ? "Cancel" : "Add a written note"}</Button>}
+      >
+        <p className="knowledge-library-intro"><strong>Search here before uploading.</strong> Every PDF, written note, and Obsidian sync is listed with its original source and whether Jarvis can use it.</p>
+        <div className="knowledge-filters">
+          <input placeholder="Search file name, title, or words inside…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+            <option value="">All categories</option>
+            {CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+          </select>
+          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">All current knowledge</option>
+            <option value="approved">Jarvis can use</option>
+            <option value="draft">Needs review</option>
+            <option value="rejected">Rejected</option>
+            <option value="archived">Archived</option>
+          </select>
+        </div>
+
+        {showNewForm ? (
+          <div className="knowledge-new-form">
+            {!pendingApproval ? (
+              <>
+                <div className="knowledge-form-heading"><strong>Add a written reference</strong><span>Use this for facts, instructions, or program details that are not already in a PDF.</span></div>
+                <label>What should this be called?<input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} /></label>
+                <label>What is it about?<select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}>{CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+                <label>What should Jarvis know?<textarea rows="6" value={draft.content} onChange={(e) => setDraft({ ...draft, content: e.target.value })} /></label>
+                <Button loading={busy} onClick={startNewKnowledge} disabled={!draft.title.trim() || !draft.content.trim()}>Review this note</Button>
+              </>
+            ) : <div className="knowledge-confirm"><p>Final safety check: type <strong>{pendingApproval.confirmationPhrase}</strong> to confirm these facts are approved for Jarvis to use.</p><input value={confirmationInput} onChange={(e) => setConfirmationInput(e.target.value)} placeholder={pendingApproval.confirmationPhrase} /><Button loading={busy} onClick={confirmNewKnowledge} disabled={confirmationInput !== pendingApproval.confirmationPhrase}>Approve and save note</Button></div>}
+          </div>
+        ) : null}
+
+        <div className="knowledge-library-grid">
+          {visibleNotes.map((note) => <button type="button" key={note._id} className="knowledge-library-item" onClick={() => selectNote(note._id)}>
+            <span className={`knowledge-file-mark is-${note.source}`}>{note.source === "pdf_upload" ? "PDF" : note.source === "obsidian_bridge" ? "OBS" : "NOTE"}</span>
+            <span className="knowledge-library-copy"><strong>{note.originalFilename || note.title}</strong>{note.originalFilename && note.title !== note.originalFilename ? <small>{note.title}</small> : null}<small>{CATEGORIES.find(([value]) => value === note.category)?.[1] || note.category} · {formatDate(note.updatedAt)}</small></span>
+            <span className={`knowledge-status-pill knowledge-status-pill--${note.status}`}>{note.status === "approved" ? "Jarvis can use" : note.status === "draft" ? "Needs review" : STATUS_LABELS[note.status]}</span>
+          </button>)}
+          {!visibleNotes.length ? <div className="knowledge-empty"><strong>No matching knowledge</strong><p>Try another search or filter. If this is a new document, use the upload area below.</p></div> : null}
+        </div>
+      </DashboardCard>
+
       {hasRole(session, "owner") ? (
-        <DashboardCard title="Upload program PDFs">
-          <p>
-            Upload Ellie's program PDFs directly — no copying and pasting. Each PDF becomes its
-            own draft note here, with an AI-generated program summary, ideal-customer profile,
-            qualification criteria, and suggested discovery-monitor searches. Nothing is approved
-            or activated automatically: review and approve each note like any other draft, and
-            any suggested monitor is created disabled — review, edit, and turn it on yourself
-            under Discovery &gt; Intent Monitoring.
-          </p>
+        <DashboardCard title="Upload new PDFs">
+          <p className="knowledge-upload-explainer"><strong>Duplicates are blocked automatically.</strong> A new PDF is stored as “Needs review.” Jarvis cannot use it until you open and approve it. Lead Porch may suggest searches from a program PDF, but those suggestions stay off until you choose to start them.</p>
           <label>
             Category for these PDFs
             <select value={pdfCategory} onChange={(e) => setPdfCategory(e.target.value)}>
@@ -283,7 +336,7 @@ export default function KnowledgeCenter() {
             PDF files (up to 10 at once)
             <input ref={pdfInputRef} type="file" accept="application/pdf" multiple disabled={pdfBusy} />
           </label>
-          <Button loading={pdfBusy} onClick={uploadPdfs}>{pdfBusy ? "Uploading and analyzing (can take a minute)…" : "Upload and analyze"}</Button>
+          <Button loading={pdfBusy} onClick={uploadPdfs}>{pdfBusy ? "Checking and analyzing…" : "Check and upload PDFs"}</Button>
           {pdfResults ? (
             <ul className="knowledge-pdf-results">
               {pdfResults.map((row, index) => (
@@ -291,92 +344,13 @@ export default function KnowledgeCenter() {
                   <strong>{row.filename}</strong>
                   {row.success
                     ? ` — staged as a draft${row.monitorDraftsCreated ? `, ${row.monitorDraftsCreated} suggested monitor(s) created disabled` : ""}${!row.aiAnalysisSucceeded ? ` (AI analysis unavailable: ${row.aiAnalysisReason})` : ""}`
-                    : ` — failed: ${row.error}`}
+                    : row.code === "PDF_DUPLICATE" ? ` — not uploaded: ${row.error}` : ` — failed: ${row.error}`}
                 </li>
               ))}
             </ul>
           ) : null}
         </DashboardCard>
       ) : null}
-
-      <DashboardCard
-        title="Knowledge notes"
-        action={<Button size="sm" onClick={() => (showNewForm ? cancelNewKnowledge() : setShowNewForm(true))}>{showNewForm ? "Cancel" : "Add approved knowledge"}</Button>}
-      >
-        {showNewForm ? (
-          <div className="knowledge-new-form">
-            {!pendingApproval ? (
-              <>
-                <label>
-                  Title
-                  <input value={draft.title} onChange={(e) => setDraft({ ...draft, title: e.target.value })} />
-                </label>
-                <label>
-                  Category
-                  <select value={draft.category} onChange={(e) => setDraft({ ...draft, category: e.target.value })}>
-                    {CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-                  </select>
-                </label>
-                <label>
-                  Content
-                  <textarea rows="6" value={draft.content} onChange={(e) => setDraft({ ...draft, content: e.target.value })} />
-                </label>
-                <Button loading={busy} onClick={startNewKnowledge} disabled={!draft.title.trim() || !draft.content.trim()}>Review before saving</Button>
-              </>
-            ) : (
-              <div className="knowledge-confirm">
-                <p>Type <strong>{pendingApproval.confirmationPhrase}</strong> exactly to save this as approved knowledge, immediately usable by every agent.</p>
-                <input value={confirmationInput} onChange={(e) => setConfirmationInput(e.target.value)} placeholder={pendingApproval.confirmationPhrase} />
-                <Button loading={busy} onClick={confirmNewKnowledge} disabled={confirmationInput !== pendingApproval.confirmationPhrase}>Confirm and save</Button>
-              </div>
-            )}
-          </div>
-        ) : null}
-
-        <div className="knowledge-filters">
-          <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-            <option value="draft">Needs review (drafts)</option>
-            <option value="approved">Approved</option>
-            <option value="rejected">Rejected</option>
-            <option value="archived">Archived</option>
-            <option value="">All (except archived)</option>
-          </select>
-          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-            <option value="">All categories</option>
-            {CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-          </select>
-          <input placeholder="Search title or content…" value={search} onChange={(e) => setSearch(e.target.value)} />
-        </div>
-
-        <table className="knowledge-notes-table">
-          <thead>
-            <tr>
-              <th>Title</th>
-              <th>Category</th>
-              <th>Status</th>
-              <th>Source</th>
-              <th>Updated</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            {notes.map((note) => (
-              <tr key={note._id} className={note.pendingRemoval ? "knowledge-row--pending-removal" : ""}>
-                <td><button type="button" className="knowledge-row-link" onClick={() => selectNote(note._id)}>{note.title}</button></td>
-                <td>{CATEGORIES.find(([value]) => value === note.category)?.[1] || note.category}</td>
-                <td><span className={`knowledge-status-pill knowledge-status-pill--${note.status}`}>{STATUS_LABELS[note.status] || note.status}</span>{note.pendingRemoval ? <span className="knowledge-pending-removal-badge">removed in Obsidian</span> : null}</td>
-                <td>{note.source === "obsidian_bridge" ? "Obsidian" : "Lead Porch"}</td>
-                <td>{formatDate(note.updatedAt)}</td>
-                <td className="knowledge-row-actions">
-                  {note.status !== "approved" ? <Button size="sm" variant="outline" onClick={() => approve(note._id)} disabled={busy}>Approve</Button> : null}
-                  {note.status !== "archived" ? <Button size="sm" variant="ghost" onClick={() => archive(note._id)} disabled={busy}>Archive</Button> : null}
-                </td>
-              </tr>
-            ))}
-            {!notes.length ? <tr><td colSpan="6">No notes match these filters.</td></tr> : null}
-          </tbody>
-        </table>
-      </DashboardCard>
 
       {selected ? (
         <DashboardCard title={selected.title} action={<Button size="sm" variant="ghost" onClick={closeNote}>Close</Button>}>
@@ -385,7 +359,8 @@ export default function KnowledgeCenter() {
             <span>Owner: {selected.ownerLabel || "—"}</span>
             <span>Effective: {formatDate(selected.effectiveDate)}</span>
             <span>Review by: {formatDate(selected.reviewDate)}</span>
-            <span>Path: {selected.path}</span>
+            <span>Added from: {SOURCE_LABELS[selected.source] || selected.source}</span>
+            {selected.originalFilename ? <span>Original file: {selected.originalFilename}</span> : null}
           </div>
           {selected.rejectionReason ? <p className="form-error">Rejected: {selected.rejectionReason}</p> : null}
           <pre className="knowledge-detail-content">{selected.content}</pre>
