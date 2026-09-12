@@ -94,8 +94,10 @@ function ApplicationButton({
     closeRef.current?.focus();
     const prior = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    document.body.classList.add("program-application-open");
     return () => {
       document.body.style.overflow = prior;
+      document.body.classList.remove("program-application-open");
     };
   }, [open]);
 
@@ -310,8 +312,10 @@ function ProgramCards({ programs = [] }) {
     closeRef.current?.focus();
     const prior = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    document.body.classList.add("program-application-open");
     return () => {
       document.body.style.overflow = prior;
+      document.body.classList.remove("program-application-open");
     };
   }, [applying]);
   if (!programs.length)
@@ -421,9 +425,9 @@ function ProgramCards({ programs = [] }) {
                   {formatLabel(program)}
                 </div>
                 <div className="public-accelerator-title">{program.title}</div>
-                {program.summary ? (
-                  <p className="public-accelerator-summary">{program.summary}</p>
-                ) : null}
+                <p className="public-accelerator-summary">
+                  {program.summary || program.description || "Personalized support for your next stage of growth."}
+                </p>
                 {program.highlights?.length ? (
                   <ul className="public-offer-includes" aria-label={`${program.title} includes`}>
                     {program.highlights.slice(0, 5).map((item) => (

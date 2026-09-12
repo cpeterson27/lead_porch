@@ -67,18 +67,6 @@ const list = (value) =>
     .split("\n")
     .map((item) => item.trim())
     .filter(Boolean);
-const socialText = (value) =>
-  (value || []).map((link) => `${link.label}|${link.url}`).join("\n");
-const socialLinks = (value) =>
-  String(value || "")
-    .split("\n")
-    .map((row) => {
-      const i = row.indexOf("|");
-      return i < 0
-        ? null
-        : { label: row.slice(0, i).trim(), url: row.slice(i + 1).trim() };
-    })
-    .filter(Boolean);
 const metricText = (value) =>
   (value || []).map((row) => `${row.value}|${row.label}`).join("\n");
 const metrics = (value) =>
@@ -893,16 +881,52 @@ export default function PublicSiteAdmin({ section = "website" }) {
                   onChange={(e) => patchPublic("footerText", e.target.value)}
                 />
               </label>
-              <label className="wide">
-                Social profiles — one per line: Name|URL
-                <textarea
-                  value={socialText(config.publicSite.socialLinks)}
-                  onChange={(e) =>
-                    patchPublic("socialLinks", socialLinks(e.target.value))
-                  }
-                />
-                <small>Example: Instagram|https://instagram.com/yourname</small>
-              </label>
+              <div className="wide social-profile-editor">
+                <div className="social-profile-editor__heading">
+                  <div>
+                    <strong>Social profiles</strong>
+                    <small>Keep the platform and its public URL in separate fields.</small>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => patchPublic("socialLinks", [...(config.publicSite.socialLinks || []), { label: "", url: "" }])}
+                  >
+                    + Add profile
+                  </button>
+                </div>
+                <div className="social-profile-editor__rows">
+                  {(config.publicSite.socialLinks || []).map((link, index) => (
+                    <div className="social-profile-row" key={`${index}-${link.label}`}>
+                      <label>
+                        <span>Platform</span>
+                        <input
+                          aria-label={`Social platform ${index + 1}`}
+                          value={link.label || ""}
+                          placeholder="Instagram"
+                          onChange={(event) => patchPublic("socialLinks", (config.publicSite.socialLinks || []).map((row, rowIndex) => rowIndex === index ? { ...row, label: event.target.value } : row))}
+                        />
+                      </label>
+                      <label>
+                        <span>Profile URL</span>
+                        <input
+                          aria-label={`Social profile URL ${index + 1}`}
+                          type="url"
+                          value={link.url || ""}
+                          placeholder="https://instagram.com/yourname"
+                          onChange={(event) => patchPublic("socialLinks", (config.publicSite.socialLinks || []).map((row, rowIndex) => rowIndex === index ? { ...row, url: event.target.value } : row))}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${link.label || "social profile"}`}
+                        onClick={() => patchPublic("socialLinks", (config.publicSite.socialLinks || []).filter((_, rowIndex) => rowIndex !== index))}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
           <footer className="website-editor-save">

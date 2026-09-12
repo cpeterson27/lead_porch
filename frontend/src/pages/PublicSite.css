@@ -499,18 +499,24 @@
 
 /* WHY SECTION */
 .public-why-section {
+  position: relative;
   max-width: 1220px;
   margin: 100px auto;
-  padding: 0 48px;
+  overflow: hidden;
+  padding: 72px 64px 64px;
+  border: 1px solid color-mix(in srgb, var(--public-accent) 42%, #28312c);
+  background: radial-gradient(circle at 88% 10%, color-mix(in srgb, var(--public-accent) 24%, transparent), transparent 36%), linear-gradient(145deg, #101512, #070908 72%);
+  color: #fff;
+  box-shadow: 0 34px 80px rgb(0 0 0 / 18%);
 }
 
 .public-why-title-block {
   margin-bottom: 60px;
-  max-width: 700px;
+  max-width: 820px;
 }
 
 .public-why-label {
-  color: var(--public-muted);
+  color: var(--public-accent);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.1em;
@@ -533,7 +539,8 @@
 
 .public-why-desc {
   font-size: 18px;
-  color: var(--public-muted);
+  color: rgb(255 255 255 / 68%);
+  line-height: 1.7;
 }
 
 .public-why-features {
@@ -543,8 +550,11 @@
 }
 
 .public-why-feature {
+  min-height: 250px;
   padding: 30px;
-  border-left: 1px solid var(--public-border);
+  border: 1px solid rgb(255 255 255 / 12%);
+  background: linear-gradient(145deg, rgb(255 255 255 / 8%), rgb(255 255 255 / 3%));
+  backdrop-filter: blur(8px);
 }
 
 .public-why-feature-num {
@@ -562,7 +572,7 @@
 }
 
 .public-why-feature-desc {
-  color: var(--public-muted);
+  color: rgb(255 255 255 / 64%);
   font-size: 15px;
   line-height: 1.6;
 }
@@ -1635,6 +1645,8 @@ button.public-text-link {
   background: rgb(5 7 6 / 78%);
   backdrop-filter: blur(6px);
 }
+.program-application-open .public-footer { visibility: hidden; }
+.program-application-open .public-footer { visibility: hidden; }
 
 /* Final curriculum alignment pass. Collapsed cards share a row height; opening
    one program never stretches its neighbors. */
@@ -1705,7 +1717,7 @@ button.public-text-link {
 }
 
 .public-accelerator-card:not(.is-expanded) .public-accelerator-content {
-  min-height: 288px;
+  min-height: 520px;
   box-sizing: border-box;
 }
 
@@ -1811,6 +1823,9 @@ button.public-text-link {
   .program-application-modal header { padding: 14px 16px; }
   .public-final-action,
   .public-final-action .public-button { width: 100%; }
+  .public-why-section { margin: 56px 16px; padding: 48px 24px 24px; }
+  .public-why-title { font-size: clamp(32px, 10vw, 44px); }
+  .public-why-feature { min-height: 0; }
 }
 
 /* Shared secondary-page scaffolding: Contact, Programs, Program detail,
@@ -2309,6 +2324,11 @@ button.public-text-link {
   backdrop-filter: blur(3px);
   -webkit-backdrop-filter: blur(3px);
 }
+.public-site.has-sticky-background .public-why-section {
+  background: radial-gradient(circle at 88% 10%, color-mix(in srgb, var(--public-accent) 26%, transparent), transparent 36%), linear-gradient(145deg, rgb(16 21 18 / 94%), rgb(7 9 8 / 92%) 72%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
 .public-site.has-sticky-background .public-meet-section,
 .public-site.has-sticky-background .public-path-section {
   background: color-mix(in srgb, var(--public-surface) 82%, transparent);
@@ -2332,7 +2352,6 @@ button.public-text-link {
     background-position: center top;
   }
   .public-site.has-sticky-background .public-hero-section,
-  .public-site.has-sticky-background .public-why-section,
   .public-site.has-sticky-background .public-curriculum-section,
   .public-site.has-sticky-background .public-testimonials,
   .public-site.has-sticky-background .public-final-section {

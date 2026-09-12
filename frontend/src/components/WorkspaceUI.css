@@ -162,9 +162,10 @@
 .workspace-tab.is-active {
   background: var(--color-brand);
   color: #fff;
-  box-shadow: var(--shadow-sm);
+  box-shadow: 0 5px 14px color-mix(in srgb, var(--color-brand) 24%, transparent);
   font-weight: var(--font-weight-strong);
 }
+.workspace-tab::after { display: none !important; content: none !important; }
 
 /* count badge inside tab */
 .workspace-tab span {
