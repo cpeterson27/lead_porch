@@ -23,7 +23,7 @@ export default function DashboardLayout({ children }) {
         <div className="dashboard-overlay" onClick={closeSidebar} />
       ) : null}
       <div className="dashboard-view">
-        <Navbar onMenuClick={toggleSidebar} />
+        <Navbar onMenuClick={toggleSidebar} isSidebarCollapsed={isSidebarCollapsed} />
         <main className="dashboard-content" onClick={closeSidebar}>
           {children}
         </main>

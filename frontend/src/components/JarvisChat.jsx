@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { FiMaximize2, FiMinimize2 } from "react-icons/fi";
+import { FiMaximize2, FiMinimize2, FiChevronUp, FiChevronDown } from "react-icons/fi";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useJarvis } from "../hooks/useJarvis";
 import {
@@ -130,6 +130,11 @@ export default function JarvisChat() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Collapses the orb/voice header to a slim bar so the conversation
+  // below (what Jarvis actually found) gets more visible room without
+  // losing the voice controls — just tucked behind one tap.
+  const [isHeaderMinimized, setIsHeaderMinimized] = useState(() => localStorage.getItem("jarvisHeaderMinimized") === "true");
+  const toggleHeaderMinimized = () => setIsHeaderMinimized((value) => { localStorage.setItem("jarvisHeaderMinimized", String(!value)); return !value; });
   const [researchApprovals, setResearchApprovals] = useState({});
   const [researchActionId, setResearchActionId] = useState("");
   const autoPromptStartedRef = useRef(false);
@@ -562,7 +567,7 @@ export default function JarvisChat() {
 
   return (
     <div ref={containerRef} className={`jarvis-chat-container jarvis-chat-container--${profile?.theme || "executive"} ${intentResearchTask ? "jarvis-chat-container--intent-task" : ""} ${isFullscreen ? "jarvis-chat-container--fullscreen" : ""}`}>
-      <div className={`jarvis-header jarvis-header--${visualState}`}>
+      <div className={`jarvis-header jarvis-header--${visualState} ${isHeaderMinimized ? "jarvis-header--minimized" : ""}`}>
         <div className="jarvis-circuit-field" aria-hidden="true">
           <svg viewBox="0 0 1200 360" preserveAspectRatio="none">
             <path d="M0 65h155l42 42h178l40-40h135" />
@@ -605,6 +610,9 @@ export default function JarvisChat() {
           <button type="button" className="jarvis-persona-button" onClick={() => setProfileOpen((value) => !value)}>Personalize</button>
           <button type="button" className="jarvis-fullscreen-button" onClick={toggleFullscreen}>{isFullscreen ? <FiMinimize2 /> : <FiMaximize2 />}<span>{isFullscreen ? "Exit" : "Full screen"}</span></button>
         </div>
+        <button type="button" className="jarvis-header-minimize" onClick={toggleHeaderMinimized} aria-label={isHeaderMinimized ? "Expand Jarvis voice panel" : "Minimize Jarvis voice panel to see more of what Jarvis found"} aria-expanded={!isHeaderMinimized}>
+          {isHeaderMinimized ? <FiChevronDown /> : <FiChevronUp />}
+        </button>
       </div>
 
       {profileOpen && profile ? <form className="jarvis-persona-panel" onSubmit={saveProfile}><header><strong>Personalize Jarvis</strong><button type="button" onClick={() => setProfileOpen(false)}>Close ×</button></header>

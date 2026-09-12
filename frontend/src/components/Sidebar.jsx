@@ -150,7 +150,7 @@ const navGroups = [
         permissions: ["analytics.view"],
       },
       {
-        label: "AI Operators",
+        label: "Jarvis",
         path: "/operators/jarvis",
         icon: <FiCpu />,
         permissions: ["jarvis.manage"],

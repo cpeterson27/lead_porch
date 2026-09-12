@@ -62,6 +62,17 @@ export function WorkspaceThemeProvider({ children }) {
       setProp("--app-primary-action", app.primaryActionColor);
       setProp("--app-accent", app.accentColor);
       setProp("--app-background", app.backgroundColor);
+      // The "Primary action" picker previously only reached the one CSS
+      // rule that happened to reference --app-primary-action (the mobile
+      // hamburger button) — every button, badge, and pill elsewhere reads
+      // the STATIC --color-brand/--accent tokens instead, so changing this
+      // setting visibly did almost nothing. Overriding those core tokens
+      // here (index.css defines --color-brand-hover/--color-brand-soft as
+      // color-mix() derived FROM --color-brand, so they follow it too) is
+      // what actually re-themes primary buttons, pills, and badges
+      // app-wide from this one picker.
+      setProp("--color-brand", app.primaryActionColor);
+      setProp("--accent", app.accentColor || app.primaryActionColor);
     }
     const publicRoute = /^\/(?:$|about(?:\/|$)|coaching-programs(?:\/|$)|testimonials(?:\/|$)|contact(?:\/|$)|people(?:\/|$)|privacy(?:-policy)?(?:\/|$)|terms(?:\/|$)|data-deletion(?:\/|$)|apply(?:\/|$)|ref(?:\/|$)|profile\/edit(?:\/|$))/.test(pathname);
     const favicon = publicRoute ? b.faviconUrl : app?.faviconUrl || b.faviconUrl;

@@ -2,12 +2,13 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   FiSearch,
-  FiMenu,
   FiCpu,
   FiPlus,
   FiCheckCircle,
   FiBell,
   FiChevronDown,
+  FiChevronLeft,
+  FiChevronRight,
 } from "react-icons/fi";
 import { getWorkspaceSettings } from "../utils/workspaceSettings.js";
 import useInitiative from "../context/useInitiative.js";
@@ -17,7 +18,7 @@ import { isCoachOnly, isSocialConnectionOnly } from "../utils/roleAccess.js";
 import UserAvatar from "./UserAvatar.jsx";
 import "./Navbar.css";
 
-export default function Navbar({ onMenuClick }) {
+export default function Navbar({ onMenuClick, isSidebarCollapsed = false }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [workspaceName, setWorkspaceName] = useState(
@@ -69,11 +70,11 @@ export default function Navbar({ onMenuClick }) {
     partners: ["Partners", "Grow through aligned operators and affiliates."],
     content: ["AI Content", "Create polished campaign assets with confidence."],
     operators: [
-      "AI Operators",
+      "Jarvis",
       "Prepare, review, and monitor AI-supported growth work.",
     ],
     jarvis: [
-      "AI Operators",
+      "Jarvis",
       "Prepare, review, and monitor AI-supported growth work.",
     ],
     "development-requests": [
@@ -155,10 +156,10 @@ export default function Navbar({ onMenuClick }) {
           className="navbar__menu"
           type="button"
           onClick={onMenuClick}
-          aria-label="Open sidebar"
+          aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+          aria-expanded={!isSidebarCollapsed}
         >
-          <FiMenu />
-          <span className="navbar__menu-label">Menu</span>
+          {isSidebarCollapsed ? <FiChevronRight /> : <FiChevronLeft />}
         </button>
         <div className="navbar__context">
           <p className="navbar__eyebrow">

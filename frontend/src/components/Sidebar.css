@@ -112,10 +112,16 @@
   display: inline-flex;
   align-items: center;
   gap: 0.7rem;
-  padding: 0.56rem 0.72rem;
+  padding: 0.56rem 0.9rem;
   border: 1px solid transparent;
-  border-radius: 3px;
+  border-radius: var(--radius-pill);
   color: #aeb9b8;
+  /* The base 16px body font read oversized/cramped for a 236px-wide nav
+     column — sized down to a scale that reads as a compact nav label,
+     not body copy. */
+  font-size: 0.86rem;
+  font-weight: 650;
+  line-height: 1.3;
   transition:
     background 0.2s ease,
     color 0.2s ease;
