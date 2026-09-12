@@ -18,12 +18,12 @@ export default function DashboardLayout({ children }) {
 
   return (
     <div className={isSidebarCollapsed ? "dashboard-shell dashboard-shell--collapsed" : "dashboard-shell"}>
-      <Sidebar isOpen={isSidebarOpen} isCollapsed={isSidebarCollapsed} onClose={closeSidebar} />
+      <Sidebar isOpen={isSidebarOpen} isCollapsed={isSidebarCollapsed} onClose={closeSidebar} onToggleCollapse={toggleSidebar} />
       {isSidebarOpen ? (
         <div className="dashboard-overlay" onClick={closeSidebar} />
       ) : null}
       <div className="dashboard-view">
-        <Navbar onMenuClick={toggleSidebar} isSidebarCollapsed={isSidebarCollapsed} />
+        <Navbar onMenuClick={toggleSidebar} />
         <main className="dashboard-content" onClick={closeSidebar}>
           {children}
         </main>

@@ -130,11 +130,13 @@ export default function JarvisChat() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  // Collapses the orb/voice header to a slim bar so the conversation
-  // below (what Jarvis actually found) gets more visible room without
-  // losing the voice controls — just tucked behind one tap.
-  const [isHeaderMinimized, setIsHeaderMinimized] = useState(() => localStorage.getItem("jarvisHeaderMinimized") === "true");
-  const toggleHeaderMinimized = () => setIsHeaderMinimized((value) => { localStorage.setItem("jarvisHeaderMinimized", String(!value)); return !value; });
+  // Collapses the voice-settings block (source/OpenAI voice/browser
+  // voice/test button) at the bottom of the conversation input — not the
+  // big orb header — since that's the part that's genuinely just
+  // settings and doesn't need to stay visible while reading what Jarvis
+  // found. Defaults collapsed.
+  const [isVoiceSettingsOpen, setIsVoiceSettingsOpen] = useState(() => localStorage.getItem("jarvisVoiceSettingsOpen") === "true");
+  const toggleVoiceSettingsOpen = () => setIsVoiceSettingsOpen((value) => { localStorage.setItem("jarvisVoiceSettingsOpen", String(!value)); return !value; });
   const [researchApprovals, setResearchApprovals] = useState({});
   const [researchActionId, setResearchActionId] = useState("");
   const autoPromptStartedRef = useRef(false);
@@ -567,7 +569,7 @@ export default function JarvisChat() {
 
   return (
     <div ref={containerRef} className={`jarvis-chat-container jarvis-chat-container--${profile?.theme || "executive"} ${intentResearchTask ? "jarvis-chat-container--intent-task" : ""} ${isFullscreen ? "jarvis-chat-container--fullscreen" : ""}`}>
-      <div className={`jarvis-header jarvis-header--${visualState} ${isHeaderMinimized ? "jarvis-header--minimized" : ""}`}>
+      <div className={`jarvis-header jarvis-header--${visualState}`}>
         <div className="jarvis-circuit-field" aria-hidden="true">
           <svg viewBox="0 0 1200 360" preserveAspectRatio="none">
             <path d="M0 65h155l42 42h178l40-40h135" />
@@ -610,9 +612,6 @@ export default function JarvisChat() {
           <button type="button" className="jarvis-persona-button" onClick={() => setProfileOpen((value) => !value)}>Personalize</button>
           <button type="button" className="jarvis-fullscreen-button" onClick={toggleFullscreen}>{isFullscreen ? <FiMinimize2 /> : <FiMaximize2 />}<span>{isFullscreen ? "Exit" : "Full screen"}</span></button>
         </div>
-        <button type="button" className="jarvis-header-minimize" onClick={toggleHeaderMinimized} aria-label={isHeaderMinimized ? "Expand Jarvis voice panel" : "Minimize Jarvis voice panel to see more of what Jarvis found"} aria-expanded={!isHeaderMinimized}>
-          {isHeaderMinimized ? <FiChevronDown /> : <FiChevronUp />}
-        </button>
       </div>
 
       {profileOpen && profile ? <form className="jarvis-persona-panel" onSubmit={saveProfile}><header><strong>Personalize Jarvis</strong><button type="button" onClick={() => setProfileOpen(false)}>Close ×</button></header>
@@ -713,8 +712,18 @@ export default function JarvisChat() {
           {voiceInputSupported ? <button type="button" className="jarvis-mic-btn" onClick={startListening} disabled={loading || listening}>{listening ? "Listening…" : "Talk"}</button> : null}
         </div>
 
-        <div className="jarvis-voice-controls"><label className="jarvis-voice-picker">Voice source<select value={voiceMode} onChange={(event) => { setVoiceMode(event.target.value); localStorage.setItem("jarvisVoiceMode", event.target.value); }}><option value="automatic">Automatic · OpenAI then browser backup</option><option value="browser">Browser voice · no API credits</option><option value="openai">OpenAI voice only</option></select></label>{voiceMode !== "browser" ? <label className="jarvis-voice-picker">Preferred OpenAI voice<select value={voiceName} onChange={(event) => setVoiceName(event.target.value)}>{OPENAI_VOICES.map((voice) => <option key={voice.value} value={voice.value}>{voice.label}</option>)}</select></label> : null}{voiceMode !== "openai" ? <label className="jarvis-voice-picker">Browser backup voice<select value={browserVoiceName} onChange={(event) => { setBrowserVoiceName(event.target.value); localStorage.setItem("jarvisBrowserVoice", event.target.value); }}><option value="">Best available English voice</option>{browserVoices.map((voice) => <option key={`${voice.name}-${voice.lang}`} value={voice.name}>{voice.name} · {voice.lang}</option>)}</select></label> : null}<button type="button" className="jarvis-voice-test" onClick={testVoice} disabled={Boolean(speakingId)}>{speakingId ? "Speaking…" : "Test selected voice"}</button><label className="jarvis-auto-speak"><input type="checkbox" checked={autoSpeak} onChange={(event) => setAutoSpeak(event.target.checked)} /> Speak findings automatically</label></div>
-        <p className="jarvis-ai-voice-disclosure">Browser voices are free and stay on this device. Automatic mode returns to the selected OpenAI voice whenever API service is available.</p>
+        <div className="jarvis-voice-controls-wrap">
+          <button type="button" className="jarvis-voice-controls-toggle" onClick={toggleVoiceSettingsOpen} aria-expanded={isVoiceSettingsOpen}>
+            <span>Voice settings</span>
+            <span className="jarvis-voice-controls-toggle__arrow">{isVoiceSettingsOpen ? <FiChevronUp /> : <FiChevronDown />}</span>
+          </button>
+          {isVoiceSettingsOpen ? (
+            <>
+              <div className="jarvis-voice-controls"><label className="jarvis-voice-picker">Voice source<select value={voiceMode} onChange={(event) => { setVoiceMode(event.target.value); localStorage.setItem("jarvisVoiceMode", event.target.value); }}><option value="automatic">Automatic · OpenAI then browser backup</option><option value="browser">Browser voice · no API credits</option><option value="openai">OpenAI voice only</option></select></label>{voiceMode !== "browser" ? <label className="jarvis-voice-picker">Preferred OpenAI voice<select value={voiceName} onChange={(event) => setVoiceName(event.target.value)}>{OPENAI_VOICES.map((voice) => <option key={voice.value} value={voice.value}>{voice.label}</option>)}</select></label> : null}{voiceMode !== "openai" ? <label className="jarvis-voice-picker">Browser backup voice<select value={browserVoiceName} onChange={(event) => { setBrowserVoiceName(event.target.value); localStorage.setItem("jarvisBrowserVoice", event.target.value); }}><option value="">Best available English voice</option>{browserVoices.map((voice) => <option key={`${voice.name}-${voice.lang}`} value={voice.name}>{voice.name} · {voice.lang}</option>)}</select></label> : null}<button type="button" className="jarvis-voice-test" onClick={testVoice} disabled={Boolean(speakingId)}>{speakingId ? "Speaking…" : "Test selected voice"}</button><label className="jarvis-auto-speak"><input type="checkbox" checked={autoSpeak} onChange={(event) => setAutoSpeak(event.target.checked)} /> Speak findings automatically</label></div>
+              <p className="jarvis-ai-voice-disclosure">Browser voices are free and stay on this device. Automatic mode returns to the selected OpenAI voice whenever API service is available.</p>
+            </>
+          ) : null}
+        </div>
 
         {selectedCampaignId && (
           <div className="jarvis-test-email-group">

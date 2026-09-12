@@ -22,6 +22,8 @@ import {
   FiClock,
   FiUserCheck,
   FiUser,
+  FiChevronLeft,
+  FiChevronRight,
 } from "react-icons/fi";
 import useAuth from "../context/useAuth.js";
 import useWorkspaceTheme from "../context/useWorkspaceTheme.js";
@@ -262,7 +264,7 @@ const ambassadorGroups = [
   },
 ];
 
-export default function Sidebar({ isOpen, isCollapsed, onClose }) {
+export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse }) {
   const { logout, session } = useAuth();
   const { site } = useWorkspaceTheme();
   const socialConnectionOnly = isSocialConnectionOnly(session);
@@ -355,6 +357,19 @@ export default function Sidebar({ isOpen, isCollapsed, onClose }) {
       style={sidebarStyle}
       className={`${isOpen ? "sidebar sidebar--open" : "sidebar"} ${isCollapsed ? "sidebar--collapsed" : ""}`}
     >
+      {/* Attached directly to the sidebar's own edge (desktop only — on
+          mobile the sidebar is an off-canvas drawer with nothing to attach
+          an edge arrow to; Navbar's hamburger opens it there instead). */}
+      {onToggleCollapse ? (
+        <button
+          type="button"
+          className="sidebar__collapse-toggle"
+          onClick={onToggleCollapse}
+          aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+        >
+          {isCollapsed ? <FiChevronRight /> : <FiChevronLeft />}
+        </button>
+      ) : null}
       <div className="sidebar__brand">
         <div className="sidebar__logo">
           {appLogo ? (

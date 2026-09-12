@@ -2,13 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   FiSearch,
+  FiMenu,
   FiCpu,
   FiPlus,
   FiCheckCircle,
   FiBell,
   FiChevronDown,
-  FiChevronLeft,
-  FiChevronRight,
 } from "react-icons/fi";
 import { getWorkspaceSettings } from "../utils/workspaceSettings.js";
 import useInitiative from "../context/useInitiative.js";
@@ -18,7 +17,7 @@ import { isCoachOnly, isSocialConnectionOnly } from "../utils/roleAccess.js";
 import UserAvatar from "./UserAvatar.jsx";
 import "./Navbar.css";
 
-export default function Navbar({ onMenuClick, isSidebarCollapsed = false }) {
+export default function Navbar({ onMenuClick }) {
   const navigate = useNavigate();
   const location = useLocation();
   const [workspaceName, setWorkspaceName] = useState(
@@ -152,14 +151,21 @@ export default function Navbar({ onMenuClick, isSidebarCollapsed = false }) {
   return (
     <header className="navbar">
       <div className="navbar__left">
+        {/*
+          Mobile-only now (hidden ≥901px in Navbar.css) — this opens the
+          off-canvas drawer at narrow widths. The desktop rail-collapse
+          control lives directly on the sidebar's own edge instead (see
+          Sidebar.jsx's sidebar__collapse-toggle), since showing a
+          collapse-direction chevron here that silently meant something
+          different once the window narrowed was confusing.
+        */}
         <button
           className="navbar__menu"
           type="button"
           onClick={onMenuClick}
-          aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          aria-expanded={!isSidebarCollapsed}
+          aria-label="Open menu"
         >
-          {isSidebarCollapsed ? <FiChevronRight /> : <FiChevronLeft />}
+          <FiMenu />
         </button>
         <div className="navbar__context">
           <p className="navbar__eyebrow">
