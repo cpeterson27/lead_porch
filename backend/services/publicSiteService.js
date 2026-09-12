@@ -564,6 +564,10 @@ function programProjection(item) {
     },
     sortOrder: item.publicPresentation.sortOrder,
     section: item.publicPresentation.section || "",
+    tierLabel: String(item.publicPresentation.tierLabel || "").slice(0, 80),
+    comparisonPriceLabel: String(item.publicPresentation.comparisonPriceLabel || "").slice(0, 80),
+    comparisonDurationLabel: String(item.publicPresentation.comparisonDurationLabel || "").slice(0, 80),
+    coachingFormat: String(item.publicPresentation.coachingFormat || "").slice(0, 80),
     isFeatured: Boolean(item.publicPresentation.featured),
   };
 }

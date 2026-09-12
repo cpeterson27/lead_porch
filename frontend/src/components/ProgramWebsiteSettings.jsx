@@ -603,6 +603,66 @@ export default function ProgramWebsiteSettings({ websiteUrl = "/", onChange }) {
               <header>
                 <span>3</span>
                 <div>
+                  <h4>Comparison table</h4>
+                  <p>Edit how this program appears in “Compare what is included.”</p>
+                </div>
+              </header>
+              <label>
+                Tier heading
+                <input
+                  placeholder="Example: IMPLEMENT"
+                  value={editing.publicPresentation?.tierLabel || ""}
+                  onChange={(e) => patch("tierLabel", e.target.value)}
+                />
+              </label>
+              <label>
+                Price shown in comparison
+                <input
+                  placeholder="Leave blank to use the program price"
+                  value={editing.publicPresentation?.comparisonPriceLabel || ""}
+                  onChange={(e) => patch("comparisonPriceLabel", e.target.value)}
+                />
+              </label>
+              <label>
+                Program length shown in comparison
+                <input
+                  placeholder="Leave blank to use the program duration"
+                  value={editing.publicPresentation?.comparisonDurationLabel || ""}
+                  onChange={(e) => patch("comparisonDurationLabel", e.target.value)}
+                />
+              </label>
+              <label>
+                Coaching format
+                <input
+                  placeholder="Example: ONE-ON-ONE or BOOTCAMP"
+                  value={editing.publicPresentation?.coachingFormat || ""}
+                  onChange={(e) => patch("coachingFormat", e.target.value)}
+                />
+              </label>
+              <label>
+                Included features (one per line)
+                <textarea
+                  rows="6"
+                  value={(editing.publicPresentation?.highlights || []).join("\n")}
+                  onChange={(e) =>
+                    patch(
+                      "highlights",
+                      e.target.value
+                        .split("\n")
+                        .map((value) => value.trim())
+                        .filter(Boolean),
+                    )
+                  }
+                />
+              </label>
+              <small>
+                Leave an override blank to keep using the saved price, duration, or automatic label.
+              </small>
+            </section>
+            <section className="program-editor-group">
+              <header>
+                <span>4</span>
+                <div>
                   <h4>Intro video</h4>
                   <p>
                     Add an optional hosted video without exposing technical
@@ -690,7 +750,7 @@ export default function ProgramWebsiteSettings({ websiteUrl = "/", onChange }) {
             </section>
             <section className="program-editor-group">
               <header>
-                <span>4</span>
+                <span>5</span>
                 <div>
                   <h4>Placement</h4>
                   <p>Choose where this program appears. Reorder programs from the list after saving.</p>

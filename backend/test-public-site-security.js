@@ -74,6 +74,28 @@ for (const key of [
 assert.equal(projected.displayName, "Sherry");
 assert.equal(projected.publicTitle, "Lead Coach");
 assert.equal(projected.featured, true);
+const projectedProgram = service.programProjection({
+  _id: "program-1",
+  name: "Program",
+  internalSummary: "",
+  duration: { value: 4, unit: "months" },
+  defaultPrice: { amount: 10000, currency: "USD" },
+  publicPresentation: {
+    slug: "program",
+    title: "Program",
+    summary: "Summary",
+    description: "Description",
+    highlights: [], outcomes: [], curriculum: [],
+    tierLabel: "IMPLEMENT",
+    comparisonPriceLabel: "$10,000",
+    comparisonDurationLabel: "4 months",
+    coachingFormat: "ONE-ON-ONE",
+  },
+});
+assert.equal(projectedProgram.tierLabel, "IMPLEMENT");
+assert.equal(projectedProgram.comparisonPriceLabel, "$10,000");
+assert.equal(projectedProgram.comparisonDurationLabel, "4 months");
+assert.equal(projectedProgram.coachingFormat, "ONE-ON-ONE");
 assert.equal(PublicProfile.schema.path("status").defaultValue, "draft");
 assert.equal(Testimonial.schema.path("status").defaultValue, "pending");
 const publicRoute = fs.readFileSync(

@@ -1,406 +1,58 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import {
-  FiCalendar,
-  FiChevronLeft,
-  FiChevronRight,
-  FiDollarSign,
-  FiMail,
-  FiTrendingUp,
-  FiUsers,
-} from "react-icons/fi";
-import StatCard from "../components/StatCard.jsx";
-import DashboardCard from "../components/DashboardCard.jsx";
+import { FiAlertCircle, FiArrowRight, FiCalendar, FiCheckCircle, FiDollarSign, FiMail, FiTarget, FiTrendingUp, FiUsers } from "react-icons/fi";
 import Button from "../components/Button.jsx";
-import { fetchCampaigns, fetchEvents, fetchOutreach } from "../services/api.js";
-import "./Dashboard.css";
+import useAuth from "../context/useAuth.js";
 import useInitiative from "../context/useInitiative.js";
+import { fetchCampaigns, fetchEvents, fetchGrowthAnalytics, fetchOutreach } from "../services/api.js";
+import "./Dashboard.css";
 
-const eventRevenue = (event) =>
-  Number(event.eventbriteLogistics?.grossRevenue || 0) ||
-  Number(event.ticketsSold || 0) * Number(event.ticketPrice || 0);
+const number = (value) => Number(value || 0).toLocaleString();
+const currency = (value) => Number(value || 0).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+const words = (value) => String(value || "").replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+const eventRevenue = (event) => Number(event?.eventbriteLogistics?.grossRevenue || 0) || Number(event?.ticketsSold || 0) * Number(event?.ticketPrice || 0);
 
-const eventDate = (event) =>
-  event.startDate ? new Date(event.startDate) : null;
+function MetricCard({ title, value, detail, icon, tone = "green", spark = [] }) {
+  const max = Math.max(...spark, 1);
+  return <article className={`command-metric command-metric--${tone}`}><div className="command-metric__top"><span className="command-metric__icon">{icon}</span>{spark.length ? <span className="command-metric__spark" aria-hidden="true">{spark.map((item, index) => <i key={`${item}-${index}`} style={{ height: `${Math.max(18, (item / max) * 100)}%` }} />)}</span> : null}</div><span className="command-metric__label">{title}</span><strong>{value}</strong><small>{detail}</small></article>;
+}
+
+function Funnel({ stages = [] }) {
+  const visible = stages.filter((stage) => ["leads", "applications", "qualified", "calls_booked", "closed_won"].includes(stage.key));
+  const max = Math.max(...visible.map((stage) => Number(stage.value || 0)), 1);
+  return <div className="command-funnel">{visible.map((stage, index) => { const next = visible[index + 1]; const rate = next && stage.value ? Math.round((next.value / stage.value) * 100) : null; return <div className="command-funnel__row" key={stage.key}><span>{words(stage.key)}</span><div><i style={{ width: `${Math.max(4, (stage.value / max) * 100)}%` }} /></div><strong>{number(stage.value)}</strong><small>{rate == null ? "" : `${rate}% →`}</small></div>; })}</div>;
+}
+
+function SourceMix({ rows = [] }) {
+  const top = rows.slice(0, 5), total = top.reduce((sum, row) => sum + Number(row.leads || 0), 0), colors = ["#2778ff", "#8d5be8", "#2fbf8f", "#f2a93b", "#db567c"];
+  let cursor = 0;
+  const stops = top.map((row, index) => { const start = cursor; cursor += total ? (Number(row.leads || 0) / total) * 100 : 0; return `${colors[index]} ${start}% ${cursor}%`; });
+  return <div className="source-mix"><div className="source-mix__chart" style={{ background: total ? `conic-gradient(${stops.join(",")})` : "var(--color-surface-muted)" }}><span><strong>{number(total)}</strong><small>leads</small></span></div><div className="source-mix__legend">{top.length ? top.map((row, index) => <div key={row.source}><i style={{ background: colors[index] }} /><span>{words(row.source)}</span><strong>{row.percentOfLeads}%</strong></div>) : <p>No lead-source data yet.</p>}</div></div>;
+}
 
 export default function Dashboard() {
-  const navigate = useNavigate();
-  const { selectedId: initiativeId } = useInitiative();
-  const [events, setEvents] = useState([]);
-  const [campaigns, setCampaigns] = useState([]);
-  const [selectedId, setSelectedId] = useState("");
-  const [outreachCount, setOutreachCount] = useState(0);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    Promise.all([fetchEvents(), fetchCampaigns().catch(() => [])])
-      .then(([items, campaignItems]) => {
-        const list = Array.isArray(items) ? items : [];
-        setEvents(list);
-        setCampaigns(Array.isArray(campaignItems) ? campaignItems : []);
-        setSelectedId(list[0]?._id || "");
-      })
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(() => {
-    if (initiativeId === "all" || !events.length || !campaigns.length) return;
-    const campaign = campaigns.find((item) => item._id === initiativeId);
-    const campaignEventId = String(
-      campaign?.eventId?._id || campaign?.eventId || "",
-    );
-    if (
-      campaignEventId &&
-      events.some((event) => String(event._id) === campaignEventId)
-    ) {
-      const selectCampaignEvent = window.setTimeout(
-        () => setSelectedId(campaignEventId),
-        0,
-      );
-      return () => window.clearTimeout(selectCampaignEvent);
-    }
-  }, [initiativeId, campaigns, events]);
-
-  const selected =
-    events.find((event) => event._id === selectedId) || events[0];
-  const selectedIndex = Math.max(
-    0,
-    events.findIndex((event) => event._id === selected?._id),
-  );
-
-  const moveSelectedEvent = (direction) => {
-    if (events.length < 2) return;
-    const nextIndex =
-      (selectedIndex + direction + events.length) % events.length;
-    setSelectedId(events[nextIndex]._id);
-  };
-
-  useEffect(() => {
-    if (!selected?._id) {
-      const resetOutreach = window.setTimeout(() => setOutreachCount(0), 0);
-      return () => window.clearTimeout(resetOutreach);
-    }
-    fetchOutreach(selected._id)
-      .then((items) =>
-        setOutreachCount(
-          (Array.isArray(items) ? items : items?.outreach || []).length,
-        ),
-      )
-      .catch(() => setOutreachCount(0));
-  }, [selected?._id]);
-
-  /* ── Loading state ─────────────────────────────────────────────────────── */
-  if (loading) {
-    return (
-      <div className="page-dashboard">
-        <div className="dashboard-loading">
-          <FiCalendar aria-hidden="true" />
-          <span>Loading dashboard…</span>
-        </div>
-      </div>
-    );
-  }
-
-  /* ── Empty state ───────────────────────────────────────────────────────── */
-  if (!events.length) {
-    return (
-      <div className="page-dashboard">
-        <header className="dashboard-header">
-          <div>
-            <h1 className="dashboard-header__title">Event dashboard</h1>
-            <p className="dashboard-header__subtitle">
-              Create or import your first event to begin tracking performance.
-            </p>
-          </div>
-        </header>
-
-        <div className="dashboard-empty">
-          <div className="dashboard-empty__icon">
-            <FiCalendar aria-hidden="true" />
-          </div>
-          <h2>No events yet</h2>
-          <p>
-            Add your first event and Lead Porch will start tracking tickets,
-            revenue, audience, and outreach in one place.
-          </p>
-          <Button onClick={() => navigate("/events")}>Open Events</Button>
-        </div>
-      </div>
-    );
-  }
-
-  /* ── Derived values ────────────────────────────────────────────────────── */
-  const selectedTickets = Number(selected?.ticketsSold || 0);
-  const selectedGoal = Number(selected?.ticketGoal || 0);
-  const selectedProgress = selectedGoal
-    ? Math.min(100, Math.round((selectedTickets / selectedGoal) * 100))
-    : 0;
-
-  const logistics = selected?.eventbriteLogistics || {};
-  const attendeeCount = Number(logistics.attendeeCount || 0);
-  const checkedInCount = Number(logistics.checkedInCount || 0);
-  const orderCount = Number(logistics.orderCount || 0);
-
-  const ticketRange = logistics.minimumCheckoutPrice
-    ? logistics.maximumCheckoutPrice &&
-      logistics.maximumCheckoutPrice !== logistics.minimumCheckoutPrice
-      ? `$${Number(logistics.minimumCheckoutPrice).toLocaleString()}–$${Number(logistics.maximumCheckoutPrice).toLocaleString()}`
-      : `$${Number(logistics.minimumCheckoutPrice).toLocaleString()}`
-    : selected.ticketPrice
-      ? `$${Number(selected.ticketPrice).toLocaleString()} base`
-      : "Not set";
-
-  const syncLabel = logistics.lastSyncedAt
-    ? `Synced ${new Date(logistics.lastSyncedAt).toLocaleString()}`
-    : "Eventbrite data has not synced yet";
-
-  const hasAudienceSuggestions = Boolean(
-    selected?.audienceRecommendationDetails?.length ||
-      selected?.audienceSuggestions?.length,
-  );
-
-  const selectedCampaign = campaigns.find((campaign) => {
-    const campaignEventId = String(
-      campaign?.eventId?._id || campaign?.eventId || "",
-    );
-    return campaignEventId && campaignEventId === String(selected?._id || "");
-  });
-
-  const hasSelectedAudience = Boolean(selected?.audience?.length);
-  const campaignHasAudience = Boolean(selectedCampaign?.audience?.length);
-  const audienceApproved = Boolean(selected?.audienceConfirmedAt);
-
-  const displayedAudience = audienceApproved
-    ? selected.audience
-    : campaignHasAudience
-      ? selectedCampaign.audience
-      : selected?.audience || [];
-
-  const nextStep = audienceApproved
-    ? {
-        status: "Campaign ready",
-        tone: "ready",
-        title: "Continue campaign outreach",
-        body: "The audience strategy is approved. Review contact matches, assignments, and outreach activity next.",
-        label: "Open outreach",
-        path: "/outreach",
-      }
-    : hasSelectedAudience
-      ? {
-          status: "Needs approval",
-          tone: "attention",
-          title: "Approve the selected audience",
-          body: "Audience groups have been selected, but Lead Porch will not use them for matching or outreach until you approve them.",
-          label: "Approve target audience",
-          path: `/events?eventId=${selected._id}&tab=strategy`,
-        }
-      : campaignHasAudience
-        ? {
-            status: "Needs confirmation",
-            tone: "attention",
-            title: "Confirm the targeting brief",
-            body: "This campaign already has assigned contacts. Confirming the target audience makes Lead Porch's research, matching, and future outreach use one approved source of truth.",
-            label: "Confirm audience",
-            path: `/events?eventId=${selected._id}&tab=strategy`,
-          }
-        : hasAudienceSuggestions
-          ? {
-              status: "Needs decision",
-              tone: "attention",
-              title: "Choose the target audience",
-              body: "Lead Porch has suggestions from the event listing. Pick the groups this campaign should target, then approve them before matching new contacts.",
-              label: "Choose audience",
-              path: `/events?eventId=${selected._id}&tab=strategy`,
-            }
-          : {
-              status: "Needs strategy",
-              tone: "attention",
-              title: "Generate audience recommendations",
-              body: "Add or review event strategy so Lead Porch can suggest audience segments before matching contacts.",
-              label: "Open audience strategy",
-              path: `/events?eventId=${selected._id}&tab=strategy`,
-            };
-
-  /* ── Render ────────────────────────────────────────────────────────────── */
-  return (
-    <div className="page-dashboard">
-      {/* Page header */}
-      <header className="dashboard-header">
-        <div>
-          <p className="page-eyebrow">Event command center</p>
-          <h1 className="dashboard-header__title">Event dashboard</h1>
-          <p className="dashboard-header__subtitle">
-            Choose one event and see everything that matters in one place.
-          </p>
-        </div>
-        <div className="dashboard-header__actions">
-          <Button variant="outline" onClick={() => navigate("/analytics")}>
-            Analytics
-          </Button>
-          <Button variant="outline" onClick={() => navigate("/events")}>
-            Events
-          </Button>
-        </div>
-      </header>
-
-      {/* Event navigator */}
-      <section
-        className="dashboard-navigator"
-        aria-label="Choose an event to view"
-      >
-        <div className="dashboard-navigator__label">
-          <FiCalendar aria-hidden="true" />
-          <span>
-            <small>Currently viewing</small>
-            <strong>
-              Event {selectedIndex + 1} of {events.length}
-            </strong>
-          </span>
-        </div>
-
-        <div className="dashboard-navigator__select-group">
-          <label
-            className="dashboard-navigator__select-label"
-            htmlFor="dashboard-event-select"
-          >
-            Switch event
-          </label>
-          <select
-            id="dashboard-event-select"
-            className="dashboard-navigator__select"
-            value={selected?._id || ""}
-            onChange={(e) => setSelectedId(e.target.value)}
-          >
-            {events.map((event) => (
-              <option value={event._id} key={event._id}>
-                {event.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="dashboard-navigator__arrows">
-          <button
-            type="button"
-            className="dashboard-navigator__arrow"
-            onClick={() => moveSelectedEvent(-1)}
-            disabled={events.length < 2}
-            aria-label="View previous event"
-          >
-            <FiChevronLeft />
-          </button>
-          <button
-            type="button"
-            className="dashboard-navigator__arrow"
-            onClick={() => moveSelectedEvent(1)}
-            disabled={events.length < 2}
-            aria-label="View next event"
-          >
-            <FiChevronRight />
-          </button>
-        </div>
-      </section>
-
-      {/* Hero banner */}
-      <section className="dashboard-hero">
-        <div className="dashboard-hero__body">
-          <p className="dashboard-hero__date">
-            {eventDate(selected)?.toLocaleDateString("en-US", {
-              month: "long",
-              day: "numeric",
-              year: "numeric",
-            }) || "Date not set"}
-          </p>
-          <h2 className="dashboard-hero__name">{selected.name}</h2>
-          <p className="dashboard-hero__audience">
-            {displayedAudience.length
-              ? displayedAudience.join(", ")
-              : "Audience strategy still needs approval"}
-          </p>
-        </div>
-        <div className="dashboard-hero__action">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate("/events")}
-          >
-            Manage this event
-          </Button>
-        </div>
-      </section>
-
-      {/* Stat cards */}
-      <section className="dashboard-stats" aria-label="Key event metrics">
-        <StatCard
-          title="Tickets sold"
-          value={selectedTickets}
-          subtitle={selectedGoal ? `${selectedGoal} ticket goal` : "No ticket goal set"}
-          icon={<FiTrendingUp />}
-          trend={`${selectedProgress}% of goal`}
-        />
-        <StatCard
-          title="Gross revenue"
-          value={`$${eventRevenue(selected).toLocaleString()}`}
-          subtitle={`${orderCount} orders`}
-          icon={<FiDollarSign />}
-          trend={`Current price ${ticketRange}`}
-        />
-        <StatCard
-          title="Attendees"
-          value={attendeeCount}
-          subtitle="Registration records"
-          icon={<FiUsers />}
-          trend={`${checkedInCount} checked in`}
-        />
-        <StatCard
-          title="Outreach"
-          value={outreachCount}
-          subtitle="Campaign messages"
-          icon={<FiMail />}
-          trend={
-            selected.audienceConfirmedAt
-              ? "Audience approved"
-              : "Audience approval needed"
-          }
-        />
-      </section>
-
-      {/* Detail cards */}
-      <section className="dashboard-details">
-        <DashboardCard title="Ticket goal">
-          <div className="goal-card">
-            <div className="goal-card__numbers">
-              <span className="goal-card__sold">{selectedTickets}</span>
-              <span className="goal-card__of">
-                of {selectedGoal || "—"} tickets sold
-              </span>
-              <span className="goal-card__pct">{selectedProgress}%</span>
-            </div>
-            <div className="goal-card__bar">
-              <div
-                className="goal-card__bar-fill"
-                style={{ width: `${selectedProgress}%` }}
-              />
-            </div>
-            <p className="goal-card__sync">{syncLabel}</p>
-          </div>
-        </DashboardCard>
-
-        <DashboardCard title="Next step">
-          <div className="next-step">
-            <span
-              className={`next-step__badge next-step__badge--${nextStep.tone}`}
-            >
-              {nextStep.status}
-            </span>
-            <h3 className="next-step__title">{nextStep.title}</h3>
-            <p className="next-step__body">{nextStep.body}</p>
-            <Button size="sm" onClick={() => navigate(nextStep.path)}>
-              {nextStep.label}
-            </Button>
-          </div>
-        </DashboardCard>
-      </section>
-    </div>
-  );
+  const navigate = useNavigate(), { session } = useAuth(), { selectedId: initiativeId } = useInitiative();
+  const [events, setEvents] = useState([]), [campaigns, setCampaigns] = useState([]), [selectedId, setSelectedId] = useState(""), [analytics, setAnalytics] = useState(null), [outreachCount, setOutreachCount] = useState(0), [loading, setLoading] = useState(true), [error, setError] = useState("");
+  useEffect(() => { let active = true; Promise.allSettled([fetchEvents(), fetchCampaigns(), fetchGrowthAnalytics()]).then(([eventResult, campaignResult, analyticsResult]) => { if (!active) return; const eventRows = eventResult.status === "fulfilled" && Array.isArray(eventResult.value) ? eventResult.value : []; const campaignRows = campaignResult.status === "fulfilled" && Array.isArray(campaignResult.value) ? campaignResult.value : []; setEvents(eventRows); setCampaigns(campaignRows); setSelectedId(eventRows[0]?._id || ""); if (analyticsResult.status === "fulfilled") setAnalytics(analyticsResult.value); else setError("Some business analytics are temporarily unavailable."); }).finally(() => active && setLoading(false)); return () => { active = false; }; }, []);
+  const initiativeCampaign = initiativeId === "all" ? null : campaigns.find((item) => item._id === initiativeId);
+  const initiativeEventId = String(initiativeCampaign?.eventId?._id || initiativeCampaign?.eventId || "");
+  const effectiveSelectedId = events.some((event) => String(event._id) === initiativeEventId) ? initiativeEventId : selectedId;
+  const selected = events.find((event) => String(event._id) === String(effectiveSelectedId)) || events[0];
+  useEffect(() => { if (!selected?._id) return; fetchOutreach(selected._id).then((items) => setOutreachCount((Array.isArray(items) ? items : items?.outreach || []).length)).catch(() => setOutreachCount(0)); }, [selected?._id]);
+  const stage = (key) => analytics?.funnel?.stages?.find((item) => item.key === key)?.value || 0;
+  const campaignsLive = analytics?.communication?.campaigns?.filter((item) => ["active", "running", "scheduled"].includes(item.status)).length || campaigns.filter((item) => ["active", "running", "scheduled"].includes(item.status)).length;
+  const sourceRows = analytics?.attribution?.bySource || [];
+  const topCampaigns = useMemo(() => [...(analytics?.attribution?.byCampaign || [])].sort((a, b) => Number(b.revenue || 0) - Number(a.revenue || 0)).slice(0, 5), [analytics]);
+  const communicationAttention = Number(analytics?.communication?.blocked || 0) + Number(analytics?.communication?.email?.bounced || 0);
+  const hour = new Date().getHours(), greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening", firstName = String(session?.user?.name || "").trim().split(/\s+/)[0];
+  const priorities = [communicationAttention ? { tone: "warning", title: "Review communication issues", detail: `${communicationAttention} blocked or bounced deliveries need attention.`, path: "/analytics" } : null, selected && !selected.audienceConfirmedAt ? { tone: "warning", title: `Confirm ${selected.name} targeting`, detail: "Audience approval unlocks matching and coordinated outreach.", path: `/events?eventId=${selected._id}&tab=strategy` } : null, stage("qualified") ? { tone: "ready", title: "Move qualified leads forward", detail: `${number(stage("qualified"))} qualified contacts are in the funnel.`, path: "/opportunities" } : null, { tone: "neutral", title: "Review today’s conversations", detail: "Respond while interest is fresh and update the relationship record.", path: "/inbox" }].filter(Boolean).slice(0, 4);
+  if (loading) return <div className="page-dashboard"><div className="dashboard-loading"><FiCalendar /><span>Preparing your command center…</span></div></div>;
+  return <div className="page-dashboard command-center">
+    <header className="command-center__header"><div><p className="page-eyebrow">Business command center</p><h1>{greeting}{firstName ? `, ${firstName}` : ""}.</h1><p>Here’s what is happening across growth, sales, delivery, and operations.</p></div><div className="command-center__header-actions"><span className="command-center__freshness"><i /> Updated {analytics?.generatedAt ? new Date(analytics.generatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }) : "just now"}</span><Button variant="outline" onClick={() => navigate("/analytics")}>Full analytics <FiArrowRight /></Button></div></header>
+    {error ? <p className="command-center__notice"><FiAlertCircle /> {error}</p> : null}
+    <section className="command-metrics" aria-label="Business health at a glance"><MetricCard title="Total leads" value={number(stage("leads"))} detail={`${number(stage("qualified"))} qualified`} icon={<FiUsers />} tone="blue" spark={[3,5,4,7,8,11]} /><MetricCard title="Tracked revenue" value={currency(analytics?.revenue?.total)} detail={`${number(stage("closed_won"))} closed won`} icon={<FiDollarSign />} spark={[2,3,5,4,7,10]} /><MetricCard title="Active campaigns" value={number(campaignsLive)} detail={`${campaigns.length} total campaigns`} icon={<FiTarget />} tone="purple" spark={[3,6,4,8,7,9]} /><MetricCard title="Active students" value={number(analytics?.coaching?.activeStudents)} detail={`${number(analytics?.coaching?.upcomingAssignments)} upcoming assignments`} icon={<FiTrendingUp />} tone="orange" spark={[3,4,5,5,7,8]} /><MetricCard title="Messages sent" value={number((analytics?.communication?.email?.sent || 0) + (analytics?.communication?.sms?.sent || 0))} detail={communicationAttention ? `${communicationAttention} need attention` : "Delivery looks healthy"} icon={<FiMail />} tone={communicationAttention ? "red" : "teal"} spark={[2,5,3,7,6,10]} /></section>
+    <section className="command-grid command-grid--primary"><article className="command-panel"><header><div><p className="page-eyebrow">Pipeline health</p><h2>Growth funnel</h2></div><button onClick={() => navigate("/analytics")}>Explore funnel <FiArrowRight /></button></header><Funnel stages={analytics?.funnel?.stages} /></article><article className="command-panel"><header><div><p className="page-eyebrow">Acquisition</p><h2>Lead sources</h2></div><span>Share of known leads</span></header><SourceMix rows={sourceRows} /></article></section>
+    <section className="command-grid command-grid--secondary"><article className="command-panel command-priorities"><header><div><p className="page-eyebrow">Focus now</p><h2>Today’s priorities</h2></div><span>{priorities.length} recommended actions</span></header><div>{priorities.map((item) => <button key={item.title} onClick={() => navigate(item.path)}><i className={`is-${item.tone}`}>{item.tone === "ready" ? <FiCheckCircle /> : <FiAlertCircle />}</i><span><strong>{item.title}</strong><small>{item.detail}</small></span><FiArrowRight /></button>)}</div></article><article className="command-panel"><header><div><p className="page-eyebrow">What’s working</p><h2>Campaign performance</h2></div><button onClick={() => navigate("/campaigns")}>All campaigns <FiArrowRight /></button></header><div className="command-table"><div className="command-table__head"><span>Campaign</span><span>Sales</span><span>Revenue</span></div>{topCampaigns.length ? topCampaigns.map((item) => <div key={item.campaign}><strong>{item.campaign}</strong><span>{number(item.sales)}</span><span>{currency(item.revenue)}</span></div>) : <p>No attributed campaign revenue yet.</p>}</div></article></section>
+    <section className="command-panel command-event"><header><div><p className="page-eyebrow">Event operations</p><h2>{selected?.name || "No event selected"}</h2></div>{events.length ? <select aria-label="Select event" value={selected?._id || ""} onChange={(event) => setSelectedId(event.target.value)}>{events.map((item) => <option key={item._id} value={item._id}>{item.name}</option>)}</select> : <Button size="sm" onClick={() => navigate("/events")}>Create an event</Button>}</header>{selected ? <div className="command-event__stats"><div><span>Tickets sold</span><strong>{number(selected.ticketsSold)}</strong><small>{selected.ticketGoal ? `${Math.round((Number(selected.ticketsSold || 0) / Number(selected.ticketGoal)) * 100)}% of goal` : "No goal set"}</small></div><div><span>Gross revenue</span><strong>{currency(eventRevenue(selected))}</strong><small>{number(selected.eventbriteLogistics?.orderCount)} orders</small></div><div><span>Registrations</span><strong>{number(selected.eventbriteLogistics?.attendeeCount)}</strong><small>{number(selected.eventbriteLogistics?.checkedInCount)} checked in</small></div><div><span>Outreach</span><strong>{number(outreachCount)}</strong><small>{selected.audienceConfirmedAt ? "Audience approved" : "Approval needed"}</small></div><Button variant="outline" onClick={() => navigate(`/events?eventId=${selected._id}`)}>Manage event <FiArrowRight /></Button></div> : <p className="command-event__empty">Create or import an event to add ticket, registration, revenue, and outreach visibility here.</p>}</section>
+  </div>;
 }

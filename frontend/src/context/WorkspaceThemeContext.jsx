@@ -1,14 +1,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
-import { fetchPublicSite } from "../services/api.js";
+import { fetchPublicSite, fetchWorkspaceConfig } from "../services/api.js";
 import WorkspaceThemeContext from "./WorkspaceThemeContextValue.js";
 export function WorkspaceThemeProvider({ children }) {
   const { pathname } = useLocation();
+  const publicRoute = /^\/(?:$|about(?:\/|$)|coaching-programs(?:\/|$)|testimonials(?:\/|$)|contact(?:\/|$)|people(?:\/|$)|privacy(?:-policy)?(?:\/|$)|terms(?:\/|$)|data-deletion(?:\/|$)|apply(?:\/|$)|ref(?:\/|$)|profile\/edit(?:\/|$))/.test(pathname);
   const [site, setSite] = useState(null),
     [loading, setLoading] = useState(true);
   useEffect(() => {
     const load = () =>
-      fetchPublicSite()
+      (publicRoute
+        ? fetchPublicSite()
+        : fetchWorkspaceConfig()
+            .then((config) => ({
+              branding: config.branding || {},
+              appBranding: config.appBranding || {},
+            }))
+            .catch(() => fetchPublicSite()))
         .then(setSite)
         .catch(() => setSite(null))
         .finally(() => setLoading(false));
@@ -24,33 +32,19 @@ export function WorkspaceThemeProvider({ children }) {
       window.clearTimeout(timer);
       window.removeEventListener("workspace-theme-updated", load);
     };
-  }, []);
+  }, [publicRoute]);
   useEffect(() => {
     const b = site?.branding;
-    if (!b) return;
     const root = document.documentElement;
-    root.style.setProperty("--workspace-primary", b.primaryColor);
-    root.style.setProperty("--workspace-accent", b.accentColor);
-    root.style.setProperty(
-      "--workspace-background",
-      b.surfaceMode === "light" ? "#f7f8f7" : "#090b0a",
-    );
-    root.style.setProperty(
-      "--workspace-surface",
-      b.surfaceMode === "light" ? "#ffffff" : "#151816",
-    );
-    root.style.setProperty(
-      "--workspace-text",
-      b.surfaceMode === "light" ? "#111512" : "#f7f8f7",
-    );
-    root.style.setProperty(
-      "--workspace-muted",
-      b.surfaceMode === "light" ? "#667069" : "#a5afa8",
-    );
-    root.style.setProperty(
-      "--workspace-border",
-      b.surfaceMode === "light" ? "#dce2de" : "#2a302c",
-    );
+    if (b) {
+      root.style.setProperty("--workspace-primary", b.primaryColor);
+      root.style.setProperty("--workspace-accent", b.accentColor);
+      root.style.setProperty("--workspace-background", b.surfaceMode === "light" ? "#f7f8f7" : "#090b0a");
+      root.style.setProperty("--workspace-surface", b.surfaceMode === "light" ? "#ffffff" : "#151816");
+      root.style.setProperty("--workspace-text", b.surfaceMode === "light" ? "#111512" : "#f7f8f7");
+      root.style.setProperty("--workspace-muted", b.surfaceMode === "light" ? "#667069" : "#a5afa8");
+      root.style.setProperty("--workspace-border", b.surfaceMode === "light" ? "#dce2de" : "#2a302c");
+    }
     // Apply app (dashboard) branding variables.
     // Guard every setProperty call so we only write a value when it is a
     // non-empty string.  Without the guard, fields that haven't been
@@ -82,8 +76,7 @@ export function WorkspaceThemeProvider({ children }) {
       setProp("--color-brand", app.primaryActionColor);
       setProp("--accent", app.accentColor || app.primaryActionColor);
     }
-    const publicRoute = /^\/(?:$|about(?:\/|$)|coaching-programs(?:\/|$)|testimonials(?:\/|$)|contact(?:\/|$)|people(?:\/|$)|privacy(?:-policy)?(?:\/|$)|terms(?:\/|$)|data-deletion(?:\/|$)|apply(?:\/|$)|ref(?:\/|$)|profile\/edit(?:\/|$))/.test(pathname);
-    const favicon = publicRoute ? b.faviconUrl : app?.faviconUrl || b.faviconUrl;
+    const favicon = publicRoute ? b?.faviconUrl : app?.faviconUrl || b?.faviconUrl;
     const variant = (url, size) => url?.includes("res.cloudinary.com/") && url.includes("/image/upload/") ? url.replace("/image/upload/", `/image/upload/c_fill,w_${size},h_${size},f_png/`) : url;
     document.querySelectorAll("link[data-workspace-favicon]").forEach((node) => node.remove());
     if (favicon) {

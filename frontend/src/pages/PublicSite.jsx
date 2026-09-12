@@ -340,6 +340,7 @@ function ProgramCards({ programs = [] }) {
       "",
   );
   const formatLabel = (program) => {
+    if (program.coachingFormat) return program.coachingFormat;
     const text = `${program.title || ""} ${program.summary || ""}`;
     if (/one[- ]on[- ]one|1[- ]on[- ]1/i.test(text)) return "ONE-ON-ONE";
     if (/bootcamp/i.test(text)) return "BOOTCAMP";
@@ -354,6 +355,7 @@ function ProgramCards({ programs = [] }) {
         }).format(program.price.amount)
       : "Talk with our team";
   const acceleratorStage = (program, index) => {
+    if (program.tierLabel) return program.tierLabel;
     const amount = Number(program.price?.amount || 0);
     if (amount >= 20000) return "ALL-INCLUSIVE";
     if (amount >= 15000) return "ACQUIRE";
@@ -491,7 +493,7 @@ function ProgramCards({ programs = [] }) {
                   {featured.map((program, index) => (
                     <th scope="col" key={program.id}>
                       <span>{acceleratorStage(program, index)}</span>
-                      <strong>{money(program)}</strong>
+                      <strong>{program.comparisonPriceLabel || money(program)}</strong>
                     </th>
                   ))}
                 </tr>
@@ -501,9 +503,9 @@ function ProgramCards({ programs = [] }) {
                   <th scope="row">Program length</th>
                   {featured.map((program) => (
                     <td key={program.id}>
-                      {program.duration?.value
+                      {program.comparisonDurationLabel || (program.duration?.value
                         ? `${program.duration.value} ${program.duration.unit || ""}`
-                        : "Ask our team"}
+                        : "Ask our team")}
                     </td>
                   ))}
                 </tr>

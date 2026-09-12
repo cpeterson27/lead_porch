@@ -53,7 +53,7 @@ for (const value of [
   "upcomingEvent",
   "ProgramCards",
   "Testimonials",
-  ">Login</Link>",
+  "public-login",
   "HeroVideoTile",
   "Student perspectives",
   "journeyTitle",
@@ -84,20 +84,22 @@ for (const value of [
   "Reject",
   "Feature",
   "Create private edit link",
-  "Public website settings saved",
+  "All branding changes saved successfully.",
 ])
   assert(admin.includes(value), `admin missing ${value}`);
 assert(theme.includes('setProperty("--workspace-primary"'));
+assert(theme.includes("fetchWorkspaceConfig") && theme.includes("publicRoute"));
 for (const size of [16, 32, 48, 180, 192, 512])
   assert(theme.includes(String(size)), `favicon handling missing ${size}px size`);
 assert(theme.includes("apple-touch-icon") && theme.includes("app?.faviconUrl"));
-assert(site.includes("ApplicationButton") && site.includes('embed:"1"'));
+assert(site.includes("ApplicationButton") && site.includes("embed=1"));
 assert(site.includes("aboutImageUrl") && site.includes("public-meet-photo"));
 assert(css.includes("public-rise") && css.includes("community-section__word"));
 assert(css.includes("public-accelerator-row") && /repeat\(3,\s*1fr\)/.test(css));
 assert(css.includes("public-program-row") && /repeat\(4,\s*1fr\)/.test(css));
 assert(site.includes("Number(program.price?.amount || 0) >= 10000"));
 assert(site.includes("popularId === String(program.id)"));
+for (const field of ["tierLabel", "comparisonPriceLabel", "comparisonDurationLabel", "coachingFormat"]) assert(site.includes(field), `public comparison table missing ${field}`);
 assert(admin.includes("Website section"));
 assert(admin.includes("High Performance Accelerators"));
 assert(admin.includes("Intensive Programs"));
@@ -117,7 +119,7 @@ for (const value of [
 ])
   assert(programManager.includes(value), `program manager missing ${value}`);
 assert(site.includes('const [expanded, setExpanded] = useState("")'));
-assert(site.includes('current === String(program.id) ? "" : String(program.id)'));
+assert(/current === String\(program\.id\)\s*\? ""\s*:\s*String\(program\.id\)/.test(site));
 assert(site.includes("public-program-apply"));
 assert(site.includes("program.description || program.summary"));
 assert(site.includes("program.price?.amount != null"));

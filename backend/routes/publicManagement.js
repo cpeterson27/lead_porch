@@ -385,6 +385,10 @@ router.patch("/programs/:id", admin, async (req, res) => {
       ctaSupportingText: String(input.ctaSupportingText || "").slice(0, 500),
       status: input.status === "published" ? "published" : "hidden",
       section: input.section === "accelerator" ? "accelerator" : "intensive",
+      tierLabel: String(input.tierLabel || "").trim().slice(0, 80),
+      comparisonPriceLabel: String(input.comparisonPriceLabel || "").trim().slice(0, 80),
+      comparisonDurationLabel: String(input.comparisonDurationLabel || "").trim().slice(0, 80),
+      coachingFormat: String(input.coachingFormat || "").trim().slice(0, 80),
       featured: input.featured === true,
       sortOrder: Number(input.sortOrder) || 0,
     };
