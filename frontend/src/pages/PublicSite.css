@@ -138,7 +138,7 @@
 .public-offer-path small { color: var(--public-muted); font-size: 10px; line-height: 1.45; }
 .public-offer-intro { max-width: 650px; margin: -12px auto 28px; color: var(--public-muted); font-size: 12px; line-height: 1.65; text-align: center; }
 .public-offer-stage { margin-bottom: 10px; }
-.public-accelerator-summary { margin: 0 0 15px; color: var(--public-muted); font-size: 12px; line-height: 1.55; }
+.public-accelerator-summary { display: -webkit-box; min-height: 9.3em; max-height: 9.3em; margin: 0 0 15px; overflow: hidden; color: var(--public-muted); font-size: 12px; line-height: 1.55; -webkit-box-orient: vertical; -webkit-line-clamp: 6; }
 .public-offer-includes { display: grid; gap: 9px; margin: 0 0 22px; padding: 0; color: var(--public-text); font-size: 11px; line-height: 1.4; list-style: none; }
 .public-offer-includes li { position: relative; padding-left: 18px; }
 .public-offer-includes li::before { position: absolute; left: 0; color: var(--public-accent); content: "✓"; font-weight: 800; }
@@ -1330,10 +1330,11 @@
 }
 .public-program-details { margin-top: auto; padding-top: 15px; border-top: 1px solid var(--public-border); }
 .public-program-price { font-size: 17px; }
-.public-text-link {
-  padding: 0 0 3px;
-  border: 0;
-  border-bottom: 2px solid var(--public-accent);
+button.public-text-link {
+  min-height: 34px;
+  padding: 0 13px;
+  border: 1px solid var(--public-accent);
+  border-radius: 999px;
   background: transparent;
   color: var(--public-text);
   font-size: 8px;
@@ -1341,6 +1342,21 @@
   letter-spacing: .05em;
   text-transform: uppercase;
   cursor: pointer;
+  transition: background-color .16s ease, border-color .16s ease, color .16s ease, transform .08s ease;
+}
+.public-accelerator-footer button.public-text-link:hover,
+.public-program-details button.public-text-link:hover,
+.public-accelerator-footer button.public-text-link:focus-visible,
+.public-program-details button.public-text-link:focus-visible {
+  background: var(--public-accent);
+  color: #071006;
+}
+.public-accelerator-footer button.public-text-link:active,
+.public-program-details button.public-text-link:active {
+  border-color: color-mix(in srgb, var(--public-accent) 68%, #071006);
+  background: color-mix(in srgb, var(--public-accent) 68%, #071006);
+  color: #fff;
+  transform: translateY(1px);
 }
 .public-program-apply {
   display: inline-flex;
@@ -1691,6 +1707,13 @@
 .public-accelerator-card:not(.is-expanded) .public-accelerator-content {
   min-height: 288px;
   box-sizing: border-box;
+}
+
+.public-accelerator-card.is-expanded .public-accelerator-summary {
+  min-height: 0;
+  max-height: none;
+  overflow: visible;
+  -webkit-line-clamp: unset;
 }
 
 .public-hero__video {

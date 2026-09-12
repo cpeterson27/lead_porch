@@ -348,13 +348,8 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse
     : displayedOrganization?.branding || site?.branding || {};
   const appLogo = brand.publicSiteLogoDarkUrl || brand.publicSiteLogoUrl || "";
   const compactLogo = appBranding.compactLogoUrl || appLogo;
-  const sidebarStyle = {
-    "--app-sidebar-background": appBranding.sidebarBackgroundColor,
-    "--app-sidebar-text": appBranding.sidebarTextColor,
-  };
   return (
     <aside
-      style={sidebarStyle}
       className={`${isOpen ? "sidebar sidebar--open" : "sidebar"} ${isCollapsed ? "sidebar--collapsed" : ""}`}
     >
       {/* Attached directly to the sidebar's own edge (desktop only — on

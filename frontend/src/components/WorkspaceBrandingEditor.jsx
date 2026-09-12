@@ -185,11 +185,22 @@ export default function WorkspaceBrandingEditor({
       ...current,
       branding: { ...current.branding, [key]: value },
     }));
-  const patchApp = (key, value) =>
+  const patchApp = (key, value) => {
+    const cssProperties = {
+      sidebarBackgroundColor: "--app-sidebar-background",
+      sidebarTextColor: "--app-sidebar-text",
+      headerColor: "--app-header",
+      primaryActionColor: "--app-primary-action",
+      accentColor: "--app-accent",
+      backgroundColor: "--app-background",
+    };
+    if (cssProperties[key])
+      document.documentElement.style.setProperty(cssProperties[key], value);
     setConfig((current) => ({
       ...current,
       appBranding: { ...current.appBranding, [key]: value },
     }));
+  };
   const patchSite = (key, value) =>
     setConfig((current) => ({
       ...current,
