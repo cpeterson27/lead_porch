@@ -389,6 +389,10 @@
  * hiding it gives the transcript above more visible room without
  * touching the header at all.
  */
+.jarvis-generated-image { display: grid; gap: 0.5rem; margin: 0.75rem 0; }
+.jarvis-generated-image img { width: 100%; max-width: 420px; border-radius: 18px; border: 1px solid var(--border); box-shadow: 0 8px 24px rgba(20, 35, 31, 0.12); }
+.jarvis-generated-image__open { justify-self: start; color: #176b5a; font-weight: 800; font-size: 0.82rem; }
+
 .jarvis-voice-controls-wrap { margin-top: 0.65rem; }
 
 .jarvis-voice-controls-toggle {

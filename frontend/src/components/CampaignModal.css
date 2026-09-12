@@ -57,4 +57,8 @@
   .campaign-modal__footer .btn { flex: 1; }
 }
 .audience-custom-entry{display:flex;gap:10px;margin-top:14px}.audience-custom-entry input{flex:1}
+.ai-flyer-generator { padding: 1rem 1.3rem; border: 1px dashed var(--border); border-radius: var(--radius-xl); background: var(--surface-strong); }
+.ai-flyer-generator__row { display: flex; gap: 0.6rem; align-items: center; }
+.ai-flyer-generator__row input { flex: 1; }
+.program-logo-preview a { color: #7b342d; font-weight: 700; font-size: 0.85rem; }
 .program-logo-preview{align-items:center;background:#f4f1e9;border:1px solid #ddd6c8;border-radius:var(--radius-pill);display:flex;gap:1rem;padding:1rem 1.3rem}.program-logo-preview img{border-radius:var(--radius-md);height:64px;max-width:180px;object-fit:contain}.program-logo-preview button{background:transparent;border:0;color:#7b342d;cursor:pointer;text-decoration:underline}

@@ -1444,6 +1444,11 @@ export const jarvisChat = (message) =>
     })
     .then((res) => res.data);
 
+// Real OpenAI image generation via Jarvis — same underlying generator as
+// generateContentImage below, just reached from the conversation.
+export const jarvisGenerateImage = (prompt, options = {}) =>
+  api.post("/jarvis/generate-image", { prompt, ...options }, { timeout: 90000 }).then((res) => res.data);
+
 export const jarvisSummary = () =>
   api.get("/jarvis/summary").then((res) => res.data);
 

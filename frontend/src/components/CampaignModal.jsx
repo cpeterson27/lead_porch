@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Button from "./Button.jsx";
 import Modal from "./Modal.jsx";
-import { fetchContentBriefs, uploadEventImage } from "../services/api.js";
+import { fetchContentBriefs, generateAiImage, uploadEventImage } from "../services/api.js";
 import "./CampaignModal.css";
 
 const EVENT_TEMPLATES = [
@@ -50,6 +50,24 @@ export default function CampaignModal({
   const [savedTemplates, setSavedTemplates] = useState([]);
   const [newAudience, setNewAudience] = useState("");
   const [logoUploading, setLogoUploading] = useState(false);
+  const [flyerPrompt, setFlyerPrompt] = useState("");
+  const [flyerGenerating, setFlyerGenerating] = useState(false);
+  const [flyerUrl, setFlyerUrl] = useState("");
+  const [flyerError, setFlyerError] = useState("");
+
+  const generateFlyer = async () => {
+    if (!flyerPrompt.trim() || flyerGenerating) return;
+    setFlyerGenerating(true);
+    setFlyerError("");
+    try {
+      const result = await generateAiImage({ prompt: flyerPrompt, campaignId: initialData?._id || null });
+      setFlyerUrl(result.url);
+    } catch (err) {
+      setFlyerError(err.response?.data?.code === "IMAGE_GENERATION_DISABLED" ? "Image generation isn't turned on for this workspace yet." : (err.response?.data?.error || "Unable to generate that image."));
+    } finally {
+      setFlyerGenerating(false);
+    }
+  };
 
   const templateOptions = useMemo(
     () => (form.campaignKind === "program" ? PROGRAM_TEMPLATES : EVENT_TEMPLATES),
@@ -220,6 +238,23 @@ export default function CampaignModal({
                 <input id="program-site" type="url" placeholder="https://" value={form.brand.websiteUrl} onChange={(event) => setForm((current) => ({ ...current, brand: { ...current.brand, websiteUrl: event.target.value } }))} />
               </div>
               {form.brand.logoUrl ? <div className="program-logo-preview span-2"><img src={form.brand.logoUrl} alt="Program logo preview" /><button type="button" onClick={() => setForm((current) => ({ ...current, brand: { ...current.brand, logoUrl: "" } }))}>Remove logo</button></div> : null}
+
+              <div className="form-field span-2 ai-flyer-generator">
+                <label htmlFor="ai-flyer-prompt">Generate a flyer with AI</label>
+                <div className="ai-flyer-generator__row">
+                  <input id="ai-flyer-prompt" type="text" placeholder="e.g. A bold flyer announcing early enrollment for the Multifamily Mentorship program" value={flyerPrompt} onChange={(event) => setFlyerPrompt(event.target.value)} />
+                  <Button type="button" size="sm" variant="outline" loading={flyerGenerating} disabled={!flyerPrompt.trim()} onClick={generateFlyer}>Generate</Button>
+                </div>
+                <small>Real OpenAI image generation — a rough draft to react to, not final artwork. Nothing is posted anywhere.</small>
+                {flyerError ? <p className="form-error">{flyerError}</p> : null}
+                {flyerUrl ? (
+                  <div className="program-logo-preview span-2">
+                    <img src={flyerUrl} alt="Generated flyer draft" />
+                    <a href={flyerUrl} target="_blank" rel="noreferrer">Open full size</a>
+                    <button type="button" onClick={() => setForm((current) => ({ ...current, brand: { ...current.brand, logoUrl: flyerUrl } }))}>Use as program logo</button>
+                  </div>
+                ) : null}
+              </div>
             </>
           ) : (
             <>

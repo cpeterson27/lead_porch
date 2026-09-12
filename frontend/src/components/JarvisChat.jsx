@@ -7,10 +7,16 @@ import {
   createContentBrief,
   fetchJarvisProfile,
   fetchPeopleResearchPreviews,
+  jarvisGenerateImage,
   prepareJarvisResearchImport,
   synthesizeJarvisSpeech,
   updateJarvisProfile,
 } from "../services/api.js";
+
+// Recognizes a typed request to actually generate a picture (a flyer, a
+// promo graphic) rather than just talk about one, so it can be routed to
+// the real OpenAI image generator instead of the normal text chat.
+const IMAGE_REQUEST_PATTERN = /\b(generate|create|design|make|draw)\b[^.!?\n]{0,60}\b(flyer|poster|banner|graphic|image|photo|picture|ad|advertisement)\b/i;
 import "./JarvisChat.css";
 
 const OPENAI_VOICES = [
@@ -130,6 +136,7 @@ export default function JarvisChat() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [generatingImage, setGeneratingImage] = useState(false);
   // Collapses the voice-settings block (source/OpenAI voice/browser
   // voice/test button) at the bottom of the conversation input — not the
   // big orb header — since that's the part that's genuinely just
@@ -270,7 +277,7 @@ export default function JarvisChat() {
   };
 
   const submitPrompt = async (prompt) => {
-    if (!prompt.trim() || loading) return;
+    if (!prompt.trim() || loading || generatingImage) return;
 
     // Add user message
     const userMessage = {
@@ -281,6 +288,38 @@ export default function JarvisChat() {
     setMessages((prev) => [...prev, userMessage]);
     setNextId(nextId + 1);
     setInput("");
+
+    // "Generate me a flyer for..." is routed straight to the real image
+    // generator (the same one the Campaigns page uses) instead of the
+    // normal text chat — the request text itself becomes the image
+    // prompt, so mentioning the specific program/offer in the message is
+    // what makes the flyer about it.
+    if (IMAGE_REQUEST_PATTERN.test(prompt)) {
+      setGeneratingImage(true);
+      try {
+        const result = await jarvisGenerateImage(prompt);
+        const imageMessage = {
+          id: nextId + 1,
+          type: "assistant",
+          text: "Here's a draft. Nothing is posted anywhere — download it, ask for changes, or attach it to a campaign yourself.",
+          imageUrl: result.data?.url,
+        };
+        setMessages((prev) => [...prev, imageMessage]);
+        setNextId(nextId + 2);
+      } catch (err) {
+        const disabled = err.response?.data?.code === "IMAGE_GENERATION_DISABLED";
+        const errorMessage = {
+          id: nextId + 1,
+          type: "error",
+          text: disabled ? "Image generation isn't turned on for this workspace yet — ask your admin to enable OPENAI_IMAGE_GENERATION_ENABLED." : (err.response?.data?.error || "Jarvis couldn't generate that image."),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+        setNextId(nextId + 2);
+      } finally {
+        setGeneratingImage(false);
+      }
+      return;
+    }
 
     const response = await sendMessage(prompt);
     if (response) {
@@ -643,6 +682,13 @@ export default function JarvisChat() {
             <div className="jarvis-message-content">
               <div className="jarvis-message-text">{msg.text}</div>
 
+              {msg.imageUrl ? (
+                <div className="jarvis-generated-image">
+                  <img src={msg.imageUrl} alt="AI-generated flyer draft" />
+                  <a href={msg.imageUrl} target="_blank" rel="noreferrer" className="jarvis-generated-image__open">Open full size ↗</a>
+                </div>
+              ) : null}
+
               {msg.type === "assistant" ? <div className="jarvis-response-tools"><button onClick={() => speakMessage(msg)} disabled={speakingId === msg.id}>{speakingId === msg.id ? "Speaking…" : "Speak"}</button></div> : null}
 
               <JarvisResearchPreview message={msg} approval={researchApprovals[String(msg.data?.previewId || "")]} busy={researchActionId === String(msg.data?.previewId || "")} onPrepare={prepareResearchImport} onConfirm={confirmResearchImport} />
@@ -698,18 +744,18 @@ export default function JarvisChat() {
             type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask Jarvis to find decision-makers, review priorities, or plan a campaign..."
-            disabled={loading}
+            placeholder="Ask Jarvis to find decision-makers, review priorities, plan a campaign, or generate a flyer..."
+            disabled={loading || generatingImage}
             className="jarvis-input"
           />
           <button
             type="submit"
-            disabled={loading || !input.trim()}
+            disabled={loading || generatingImage || !input.trim()}
             className="jarvis-send-btn"
           >
-            {loading ? "Working…" : "Ask Jarvis"}
+            {generatingImage ? "Generating image…" : loading ? "Working…" : "Ask Jarvis"}
           </button>
-          {voiceInputSupported ? <button type="button" className="jarvis-mic-btn" onClick={startListening} disabled={loading || listening}>{listening ? "Listening…" : "Talk"}</button> : null}
+          {voiceInputSupported ? <button type="button" className="jarvis-mic-btn" onClick={startListening} disabled={loading || generatingImage || listening}>{listening ? "Listening…" : "Talk"}</button> : null}
         </div>
 
         <div className="jarvis-voice-controls-wrap">

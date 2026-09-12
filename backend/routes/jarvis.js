@@ -23,6 +23,7 @@ const { ingestContacts } = require("../services/contactIngestionService");
 const { isJarvisWebResearchEnabled, normalizePublicPeople, researchAndStagePublicPeople } = require("../services/publicPeopleResearchService");
 const { applyContactFieldUpdate, availableContactFields, buildContactFieldUpdatePreview } = require("../services/contactFieldUpdateService");
 const { collectMonitorSignals } = require("../services/intentSourceService");
+const imageGenerationService = require("../services/imageGenerationService");
 const { requireCapability, requireRole } = require("../middleware/auth");
 const multer = require("multer");
 const { ingestPdf } = require("../services/pdfKnowledgeIngestionService");
@@ -462,6 +463,30 @@ router.post("/voice/speech", async (req, res) => {
     return res.send(audio);
   } catch (error) {
     return res.status(502).json({ success: false, error: error.message || "Jarvis could not generate voice audio." });
+  }
+});
+
+/**
+ * Lets Jarvis generate a real image (a flyer, a promo graphic) right from
+ * the conversation. Deliberately a thin wrapper around the SAME
+ * imageGenerationService the Campaigns/Content page uses — one real
+ * generator, two entry points — rather than a separate implementation,
+ * so pricing, the enablement flags (OPENAI_IMAGE_GENERATION_ENABLED,
+ * JARVIS_OPENAI_ENABLED, OPENAI_API_KEY), and Cloudinary upload behavior
+ * are identical everywhere. Nothing is posted anywhere on its own — the
+ * image is returned for the owner to see, download, or attach manually.
+ */
+router.post("/generate-image", async (req, res) => {
+  try {
+    const result = await imageGenerationService.generateImage({
+      workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, agent: "jarvis", feature: "jarvis.chat.image",
+      prompt: req.body?.prompt, size: req.body?.size, quality: req.body?.quality, campaignId: req.body?.campaignId || null,
+      correlationId: req.get("x-request-id") || "",
+    });
+    return res.status(201).json({ success: true, data: result });
+  } catch (error) {
+    const status = error.code === "IMAGE_GENERATION_DISABLED" ? 503 : error.code === "IMAGE_PROMPT_REQUIRED" ? 400 : 502;
+    return res.status(status).json({ success: false, error: error.message || "Jarvis could not generate that image.", code: error.code || "" });
   }
 });
 
