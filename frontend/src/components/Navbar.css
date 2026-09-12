@@ -24,7 +24,6 @@
 
 .navbar__context { min-width: 0; }
 .navbar__mobile-brand{display:none;min-width:0}.navbar__mobile-brand strong,.navbar__mobile-brand span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.navbar__mobile-brand strong{color:#163e35;font-size:.78rem;letter-spacing:.08em;text-transform:uppercase}.navbar__mobile-brand span{color:#68746f;font-size:.68rem;font-weight:700}
-.initiative-switcher{background:#f0eee8;border:1px solid #d5d0c4;border-radius:3px;display:grid;margin-left:auto;min-width:260px;padding:7px 34px 7px 12px;position:relative}.initiative-switcher:before{background:#b79a58;content:"";height:calc(100% + 2px);left:-1px;position:absolute;top:-1px;width:3px}.initiative-switcher>span{color:#8a8c84;font-size:.56rem;font-weight:850;letter-spacing:.11em;text-transform:uppercase}.initiative-switcher select{appearance:none;background:transparent;border:0!important;color:#183f38;cursor:pointer;font:inherit;font-family:Georgia,"Times New Roman",serif;font-size:.86rem;font-weight:600;min-height:23px;padding:0;max-width:300px}.initiative-switcher>i{background:#b79447;border-radius:50%;height:6px;position:absolute;right:14px;top:25px;width:6px}.initiative-switcher>i.is-offer{background:#496b8a}
 
 /* Mobile drawer opener: the same compact circular arrow used on the
    desktop sidebar edge, scaled consistently at every narrow breakpoint. */
@@ -132,14 +131,13 @@
   }
 
   .navbar__left{display:contents}.navbar__context{display:none}.navbar__mobile-brand{display:grid;gap:2px}.workspace-switcher{display:none}.navbar__actions{display:flex;gap:.4rem}.navbar__search,.navbar__jarvis,.navbar__icon-action{display:none}.navbar__create-button{height:48px;border-radius:10px}.navbar__create-button>span,.navbar__create-button>svg:last-child{display:none}
-  .initiative-switcher{display:none}
 }
 
 @media (max-width: 1180px) and (min-width:901px){
-  .navbar__context{display:none}.initiative-switcher{margin-left:0;min-width:230px}.navbar__search{min-width:44px;width:44px;padding:0}.navbar__search span,.navbar__search kbd{display:none}
+  .navbar__context{display:none}.navbar__search{min-width:44px;width:44px;padding:0}.navbar__search span,.navbar__search kbd{display:none}
 }
-@media (max-width:1450px) and (min-width:901px){.navbar{gap:.8rem;padding-left:1rem;padding-right:1rem}.initiative-switcher{min-width:200px;max-width:235px}.navbar__actions{gap:.5rem}.navbar__search{min-width:44px;width:44px;padding:0}.navbar__search span,.navbar__search kbd{display:none}}
-@media (max-width:1240px) and (min-width:901px){.initiative-switcher{display:none}.navbar__context{min-width:0}.navbar__title{max-width:300px}.navbar__jarvis span{display:none}}
+@media (max-width:1450px) and (min-width:901px){.navbar{gap:.8rem;padding-left:1rem;padding-right:1rem}.navbar__actions{gap:.5rem}.navbar__search{min-width:44px;width:44px;padding:0}.navbar__search span,.navbar__search kbd{display:none}}
+@media (max-width:1240px) and (min-width:901px){.navbar__context{min-width:0}.navbar__title{max-width:300px}.navbar__jarvis span{display:none}}
 
 @media (min-width: 520px) and (max-width: 900px) {
   .navbar__menu { min-width: 36px; width: 36px; padding: 0; }
@@ -151,9 +149,8 @@
 /* Editorial command bar: intentionally asymmetric, restrained, and branded. */
 .navbar{min-height:88px;padding:.85rem 1.65rem;background:linear-gradient(100deg,color-mix(in srgb,var(--app-header,#fcfbf7) 96%,white),color-mix(in srgb,var(--app-header,#fcfbf7) 88%,var(--app-background,#f5f2e9)))}
 .navbar:after{background:linear-gradient(90deg,#b9954b,rgba(185,149,75,.08) 38%,transparent);bottom:-1px;content:"";height:2px;left:0;position:absolute;width:42%}
-.initiative-switcher{background:#fffdf8;border-color:#d8d0bf;border-radius:0;min-width:278px;padding:9px 38px 9px 15px;box-shadow:0 10px 28px rgba(40,48,43,.06)}
 .navbar__menu{border-radius:var(--radius-pill);box-shadow:0 6px 16px rgba(8,20,17,.38),inset 0 1px rgba(255,255,255,.35)}
 .navbar__jarvis{border-radius:999px;background:linear-gradient(120deg,#173b32,#0e2923);box-shadow:0 8px 24px rgba(14,40,34,.14)}
-@media(max-width:900px){.navbar{display:grid;grid-template-columns:46px minmax(0,1fr) auto;gap:.75rem;min-height:72px;padding:calc(env(safe-area-inset-top) + .55rem) .8rem .55rem}.navbar__left{display:contents}.navbar__context,.initiative-switcher,.navbar__search,.navbar__jarvis,.navbar__icon-action{display:none}.navbar__mobile-brand{display:grid;gap:2px}.navbar__actions{display:flex}.navbar__create-button{height:48px;border-radius:10px}}
+@media(max-width:900px){.navbar{display:grid;grid-template-columns:46px minmax(0,1fr) auto;gap:.75rem;min-height:72px;padding:calc(env(safe-area-inset-top) + .55rem) .8rem .55rem}.navbar__left{display:contents}.navbar__context,.navbar__search,.navbar__jarvis,.navbar__icon-action{display:none}.navbar__mobile-brand{display:grid;gap:2px}.navbar__actions{display:flex}.navbar__create-button{height:48px;border-radius:10px}}
 .navbar__coach-context{background:#eef4f1;border:1px solid #d2dfd9;color:#385a4e;font-size:.68rem;font-weight:800;letter-spacing:.04em;padding:.6rem .8rem;text-transform:uppercase}
-.initiative-switcher{flex:0 1 278px;max-width:278px;min-width:180px}.initiative-switcher select{min-width:0;overflow:hidden;text-overflow:ellipsis;width:100%}@media(max-width:900px){.navbar{gap:.6rem .75rem}.navbar__mobile-brand strong,.navbar__mobile-brand span{white-space:normal}.navbar__mobile-brand span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.25}.initiative-switcher{display:grid;grid-column:1/-1;margin:0;max-width:none;min-width:0;width:100%}}
+@media(max-width:900px){.navbar{gap:.6rem .75rem}.navbar__mobile-brand strong,.navbar__mobile-brand span{white-space:normal}.navbar__mobile-brand span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.25}}

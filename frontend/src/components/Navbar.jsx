@@ -10,7 +10,6 @@ import {
   FiChevronDown,
 } from "react-icons/fi";
 import { getWorkspaceSettings } from "../utils/workspaceSettings.js";
-import useInitiative from "../context/useInitiative.js";
 import useAuth from "../context/useAuth.js";
 import { fetchWorkspaceConfig } from "../services/api.js";
 import { isCoachOnly, isSocialConnectionOnly } from "../utils/roleAccess.js";
@@ -25,7 +24,6 @@ export default function Navbar({ onMenuClick }) {
   );
   const [createOpen, setCreateOpen] = useState(false);
   const createRef = useRef(null);
-  const { campaigns, selected, selectedId, setSelectedId } = useInitiative();
   const { session, workspaces, switchWorkspace } = useAuth();
   const [switchingWorkspace, setSwitchingWorkspace] = useState(false);
   const isCoach = isCoachOnly(session);
@@ -94,10 +92,6 @@ export default function Navbar({ onMenuClick }) {
     "Growth workspace",
     "Operate Lead Porch’s growth engine from one place.",
   ];
-  const changeInitiative = (value) => {
-    setSelectedId(value);
-    if (value !== "all") navigate(`/campaigns/${value}`);
-  };
   const changeWorkspace = async (workspaceId) => {
     if (!workspaceId || workspaceId === String(session?.workspace?.id)) return;
     setSwitchingWorkspace(true);
@@ -176,42 +170,6 @@ export default function Navbar({ onMenuClick }) {
           <strong>{session?.workspace?.name || "Lead Porch"}</strong>
           <span>{pageMeta[1]}</span>
         </div>
-        {!isCoach ? (
-          <label className="initiative-switcher">
-            <span>Current campaign</span>
-            <select
-              value={selectedId}
-              onChange={(event) => changeInitiative(event.target.value)}
-            >
-              <option value="all">All business activity</option>
-              <optgroup label="Events">
-                {campaigns
-                  .filter((campaign) => campaign.campaignKind !== "program")
-                  .map((campaign) => (
-                    <option key={campaign._id} value={campaign._id}>
-                      {campaign.name}
-                    </option>
-                  ))}
-              </optgroup>
-              <optgroup label="Programs & offers">
-                {campaigns
-                  .filter((campaign) => campaign.campaignKind === "program")
-                  .map((campaign) => (
-                    <option key={campaign._id} value={campaign._id}>
-                      {campaign.programName || campaign.name}
-                    </option>
-                  ))}
-              </optgroup>
-            </select>
-            {selected ? (
-              <i
-                className={
-                  selected.campaignKind === "program" ? "is-offer" : "is-event"
-                }
-              />
-            ) : null}
-          </label>
-        ) : null}
       </div>
 
       <label className="workspace-switcher">
