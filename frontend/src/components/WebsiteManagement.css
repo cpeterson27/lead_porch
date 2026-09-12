@@ -13,9 +13,9 @@
 @media(max-width:760px){.website-brand-manager{border-left:0;border-radius:0;border-right:0}.website-brand-header{padding:22px 20px}.website-brand-tabs{padding:0 10px}.program-website-summary dl{display:grid;gap:8px}.program-editor-group{padding:14px}.website-brand-header__actions{display:grid;grid-template-columns:1fr}.website-brand-header__actions a{width:100%}}
 
 /* Program publishing cards keep identity and actions separated at every width. */
-.program-website-list>article{align-items:center;grid-template-columns:minmax(260px,1fr) minmax(280px,auto)}
+.program-website-list>article{align-items:stretch;grid-template-columns:minmax(0,1fr)}
 .program-website-summary{min-width:0}.program-website-summary h4{overflow-wrap:anywhere}
-.program-website-actions{justify-content:flex-end;min-width:0}.program-website-actions .btn{white-space:nowrap}
+.program-website-actions{border-top:1px solid #e3ded5;justify-content:flex-start;min-width:0;padding-top:16px}.program-website-actions .btn{white-space:normal}
 .program-video-preview>img{aspect-ratio:16/9;border-radius:10px;display:block;max-height:320px;object-fit:cover;width:min(100%,560px)}
 .website-media-library{grid-template-columns:repeat(3,minmax(0,1fr))}.website-media-library>strong,.website-media-library>p{grid-column:1/-1}.website-media-library button{align-items:stretch;flex-direction:column;min-width:0}.website-media-library img{aspect-ratio:16/9;height:auto;object-fit:cover;width:100%}.website-media-library button span{overflow-wrap:anywhere}
 @media(max-width:900px){.program-website-list>article{align-items:stretch;grid-template-columns:1fr}.program-website-actions{justify-content:flex-start}.website-media-library{grid-template-columns:repeat(2,minmax(0,1fr))}}
@@ -31,6 +31,14 @@
 @media(max-width:560px){.program-order-guide__actions{display:grid!important;grid-template-columns:1fr}.program-order-guide__actions .btn{justify-self:stretch;width:100%}.program-website-actions{align-items:stretch;flex-direction:column}.program-website-actions .btn,.program-website-actions a{box-sizing:border-box;text-align:center;width:100%}}
 @media(max-width:560px){.website-media-library{grid-template-columns:1fr}.program-video-empty>div,.program-video-preview>div{align-items:stretch;display:grid;grid-template-columns:1fr}.website-upload-button,.program-video-empty .btn,.program-video-preview .btn{text-align:center;width:100%}}
 @media(prefers-reduced-motion:reduce){.website-management-cards article,.website-toggle>input:after{transition:none}.website-management-cards article:hover{transform:none}}
+
+/* Comparison controls live in the program card so owners can edit the public
+   table without hunting through an oversized modal. */
+.program-comparison-editor{background:#f7f8f5;border:1px solid #d9dfda;border-radius:12px;display:grid;gap:15px;margin-top:20px;padding:18px}
+.program-comparison-editor>header{align-items:end;display:flex;gap:16px;justify-content:space-between}
+.program-comparison-editor>header>div{display:grid;gap:3px}.program-comparison-editor>header span{color:#947a40;font-size:.65rem;font-weight:850;letter-spacing:.1em;text-transform:uppercase}.program-comparison-editor>header strong{color:#183f36;font-size:.92rem}.program-comparison-editor>header small{color:#6f7974;font-size:.72rem;text-align:right}
+.program-comparison-grid{display:grid;gap:13px;grid-template-columns:repeat(2,minmax(0,1fr))}.program-comparison-grid label{color:#45534e;display:grid;font-size:.72rem;font-weight:800;gap:6px}.program-comparison-grid input,.program-comparison-grid textarea{background:#fff;border:1px solid #bdc8c3;border-radius:8px;box-sizing:border-box;color:#1b2724;font:inherit;padding:10px;width:100%}.program-comparison-grid input:focus,.program-comparison-grid textarea:focus{border-color:#32715f;box-shadow:0 0 0 3px #dcece6;outline:0}.program-comparison-features{grid-column:1/-1}.program-comparison-editor>.btn{justify-self:start}
+@media(max-width:700px){.program-comparison-editor>header{align-items:start;flex-direction:column}.program-comparison-editor>header small{text-align:left}.program-comparison-grid{grid-template-columns:1fr}.program-comparison-features{grid-column:auto}.program-comparison-editor>.btn{width:100%}}
 
 /* Keep the overview status cards readable at every available content width. */
 .website-status-grid{gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));padding:20px 28px 28px}
