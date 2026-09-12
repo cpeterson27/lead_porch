@@ -1660,7 +1660,6 @@ button.public-text-link {
   backdrop-filter: blur(6px);
 }
 .program-application-open .public-footer { visibility: hidden; }
-.program-application-open .public-footer { visibility: hidden; }
 
 /* Final curriculum alignment pass. Collapsed cards share a row height; opening
    one program never stretches its neighbors. */
@@ -1712,7 +1711,8 @@ button.public-text-link {
 
 .public-accelerator-content,
 .public-program-content {
-  height: 100%;
+  height: auto;
+  flex: 1 1 auto;
 }
 
 .public-accelerator-title {
@@ -1731,7 +1731,7 @@ button.public-text-link {
 }
 
 .public-accelerator-card:not(.is-expanded) .public-accelerator-content {
-  min-height: 520px;
+  min-height: 390px;
   box-sizing: border-box;
 }
 
