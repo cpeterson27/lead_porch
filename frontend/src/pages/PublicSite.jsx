@@ -179,7 +179,7 @@ export function PublicLayout({ children }) {
     close = () => setOpen(false);
   return (
     <div
-      className="public-site"
+      className={`public-site${site?.publicSite?.stickyBackgroundUrl ? " has-sticky-background" : ""}`}
       data-public-theme={theme}
       style={{
         "--public-base-size": `${site?.publicSite?.baseFontSize || 16}px`,
@@ -194,7 +194,7 @@ export function PublicLayout({ children }) {
           role="img"
           aria-label={site.publicSite.stickyBackgroundAlt || ""}
           style={{
-            backgroundImage: `url(${cloudinaryImage(site.publicSite.stickyBackgroundUrl, 1600)})`,
+            backgroundImage: `${theme === "dark" ? "linear-gradient(rgb(5 10 9 / 58%), rgb(5 10 9 / 72%))" : "linear-gradient(rgb(250 251 250 / 64%), rgb(250 251 250 / 76%))"}, url(${cloudinaryImage(site.publicSite.stickyBackgroundUrl, 2000)})`,
           }}
         />
       ) : null}

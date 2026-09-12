@@ -661,6 +661,11 @@ export default function PublicSiteAdmin({ section = "website" }) {
                       }
                     />
                   </label>
+                  {config.publicSite.stickyBackgroundUrl ? (
+                    <button type="button" className="website-remove-media" onClick={() => { patchPublic("stickyBackgroundUrl", ""); patchPublic("stickyBackgroundAlt", ""); setMessage("Background removed from the preview. Save the homepage to publish this change."); }}>
+                      Remove background
+                    </button>
+                  ) : null}
                   <label className="alt-text-field">
                     Alt text (for screen readers)
                     <input

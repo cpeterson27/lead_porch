@@ -2230,3 +2230,53 @@
   color: var(--public-text);
   cursor: pointer;
 }
+
+/* The dashboard-controlled fixed background is opt-in. Without an uploaded
+   image none of these rules match, preserving the existing homepage exactly.
+   With one selected, broad page bands become translucent while cards and
+   controls retain stronger surfaces for comfortable reading. */
+.public-site.has-sticky-background {
+  background: transparent;
+}
+.public-site.has-sticky-background .public-home-wrap {
+  background: transparent;
+}
+.public-site.has-sticky-background .public-hero-section,
+.public-site.has-sticky-background .public-why-section,
+.public-site.has-sticky-background .public-curriculum-section,
+.public-site.has-sticky-background .public-testimonials,
+.public-site.has-sticky-background .public-final-section {
+  background: color-mix(in srgb, var(--public-bg) 72%, transparent);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+}
+.public-site.has-sticky-background .public-meet-section,
+.public-site.has-sticky-background .public-path-section {
+  background: color-mix(in srgb, var(--public-surface) 82%, transparent);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+}
+.public-site.has-sticky-background .public-program-card,
+.public-site.has-sticky-background .public-accelerator-card,
+.public-site.has-sticky-background .public-hero-quote-box,
+.public-site.has-sticky-background .public-meet-quote-box {
+  background: color-mix(in srgb, var(--public-surface) 94%, transparent);
+  box-shadow: 0 16px 42px rgb(0 0 0 / 10%);
+}
+.public-site.has-sticky-background .public-training-section {
+  background: color-mix(in srgb, var(--public-accent) 90%, transparent);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+@media (max-width: 760px) {
+  .public-site.has-sticky-background .public-sticky-background {
+    background-position: center top;
+  }
+  .public-site.has-sticky-background .public-hero-section,
+  .public-site.has-sticky-background .public-why-section,
+  .public-site.has-sticky-background .public-curriculum-section,
+  .public-site.has-sticky-background .public-testimonials,
+  .public-site.has-sticky-background .public-final-section {
+    background: color-mix(in srgb, var(--public-bg) 82%, transparent);
+  }
+}

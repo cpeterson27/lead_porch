@@ -726,6 +726,21 @@
   object-fit: cover;
   width: 100%;
 }
+
+.website-remove-media {
+  background: transparent;
+  border: 0;
+  color: #8a3b2e;
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 750;
+  margin-top: .55rem;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .public-profile-photo-field {
   display: grid;
   gap: 7px;
