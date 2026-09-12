@@ -138,6 +138,22 @@ function ApplicationButton({
     </>
   );
 }
+// "editorial" and "classic" used to resolve to the exact same font (no
+// real distinction, despite the dropdown offering both), so there was
+// effectively only one heading option and one body option to choose
+// from. Each name now maps to a genuinely different loaded font.
+const HEADING_FONT_STACKS = {
+  editorial: '"Playfair Display",Georgia,serif',
+  classic: '"Instrument Serif",Georgia,serif',
+  modern: '"DM Sans",ui-sans-serif,system-ui,sans-serif',
+  friendly: '"Poppins",ui-sans-serif,system-ui,sans-serif',
+};
+const BODY_FONT_STACKS = {
+  modern: '"DM Sans",ui-sans-serif,system-ui,sans-serif',
+  classic: '"Instrument Serif",Georgia,serif',
+  friendly: '"Poppins",ui-sans-serif,system-ui,sans-serif',
+};
+
 export function PublicLayout({ children }) {
   const { site, loading } = useWorkspaceTheme();
   const configuredTheme =
@@ -168,14 +184,8 @@ export function PublicLayout({ children }) {
       style={{
         "--public-base-size": `${site?.publicSite?.baseFontSize || 16}px`,
         "--public-heading-scale": site?.publicSite?.headingScale || 1,
-        "--public-heading-font":
-          site?.publicSite?.headingFont === "modern"
-            ? '"DM Sans",ui-sans-serif,system-ui,sans-serif'
-            : '"Instrument Serif",Georgia,serif',
-        "--public-body-font":
-          site?.publicSite?.bodyFont === "classic"
-            ? '"Instrument Serif",Georgia,serif'
-            : '"DM Sans",ui-sans-serif,system-ui,sans-serif',
+        "--public-heading-font": HEADING_FONT_STACKS[site?.publicSite?.headingFont] || HEADING_FONT_STACKS.editorial,
+        "--public-body-font": BODY_FONT_STACKS[site?.publicSite?.bodyFont] || BODY_FONT_STACKS.modern,
       }}
     >
       {site?.publicSite?.stickyBackgroundUrl ? (

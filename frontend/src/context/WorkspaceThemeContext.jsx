@@ -7,15 +7,23 @@ export function WorkspaceThemeProvider({ children }) {
   const [site, setSite] = useState(null),
     [loading, setLoading] = useState(true);
   useEffect(() => {
-    const timer = window.setTimeout(
-      () =>
-        fetchPublicSite()
-          .then(setSite)
-          .catch(() => setSite(null))
-          .finally(() => setLoading(false)),
-      0,
-    );
-    return () => window.clearTimeout(timer);
+    const load = () =>
+      fetchPublicSite()
+        .then(setSite)
+        .catch(() => setSite(null))
+        .finally(() => setLoading(false));
+    const timer = window.setTimeout(load, 0);
+    // Branding is fetched once here and never re-fetched, so saving new
+    // colors in Public Site Admin left the navbar/sidebar showing the
+    // previous colors until a hard page refresh — which read as "the
+    // dashboard colors don't match" even though the save worked.
+    // Re-fetching on this event (dispatched right after a successful
+    // save) keeps them in sync immediately.
+    window.addEventListener("workspace-theme-updated", load);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("workspace-theme-updated", load);
+    };
   }, []);
   useEffect(() => {
     const b = site?.branding;

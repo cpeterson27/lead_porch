@@ -990,7 +990,7 @@
   border-radius: 0;
   background: #0b0b0c;
   color: #fff;
-  font: 800 10px/1 "DM Sans", sans-serif;
+  font: 800 10px/1 var(--public-body-font, "DM Sans"), sans-serif;
   letter-spacing: .17em;
   text-transform: uppercase;
 }
@@ -1028,7 +1028,7 @@
   max-width: 520px;
   margin: 0 0 24px;
   color: var(--public-text);
-  font-family: "DM Sans", sans-serif;
+  font-family: var(--public-body-font, "DM Sans"), sans-serif;
   font-size: clamp(58px, 6.7vw, 82px);
   font-weight: 700;
   letter-spacing: -.065em;
@@ -1094,7 +1094,7 @@
   width: 100%;
 }
 .public-hero-video-only .public-hero__video {
-  width: min(100%, 640px);
+  width: min(100%, 820px);
 }
 .public-hero__video small {
   position: absolute;
@@ -1149,7 +1149,7 @@
   background: var(--public-surface);
   box-shadow: 0 18px 35px #00000018;
 }
-.public-hero-quote { font: italic 23px/1.12 "Instrument Serif", Georgia, serif; }
+.public-hero-quote { font: italic 23px/1.12 var(--public-heading-font, "Instrument Serif"), Georgia, serif; }
 .public-hero-quote-box small {
   margin-top: 16px;
   color: var(--public-accent);
@@ -1166,12 +1166,12 @@
 .public-curriculum-header { margin-bottom: 78px; }
 .public-curriculum-title {
   margin: 0 0 12px;
-  font: 700 38px/1 "DM Sans", sans-serif;
+  font: 700 38px/1 var(--public-body-font, "DM Sans"), sans-serif;
   letter-spacing: -.05em;
 }
 .public-curriculum-accent {
   color: var(--public-text);
-  font-family: "Instrument Serif", Georgia, serif;
+  font-family: var(--public-heading-font, "Instrument Serif"), Georgia, serif;
   font-weight: 400;
 }
 .public-curriculum-desc { max-width: 560px; font-size: 14px; line-height: 1.45; }
@@ -1342,13 +1342,13 @@
   inset: 50% auto auto 50%;
   margin: 0;
   color: color-mix(in srgb, var(--public-text) 6%, transparent);
-  font: 800 clamp(90px, 18vw, 250px)/.8 "DM Sans", sans-serif;
+  font: 800 clamp(90px, 18vw, 250px)/.8 var(--public-body-font, "DM Sans"), sans-serif;
   letter-spacing: -.08em;
   transform: translate(-50%, -50%);
   white-space: nowrap;
 }
 .community-section > div { position: relative; z-index: 1; max-width: 670px; }
-.community-section h2 { margin: 12px 0 20px; font: 400 clamp(42px, 6vw, 70px)/.95 "Instrument Serif", Georgia, serif; }
+.community-section h2 { margin: 12px 0 20px; font: 400 clamp(42px, 6vw, 70px)/.95 var(--public-heading-font, "Instrument Serif"), Georgia, serif; }
 .community-section > div > p:not(.public-kicker) { color: var(--public-muted); font-size: 17px; line-height: 1.7; }
 
 @keyframes public-rise {
@@ -1428,7 +1428,7 @@
 /* Public-site finishing pass: compact cards, clear theme states, and true dialogs. */
 .public-hero-tags,
 .public-hero-tag {
-  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  font-family: var(--public-body-font, "DM Sans"), ui-sans-serif, system-ui, sans-serif;
   font-size: 8px;
   font-weight: 700;
   letter-spacing: .22em;
@@ -1537,7 +1537,7 @@
   border-radius: 0;
   background: var(--workspace-accent, var(--public-accent));
   color: #071006;
-  font: 800 11px/1 "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  font: 800 11px/1 var(--public-body-font, "DM Sans"), ui-sans-serif, system-ui, sans-serif;
   letter-spacing: .08em;
   text-transform: uppercase;
   text-decoration: none;
@@ -1560,7 +1560,7 @@
   border-radius: 0;
   background: #0b0b0c;
   color: #fff;
-  font: 800 11px/1 "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  font: 800 11px/1 var(--public-body-font, "DM Sans"), ui-sans-serif, system-ui, sans-serif;
   letter-spacing: .08em;
   text-transform: uppercase;
   cursor: pointer;
@@ -1773,7 +1773,7 @@
 }
 .public-inner h1 {
   margin: 0 0 18px;
-  font-family: "Instrument Serif", Georgia, serif;
+  font-family: var(--public-heading-font, "Instrument Serif"), Georgia, serif;
   font-weight: 400;
   font-size: clamp(2.1rem, 4.5vw, 3rem);
   letter-spacing: -.02em;
@@ -1800,7 +1800,7 @@
 }
 .public-prose h2 {
   margin: 40px 0 14px;
-  font-family: "Instrument Serif", Georgia, serif;
+  font-family: var(--public-heading-font, "Instrument Serif"), Georgia, serif;
   font-weight: 400;
   font-size: 26px;
 }
@@ -1891,7 +1891,7 @@
 .team-section > header h2 {
   margin: 0;
   max-width: 520px;
-  font-family: "Instrument Serif", Georgia, serif;
+  font-family: var(--public-heading-font, "Instrument Serif"), Georgia, serif;
   font-weight: 400;
   font-size: clamp(1.8rem, 3.4vw, 2.5rem);
 }
@@ -1986,7 +1986,7 @@
 .public-testimonials > h2 {
   margin: 0 0 40px;
   max-width: 640px;
-  font-family: "Instrument Serif", Georgia, serif;
+  font-family: var(--public-heading-font, "Instrument Serif"), Georgia, serif;
   font-weight: 400;
   font-size: clamp(1.8rem, 3.4vw, 2.5rem);
 }
@@ -2028,7 +2028,7 @@
 .testimonial-story p {
   margin: 0;
   color: var(--public-text);
-  font-family: "Instrument Serif", Georgia, serif;
+  font-family: var(--public-heading-font, "Instrument Serif"), Georgia, serif;
   font-size: 18px;
   line-height: 1.48;
   letter-spacing: -.01em;
@@ -2127,7 +2127,7 @@
 }
 .profile-page > header h1 {
   margin: 0 0 6px;
-  font-family: "Instrument Serif", Georgia, serif;
+  font-family: var(--public-heading-font, "Instrument Serif"), Georgia, serif;
   font-weight: 400;
   font-size: clamp(1.8rem, 4vw, 2.4rem);
 }

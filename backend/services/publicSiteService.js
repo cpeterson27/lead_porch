@@ -67,9 +67,15 @@ function defaults(workspace) {
       testimonials: true,
       event: true,
       community: true,
-      heroCopy: true,
-      heroImage: true,
-      heroQuote: true,
+      // Ellie asked for the hero heading/subhead/buttons, the hero photo,
+      // and the pull-quote gone entirely — only the video should show in
+      // the hero. These stay a per-workspace default (not a code-wide
+      // change: `genericVisibility` below keeps every other workspace's
+      // hero fully visible) and are still editable from Public Site
+      // Admin > Homepage > Visible sections if that ever needs to change.
+      heroCopy: false,
+      heroImage: false,
+      heroQuote: false,
     },
     genericVisibility = {
       video: false,
@@ -439,10 +445,12 @@ function sanitizedConfig(workspace, config) {
         p.eventCtaLabel || base.publicSite.eventCtaLabel || "Event details",
       ).slice(0, 80),
       allowThemeToggle: p.allowThemeToggle === true,
-      headingFont: ["editorial", "modern", "classic"].includes(p.headingFont)
+      headingFont: ["editorial", "modern", "classic", "friendly"].includes(
+        p.headingFont,
+      )
         ? p.headingFont
         : "editorial",
-      bodyFont: ["modern", "classic"].includes(p.bodyFont)
+      bodyFont: ["modern", "classic", "friendly"].includes(p.bodyFont)
         ? p.bodyFont
         : "modern",
       baseFontSize: Math.min(20, Math.max(14, Number(p.baseFontSize) || 16)),

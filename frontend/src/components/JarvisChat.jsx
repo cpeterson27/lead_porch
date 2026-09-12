@@ -17,6 +17,12 @@ import {
 // promo graphic) rather than just talk about one, so it can be routed to
 // the real OpenAI image generator instead of the normal text chat.
 const IMAGE_REQUEST_PATTERN = /\b(generate|create|design|make|draw)\b[^.!?\n]{0,60}\b(flyer|poster|banner|graphic|image|photo|picture|ad|advertisement)\b/i;
+
+// Recognizes a request to actually draft reusable email/social copy, so
+// the "Save as email template" / "Save as social draft" buttons only
+// show up on the response to that kind of request — not on every plain
+// chat answer.
+const CONTENT_DRAFT_PATTERN = /\b(write|draft|compose|create)\b[^.!?\n]{0,60}\b(email|subject line|social( media)? post|caption|instagram|linkedin|twitter|tweet|facebook post|newsletter)\b/i;
 import "./JarvisChat.css";
 
 const OPENAI_VOICES = [
@@ -133,11 +139,10 @@ export default function JarvisChat() {
   const [searchParams] = useSearchParams();
   const intentResearchTask = searchParams.get("task") === "intent-identity";
   const containerRef = useRef(null);
-  const [messages, setMessages] = useState(intentResearchTask ? [] : [{
-      id: 1,
-      type: "assistant",
-      text: "Hello! I'm Jarvis, your AI assistant for marketing insights and campaign management. Ask me anything about your organizations, contacts, campaigns, or growth opportunities.",
-    }]);
+  // No seeded first chat bubble: the orb header already introduces Jarvis
+  // (see .jarvis-visual-greeting below), so repeating that text as the
+  // first message in the transcript was pure duplication.
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState(() => String(searchParams.get("prompt") || ""));
   const [nextId, setNextId] = useState(2);
   const [selectedCampaignId, setSelectedCampaignId] = useState(null);
@@ -198,7 +203,6 @@ export default function JarvisChat() {
       setProfile(response.data);
       setVoiceName(OPENAI_VOICE_NAMES.has(response.data.voiceName) ? response.data.voiceName : "marin");
       setAutoSpeak(response.data.autoSpeak !== false);
-      setMessages((current) => current.map((item) => item.id === 1 ? { ...item, text: response.data.greeting || item.text } : item));
     }).catch(() => {});
   }, []);
 
@@ -358,6 +362,7 @@ export default function JarvisChat() {
         activity: response.activity || [],
         memorySources: response.memorySources || [],
         delegatedAgent: response.delegatedAgent || null,
+        isContentDraft: CONTENT_DRAFT_PATTERN.test(prompt),
       };
       setMessages((prev) => [...prev, assistantMessage]);
       setNextId(nextId + 2);
@@ -590,7 +595,6 @@ export default function JarvisChat() {
       const response = await updateJarvisProfile({ ...profile, voiceName, autoSpeak });
       if (response?.success) {
         setProfile(response.data);
-        setMessages((current) => current.map((item) => item.id === 1 ? { ...item, text: response.data.greeting || item.text } : item));
         setProfileOpen(false);
       }
     } finally {
@@ -742,7 +746,7 @@ export default function JarvisChat() {
                 </div>
               )}
 
-              {!intentResearchTask && msg.type === "assistant" && !msg.savedAs && !msg.data?.people?.length ? (
+              {!intentResearchTask && msg.type === "assistant" && msg.isContentDraft && !msg.savedAs && !msg.data?.people?.length ? (
                 <div className="jarvis-draft-actions">
                   <button disabled={savingDraftId === msg.id} onClick={() => saveJarvisDraft(msg, "email_template")}>Save as email template</button>
                   <button disabled={savingDraftId === msg.id} onClick={() => saveJarvisDraft(msg, "social")}>Save as social draft</button>

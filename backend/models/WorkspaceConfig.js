@@ -203,12 +203,12 @@ const workspaceConfigSchema = new mongoose.Schema(
       allowThemeToggle: { type: Boolean, default: false },
       headingFont: {
         type: String,
-        enum: ["editorial", "modern", "classic"],
+        enum: ["editorial", "modern", "classic", "friendly"],
         default: "editorial",
       },
       bodyFont: {
         type: String,
-        enum: ["modern", "classic"],
+        enum: ["modern", "classic", "friendly"],
         default: "modern",
       },
       baseFontSize: { type: Number, min: 14, max: 20, default: 16 },

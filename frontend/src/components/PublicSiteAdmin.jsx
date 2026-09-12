@@ -219,6 +219,10 @@ export default function PublicSiteAdmin({ section = "website" }) {
           `The server saved ${savedSurface} instead of ${requestedSurface}.`,
         );
       }
+      // Tell WorkspaceThemeContext (which drives the navbar/sidebar colors
+      // everywhere else in the app) to re-fetch immediately, instead of
+      // leaving it showing whatever colors were live at page load.
+      window.dispatchEvent(new CustomEvent("workspace-theme-updated"));
       setMessage("All branding changes saved successfully.");
       return saved;
     } catch (err) {
@@ -809,9 +813,10 @@ export default function PublicSiteAdmin({ section = "website" }) {
                   value={config.publicSite.headingFont || "editorial"}
                   onChange={(e) => patchPublic("headingFont", e.target.value)}
                 >
-                  <option value="editorial">Editorial serif</option>
-                  <option value="classic">Classic serif</option>
-                  <option value="modern">Modern sans serif</option>
+                  <option value="editorial">Editorial (Playfair Display)</option>
+                  <option value="classic">Classic serif (Instrument Serif)</option>
+                  <option value="modern">Modern sans serif (DM Sans)</option>
+                  <option value="friendly">Friendly sans serif (Poppins)</option>
                 </select>
               </label>
               <label>
@@ -820,8 +825,9 @@ export default function PublicSiteAdmin({ section = "website" }) {
                   value={config.publicSite.bodyFont || "modern"}
                   onChange={(e) => patchPublic("bodyFont", e.target.value)}
                 >
-                  <option value="modern">Modern sans serif</option>
-                  <option value="classic">Classic serif</option>
+                  <option value="modern">Modern sans serif (DM Sans)</option>
+                  <option value="classic">Classic serif (Instrument Serif)</option>
+                  <option value="friendly">Friendly sans serif (Poppins)</option>
                 </select>
               </label>
               <label>
