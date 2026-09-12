@@ -470,7 +470,7 @@ export default function PublicSiteAdmin({ section = "website" }) {
       {message ? <p className="discovery-notice">{message}</p> : null}
       {section === "website" ? (
         <nav aria-label="Website settings sections">
-          {["brand", "homepage", "video", "sections", "programs"].map((item) => (
+          {["brand", "homepage", "video", "sections"].map((item) => (
             <button
               type="button"
               className={tab === item ? "is-active" : ""}
@@ -483,8 +483,6 @@ export default function PublicSiteAdmin({ section = "website" }) {
                   ? "Homepage video"
                   : item === "sections"
                     ? "Visible sections"
-                    : item === "programs"
-                      ? "Programs & comparison"
                     : "Homepage"}
             </button>
           ))}
@@ -1439,94 +1437,6 @@ export default function PublicSiteAdmin({ section = "website" }) {
                                 publicPresentation: {
                                   ...row.publicPresentation,
                                   sortOrder: Number(e.target.value),
-                                },
-                              }
-                            : row,
-                        ),
-                      )
-                    }
-                  />
-                </label>
-                <label>
-                  Comparison tier heading
-                  <input
-                    value={program.publicPresentation?.tierLabel || ""}
-                    placeholder="IMPLEMENT"
-                    onChange={(e) =>
-                      setPrograms((rows) =>
-                        rows.map((row) =>
-                          row._id === program._id
-                            ? {
-                                ...row,
-                                publicPresentation: {
-                                  ...row.publicPresentation,
-                                  tierLabel: e.target.value,
-                                },
-                              }
-                            : row,
-                        ),
-                      )
-                    }
-                  />
-                </label>
-                <label>
-                  Comparison price
-                  <input
-                    value={program.publicPresentation?.comparisonPriceLabel || ""}
-                    placeholder="$10,000"
-                    onChange={(e) =>
-                      setPrograms((rows) =>
-                        rows.map((row) =>
-                          row._id === program._id
-                            ? {
-                                ...row,
-                                publicPresentation: {
-                                  ...row.publicPresentation,
-                                  comparisonPriceLabel: e.target.value,
-                                },
-                              }
-                            : row,
-                        ),
-                      )
-                    }
-                  />
-                </label>
-                <label>
-                  Comparison program length
-                  <input
-                    value={program.publicPresentation?.comparisonDurationLabel || ""}
-                    placeholder="4 months"
-                    onChange={(e) =>
-                      setPrograms((rows) =>
-                        rows.map((row) =>
-                          row._id === program._id
-                            ? {
-                                ...row,
-                                publicPresentation: {
-                                  ...row.publicPresentation,
-                                  comparisonDurationLabel: e.target.value,
-                                },
-                              }
-                            : row,
-                        ),
-                      )
-                    }
-                  />
-                </label>
-                <label>
-                  Comparison coaching format
-                  <input
-                    value={program.publicPresentation?.coachingFormat || ""}
-                    placeholder="ONE-ON-ONE"
-                    onChange={(e) =>
-                      setPrograms((rows) =>
-                        rows.map((row) =>
-                          row._id === program._id
-                            ? {
-                                ...row,
-                                publicPresentation: {
-                                  ...row.publicPresentation,
-                                  coachingFormat: e.target.value,
                                 },
                               }
                             : row,

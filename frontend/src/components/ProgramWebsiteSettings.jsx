@@ -81,16 +81,68 @@ export default function ProgramWebsiteSettings({ websiteUrl = "/", onChange }) {
           : row,
       ),
     );
-  const saveComparison = async (program) => {
+  const comparisonValue = (program, key, index) => {
+    const presentation = program.publicPresentation || {};
+    if (key === "tierLabel") {
+      if (presentation.tierLabel) return presentation.tierLabel;
+      const amount = Number(program.defaultPrice?.amount || 0);
+      if (amount >= 20000) return "ALL-INCLUSIVE";
+      if (amount >= 15000) return "ACQUIRE";
+      if (amount >= 10000) return "IMPLEMENT";
+      return ["IMPLEMENT", "ACQUIRE", "ALL-INCLUSIVE"][index] || "PROGRAM";
+    }
+    if (key === "comparisonPriceLabel") {
+      if (presentation.comparisonPriceLabel)
+        return presentation.comparisonPriceLabel;
+      return program.defaultPrice?.amount != null
+        ? new Intl.NumberFormat("en-US", {
+            style: "currency",
+            currency: program.defaultPrice.currency || "USD",
+            maximumFractionDigits: 0,
+          }).format(program.defaultPrice.amount)
+        : "Talk with our team";
+    }
+    if (key === "comparisonDurationLabel") {
+      if (presentation.comparisonDurationLabel)
+        return presentation.comparisonDurationLabel;
+      return program.duration?.value
+        ? `${program.duration.value} ${program.duration.unit || ""}`.trim()
+        : "Ask our team";
+    }
+    if (key === "coachingFormat") {
+      if (presentation.coachingFormat) return presentation.coachingFormat;
+      const text = `${program.deliveryMode || ""} ${presentation.title || program.name || ""}`;
+      if (/one[- ]on[- ]one|1[- ]on[- ]1/i.test(text)) return "ONE-ON-ONE";
+      if (/bootcamp/i.test(text)) return "BOOTCAMP";
+      return "COACHING";
+    }
+    return presentation[key] || "";
+  };
+  const saveComparisonTable = async () => {
     try {
       setSaving(true);
-      const saved = await updateProgramPublicPresentation(program._id, {
-        ...(program.publicPresentation || {}),
-      });
-      setPrograms((rows) =>
-        rows.map((row) => (row._id === saved._id ? saved : row)),
+      const savedRows = await Promise.all(
+        orderedPrograms.map((program, index) =>
+          updateProgramPublicPresentation(program._id, {
+            ...(program.publicPresentation || {}),
+            tierLabel: comparisonValue(program, "tierLabel", index),
+            comparisonPriceLabel: comparisonValue(
+              program,
+              "comparisonPriceLabel",
+              index,
+            ),
+            comparisonDurationLabel: comparisonValue(
+              program,
+              "comparisonDurationLabel",
+              index,
+            ),
+            coachingFormat: comparisonValue(program, "coachingFormat", index),
+          }),
+        ),
       );
-      setMessage(`${saved.name} comparison table saved.`);
+      const savedById = new Map(savedRows.map((row) => [row._id, row]));
+      setPrograms((rows) => rows.map((row) => savedById.get(row._id) || row));
+      setMessage("The complete website comparison table was saved.");
       setError("");
       onChange?.();
     } catch (err) {
@@ -375,6 +427,79 @@ export default function ProgramWebsiteSettings({ websiteUrl = "/", onChange }) {
           </Button>
         </div>
       </div>
+      <section className="comparison-table-manager">
+        <header>
+          <div>
+            <p className="page-eyebrow">Website comparison table</p>
+            <h4>Edit “Compare what is included”</h4>
+            <p>
+              Each column is a program. Each labeled row matches the public
+              comparison table exactly.
+            </p>
+          </div>
+          <Button disabled={!orderedPrograms.length || saving} loading={saving} onClick={saveComparisonTable}>
+            Save entire comparison table
+          </Button>
+        </header>
+        <div className="comparison-table-manager__scroll">
+          <div
+            className="comparison-table-editor"
+            style={{
+              gridTemplateColumns: `minmax(170px, .75fr) repeat(${Math.max(orderedPrograms.length, 1)}, minmax(220px, 1fr))`,
+            }}
+          >
+            <strong className="comparison-table-editor__corner">Website field</strong>
+            {orderedPrograms.map((program) => (
+              <strong className="comparison-table-editor__program" key={`heading-${program._id}`}>
+                {program.publicPresentation?.title || program.name}
+              </strong>
+            ))}
+            {[
+              ["Program tier heading", "tierLabel", "IMPLEMENT"],
+              ["Price displayed", "comparisonPriceLabel", "$10,000"],
+              ["Program length", "comparisonDurationLabel", "4 months"],
+              ["Coaching format", "coachingFormat", "ONE-ON-ONE"],
+            ].flatMap(([label, key, placeholder]) => [
+              <label className="comparison-table-editor__row-label" key={`label-${key}`}>
+                {label}
+              </label>,
+              ...orderedPrograms.map((program, index) => (
+                <input
+                  aria-label={`${label} for ${program.name}`}
+                  key={`${key}-${program._id}`}
+                  placeholder={placeholder}
+                  value={comparisonValue(program, key, index)}
+                  onChange={(event) =>
+                    patchComparison(program._id, key, event.target.value)
+                  }
+                />
+              )),
+            ])}
+            <label className="comparison-table-editor__row-label comparison-table-editor__features-label">
+              Included feature rows
+              <small>One feature per line</small>
+            </label>
+            {orderedPrograms.map((program) => (
+              <textarea
+                aria-label={`Included feature rows for ${program.name}`}
+                key={`features-${program._id}`}
+                rows="6"
+                value={(program.publicPresentation?.highlights || []).join("\n")}
+                onChange={(event) =>
+                  patchComparison(
+                    program._id,
+                    "highlights",
+                    event.target.value
+                      .split("\n")
+                      .map((item) => item.trim())
+                      .filter(Boolean),
+                  )
+                }
+              />
+            ))}
+          </div>
+        </div>
+      </section>
       <div className="program-website-list">
         {orderedPrograms.map((program) => {
           const data = program.publicPresentation || {},
@@ -444,89 +569,6 @@ export default function ProgramWebsiteSettings({ websiteUrl = "/", onChange }) {
                     </dd>
                   </div>
                 </dl>
-                <section className="program-comparison-editor" aria-label={`${program.name} comparison table`}>
-                  <header>
-                    <div>
-                      <span>Comparison table</span>
-                      <strong>Edit “Compare what is included”</strong>
-                    </div>
-                    <small>These values appear on the public website.</small>
-                  </header>
-                  <div className="program-comparison-grid">
-                    <label>
-                      Tier heading
-                      <input
-                        placeholder="IMPLEMENT"
-                        value={data.tierLabel || ""}
-                        onChange={(event) =>
-                          patchComparison(program._id, "tierLabel", event.target.value)
-                        }
-                      />
-                    </label>
-                    <label>
-                      Price shown
-                      <input
-                        placeholder="Use program price"
-                        value={data.comparisonPriceLabel || ""}
-                        onChange={(event) =>
-                          patchComparison(
-                            program._id,
-                            "comparisonPriceLabel",
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </label>
-                    <label>
-                      Program length
-                      <input
-                        placeholder="Use program duration"
-                        value={data.comparisonDurationLabel || ""}
-                        onChange={(event) =>
-                          patchComparison(
-                            program._id,
-                            "comparisonDurationLabel",
-                            event.target.value,
-                          )
-                        }
-                      />
-                    </label>
-                    <label>
-                      Coaching format
-                      <input
-                        placeholder="ONE-ON-ONE or BOOTCAMP"
-                        value={data.coachingFormat || ""}
-                        onChange={(event) =>
-                          patchComparison(program._id, "coachingFormat", event.target.value)
-                        }
-                      />
-                    </label>
-                    <label className="program-comparison-features">
-                      Included features — one per line
-                      <textarea
-                        rows="4"
-                        value={(data.highlights || []).join("\n")}
-                        onChange={(event) =>
-                          patchComparison(
-                            program._id,
-                            "highlights",
-                            event.target.value
-                              .split("\n")
-                              .map((item) => item.trim())
-                              .filter(Boolean),
-                          )
-                        }
-                      />
-                    </label>
-                  </div>
-                  <Button
-                    disabled={saving}
-                    loading={saving}
-                    onClick={() => saveComparison(program)}
-                  >
-                    Save comparison table
-                  </Button>
-                </section>
               </div>
               <div className="program-website-actions">
                 <Button

@@ -272,7 +272,7 @@ connectDatabase(mongoUri)
     });
 
     // Production custom domains terminate on this service, so each backend
-    // deployment also publishes the latest built frontend assets. Keep the
+    // deployment also publishes the current built frontend assets. Keep the
     // frontend directory in this service's deploy triggers when configuring
     // build filters, or dashboard editor changes will not reach that domain.
     // Serve the built frontend's hashed JS/CSS/image assets as-is with
