@@ -107,9 +107,17 @@
 /* ── Pill Tabs ──────────────────────────────────────────────────────────────── */
 
 .workspace-tabs {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: var(--space-1);
+  /* inline-flex sizes to fit ALL of its content by default, so
+     overflow-x:auto never actually triggered — the row just grew past
+     its own container instead of scrolling, cutting off tabs like
+     "Archived" with no way to reach them. Capping the width to the
+     parent's available space is what makes the scroll (already declared
+     below) actually kick in. */
+  width: 100%;
+  max-width: 100%;
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;

@@ -1376,7 +1376,17 @@ export default function Discovery() {
       })}</div> : <div className="table-state table-state--empty">No saved research yet. Research started in ChatGPT or on this page will appear here automatically.</div>}
     </DashboardCard></> : null}
 
-    {activeTab === "people" ? <div id="people-research-previews" className="people-research-workspace discovery-workflow">
+    {/* "discovery-workflow" was deliberately dropped from this wrapper's
+        classes — DiscoveryReview.css defines an UNRELATED, older
+        .discovery-workflow rule (a 3-column grid for a small numbered-
+        badge row) that collided with this entirely different People
+        Research layout, forcing the hero and the Step 1/2/3 sections
+        into three equal columns instead of stacking — that's what was
+        squeezing the hero's heading into single-word-per-line wrapping
+        and jamming Step 1/Step 2 side by side with a mismatched-height
+        empty gap. .people-research-workspace alone already provides the
+        real (single-column, vertically-stacked) layout for this page. */}
+    {activeTab === "people" ? <div id="people-research-previews" className="people-research-workspace">
       <section className="discovery-workflow-hero"><div><span>Discovery</span><h2>Find the right opportunities. Review every one.</h2><p>A calm, evidence-first workspace for finding prospective students and market intelligence. Nothing enters the CRM or starts outreach without your approval.</p></div><div className="discovery-workflow-steps" aria-label="Discovery workflow"><span className="is-current"><b>1</b> Find Leads</span><span><b>2</b> Today&apos;s Results</span><span><b>3</b> Run Details</span></div></section>
       <DashboardCard title="Start a people search"><div className="people-search-launcher"><label><span>Tell Jarvis exactly who to find</span><textarea value={peopleSearchPrompt} onChange={(event) => setPeopleSearchPrompt(event.target.value)} /></label><div><Button disabled={!peopleSearchPrompt.trim()} onClick={() => navigate(`/jarvis?prompt=${encodeURIComponent(peopleSearchPrompt)}`)}>Open this request in Jarvis</Button><small>Jarvis will show the request before searching. Public emails remain unverified.</small></div></div><div className="people-search-examples"><span>Good requests include:</span><button type="button" onClick={() => setPeopleSearchPrompt("Find 20 owners of property-management companies in the United States with evidence of an active business. Exclude students, job seekers, and companies without a public website.")}>Property-management owners</button><button type="button" onClick={() => setPeopleSearchPrompt("Find 20 founders or CEOs of established service businesses in the United States who may need systems to scale. Require a public leadership or company source.")}>Established service-business founders</button><button type="button" onClick={() => setPeopleSearchPrompt("Find 20 adult real estate investors or multifamily principals in the United States with a public company, portfolio, or leadership page.")}>Real estate investors</button></div></DashboardCard>
       <DashboardCard title="Jarvis research previews" action={<Button variant="outline" loading={peoplePreviewsLoading} onClick={loadPeoplePreviews}>Refresh</Button>}>

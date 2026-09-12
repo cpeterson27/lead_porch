@@ -16,7 +16,7 @@
   text-transform: capitalize;
 }
 .public-admin > nav button.is-active {
-  background: #173f36;
+  background: var(--color-brand);
   color: #fff;
 }
 .public-admin > section {
@@ -161,12 +161,11 @@
   gap: 12px;
   padding: 13px;
 }
-.website-toggle input {
-  appearance: auto !important;
-  height: 18px !important;
-  max-width: 18px !important;
-  width: 18px !important;
-}
+/* This used to force the browser's native checkbox rendering
+   (appearance: auto !important), which is exactly what produced the
+   flat blue square instead of the project's circular checkbox design —
+   removed so it inherits the same Apple-style circle as everywhere
+   else, controlled by the same brand color. */
 .website-toggle span {
   display: grid;
   gap: 2px;

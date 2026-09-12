@@ -158,12 +158,25 @@ input[type="file"]::file-selector-button:hover {
   background: color-mix(in srgb, var(--color-brand-soft) 78%, var(--color-brand));
 }
 
+/*
+ * !important on width/height/flex here too, not just border-radius — a
+ * checkbox sitting in a flex row next to wrapping multi-line text (a
+ * settings row, an audience-picker item) previously stretched taller
+ * than its own 20px while border-radius:50% still applied, turning a
+ * circle into a tall oval. Locking the box dimensions themselves
+ * guarantees a perfect circle regardless of the surrounding layout.
+ */
 input[type="checkbox"] {
   appearance: none;
   -webkit-appearance: none;
-  width: 20px;
-  height: 20px;
-  min-width: 20px;
+  width: 20px !important;
+  height: 20px !important;
+  min-width: 20px !important;
+  max-width: 20px !important;
+  min-height: 20px !important;
+  max-height: 20px !important;
+  flex: none !important;
+  align-self: center !important;
   margin: 0;
   padding: 0;
   border-radius: 50% !important;

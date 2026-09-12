@@ -334,7 +334,8 @@
 .discovery-review-filters {
   display: flex;
   gap: 0.5rem;
-  min-width: min(680px, 65vw);
+  max-width: 100%;
+  overflow-x: auto;
 }
 .discovery-review-list {
   display: grid;
