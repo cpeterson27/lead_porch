@@ -905,10 +905,8 @@ export function PublicHome() {
           </div>
           <div className="public-why-features">
             {(p.valuePropositions || []).map((row, index) => (
-              <div className="public-why-feature" data-number={String(index + 1).padStart(2, "0")} key={`${row.title}-${index}`}>
-                <div className="public-why-feature-num">
-                  {String(index + 1).padStart(2, "0")}
-                </div>
+              <div className="public-why-feature" key={`${row.title}-${index}`}>
+                <span className="public-why-feature-mark" aria-hidden="true" />
                 <div className="public-why-feature-title">{row.title}</div>
                 <div className="public-why-feature-desc">{row.body}</div>
               </div>
