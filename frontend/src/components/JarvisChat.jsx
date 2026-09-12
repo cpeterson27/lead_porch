@@ -36,26 +36,52 @@ const OPENAI_VOICES = [
 ];
 const OPENAI_VOICE_NAMES = new Set(OPENAI_VOICES.map((voice) => voice.value));
 
+function sourceHostname(url) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "";
+  }
+}
 function JarvisResearchPreview({ message, approval, busy, onPrepare, onConfirm }) {
   const people = Array.isArray(message?.data?.people) ? message.data.people : [];
   const summary = message?.data?.preview || {};
   const previewId = String(message?.data?.previewId || "");
   const [selectedIndexes, setSelectedIndexes] = useState([]);
+  const [dismissedIndexes, setDismissedIndexes] = useState([]);
   if (!people.length || !previewId) return null;
   const imported = approval?.status === "imported" || message.data.previewStatus === "imported";
   const selectionLocked = imported || Boolean(approval?.approvalId);
   const togglePerson = (index) => setSelectedIndexes((current) => current.includes(index) ? current.filter((item) => item !== index) : [...current, index]);
-  const selectNewPeople = () => setSelectedIndexes(people.map((person, index) => person.reviewStatus === "new" ? index : null).filter((index) => index !== null));
+  const selectNewPeople = () => setSelectedIndexes(people.map((person, index) => person.reviewStatus === "new" && !dismissedIndexes.includes(index) ? index : null).filter((index) => index !== null));
+  const dismissPerson = (index) => {
+    setDismissedIndexes((current) => current.includes(index) ? current : [...current, index]);
+    setSelectedIndexes((current) => current.filter((item) => item !== index));
+  };
   return <section className="jarvis-research-preview">
     <header className="jarvis-research-preview__header">
-      <div><span>Research preview</span><strong>{summary.total || people.length} people found</strong><p>{summary.newContacts || 0} new · {summary.existingContacts || 0} CRM matches · {summary.publishedEmails || 0} published emails</p></div>
+      <div><span>Research preview</span><strong>{summary.total || people.length} people found</strong><p>{summary.newContacts || 0} new · {summary.existingContacts || 0} CRM matches · {summary.publishedEmails || 0} published emails{dismissedIndexes.length ? ` · ${dismissedIndexes.length} removed by you` : ""}</p></div>
       <span className="jarvis-research-preview__state">{imported ? "Imported" : approval ? "Approval ready" : "Review first"}</span>
     </header>
     {!imported ? <div className="jarvis-research-selection"><strong>{selectedIndexes.length} selected for CRM import</strong><div><button type="button" disabled={selectionLocked} onClick={selectNewPeople}>Select all new</button><button type="button" disabled={selectionLocked} onClick={() => setSelectedIndexes([])}>Clear selection</button></div></div> : null}
     <div className="jarvis-research-people">
-      {people.map((person, index) => <article className="jarvis-research-person" key={`${previewId}-${person.firstName}-${person.lastName}-${index}`}>
-        {!imported ? <label className="jarvis-research-person__select"><input type="checkbox" checked={selectedIndexes.includes(index)} disabled={selectionLocked} onChange={() => togglePerson(index)} /><span>{selectedIndexes.includes(index) ? "Selected" : "Select"}</span></label> : null}
-        <div className="jarvis-research-person__identity"><strong>{[person.firstName, person.lastName].filter(Boolean).join(" ") || "Unnamed person"}</strong><span>{person.title || "Role needs review"}</span><p>{person.company}</p></div>
+      {people.map((person, index) => dismissedIndexes.includes(index) ? null : <article className="jarvis-research-person" key={`${previewId}-${person.firstName}-${person.lastName}-${index}`}>
+        <div className="jarvis-research-person__toprow">
+          {!imported ? <label className="jarvis-research-person__select"><input type="checkbox" checked={selectedIndexes.includes(index)} disabled={selectionLocked} onChange={() => togglePerson(index)} /><span>{selectedIndexes.includes(index) ? "Selected" : "Select"}</span></label> : null}
+          {!imported && !selectionLocked ? <button type="button" className="jarvis-research-person__dismiss" onClick={() => dismissPerson(index)}>Not a fit — remove</button> : null}
+        </div>
+        <div className="jarvis-research-person__identity">
+          <strong>{[person.firstName, person.lastName].filter(Boolean).join(" ") || "Unnamed person"}</strong>
+          <span>{person.title || "Role needs review"}</span>
+          <p>{person.company}</p>
+          {person.evidenceUrl ? (
+            <a className="jarvis-research-person__source" href={person.evidenceUrl} target="_blank" rel="noreferrer">
+              Source: {sourceHostname(person.evidenceUrl) || "public web"} ↗
+            </a>
+          ) : (
+            <small className="jarvis-research-person__source jarvis-research-person__source--none">No public source found for this person</small>
+          )}
+        </div>
         <div className="jarvis-research-person__email"><small>Email</small><strong>{person.email || "Not publicly listed"}</strong><span>{String(person.emailStatus || "missing").replaceAll("_", " ")}</span></div>
         <details><summary>Evidence and duplicate review</summary><p>{person.evidenceSummary || "Public evidence is attached for review."}</p><div className="jarvis-research-person__review"><span>{String(person.reviewStatus || "new").replaceAll("_", " ")}</span>{person.matchReason ? <span>{person.matchReason}</span> : null}</div><a href={person.evidenceUrl} target="_blank" rel="noreferrer">Open public source</a></details>
       </article>)}
