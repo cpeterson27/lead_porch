@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   FiSearch,
-  FiMenu,
+  FiChevronRight,
   FiCpu,
   FiPlus,
   FiCheckCircle,
@@ -152,12 +152,9 @@ export default function Navbar({ onMenuClick }) {
     <header className="navbar">
       <div className="navbar__left">
         {/*
-          Mobile-only now (hidden ≥901px in Navbar.css) — this opens the
-          off-canvas drawer at narrow widths. The desktop rail-collapse
-          control lives directly on the sidebar's own edge instead (see
-          Sidebar.jsx's sidebar__collapse-toggle), since showing a
-          collapse-direction chevron here that silently meant something
-          different once the window narrowed was confusing.
+          On small screens this uses the same circular arrow treatment as
+          the desktop sidebar rail. Once open, the matching left arrow on
+          the drawer edge closes it.
         */}
         <button
           className="navbar__menu"
@@ -165,7 +162,7 @@ export default function Navbar({ onMenuClick }) {
           onClick={onMenuClick}
           aria-label="Open menu"
         >
-          <FiMenu />
+          <FiChevronRight />
         </button>
         <div className="navbar__context">
           <p className="navbar__eyebrow">

@@ -59,7 +59,7 @@
 }
 
 @media (max-width: 900px) {
-  .sidebar__collapse-toggle { display: none; }
+  .sidebar__collapse-toggle { display: inline-flex; }
 }
 
 .sidebar__logo picture { display: contents; }
