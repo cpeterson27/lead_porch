@@ -2064,6 +2064,66 @@ button.public-text-link {
   }
 }
 
+/* Subtle premium motion: progressive-enhancement only, with the global
+   reduced-motion rule above preserving a still experience when requested. */
+@keyframes public-section-reveal {
+  from { opacity: 0; transform: translateY(22px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes public-soft-drift {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -52%) scale(1.025); }
+}
+@keyframes public-accent-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--public-accent) 0%, transparent); }
+  50% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--public-accent) 9%, transparent); }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  @supports (animation-timeline: view()) {
+    .public-why-section,
+    .public-meet-section,
+    .public-curriculum-section,
+    .public-path-section,
+    .public-testimonials,
+    .community-section,
+    .public-final-section {
+      animation: public-section-reveal .7s cubic-bezier(.22, .61, .36, 1) both;
+      animation-timeline: view();
+      animation-range: entry 8% cover 28%;
+    }
+  }
+
+  .community-section__word { animation: public-soft-drift 9s ease-in-out infinite; }
+  .public-why-feature-num { border-radius: 999px; animation: public-accent-breathe 5s ease-in-out infinite; }
+  .public-why-feature:nth-child(2) .public-why-feature-num { animation-delay: .7s; }
+  .public-why-feature:nth-child(3) .public-why-feature-num { animation-delay: 1.4s; }
+}
+
+.public-why-feature,
+.public-accelerator-card,
+.public-program-card,
+.community-feature-pills span {
+  transition: transform .24s ease, border-color .24s ease, box-shadow .24s ease;
+}
+.public-why-feature:hover,
+.public-why-feature:focus-within,
+.public-accelerator-card:hover,
+.public-accelerator-card:focus-within,
+.public-program-card:hover,
+.public-program-card:focus-within {
+  border-color: color-mix(in srgb, var(--public-accent) 58%, var(--public-border));
+  box-shadow: 0 22px 48px rgb(15 25 20 / 11%);
+  transform: translateY(-4px);
+}
+.community-feature-pills span:hover { border-color: var(--public-accent); transform: translateY(-2px); }
+.public-program-apply svg,
+.public-community-cta svg,
+.public-hero-actions svg { transition: transform .18s ease; }
+.public-program-apply:hover svg,
+.public-community-cta:hover svg,
+.public-hero-actions a:hover svg { transform: translateX(4px); }
+
 /* Testimonials */
 .public-testimonials {
   padding: clamp(64px, 9vw, 110px) max(24px, calc((100vw - 1120px) / 2));
