@@ -272,8 +272,10 @@ connectDatabase(mongoUri)
     });
 
     // Production custom domains terminate on this service, so each backend
-    // deployment also publishes the current built frontend assets. Serve the
-    // built frontend's hashed JS/CSS/image assets as-is with
+    // deployment also publishes the current built frontend assets. Keep the
+    // frontend directory in this service's deploy triggers when configuring
+    // build filters, or dashboard editor changes will not reach that domain.
+    // Serve the built frontend's hashed JS/CSS/image assets as-is with
     // long-lived caching (safe: Vite fingerprints the filename on every
     // content change). index.html is deliberately excluded here — it must
     // always go through publicHtmlShell below so per-workspace meta tags
