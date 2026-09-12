@@ -5,5 +5,9 @@ import JarvisChat from "../components/JarvisChat";
  * Main page for Jarvis assistant interface
  */
 export default function Jarvis() {
-  return <JarvisChat />;
+  return (
+    <div className="jarvis-page-shell">
+      <JarvisChat />
+    </div>
+  );
 }

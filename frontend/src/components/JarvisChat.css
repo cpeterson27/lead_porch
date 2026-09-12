@@ -5,6 +5,17 @@
    this reason — extended to every width so it always takes up the whole
    content area. */
 .jarvis-chat-container { display: flex; flex-direction: column; min-height: calc(100vh - 8rem); width:100%; max-width:none; margin: 0 auto; border: 0; border-radius: 0; overflow: hidden; background: var(--surface); box-shadow: none; }
+/* The page shell around .jarvis-chat-container (in Jarvis.jsx) still sat
+   inside the dashboard's normal page padding, which left a visible grey
+   gutter on every side even after the card look above was removed.
+   Zeroing that padding just for this page, and sizing the container to
+   the exact space it leaves (viewport minus the fixed top navbar), makes
+   Jarvis fill the entire screen with no border around it. */
+.dashboard-content:has(.jarvis-page-shell) { padding: 0; }
+.jarvis-page-shell .jarvis-chat-container { min-height: calc(100vh - 88px); }
+@media (max-width: 900px) {
+  .jarvis-page-shell .jarvis-chat-container { min-height: calc(100vh - 76px); }
+}
 .jarvis-header { position: relative; display: grid; place-items: center; min-height: clamp(520px,62vh,760px); padding: 3rem 2rem 2rem; overflow: hidden; color: #f8f6f0; isolation: isolate; background: radial-gradient(circle at 50% 47%, rgba(37,104,88,.4), transparent 26%), linear-gradient(145deg,#07130f 0%,#102923 52%,#07110e 100%); }
 .jarvis-chat-container--midnight .jarvis-header { background: radial-gradient(circle at 50% 52%,rgba(68,93,165,.3),transparent 23%),linear-gradient(145deg,#070b16,#141929 55%,#080b15); }.jarvis-chat-container--copper .jarvis-header { background: radial-gradient(circle at 50% 52%,rgba(190,109,54,.3),transparent 23%),linear-gradient(145deg,#190d08,#3d251c 55%,#160b07); }
 .jarvis-header::before{content:"";position:absolute;inset:0;z-index:-2;background-image:linear-gradient(rgba(184,225,211,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(184,225,211,.025) 1px,transparent 1px);background-size:34px 34px;mask-image:radial-gradient(circle,#000 20%,transparent 78%)}
@@ -23,7 +34,12 @@
 .jarvis-statuses span.is-ready { color: #e7d08f; border-color: rgba(231, 208, 143, 0.7); }
 .jarvis-persona-button{padding:.4rem .6rem;color:#f8f6f0;border:1px solid rgba(215,224,220,.42);border-radius:999px;background:transparent;font:inherit;font-size:.76rem;font-weight:700;cursor:pointer}.jarvis-persona-button:hover{background:rgba(255,255,255,.1)}.jarvis-persona-panel{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:.8rem;padding:1rem 1.25rem;border-bottom:1px solid var(--border);background:#f3f5f2}.jarvis-persona-panel label{display:grid;gap:.3rem;color:var(--text-muted);font-size:.76rem;font-weight:800}.jarvis-persona-panel input,.jarvis-persona-panel select{min-width:0;padding:.55rem .6rem;border:1px solid var(--border);border-radius:8px;background:#fff;color:var(--text);font:inherit}.jarvis-persona-panel button{align-self:end;padding:.62rem .8rem;color:#fff;border:0;border-radius:8px;background:#1c5147;font:inherit;font-weight:800;cursor:pointer}
 .jarvis-persona-panel>header{align-items:center;display:flex;grid-column:1/-1;justify-content:space-between}.jarvis-persona-panel>header button{background:transparent;color:#173f37;padding:.3rem}
-.jarvis-messages { flex: 1; min-height: 260px; max-height: 420px; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; background: #fbfaf7; }
+/* max-height used to cap this at 420px regardless of how much actual
+   room the (now full-bleed) panel has, which is why a long research
+   result — selection controls, 20 candidate cards, the import button —
+   was stuck scrolling inside a small box instead of using the screen. It
+   now just fills whatever space flex:1 gives it. */
+.jarvis-messages { flex: 1; min-height: 260px; overflow-y: auto; padding: 1.5rem; display: flex; flex-direction: column; gap: 1rem; background: #fbfaf7; }
 .jarvis-message { display: flex; justify-content: flex-start; }
 .jarvis-message--user { justify-content: flex-end; }
 .jarvis-message-content { max-width: min(720px, 80%); padding: 1rem 1.3rem; border: 1px solid var(--border); border-radius: 22px; color: var(--text); background: var(--surface); box-shadow: 0 3px 10px rgba(20, 35, 31, 0.04); }
@@ -73,7 +89,12 @@
 .jarvis-research-preview__header{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem}
 .jarvis-research-preview__header div{display:grid;gap:.12rem}.jarvis-research-preview__header span{color:#4b7167;font-size:.67rem;font-weight:850;letter-spacing:.08em;text-transform:uppercase}.jarvis-research-preview__header strong{font-size:1rem}.jarvis-research-preview__header p{margin:0;color:var(--text-muted);font-size:.76rem}
 .jarvis-research-preview__state{flex:none;padding:.34rem .55rem;border:1px solid #b4d5ca;border-radius:999px;background:#edf8f4;color:#175f50!important;white-space:nowrap}
-.jarvis-research-selection{display:flex;align-items:center;justify-content:space-between;gap:.65rem;padding:.55rem .65rem;border:1px solid #d7e3de;border-radius:10px;background:#f7faf8}.jarvis-research-selection strong{font-size:.77rem}.jarvis-research-selection div{display:flex;gap:.35rem}.jarvis-research-selection button{padding:.32rem .45rem;border:1px solid #b8cbc4;border-radius:7px;background:#fff;color:#17463e;font:inherit;font-size:.68rem;font-weight:800;cursor:pointer}.jarvis-research-selection button:disabled{opacity:.5;cursor:not-allowed}
+/* Sticky top/bottom within the scrollable message list: with 20
+   candidates to review, "Select all new" and the final import button
+   used to scroll away with everything else, leaving people with no
+   visible way to act once they'd scrolled past them — pinning these
+   keeps them reachable no matter how far down the list you are. */
+.jarvis-research-selection{position:sticky;top:0;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:.65rem;padding:.55rem .65rem;border:1px solid #d7e3de;border-radius:10px;background:#f7faf8}.jarvis-research-selection strong{font-size:.77rem}.jarvis-research-selection div{display:flex;gap:.35rem}.jarvis-research-selection button{padding:.32rem .45rem;border:1px solid #b8cbc4;border-radius:7px;background:#fff;color:#17463e;font:inherit;font-size:.68rem;font-weight:800;cursor:pointer}.jarvis-research-selection button:disabled{opacity:.5;cursor:not-allowed}
 .jarvis-research-people{display:grid;gap:.55rem;max-height:440px;padding-right:.25rem;overflow:auto}
 .jarvis-research-person{display:grid;grid-template-columns:minmax(140px,1fr) minmax(145px,.9fr);gap:.65rem;padding:.7rem;border:1px solid #d8e4df;border-radius:12px;background:#fcfefd}
 .jarvis-research-person__toprow{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:.5rem;flex-wrap:wrap}
@@ -83,7 +104,7 @@
 .jarvis-research-person__source{display:block;margin-top:.15rem;color:#176b5a;font-size:.68rem;font-weight:700;word-break:break-word}
 .jarvis-research-person__source--none{color:var(--text-muted);font-weight:600}
 .jarvis-research-person details{grid-column:1/-1;padding-top:.45rem;border-top:1px solid #e5ece9;color:var(--text-muted);font-size:.74rem}.jarvis-research-person summary{color:#285c50;font-weight:800;cursor:pointer}.jarvis-research-person details p{margin:.45rem 0}.jarvis-research-person details a{color:#176b5a;font-weight:800}.jarvis-research-person__review{display:flex;flex-wrap:wrap;gap:.35rem;margin-bottom:.4rem}.jarvis-research-person__review span{padding:.16rem .32rem;border-radius:4px;background:#eef4f1}
-.jarvis-research-approval{display:grid;gap:.65rem;padding:.75rem;border:1px solid #d7e3de;border-radius:12px;background:#f7faf8}.jarvis-research-approval>p{margin:0;color:var(--text-muted);font-size:.75rem;line-height:1.45}.jarvis-prepare-import,.jarvis-confirm-import button{width:100%;padding:.7rem .8rem;border:0;border-radius:9px;background:#1c5147;color:#fff;font:inherit;font-size:.82rem;font-weight:850;cursor:pointer}.jarvis-prepare-import:disabled,.jarvis-confirm-import button:disabled{opacity:.58;cursor:wait}
+.jarvis-research-approval{position:sticky;bottom:0;z-index:2;display:grid;gap:.65rem;padding:.75rem;border:1px solid #d7e3de;border-radius:12px;background:#f7faf8}.jarvis-research-approval>p{margin:0;color:var(--text-muted);font-size:.75rem;line-height:1.45}.jarvis-prepare-import,.jarvis-confirm-import button{width:100%;padding:.7rem .8rem;border:0;border-radius:9px;background:#1c5147;color:#fff;font:inherit;font-size:.82rem;font-weight:850;cursor:pointer}.jarvis-prepare-import:disabled,.jarvis-confirm-import button:disabled{opacity:.58;cursor:wait}
 .jarvis-confirm-import{display:grid;gap:.65rem}.jarvis-confirm-import div{display:grid;gap:.12rem}.jarvis-confirm-import span{color:#7a5d16;font-size:.65rem;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.jarvis-confirm-import strong{font-size:.76rem;word-break:break-word}.jarvis-confirm-import small{color:var(--text-muted);font-size:.68rem}.jarvis-import-success{padding:.65rem;border-radius:8px;background:#e7f6f0;color:#155c4d;font-size:.8rem;font-weight:800}.jarvis-inline-error{padding:.55rem;border-radius:8px;background:#fff0f0;color:#982525;font-size:.75rem}
 @keyframes jarvis-speaking { 50% { transform: scale(1.14); box-shadow: 0 0 0 16px rgba(216,183,108,.13), 0 0 50px rgba(216,183,108,.82); } }
 @media (prefers-reduced-motion:reduce){.jarvis-header::after,.jarvis-circuit-field path,.jarvis-signal,.jarvis-core,.jarvis-core-ring,.jarvis-core-light,.jarvis-visual-state span{animation:none!important}}
