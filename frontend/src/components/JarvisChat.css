@@ -54,7 +54,16 @@
 .jarvis-action-btn:hover:not(:disabled) { color: #fff; background: #1c5147; border-color: #1c5147; }
 .jarvis-action-btn:disabled { opacity: 0.55; cursor: not-allowed; }
 .jarvis-data { display: none; }
-.jarvis-response-tools{display:flex;justify-content:flex-end;margin-top:.7rem}.jarvis-response-tools button,.jarvis-mic-btn{padding:.4rem .6rem;border:1px solid #b8cbc4;border-radius:8px;background:#f4f7f5;color:#17463e;font:inherit;font-size:.76rem;font-weight:750;cursor:pointer}.jarvis-activity{display:grid;gap:.35rem;margin-top:.85rem;padding:.75rem;border-top:1px solid var(--border);border-bottom:1px solid var(--border);color:var(--text-muted);font-size:.8rem}.jarvis-activity p{margin:0;color:var(--text);font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.jarvis-activity div{display:flex;gap:.45rem}.jarvis-activity span{color:#1c7a65;font-weight:900}.jarvis-memory-sources{display:grid;gap:.35rem;margin-top:.75rem;color:var(--text-muted);font-size:.76rem}.jarvis-memory-sources strong{color:var(--text)}.jarvis-memory-sources span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Shrunk to a small icon-only control: with "Speak findings
+   automatically" available as a global setting (Voice settings, below),
+   this per-message button is a rarely-used manual replay of one specific
+   reply, not a primary action — it shouldn't compete visually with the
+   message content the way a full labeled pill did. */
+.jarvis-response-tools{display:flex;justify-content:flex-end;margin-top:.5rem}
+.jarvis-speak-button{display:inline-flex;align-items:center;justify-content:center;width:1.9rem;height:1.9rem;padding:0;border:1px solid rgba(184,203,196,.6);border-radius:50%;background:rgba(244,247,245,.7);color:#5c7169;font-size:.85rem;cursor:pointer}
+.jarvis-speak-button:hover:not(:disabled){background:#eef3f1;color:#17463e}
+.jarvis-speak-button:disabled{opacity:.6;cursor:wait}
+.jarvis-mic-btn{padding:.4rem .6rem;border:1px solid #b8cbc4;border-radius:8px;background:#f4f7f5;color:#17463e;font:inherit;font-size:.76rem;font-weight:750;cursor:pointer}.jarvis-activity{display:grid;gap:.35rem;margin-top:.85rem;padding:.75rem;border-top:1px solid var(--border);border-bottom:1px solid var(--border);color:var(--text-muted);font-size:.8rem}.jarvis-activity p{margin:0;color:var(--text);font-size:.72rem;font-weight:800;letter-spacing:.08em;text-transform:uppercase}.jarvis-activity div{display:flex;gap:.45rem}.jarvis-activity span{color:#1c7a65;font-weight:900}.jarvis-memory-sources{display:grid;gap:.35rem;margin-top:.75rem;color:var(--text-muted);font-size:.76rem}.jarvis-memory-sources strong{color:var(--text)}.jarvis-memory-sources span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .jarvis-delegated-agent{margin-top:.75rem;padding:.65rem .75rem;border-left:3px solid #1c7a65;background:#f4f7f5;border-radius:8px;font-size:.82rem}.jarvis-delegated-agent strong{display:block;margin-bottom:.25rem;color:#17463e;font-size:.72rem;font-weight:800;letter-spacing:.06em;text-transform:uppercase}.jarvis-delegated-agent p{margin:0;color:var(--text)}.jarvis-voice-picker{display:flex;align-items:center;gap:.5rem;margin-top:.65rem;color:var(--text-muted);font-size:.78rem;font-weight:700}.jarvis-voice-picker select{max-width:280px;padding:.35rem .5rem;border:1px solid var(--border);border-radius:7px;background:#fff;color:var(--text);font:inherit}
 .jarvis-voice-controls{display:flex;flex-wrap:wrap;align-items:center;gap:.8rem 1rem;margin-top:.65rem}.jarvis-voice-controls .jarvis-voice-picker{margin-top:0}.jarvis-auto-speak{display:flex;align-items:center;gap:.4rem;color:var(--text-muted);font-size:.78rem;font-weight:700}.jarvis-auto-speak input{accent-color:#1c5147}
 .jarvis-draft-actions{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.85rem}.jarvis-draft-actions button{padding:.5rem .65rem;border:1px solid #b8cbc4;border-radius:8px;background:#f4f7f5;color:#17463e;font:inherit;font-size:.78rem;font-weight:750;cursor:pointer}.jarvis-draft-actions button:disabled{opacity:.55;cursor:not-allowed}.jarvis-saved-note{margin:.8rem 0 0;color:#1c5147;font-size:.8rem;font-weight:700}
@@ -78,7 +87,7 @@
 .jarvis-error { margin-top: 0.65rem; padding: 0.65rem; color: #9d1c1c; background: #fff2f2; border: 1px solid #f4c5c5; border-radius: 8px; font-size: 0.85rem; }
 .jarvis-messages::-webkit-scrollbar { width: 8px; }
 .jarvis-messages::-webkit-scrollbar-thumb { background: #b8cbc4; border-radius: 99px; }
-@media (max-width: 720px) { .jarvis-chat-container { min-height: calc(100vh - 4rem); border-radius: 0; border-inline: 0; } .jarvis-header { min-height:560px;padding:5rem 1.2rem 1.5rem } .jarvis-core{width:250px;height:250px}.jarvis-statuses { top:.8rem;right:.8rem;left:.8rem;justify-content: center;max-width:none } .jarvis-persona-panel{grid-template-columns:1fr}.jarvis-messages { min-height: 280px; padding: 1rem; } .jarvis-message-content { max-width: 90%; } .jarvis-input-group { flex-direction: column; } .jarvis-send-btn { width: 100%; } }
+@media (max-width: 720px) { .jarvis-chat-container { min-height: calc(100vh - 76px); border-radius: 0; border-inline: 0; } .jarvis-header { min-height:560px;padding:5rem 1.2rem 1.5rem } .jarvis-core{width:250px;height:250px}.jarvis-statuses { top:.8rem;right:.8rem;left:.8rem;justify-content: center;max-width:none } .jarvis-persona-panel{grid-template-columns:1fr}.jarvis-messages { min-height: 280px; padding: 1rem; } .jarvis-message-content { max-width: 90%; } .jarvis-input-group { flex-direction: column; } .jarvis-send-btn { width: 100%; } }
 
 .jarvis-orb.is-speaking { animation: jarvis-speaking 0.78s ease-in-out infinite; }
 .jarvis-voice-test { padding: .4rem .6rem; border: 1px solid #b8cbc4; border-radius: 8px; background: #f4f7f5; color: #17463e; font: inherit; font-size: .76rem; font-weight: 750; cursor: pointer; }
@@ -112,14 +121,19 @@
 /* Voice-console layout: keep Jarvis, the transcript, and talk controls in one viewport. */
 .dashboard-content:has(.jarvis-chat-container){padding-bottom:1rem}
 @media (min-width:721px){
+  /* This block is a SEPARATE rule from the full-bleed fix above (same
+     selector, later in the cascade, so it silently wins on ties) — it
+     kept reintroducing the drop shadow and a height calc left over from
+     when this page still sat inside the dashboard's normal padding
+     (10.25rem accounted for that padding plus the navbar). Now that the
+     page is full-bleed, height only needs to clear the fixed navbar. */
   .jarvis-chat-container{
     display:grid;
     grid-template-columns:minmax(0,1.05fr) minmax(440px,.95fr);
     grid-template-rows:auto minmax(0,1fr) auto;
-    height:calc(100dvh - 10.25rem);
+    height:calc(100dvh - 88px);
     min-height:540px;
-    border-color:#203d35;
-    box-shadow:0 24px 70px rgba(8,31,25,.16);
+    box-shadow:none;
   }
   .jarvis-header{
     grid-column:1;
@@ -368,8 +382,15 @@
 .jarvis-persona-button,.jarvis-fullscreen-button{cursor:pointer}
 .jarvis-persona-button:hover,.jarvis-fullscreen-button:hover{background:rgba(95,229,196,.12);border-color:rgba(131,255,225,.3)}
 .jarvis-fullscreen-button svg{font-size:.86rem}
-.jarvis-messages{background:linear-gradient(180deg,#fafafa,#f4f6f7)}
-.jarvis-message-content{border-color:rgba(24,48,42,.1);border-radius:22px;background:rgba(255,255,255,.9);box-shadow:0 10px 28px rgba(18,38,33,.06)}
+/* This pair (the ones that actually render — later declarations of the
+   same selectors above) is what produced "a grey background AND a white
+   box on top of it": a flat grey panel behind a nearly-opaque white
+   bubble for every single reply. Replaced with one consistent surface —
+   a soft glow carried over from Jarvis's own palette instead of flat
+   grey, and a lighter, translucent bubble that sits on it rather than
+   blocking it out, so the two no longer read as separate boxes. */
+.jarvis-messages{background:radial-gradient(1100px 700px at -8% 15%,rgba(46,187,145,.08),transparent 60%),radial-gradient(800px 600px at -4% 95%,rgba(216,183,108,.06),transparent 55%),#fbfaf7}
+.jarvis-message-content{border-color:rgba(24,48,42,.1);border-radius:22px;background:rgba(255,255,255,.6);box-shadow:none;backdrop-filter:blur(8px)}
 .jarvis-input-form{background:rgba(255,255,255,.94);backdrop-filter:blur(18px)}
 .jarvis-input,.jarvis-test-email-input,.jarvis-voice-picker select{border-color:rgba(28,64,55,.13);background:#f8faf9}
 

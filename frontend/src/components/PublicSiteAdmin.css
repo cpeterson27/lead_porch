@@ -430,17 +430,37 @@
 }
 .brand-color-grid {
   display: grid;
-  gap: 12px;
+  gap: 10px;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
 }
 .brand-color-grid label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   background: #f7f9f8;
   border-radius: 10px;
-  padding: 12px;
+  padding: 8px 12px;
+  font-size: 0.82rem;
 }
 .brand-color-grid input[type="color"] {
-  height: 42px;
-  padding: 3px;
+  flex: none;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px #d9e2de;
+  overflow: hidden;
+  cursor: pointer;
+}
+/* Chrome/Safari paint the native color swatch as a small rect with its
+   own inset padding by default — clip it to fill the circle above. */
+.brand-color-grid input[type="color"]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+.brand-color-grid input[type="color"]::-webkit-color-swatch {
+  border: 0;
+  border-radius: 50%;
 }
 .brand-live-preview {
   align-items: center;

@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { FiMaximize2, FiMinimize2, FiChevronUp, FiChevronDown } from "react-icons/fi";
+import { FiMaximize2, FiMinimize2, FiChevronUp, FiChevronDown, FiVolume2 } from "react-icons/fi";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useJarvis } from "../hooks/useJarvis";
 import {
@@ -677,7 +677,6 @@ export default function JarvisChat() {
         </div>
         <div className="jarvis-statuses" aria-label="Jarvis connection status">
           <span className={status?.openai?.webSearchEnabled ? "is-ready" : ""}>Web research {status?.openai?.webSearchEnabled ? "ready" : "not enabled"}</span>
-          <span className={status?.obsidian?.enabled && status?.obsidian?.writable ? "is-ready" : ""}>Memory {status?.obsidian?.enabled && status?.obsidian?.writable ? "connected" : "not connected"}</span>
           <button type="button" className="jarvis-persona-button" onClick={() => setProfileOpen((value) => !value)}>Personalize</button>
           <button type="button" className="jarvis-fullscreen-button" onClick={toggleFullscreen}>{isFullscreen ? <FiMinimize2 /> : <FiMaximize2 />}<span>{isFullscreen ? "Exit" : "Full screen"}</span></button>
         </div>
@@ -719,7 +718,7 @@ export default function JarvisChat() {
                 </div>
               ) : null}
 
-              {msg.type === "assistant" ? <div className="jarvis-response-tools"><button onClick={() => speakMessage(msg)} disabled={speakingId === msg.id}>{speakingId === msg.id ? "Speaking…" : "Speak"}</button></div> : null}
+              {msg.type === "assistant" ? <div className="jarvis-response-tools"><button type="button" className="jarvis-speak-button" onClick={() => speakMessage(msg)} disabled={speakingId === msg.id} aria-label={speakingId === msg.id ? "Speaking this reply" : "Read this reply aloud"} title={speakingId === msg.id ? "Speaking…" : "Read aloud"}><FiVolume2 /></button></div> : null}
 
               <JarvisResearchPreview message={msg} approval={researchApprovals[String(msg.data?.previewId || "")]} busy={researchActionId === String(msg.data?.previewId || "")} onPrepare={prepareResearchImport} onConfirm={confirmResearchImport} />
               <JarvisPublicMentionPreview message={msg} />
