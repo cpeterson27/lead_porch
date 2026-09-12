@@ -360,6 +360,11 @@ function ProgramCards({ programs = [] }) {
     if (amount >= 10000) return "IMPLEMENT";
     return ["IMPLEMENT", "ACQUIRE", "ALL-INCLUSIVE"][index] || "ACCELERATE";
   };
+  const comparisonFeatures = [
+    ...new Set(
+      featured.flatMap((program) => program.highlights || []).filter(Boolean),
+    ),
+  ];
 
   return (
     <>
@@ -476,6 +481,55 @@ function ProgramCards({ programs = [] }) {
             </article>
           ))}
         </div>
+        {featured.length > 1 ? (
+          <div className="public-comparison-wrap">
+            <table className="public-accelerator-comparison">
+              <caption>Compare what is included</caption>
+              <thead>
+                <tr>
+                  <th scope="col">Program feature</th>
+                  {featured.map((program, index) => (
+                    <th scope="col" key={program.id}>
+                      <span>{acceleratorStage(program, index)}</span>
+                      <strong>{money(program)}</strong>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <th scope="row">Program length</th>
+                  {featured.map((program) => (
+                    <td key={program.id}>
+                      {program.duration?.value
+                        ? `${program.duration.value} ${program.duration.unit || ""}`
+                        : "Ask our team"}
+                    </td>
+                  ))}
+                </tr>
+                <tr>
+                  <th scope="row">Coaching format</th>
+                  {featured.map((program) => (
+                    <td key={program.id}>{formatLabel(program)}</td>
+                  ))}
+                </tr>
+                {comparisonFeatures.map((feature) => (
+                  <tr key={feature}>
+                    <th scope="row">{feature}</th>
+                    {featured.map((program) => {
+                      const included = (program.highlights || []).includes(feature);
+                      return (
+                        <td key={program.id} aria-label={included ? "Included" : "Not included"}>
+                          {included ? <FiCheck aria-hidden="true" /> : <span aria-hidden="true">—</span>}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
       </div>
       {intensive.length > 0 && (
         <div className="public-curriculum-group">
