@@ -189,7 +189,6 @@ export default function WorkspaceBrandingEditor({
     const cssProperties = {
       sidebarBackgroundColor: "--app-sidebar-background",
       sidebarTextColor: "--app-sidebar-text",
-      headerColor: "--app-header",
       primaryActionColor: "--app-primary-action",
       accentColor: "--app-accent",
       backgroundColor: "--app-background",
@@ -456,7 +455,6 @@ export default function WorkspaceBrandingEditor({
           {[
             ["sidebarBackgroundColor", "Sidebar background"],
             ["sidebarTextColor", "Sidebar text"],
-            ["headerColor", "App header"],
             ["primaryActionColor", "Primary action"],
             ["accentColor", "Accent"],
             ["backgroundColor", "App background"],

@@ -60,7 +60,6 @@ export function WorkspaceThemeProvider({ children }) {
     if (app) {
       setProp("--app-sidebar-background", app.sidebarBackgroundColor);
       setProp("--app-sidebar-text", app.sidebarTextColor);
-      setProp("--app-header", app.headerColor);
       setProp("--app-primary-action", app.primaryActionColor);
       setProp("--app-accent", app.accentColor);
       setProp("--app-background", app.backgroundColor);
