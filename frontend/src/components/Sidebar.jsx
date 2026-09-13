@@ -27,6 +27,7 @@ import {
 } from "react-icons/fi";
 import useAuth from "../context/useAuth.js";
 import useWorkspaceTheme from "../context/useWorkspaceTheme.js";
+import UserAvatar from "./UserAvatar.jsx";
 import { fetchWorkspaceConfig } from "../services/api.js";
 import {
   canManageCoaching,
@@ -426,6 +427,10 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse
         ))}
       </nav>
       <div className="sidebar__footer">
+        <NavLink className="sidebar__profile-link" to="/profile" onClick={onClose}>
+          <UserAvatar user={session?.user} size="sm" />
+          <span><strong>{session?.user?.name || "My profile"}</strong><small>View profile</small></span>
+        </NavLink>
         <button
           className="sidebar__logout"
           type="button"

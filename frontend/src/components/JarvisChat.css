@@ -524,3 +524,12 @@
   .jarvis-messages{min-height:calc(100dvh - 430px);padding:1rem}
   .jarvis-input-form{margin:.65rem;padding:.65rem;border:1px solid rgba(25,76,63,.13);border-radius:22px;box-shadow:0 14px 38px rgba(20,49,42,.1)}
 }
+
+/* The transcript is the product. Keep the decorative visualizer out of the
+   working view and use one restrained glass conversation surface. */
+.jarvis-chat-container{display:grid!important;grid-template-columns:1fr!important;grid-template-rows:auto minmax(0,1fr) auto!important;height:calc(100dvh - 64px)!important;min-height:520px!important;background:radial-gradient(900px 520px at 10% 0,rgba(69,213,172,.11),transparent 60%),radial-gradient(720px 500px at 95% 95%,rgba(101,86,232,.08),transparent 58%),#f7faf8!important}
+.jarvis-header{display:none!important}.jarvis-conversation-toolbar{grid-column:1;grid-row:1;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem clamp(1rem,4vw,3rem);border-bottom:1px solid rgba(25,76,63,.09);background:rgba(255,255,255,.5);backdrop-filter:blur(24px)}
+.jarvis-conversation-toolbar>div:first-child{display:grid}.jarvis-conversation-toolbar span{color:var(--workspace-primary,#173f36);font-size:.68rem;font-weight:850;letter-spacing:.12em;text-transform:uppercase}.jarvis-conversation-toolbar strong{font-size:1.05rem}.jarvis-conversation-toolbar>div:last-child{display:flex;gap:.5rem}.jarvis-conversation-toolbar button{display:inline-flex;align-items:center;gap:.4rem;padding:.6rem .85rem;border:1px solid rgba(25,76,63,.13);border-radius:999px;background:rgba(255,255,255,.72);color:#183f36;font:inherit;font-size:.75rem;font-weight:780;cursor:pointer}
+.jarvis-messages{grid-column:1!important;grid-row:2!important;padding:clamp(1rem,3vw,2.25rem) clamp(1rem,7vw,6rem)!important}.jarvis-input-form{grid-column:1!important;grid-row:3!important;margin:0 clamp(1rem,7vw,6rem) 1rem!important}
+.jarvis-persona-panel{grid-column:1!important;grid-row:2!important;z-index:20!important;margin:1rem clamp(1rem,7vw,6rem)!important;border-radius:22px!important}
+@media(max-width:700px){.jarvis-chat-container{height:calc(100dvh - 64px)!important}.jarvis-conversation-toolbar{padding:.75rem}.jarvis-conversation-toolbar>div:first-child{display:none}.jarvis-conversation-toolbar button{padding:.55rem .7rem}.jarvis-input-form{margin:.5rem!important}.jarvis-messages{padding:.8rem!important}}

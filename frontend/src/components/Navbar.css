@@ -154,3 +154,10 @@
 @media(max-width:900px){.navbar{display:grid;grid-template-columns:46px minmax(0,1fr) auto;gap:.75rem;min-height:72px;padding:calc(env(safe-area-inset-top) + .55rem) .8rem .55rem}.navbar__left{display:contents}.navbar__context,.navbar__search,.navbar__jarvis,.navbar__icon-action{display:none}.navbar__mobile-brand{display:grid;gap:2px}.navbar__actions{display:flex}.navbar__create-button{height:48px;border-radius:10px}}
 .navbar__coach-context{background:#eef4f1;border:1px solid #d2dfd9;color:#385a4e;font-size:.68rem;font-weight:800;letter-spacing:.04em;padding:.6rem .8rem;text-transform:uppercase}
 @media(max-width:900px){.navbar{gap:.6rem .75rem}.navbar__mobile-brand strong,.navbar__mobile-brand span{white-space:normal}.navbar__mobile-brand span{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;line-height:1.25}}
+
+/* Quiet application rail: workspace context stays at the top; actions live
+   where they are used instead of repeating a large page header everywhere. */
+.navbar{min-height:64px;justify-content:flex-end;padding:.55rem 1.25rem;background:color-mix(in srgb,var(--app-header,#faf9f6) 82%,transparent);box-shadow:none}
+.navbar:after{display:none}.navbar__left{flex:0}.workspace-switcher{margin-right:auto;max-width:280px}.workspace-switcher>span{display:none}.workspace-switcher strong,.workspace-switcher select{min-height:42px;border-radius:999px;background:rgba(255,255,255,.7);backdrop-filter:blur(20px)}
+.navbar__jarvis{position:fixed;right:22px;bottom:22px;z-index:45;height:50px;padding:0 18px;border-radius:999px;box-shadow:0 16px 44px rgba(8,39,32,.25)}
+@media(max-width:900px){.navbar{grid-template-columns:46px minmax(0,1fr);min-height:64px}.workspace-switcher{display:grid;width:100%;max-width:none}.navbar__mobile-brand{display:none}.navbar__jarvis{display:inline-flex;right:14px;bottom:14px}.navbar__jarvis span{display:inline}}

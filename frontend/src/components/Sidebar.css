@@ -219,6 +219,9 @@
   font-size: 0.92rem;
   line-height: 1.55;
 }
+.sidebar__profile-link{display:flex;align-items:center;gap:.7rem;margin-bottom:.55rem;padding:.6rem .7rem;border:1px solid rgba(255,255,255,.1);border-radius:999px;color:#f4f7f5;text-decoration:none;background:rgba(255,255,255,.05)}
+.sidebar__profile-link:hover{background:rgba(255,255,255,.1)}.sidebar__profile-link>span{display:grid;min-width:0}.sidebar__profile-link strong{font-size:.78rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.sidebar__profile-link small{color:#9daba7;font-size:.65rem}
+.sidebar--collapsed .sidebar__profile-link>span{display:none}.sidebar--collapsed .sidebar__profile-link{justify-content:center;padding:.5rem}
 .sidebar__logout {
   align-items: center;
   background: rgba(255, 255, 255, 0.06);
