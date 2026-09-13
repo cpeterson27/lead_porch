@@ -541,6 +541,8 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  border-top: 1px solid #d9e2de;
+  padding: 24px;
 }
 .branding-save-status {
   background: #e4f6e9;
@@ -737,6 +739,10 @@
   grid-template-columns: 130px minmax(0, 1fr);
   padding: 16px;
 }
+.homepage-media-uploads--inline { grid-template-columns: minmax(0, 720px); }
+.homepage-media-uploads--inline article { grid-template-columns: 150px minmax(0, 1fr); }
+.add-public-profile-button { flex: 0 0 auto; min-width: 0; width: auto; }
+.website-section-heading .add-public-profile-button { padding-inline: 18px; }
 .homepage-media-uploads h4 {
   margin: 0;
 }

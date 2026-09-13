@@ -457,6 +457,7 @@ export default function PublicSiteAdmin({ section = "website" }) {
             </p>
           </div>
           <Button
+            className="add-public-profile-button"
             onClick={() => {
               setProfile(blankProfile);
               setEditingProfileId("new");
@@ -939,7 +940,7 @@ export default function PublicSiteAdmin({ section = "website" }) {
       {tab === "video" ? (
         <section className="homepage-media-editor">
           <p className="public-admin__help">
-            Upload your video and poster image here. Audio never autoplays.
+            Upload your video, then scrub through it to choose the cover frame. Audio never autoplays.
           </p>
           <div className="homepage-media-uploads">
             <article>
@@ -968,38 +969,6 @@ export default function PublicSiteAdmin({ section = "website" }) {
                     accept="video/mp4,video/webm,video/quicktime"
                     onChange={(event) =>
                       uploadHomepageVideo(event.target.files?.[0])
-                    }
-                  />
-                </label>
-              </div>
-            </article>
-            <article>
-              <div className="homepage-media-preview">
-                {config.publicSite.introVideoPosterUrl ? (
-                  <img src={config.publicSite.introVideoPosterUrl} alt="" />
-                ) : (
-                  <span>Poster</span>
-                )}
-              </div>
-              <div>
-                <h4>Poster image</h4>
-                <p>Shown before the visitor plays the video.</p>
-                <label className="website-upload-button">
-                  {uploading === "introVideoPosterUrl"
-                    ? "Uploading…"
-                    : config.publicSite.introVideoPosterUrl
-                      ? "Replace image"
-                      : "Upload image"}
-                  <input
-                    disabled={Boolean(uploading)}
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    onChange={(event) =>
-                      uploadSiteImage(
-                        event.target.files?.[0],
-                        "introVideoPosterUrl",
-                        "Poster image",
-                      )
                     }
                   />
                 </label>

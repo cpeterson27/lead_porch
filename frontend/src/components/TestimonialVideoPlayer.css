@@ -11,6 +11,8 @@
   position: relative;
   padding: 0;
 }
+.testimonial-video-cover,
+.testimonial-video-player { border-radius: 14px 14px 8px 8px !important; }
 .testimonial-video-cover__play {
   position: absolute;
   top: 50%;

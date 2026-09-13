@@ -145,7 +145,7 @@ select {
  * them directly. Excluding them here is what actually lets their own
  * modest corner radius apply.
  */
-button:not(.modal-backdrop):not(.drawer-backdrop):not(.public-hero__video):not(.contact-overview button):not(.campaign-kind-picker button),
+button:not(.modal-backdrop):not(.drawer-backdrop):not(.public-hero__video):not(.testimonial-video-cover):not(.contact-overview button):not(.campaign-kind-picker button),
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
 select,
 textarea {
