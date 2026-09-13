@@ -219,8 +219,17 @@ Ellie's Coaching
   const savedBody = String(campaign.content?.body || "").trim();
   const hasSavedSubject = savedSubject && savedSubject !== "Event Campaign";
   const hasSavedBody = savedBody && savedBody !== "Campaign created for event promotion.";
+  // The rich message editor (components/EmailBodyEditor.jsx) always saves
+  // real HTML (it's a contentEditable's innerHTML), starting with a tag.
+  // Older campaigns saved plain typed text, which still needs textToHtml's
+  // paragraph-wrapping/escaping treatment — detect which one this is so
+  // neither case double-escapes or drops the other's formatting.
+  const savedBodyIsHtml = /^\s*</.test(savedBody);
   const subject = fillTemplate(hasSavedSubject ? savedSubject : `Partner With ${campaignName}`, variables);
-  let emailDraft = applyCanonicalEventDate(fillTemplate(hasSavedBody ? savedBody : fallbackEmailDraft, variables), eventDate, campaignName);
+  const plainSourceBody = hasSavedBody
+    ? (savedBodyIsHtml ? savedBody.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : savedBody)
+    : fallbackEmailDraft;
+  let emailDraft = applyCanonicalEventDate(fillTemplate(plainSourceBody, variables), eventDate, campaignName);
   if (eventLink && !emailDraft.includes(eventLink)) {
     emailDraft = `${emailDraft}\n\n${campaign.content?.callToAction || "Learn more"}:\n${eventLink}`;
   }
@@ -232,8 +241,10 @@ Ellie's Coaching
 <!DOCTYPE html>
 <html>
 <body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
-${textToHtml(applyCanonicalEventDate(fillTemplate(savedBody, variables), eventDate, campaignName))}
-${flyerUrl ? `<img src="${escapeHtml(flyerUrl)}" alt="${escapeHtml(campaign.programName || campaignName)}" style="display:block;width:100%;max-width:600px;height:auto;border-radius:8px;margin:28px 0;">` : ""}
+${savedBodyIsHtml
+    ? applyCanonicalEventDate(fillTemplate(savedBody, variables), eventDate, campaignName)
+    : textToHtml(applyCanonicalEventDate(fillTemplate(savedBody, variables), eventDate, campaignName))}
+${flyerUrl && !savedBodyIsHtml ? `<img src="${escapeHtml(flyerUrl)}" alt="${escapeHtml(campaign.programName || campaignName)}" style="display:block;width:100%;max-width:600px;height:auto;border-radius:8px;margin:28px 0;">` : ""}
 ${emailButtonRow(emailButtons, campaign.brand?.accentColor || "#173f36")}
 ${emailBrandFooter(brandLogoUrl, brandWebsiteUrl, campaignName)}
 </body>

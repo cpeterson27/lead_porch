@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Button from "../components/Button.jsx";
 import DashboardCard from "../components/DashboardCard.jsx";
+import EmailBodyEditor from "../components/EmailBodyEditor.jsx";
 import {
   approveCampaignEmailTemplate,
   assignCampaignAudience,
@@ -85,6 +86,7 @@ export default function CampaignWorkspace() {
   const [templateAudience, setTemplateAudience] = useState("general");
   const [activeSection, setActiveSection] = useState("email");
   const [personalizationToken, setPersonalizationToken] = useState("{{firstName}}");
+  const [inlineImageUploading, setInlineImageUploading] = useState(false);
   const messageRef = useRef(null);
 
   useEffect(() => {
@@ -160,19 +162,7 @@ export default function CampaignWorkspace() {
     }));
 
   const insertPersonalization = () => {
-    const input = messageRef.current;
-    const body = emailTemplate?.body || "";
-    const start = input?.selectionStart ?? body.length;
-    const end = input?.selectionEnd ?? start;
-    updateTemplateField(
-      "body",
-      `${body.slice(0, start)}${personalizationToken}${body.slice(end)}`,
-    );
-    requestAnimationFrame(() => {
-      input?.focus();
-      const cursor = start + personalizationToken.length;
-      input?.setSelectionRange(cursor, cursor);
-    });
+    messageRef.current?.insertText(personalizationToken);
   };
 
   const uploadBrandAsset = async (field, file) => {
@@ -202,6 +192,25 @@ export default function CampaignWorkspace() {
       );
     } finally {
       setBrandSaving(false);
+    }
+  };
+
+  const uploadInlineImage = async (file) => {
+    setInlineImageUploading(true);
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const uploaded = await uploadEventImage({ file: dataUrl, filename: file.name });
+      return uploaded.url;
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to upload that image.");
+      return null;
+    } finally {
+      setInlineImageUploading(false);
     }
   };
 
@@ -607,14 +616,18 @@ export default function CampaignWorkspace() {
                   </label>
                   <label>
                     <span>Message</span>
-                    <textarea
+                    <EmailBodyEditor
                       ref={messageRef}
-                      rows="14"
                       value={emailTemplate.body}
-                      onChange={(event) =>
-                        updateTemplateField("body", event.target.value)
-                      }
+                      onChange={(html) => updateTemplateField("body", html)}
+                      onUploadImage={uploadInlineImage}
+                      uploading={inlineImageUploading}
                     />
+                    <small>
+                      Use the toolbar to bold, align, change fonts, and place
+                      images or a button exactly where you want them in the
+                      message.
+                    </small>
                   </label>
                   <details className="campaign-email-buttons">
                     <summary>
