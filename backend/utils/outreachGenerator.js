@@ -70,8 +70,8 @@ function normalizePublicUrl(value = "") {
 function emailBrandFooter(logoUrl, websiteUrl, campaignName) {
   const normalizedWebsite = normalizePublicUrl(websiteUrl);
   if (!logoUrl && !normalizedWebsite) return "";
-  return `<div style="border-top:1px solid #e4e0d8;margin-top:32px;padding-top:22px;">
-${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(campaignName)} logo" style="display:block;max-width:160px;max-height:64px;height:auto;width:auto;object-fit:contain;margin:0 0 12px;">` : ""}
+  return `<div style="border-top:1px solid #e4e0d8;margin-top:32px;padding-top:22px;text-align:center;">
+${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(campaignName)} logo" style="display:block;max-width:160px;max-height:64px;height:auto;width:auto;object-fit:contain;margin:0 auto 12px;">` : ""}
 ${normalizedWebsite ? `<a href="${escapeHtml(normalizedWebsite)}" target="_blank" style="color:#315f52;text-decoration:underline;">${escapeHtml(normalizedWebsite.replace(/^https?:\/\//i, "").replace(/\/$/, ""))}</a>` : ""}
 </div>`;
 }

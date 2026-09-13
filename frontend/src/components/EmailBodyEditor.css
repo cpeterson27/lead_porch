@@ -66,3 +66,32 @@
   content: "Write your message here…";
   color: #8a8577;
 }
+.email-body-toolbar--secondary {
+  background: #eef3ee;
+  gap: 6px;
+}
+.email-body-toolbar--secondary span {
+  font-size: 0.82rem;
+  color: #506b63;
+  margin-right: 2px;
+}
+.email-body-toolbar__hint {
+  margin: 0;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  color: #506b63;
+  background: #f5f2eb;
+  border-bottom: 1px solid #d7d2c7;
+}
+[data-block] {
+  border-radius: 6px;
+  transition: outline-color 0.15s ease;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+[data-block]:hover {
+  outline-color: #cfc7b4;
+}
+.email-block--selected {
+  outline: 2px solid #173f36 !important;
+}
