@@ -50,7 +50,6 @@ import {
   enrichVertexGroundingResultWithPdl,
   fetchLeadGenerationProviderAvailability,
   fetchLeadGenerationPrograms,
-  fetchLeadGenerationProgramSearchSuggestions,
   proposeLeadGenerationSearch,
   approveLeadGenerationSearch,
   enrichVertexGroundingResultWithApollo,
@@ -317,9 +316,7 @@ export default function Discovery() {
   // programs" pill; otherwise a specific program's noteId.
   const [selectedProgramPillKey, setSelectedProgramPillKey] = useState("");
   const [selectedProgramNoteId, setSelectedProgramNoteId] = useState("");
-  const [programSearchSuggestions, setProgramSearchSuggestions] = useState([]);
-  const [programSuggestionsLoading, setProgramSuggestionsLoading] = useState(false);
-  const [leadGenRequest, setLeadGenRequest] = useState("");
+  const [leadGenRequest, setLeadGenRequest] = useState("Find likely buyers for our approved programs");
   const [leadGenProposeBusy, setLeadGenProposeBusy] = useState(false);
   const [leadGenProposal, setLeadGenProposal] = useState(null);
   const [leadGenApproveBusy, setLeadGenApproveBusy] = useState(false);
@@ -459,27 +456,18 @@ export default function Discovery() {
     setLeadGenProposal(null);
   };
 
-  const selectLeadGenProgram = async (program) => {
+  const selectLeadGenProgram = (program) => {
     setSelectedProgramPillKey(program.noteId);
     setSelectedProgramNoteId(program.noteId);
-    setProgramSearchSuggestions([]);
     setLeadGenProposal(null);
-    setProgramSuggestionsLoading(true);
-    try {
-      const response = await fetchLeadGenerationProgramSearchSuggestions(program.noteId);
-      setProgramSearchSuggestions(response.data.suggestions || []);
-    } catch (err) {
-      setLeadGenError(err.response?.data?.error || "Unable to load search suggestions for this program.");
-    } finally {
-      setProgramSuggestionsLoading(false);
-    }
+    setLeadGenRequest(`Find likely buyers for ${program.title}`);
   };
 
   const selectAllPrograms = () => {
     setSelectedProgramPillKey("all");
     setSelectedProgramNoteId("");
-    setProgramSearchSuggestions([]);
     setLeadGenProposal(null);
+    setLeadGenRequest("Find likely buyers for our approved programs");
   };
 
   const proposeLeadGenSearch = async () => {
@@ -1395,7 +1383,7 @@ export default function Discovery() {
         empty gap. .people-research-workspace alone already provides the
         real (single-column, vertically-stacked) layout for this page. */}
     {activeTab === "people" ? <div id="people-research-previews" className="people-research-workspace">
-      <section className="discovery-workflow-hero"><div><span>Guided lead search</span><h2>Set it up once. Know exactly why every lead appears.</h2><p>Jarvis uses your approved program to suggest the audience, topics, and buying signals. You edit the plan and approve the cost before anything runs.</p></div><div className="discovery-workflow-steps" aria-label="Lead search steps"><span className="is-current"><b>1</b> Program</span><span><b>2</b> Audience &amp; topics</span><span><b>3</b> Sources &amp; cost</span><span><b>4</b> Review leads</span></div></section>
+      <section className="discovery-workflow-hero discovery-workflow-hero--simple"><div><span>Find more leads</span><h2>Choose a program. Lead Porch handles the search plan.</h2><p>Your approved program already tells Jarvis what you sell. Select it below, review the automatically generated audience and cost, then start the search.</p></div><div className="discovery-workflow-steps" aria-label="Lead search steps"><span className="is-current"><b>1</b> Choose program</span><span><b>2</b> Review plan</span><span><b>3</b> Find people</span><span><b>4</b> Review leads</span></div></section>
       <details className="discovery-prior-results">
       <summary>Previously staged Jarvis searches ({peoplePreviews.length})</summary>
       <DashboardCard title="Previous Jarvis research" action={<Button variant="outline" loading={peoplePreviewsLoading} onClick={loadPeoplePreviews}>Refresh</Button>}>
@@ -1419,10 +1407,10 @@ export default function Discovery() {
         })}</div> : <div className="table-state table-state--empty">No staged people previews yet. Ask Jarvis to find public-web decision-makers; the preview will appear here automatically.</div>}
       </DashboardCard></details>
 
-      <section className="discovery-workflow-section" aria-labelledby="find-leads-heading"><header><span>Steps 1–3</span><h2 id="find-leads-heading">Build your lead search</h2><p>Choose a program, review Jarvis&apos;s suggestions, then approve the exact sources and limits.</p></header>
-      <DashboardCard title="Who should Lead Porch find?">
+      <section className="discovery-workflow-section" aria-labelledby="find-leads-heading"><header><span>Step 1</span><h2 id="find-leads-heading">What are you selling?</h2><p>Choose the program you want students or buyers for. That is all you need to start.</p></header>
+      <DashboardCard title="Choose a program">
         <p className="people-preview-intro">
-          Select the program first. Jarvis will turn its approved facts into an editable audience and topic plan. Web sources look for public evidence; PDL and Apollo find people matching the audience. <strong>Nothing is spent until you approve the plan.</strong>
+          Jarvis reads the approved program details and creates the audience, keywords, and buying signals automatically. <strong>You will see the exact plan and estimated cost before anything runs.</strong>
         </p>
 
         <div className="leadgen-field-group">
@@ -1437,24 +1425,12 @@ export default function Discovery() {
               </button>
             ))}
           </div>
-          {selectedProgramNoteId ? (
-            <div className="grounding-suggested-searches">
-              <span>Up to 5 suggested searches for this program — edit any before asking Jarvis</span>
-              {programSuggestionsLoading ? <small>Loading suggestions…</small> : (
-                <div className="grounding-suggested-searches__buttons">
-                  {programSearchSuggestions.map((suggestion) => (
-                    <Button key={suggestion.query} size="sm" variant="outline" onClick={() => setLeadGenRequest(suggestion.query)}>
-                      {suggestion.query}
-                    </Button>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : null}
         </div>
 
+        <details className="leadgen-search-settings">
+          <summary>Search settings <small>Optional — the recommended choices are already selected</small></summary>
         <div className="leadgen-field-group">
-          <span className="leadgen-field-label">Sources</span>
+          <span className="leadgen-field-label">Where Lead Porch can look</span>
           <div className="leadgen-pill-row" role="group" aria-label="Choose sourcing providers">
             {LEADGEN_PROVIDERS.map(([key, label]) => {
               const availability = leadGenProviderAvailability?.[key];
@@ -1485,7 +1461,7 @@ export default function Discovery() {
         </div>
 
         <div className="leadgen-field-group">
-          <span className="leadgen-field-label">How many people</span>
+          <span className="leadgen-field-label">Maximum number of people</span>
           <div className="leadgen-pill-row" role="group" aria-label="Choose how many people to find">
             {LEADGEN_COUNT_OPTIONS.map((count) => (
               <button key={count} type="button" className={`leadgen-pill${leadGenRequestedCount === count ? " is-selected" : ""}`} aria-pressed={leadGenRequestedCount === count} onClick={() => selectLeadGenCount(count)}>
@@ -1494,15 +1470,13 @@ export default function Discovery() {
             ))}
           </div>
         </div>
+        </details>
 
         <div className="people-search-launcher">
-          <label>
-            <span>What should Jarvis find?</span>
-            <textarea value={leadGenRequest} onChange={(event) => setLeadGenRequest(event.target.value)} placeholder='e.g. "Find likely buyers for our Multifamily Bootcamp"' disabled={leadGenProposeBusy} />
-          </label>
+          <details className="leadgen-optional-request"><summary>Optional: give Jarvis extra direction</summary><label><span>Only use this if you want to narrow the program&apos;s normal audience</span><textarea value={leadGenRequest} onChange={(event) => setLeadGenRequest(event.target.value)} placeholder="For example: Focus on buyers in Texas" disabled={leadGenProposeBusy} /></label></details>
           <div>
             <Button disabled={!leadGenRequest.trim() || !leadGenSelectedSources.length} loading={leadGenProposeBusy} onClick={proposeLeadGenSearch}>
-              {leadGenProposeBusy ? "Planning…" : "Ask Jarvis"}
+              {leadGenProposeBusy ? "Building your plan…" : "Build my search plan"}
             </Button>
           </div>
           {!leadGenSelectedSources.length ? <p className="form-error">Select at least one available source above.</p> : null}
@@ -1604,8 +1578,11 @@ export default function Discovery() {
         ) : null}
       </DashboardCard>
 
+      <details className="discovery-specialized-tools">
+        <summary>Specialized search tools <small>Optional — most people will not need these</small></summary>
+        <p>These are direct provider controls for research professionals. They are separate from the guided program search above and are hidden so they do not interrupt the normal workflow.</p>
       <details className="leadgen-advanced-search">
-        <summary>Advanced manual search</summary>
+        <summary>Direct public-web search</summary>
         <div className="leadgen-advanced-search__body">
           <p className="people-preview-intro">
             Search the public web directly with your own query and source choice — the same Vertex/OpenAI
@@ -1669,6 +1646,7 @@ export default function Discovery() {
       </details>
 
       <PublicWebDiscoveryPanel onResultsChanged={() => { loadGroundingResults("pending_review"); setGroundingResultsStatus("pending_review"); }} />
+      </details>
       </section>
 
       <section className="discovery-workflow-section discovery-results-section" aria-labelledby="todays-results-heading"><header><span>Step 2</span><h2 id="todays-results-heading">Today&apos;s Results</h2><p>Every finding stays in its own lane so a prospective student is never confused with a vendor, competitor, or community.</p></header>
