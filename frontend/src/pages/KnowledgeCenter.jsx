@@ -51,8 +51,8 @@ export default function KnowledgeCenter() {
   const [draft, setDraft] = useState({ title: "", content: "", category: "sops" });
   const [pendingApproval, setPendingApproval] = useState(null);
   const [confirmationInput, setConfirmationInput] = useState("");
-  const [showLibrary, setShowLibrary] = useState(true);
   const [showImported, setShowImported] = useState(false);
+  const [workspaceView, setWorkspaceView] = useState("upload");
   const [pdfCategory, setPdfCategory] = useState("offers-programs");
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfResults, setPdfResults] = useState(null);
@@ -181,6 +181,7 @@ export default function KnowledgeCenter() {
       await confirmKnowledgeMemory(pendingApproval.id, confirmationInput);
       setNotice("Approved knowledge saved. It is immediately available to Jarvis and every agent.");
       setShowNewForm(false);
+      setWorkspaceView("library");
       setPendingApproval(null);
       setConfirmationInput("");
       setDraft({ title: "", content: "", category: "sops" });
@@ -190,16 +191,6 @@ export default function KnowledgeCenter() {
     } finally {
       setBusy(false);
     }
-  };
-
-  const hasUnsavedNewKnowledge = () => Boolean(draft.title.trim() || draft.content.trim() || pendingApproval);
-
-  const cancelNewKnowledge = () => {
-    if (hasUnsavedNewKnowledge() && !window.confirm("Discard this unsaved knowledge entry? Anything you typed will be lost.")) return;
-    setShowNewForm(false);
-    setDraft({ title: "", content: "", category: "sops" });
-    setPendingApproval(null);
-    setConfirmationInput("");
   };
 
   const uploadPdfs = async () => {
@@ -222,7 +213,6 @@ export default function KnowledgeCenter() {
     }
   };
 
-  const counts = notes.reduce((result, note) => ({ ...result, [note.status]: (result[note.status] || 0) + 1 }), {});
   const importedCount = notes.filter((note) => note.source === "obsidian_bridge").length;
   const visibleNotes = notes.filter((note) => {
     if (!showImported && note.source === "obsidian_bridge") return false;
@@ -245,28 +235,23 @@ export default function KnowledgeCenter() {
       {error ? <p className="form-error">{error}</p> : null}
       {notice ? <p className="discovery-notice">{notice}</p> : null}
 
-      <section className="knowledge-summary" aria-label="Knowledge library summary">
-        <button type="button" className={!statusFilter ? "is-active" : ""} onClick={() => setStatusFilter("")}><span>Library</span><strong>{notes.filter((note) => note.status !== "archived").length}</strong><small>everything currently stored</small></button>
-        <button type="button" className={statusFilter === "approved" ? "is-active" : ""} onClick={() => setStatusFilter("approved")}><span>Jarvis can use</span><strong>{counts.approved || 0}</strong><small>reviewed and trusted</small></button>
-        <button type="button" className={statusFilter === "draft" ? "is-active" : ""} onClick={() => setStatusFilter("draft")}><span>Needs your review</span><strong>{counts.draft || 0}</strong><small>stored, but not used by Jarvis</small></button>
-        <button type="button" className={statusFilter === "archived" ? "is-active" : ""} onClick={() => setStatusFilter("archived")}><span>Archived</span><strong>{counts.archived || 0}</strong><small>kept out of use</small></button>
-      </section>
+      <nav className="knowledge-primary-actions" aria-label="Knowledge Center actions">
+        {hasRole(session, "owner") ? <button type="button" className={workspaceView === "upload" ? "is-active" : ""} onClick={() => { setWorkspaceView("upload"); setShowNewForm(false); closeNote(); }}><strong>Upload new PDFs</strong><span>Add documents for review</span></button> : null}
+        <button type="button" className={workspaceView === "note" ? "is-active" : ""} onClick={() => { setWorkspaceView("note"); setShowNewForm(true); closeNote(); }}><strong>Add a written note</strong><span>Type facts or instructions</span></button>
+        <button type="button" className={workspaceView === "library" ? "is-active" : ""} onClick={() => { setWorkspaceView("library"); setShowNewForm(false); }}><strong>View uploaded knowledge</strong><span>{notes.filter((note) => note.status !== "archived").length} current items</span></button>
+      </nav>
 
-      <section className="knowledge-meaning-grid">
-        <article><span>1</span><div><strong>Add it</strong><p>Upload a PDF or type a note. Lead Porch stores it as a draft.</p></div></article>
-        <article><span>2</span><div><strong>Review it</strong><p>Open the item and confirm the facts are accurate.</p></div></article>
-        <article><span>3</span><div><strong>Allow Jarvis to use it</strong><p>Approve means Jarvis may rely on it when creating content or finding buyers.</p></div></article>
-      </section>
+      {hasRole(session, "owner") && workspaceView === "upload" ? (
+        <DashboardCard title="Upload new PDFs">
+          <p className="knowledge-upload-explainer"><strong>Duplicates are blocked automatically.</strong> Uploaded PDFs wait for your review before Jarvis can use them.</p>
+          <div className="knowledge-upload-grid"><label>Category<select value={pdfCategory} onChange={(e) => setPdfCategory(e.target.value)}>{CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>PDF files (up to 10)<input ref={pdfInputRef} type="file" accept="application/pdf" multiple disabled={pdfBusy} /></label></div>
+          <Button loading={pdfBusy} onClick={uploadPdfs}>{pdfBusy ? "Checking and analyzing…" : "Check and upload PDFs"}</Button>
+          {pdfResults ? <ul className="knowledge-pdf-results">{pdfResults.map((row, index) => <li key={index} className={row.success ? "is-success" : "is-error"}><strong>{row.filename}</strong>{row.success ? ` — staged for review${row.monitorDraftsCreated ? `, ${row.monitorDraftsCreated} suggested monitor(s) created inactive` : ""}` : row.code === "PDF_DUPLICATE" ? ` — not uploaded: ${row.error}` : ` — failed: ${row.error}`}</li>)}</ul> : null}
+        </DashboardCard>
+      ) : null}
 
-      <DashboardCard
-        title="Your knowledge library"
-        action={<Button size="sm" onClick={() => (showNewForm ? cancelNewKnowledge() : setShowNewForm(true))}>{showNewForm ? "Cancel" : "Add a written note"}</Button>}
-      >
-        <div className="knowledge-library-toolbar">
-          <p className="knowledge-library-intro"><strong>Search before uploading.</strong> Open any item to read its full contents, review it, archive it, or delete it.</p>
-          <Button size="sm" variant="outline" onClick={() => setShowLibrary((value) => !value)}>{showLibrary ? "Hide list" : "Show list"}</Button>
-        </div>
-        <div className="knowledge-filters">
+      {workspaceView === "note" || workspaceView === "library" ? <DashboardCard title={workspaceView === "note" ? "Add a written note" : "Uploaded knowledge"}>
+        {workspaceView === "library" ? <><p className="knowledge-library-intro">Choose a file or note to view its contents and controls.</p><div className="knowledge-filters">
           <input placeholder="Search file name, title, or words inside…" value={search} onChange={(e) => setSearch(e.target.value)} />
           <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
             <option value="">All categories</option>
@@ -279,9 +264,9 @@ export default function KnowledgeCenter() {
             <option value="rejected">Rejected</option>
             <option value="archived">Archived</option>
           </select>
-        </div>
+        </div></> : null}
 
-        {showNewForm ? (
+        {workspaceView === "note" && showNewForm ? (
           <div className="knowledge-new-form">
             {!pendingApproval ? (
               <>
@@ -295,18 +280,17 @@ export default function KnowledgeCenter() {
           </div>
         ) : null}
 
-        {importedCount ? <button type="button" className="knowledge-imported-toggle" onClick={() => setShowImported((value) => !value)}>{showImported ? "Hide" : "Show"} {importedCount} older imported note{importedCount === 1 ? "" : "s"}</button> : null}
-        <div className={`knowledge-workspace ${!showLibrary ? "knowledge-workspace--detail-only" : ""}`}>
-        {showLibrary ? <div className="knowledge-library-grid">
+        {workspaceView === "library" && importedCount ? <button type="button" className="knowledge-imported-toggle" onClick={() => setShowImported((value) => !value)}>{showImported ? "Hide" : "Show"} {importedCount} older imported note{importedCount === 1 ? "" : "s"}</button> : null}
+        {workspaceView === "library" ? <div className={`knowledge-workspace ${selected ? "has-selection" : ""}`}>
+        <div className="knowledge-library-grid">
           {visibleNotes.map((note) => <button type="button" key={note._id} className={`knowledge-library-item ${selectedId === note._id ? "is-selected" : ""}`} onClick={() => selectNote(note._id)}>
             <span className={`knowledge-file-mark is-${note.source}`}>{note.source === "pdf_upload" ? "PDF" : "NOTE"}</span>
             <span className="knowledge-library-copy"><strong>{note.originalFilename || note.title}</strong>{note.originalFilename && note.title !== note.originalFilename ? <small>{note.title}</small> : null}<small>{CATEGORIES.find(([value]) => value === note.category)?.[1] || note.category} · {formatDate(note.updatedAt)}</small></span>
             <span className={`knowledge-status-pill knowledge-status-pill--${note.status}`}>{note.status === "approved" ? "Jarvis can use" : note.status === "draft" ? "Needs review" : STATUS_LABELS[note.status]}</span>
           </button>)}
           {!visibleNotes.length ? <div className="knowledge-empty"><strong>No matching knowledge</strong><p>Try another search or filter. If this is a new document, use the upload area below.</p></div> : null}
-        </div> : null}
-        <aside className="knowledge-detail-panel" aria-live="polite">
-          {selected ? <>
+        </div>
+        {selected ? <aside className="knowledge-detail-panel" aria-live="polite"><>
             <header><div><small>Viewing knowledge item</small><h2>{selected.title}</h2></div><Button size="sm" variant="ghost" onClick={closeNote}>Close</Button></header>
             <div className="knowledge-detail-meta">
               <span>Status: <strong>{STATUS_LABELS[selected.status] || selected.status}</strong></span>
@@ -324,39 +308,9 @@ export default function KnowledgeCenter() {
               {hasRole(session, "owner") ? <Button variant="ghost" onClick={() => remove(selected._id)} loading={busy}>Delete permanently</Button> : null}
             </div>
             {selected.versions?.length ? <details className="knowledge-version-history"><summary>Version history ({selected.versions.length})</summary><ul>{[...selected.versions].reverse().map((version) => <li key={version.version}><span>Version {version.version} · {formatDate(version.savedAt)}</span><Button size="sm" variant="outline" onClick={() => restoreVersion(version.version)} disabled={busy}>Restore</Button></li>)}</ul></details> : null}
-          </> : <div className="knowledge-detail-empty"><strong>Select an item to view it</strong><p>Its full contents and controls will appear here without sending you farther down the page.</p></div>}
-        </aside>
-        </div>
-      </DashboardCard>
-
-      {hasRole(session, "owner") ? (
-        <DashboardCard title="Upload new PDFs">
-          <p className="knowledge-upload-explainer"><strong>Duplicates are blocked automatically.</strong> A new PDF is stored as “Needs review.” Jarvis cannot use it until you open and approve it. Lead Porch may suggest searches from a program PDF, but those suggestions stay off until you choose to start them.</p>
-          <label>
-            Category for these PDFs
-            <select value={pdfCategory} onChange={(e) => setPdfCategory(e.target.value)}>
-              {CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-            </select>
-          </label>
-          <label>
-            PDF files (up to 10 at once)
-            <input ref={pdfInputRef} type="file" accept="application/pdf" multiple disabled={pdfBusy} />
-          </label>
-          <Button loading={pdfBusy} onClick={uploadPdfs}>{pdfBusy ? "Checking and analyzing…" : "Check and upload PDFs"}</Button>
-          {pdfResults ? (
-            <ul className="knowledge-pdf-results">
-              {pdfResults.map((row, index) => (
-                <li key={index} className={row.success ? "is-success" : "is-error"}>
-                  <strong>{row.filename}</strong>
-                  {row.success
-                    ? ` — staged as a draft${row.monitorDraftsCreated ? `, ${row.monitorDraftsCreated} suggested monitor(s) created disabled` : ""}${!row.aiAnalysisSucceeded ? ` (AI analysis unavailable: ${row.aiAnalysisReason})` : ""}`
-                    : row.code === "PDF_DUPLICATE" ? ` — not uploaded: ${row.error}` : ` — failed: ${row.error}`}
-                </li>
-              ))}
-            </ul>
-          ) : null}
-        </DashboardCard>
-      ) : null}
+          </></aside> : null}
+        </div> : null}
+      </DashboardCard> : null}
 
     </div>
   );

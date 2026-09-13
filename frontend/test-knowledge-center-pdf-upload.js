@@ -8,7 +8,7 @@ const api = fs.readFileSync("src/services/api.js", "utf8");
 // any state, so unsaved title/content silently reappeared next time the
 // form was opened. Cancel must now confirm before discarding, then
 // actually clear everything.
-const cancelHandlerMatch = source.match(/const cancelNewKnowledge = \(\) => \{[\s\S]*?\n  \};/);
+const cancelHandlerMatch = source.match(/const cancelNewKnowledge = \(\) => \{[\s\S]*?\n {2}\};/);
 assert.ok(cancelHandlerMatch, "Could not locate cancelNewKnowledge");
 const cancelHandler = cancelHandlerMatch[0];
 assert.ok(/window\.confirm\(/.test(cancelHandler), "Cancel must ask for confirmation before discarding unsaved content");

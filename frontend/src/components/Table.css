@@ -17,9 +17,11 @@
 }
 
 .table th {
-  font-size: var(--font-size-md);
+  font-size: .7rem;
   color: var(--text-muted);
   font-weight: var(--font-weight-medium);
+  letter-spacing: .08em;
+  text-transform: uppercase;
 }
 
 .table td {

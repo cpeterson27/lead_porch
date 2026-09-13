@@ -44,14 +44,17 @@ function money(value) {
 
 function ProviderStatus({ label, status }) {
   if (!status) return null;
-  const state = !status.enabled
-    ? { text: "Not configured", tone: "off" }
+  const configured = status.configured ?? status.enabled;
+  const state = !configured
+    ? { text: "Not connected", tone: "off" }
+    : !status.enabled
+      ? { text: "Connected setup · inactive", tone: "off" }
     : status.healthy
-      ? { text: "Healthy", tone: "on" }
-      : { text: `Unavailable${status.reason ? ` (${status.reason})` : ""}`, tone: "warn" };
+      ? { text: "Connected", tone: "on" }
+      : { text: "Needs attention", tone: "warn" };
   return (
     <div className="provider-status-row">
-      <span>{label}</span>
+      <span><strong>{label}</strong><small>{status.reason === "disabled" ? "Connection details are saved, but this provider is not currently available to agents." : status.reason || (state.tone === "on" ? "Configuration found and health check passed." : configured ? "Connection details exist, but this provider is inactive." : "No usable configuration was detected for this provider.")}</small></span>
       <span className={`provider-status-pill provider-status-pill--${state.tone}`}>{state.text}</span>
     </div>
   );
@@ -277,7 +280,7 @@ export default function AiAcquisitionControls() {
         <div className="ai-usage-command__summary">
           <span>This month</span>
           <strong>{money(usage.estimatedTotalCostUsd)}</strong>
-          <p>Estimated OpenAI usage across {usage.requestCount} request{usage.requestCount === 1 ? "" : "s"}.</p>
+          <p>Tracked in Lead Porch this month across {usage.requestCount} request{usage.requestCount === 1 ? "" : "s"}.</p>
         </div>
         <div className="ai-usage-command__metrics">
           <article><span>Total tokens</span><strong>{usage.tokens?.total?.toLocaleString?.() || 0}</strong><small>{usage.tokens?.input?.toLocaleString?.() || 0} input · {usage.tokens?.output?.toLocaleString?.() || 0} output</small></article>
@@ -293,7 +296,7 @@ export default function AiAcquisitionControls() {
             <b>{money(agent.estimatedTotalCostUsd)}</b>
           </div>) : <p>No AI usage has been recorded this month.</p>}
         </div>
-        <p className="ai-usage-command__note">Lead-data providers such as Apollo and People Data Labs report health here, but their external account credit balances are managed by those providers and are not included in this OpenAI cost estimate.</p>
+        <p className="ai-usage-command__note"><strong>This is not your provider billing total.</strong> It includes only AI requests recorded by Lead Porch during the current month. Requests made before usage tracking existed, direct provider-dashboard usage, image charges without returned pricing, and Apollo, PDL, Gemini, Vertex, or other external credit balances may be absent. {usage.unpricedRequestCount || 0} tracked request{usage.unpricedRequestCount === 1 ? " has" : "s have"} no price available.</p>
       </section> : null}
 
       <DashboardCard
@@ -307,7 +310,8 @@ export default function AiAcquisitionControls() {
         </p>
       </DashboardCard>
 
-      <DashboardCard title="Provider health">
+      <DashboardCard title="Provider connections" action={<Button variant="outline" size="sm" onClick={load}>Check again</Button>}>
+        <p className="provider-health-explainer">These are provider connections, not the on/off state of Jarvis or your other agents. “Connected setup · inactive” means credentials were found, but the server-side provider switch is currently off.</p>
         {health ? (
           <div className="provider-status-grid">
             <ProviderStatus label="OpenAI" status={{ enabled: health.openai?.enabled, healthy: health.openai?.enabled, reason: health.openai?.configured ? "" : "not configured" }} />

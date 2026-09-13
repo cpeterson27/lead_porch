@@ -4,6 +4,9 @@
   gap: 0.8rem;
   margin-bottom: 1rem;
 }
+
+/* Command Center visual system */
+.contacts-page{max-width:1580px;margin:0 auto}.contacts-page .page-header{padding:28px;border-radius:26px;background:radial-gradient(circle at 90% 0,rgba(41,199,237,.13),transparent 35%),linear-gradient(135deg,#121421,#1d1938);color:#fff;box-shadow:0 24px 70px rgba(28,24,70,.16)}.contacts-page .page-header h1,.contacts-page .page-header p{color:#fff}.contacts-page .page-header p{opacity:.7}.contacts-page .page-eyebrow{color:#68dff0!important}.crm-mode-banner{border-color:rgba(116,87,255,.12);background:linear-gradient(135deg,rgba(116,87,255,.08),rgba(41,199,237,.06),#fff)}.crm-mode-banner__eyebrow{color:#7057e8}.contact-overview button{border-color:rgba(47,42,102,.09);border-radius:18px;background:#fff!important;box-shadow:0 12px 34px rgba(36,29,93,.055)}.contact-overview button:hover{transform:translateY(-2px);border-color:rgba(116,87,255,.35);box-shadow:0 18px 42px rgba(53,40,133,.1)}.contact-overview button.is-safe{background:linear-gradient(145deg,rgba(49,199,154,.09),#fff)!important}.contact-overview button.is-warning{background:linear-gradient(145deg,rgba(240,126,88,.09),#fff)!important}.contacts-page .table-wrap{border-color:rgba(47,42,102,.08);border-radius:20px;box-shadow:0 16px 44px rgba(36,29,93,.06)}.contacts-page .table th{background:#f3f2f9;color:#66627c}
 .contact-overview--workflow {
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
@@ -407,6 +410,7 @@
 @media (max-width: 720px) {
   .crm-file-drop--primary { min-height: 180px; padding: 22px; }
 }
+.contacts-page .page-header{border-radius:26px!important;background:radial-gradient(circle at 90% 0,rgba(41,199,237,.13),transparent 35%),linear-gradient(135deg,#121421,#1d1938)!important;color:#fff;box-shadow:0 24px 70px rgba(28,24,70,.16)}.contacts-page .page-header h1,.contacts-page .page-header p{color:#fff!important}.contacts-page .page-eyebrow{color:#68dff0!important}.contacts-page .dashboard-card,.contacts-page .crm-toolbar{border-color:rgba(47,42,102,.08)!important;border-radius:20px!important;box-shadow:0 16px 44px rgba(36,29,93,.06)!important}
 .crm-file-drop span,
 .crm-paste-option {
   color: var(--text-muted);

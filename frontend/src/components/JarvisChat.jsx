@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { FiMaximize2, FiMinimize2, FiChevronUp, FiChevronDown, FiVolume2, FiPlus } from "react-icons/fi";
+import { FiMaximize2, FiMinimize2, FiChevronUp, FiChevronDown, FiVolume2, FiPlus, FiImage, FiMail, FiSearch, FiLayers, FiArrowUpRight } from "react-icons/fi";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useJarvis } from "../hooks/useJarvis";
 import {
@@ -183,6 +183,7 @@ export default function JarvisChat() {
   const [profileOpen, setProfileOpen] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [visualWidth, setVisualWidth] = useState(() => Number(localStorage.getItem("jarvisVisualWidth")) || 44);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [buildingPackageId, setBuildingPackageId] = useState("");
   // Collapses the voice-settings block (source/OpenAI voice/browser
@@ -673,9 +674,22 @@ export default function JarvisChat() {
     setResearchActionId("");
     setNextId(2);
   };
+  const resizeJarvis = (event) => {
+    event.preventDefault();
+    const bounds = containerRef.current?.getBoundingClientRect();
+    if (!bounds) return;
+    const move = (pointerEvent) => setVisualWidth(Math.min(68, Math.max(28, ((pointerEvent.clientX - bounds.left) / bounds.width) * 100)));
+    const stop = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", stop);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", stop);
+  };
+  useEffect(() => { localStorage.setItem("jarvisVisualWidth", String(visualWidth)); }, [visualWidth]);
 
   return (
-    <div ref={containerRef} className={`jarvis-chat-container jarvis-chat-container--${profile?.theme || "executive"} ${intentResearchTask ? "jarvis-chat-container--intent-task" : ""} ${isFullscreen ? "jarvis-chat-container--fullscreen" : ""}`}>
+    <div ref={containerRef} style={{ "--jarvis-visual-width": `${visualWidth}%` }} className={`jarvis-chat-container jarvis-chat-container--${profile?.theme || "executive"} ${intentResearchTask ? "jarvis-chat-container--intent-task" : ""} ${isFullscreen ? "jarvis-chat-container--fullscreen" : ""}`}>
       <div className={`jarvis-header jarvis-header--${visualState}`}>
         <div className="jarvis-circuit-field" aria-hidden="true">
           <svg viewBox="0 0 1200 360" preserveAspectRatio="none">
@@ -723,6 +737,8 @@ export default function JarvisChat() {
         </div>
       </div>
 
+      {!intentResearchTask ? <button type="button" className="jarvis-resize-handle" role="separator" aria-label="Resize Jarvis and creation workspace" aria-orientation="vertical" onPointerDown={resizeJarvis} onDoubleClick={() => setVisualWidth(44)}><span>⋮</span></button> : null}
+
       {profileOpen && profile ? <form className="jarvis-persona-panel" onSubmit={saveProfile}><header><strong>Personalize Jarvis</strong><button type="button" onClick={() => setProfileOpen(false)}>Close ×</button></header>
         <label>Name<input value={profile.name} maxLength="40" onChange={(event) => setProfile({ ...profile, name: event.target.value })} /></label>
         <label>Greeting<input value={profile.greeting} maxLength="240" onChange={(event) => setProfile({ ...profile, greeting: event.target.value })} /></label>
@@ -746,6 +762,16 @@ export default function JarvisChat() {
       {!intentResearchTask ? <div className="jarvis-conversation-toolbar"><div className="jarvis-conversation-identity"><button type="button" className={`jarvis-mini-core is-${visualState}`} onClick={handleVoiceCore} aria-label="Talk to Jarvis"><span>J</span></button><span><b>{profile?.name || "Jarvis"}</b><small>{visualLabel} · your AI workspace</small></span></div><div><button type="button" onClick={startNewConversation}><FiPlus /> New conversation</button><button type="button" onClick={() => setProfileOpen((value) => !value)}>Personalize</button></div></div> : null}
 
       <div className="jarvis-messages">
+        {!intentResearchTask && messages.length === 0 ? <section className="jarvis-studio-welcome">
+          <div className="jarvis-studio-welcome__heading"><span>Creation studio</span><h1>What should we make?</h1><p>Give Jarvis an outcome. Watch the research, copy, visuals, and campaign pieces take shape here before anything is saved or published.</p></div>
+          <div className="jarvis-studio-prompts">
+            <button type="button" onClick={() => setInput("Create a complete campaign with a flyer and social posts for my next program")}><FiLayers /><span><strong>Build a campaign</strong><small>Flyer, positioning, and channel-ready drafts</small></span><FiArrowUpRight /></button>
+            <button type="button" onClick={() => setInput("Design a polished promotional graphic for my next event")}><FiImage /><span><strong>Design a visual</strong><small>Generate an image and review it at full size</small></span><FiArrowUpRight /></button>
+            <button type="button" onClick={() => setInput("Find the right decision-makers for my offer and show me the evidence")}><FiSearch /><span><strong>Research an audience</strong><small>People, sources, and import-ready review</small></span><FiArrowUpRight /></button>
+            <button type="button" onClick={() => setInput("Draft an email and social launch sequence for my next offer")}><FiMail /><span><strong>Write launch content</strong><small>Email and social drafts ready to refine</small></span><FiArrowUpRight /></button>
+          </div>
+          <div className="jarvis-studio-flow"><span>Describe</span><i /><span>Watch Jarvis create</span><i /><span>Review the work</span><i /><span>Save or launch</span></div>
+        </section> : null}
         {messages.filter((msg) => !intentResearchTask || msg.type === "user" || msg.type === "error" || msg.data?.researchQuestion).map((msg) => (
           <div
             key={msg.id}

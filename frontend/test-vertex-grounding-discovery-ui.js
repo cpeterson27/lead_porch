@@ -25,7 +25,7 @@ assert.ok(card.includes("onClick={() => dismissGroundingResult(result._id)}"), "
 assert.ok(card.includes("Citations"), "citations must be visibly labeled for review, not just embedded silently");
 
 // The search handler must guard against empty query, no selected types, or a request already in flight.
-const searchHandlerMatch = source.match(/const runGroundingSearch = async \(\) => \{[\s\S]*?\n  \};/);
+const searchHandlerMatch = source.match(/const runGroundingSearch = async \(\) => \{[\s\S]*?\n {2}\};/);
 assert.ok(searchHandlerMatch, "Could not locate runGroundingSearch");
 assert.ok(/if \(!groundingQuery\.trim\(\) \|\| groundingBusy \|\| !groundingTypes\.length\) return;/.test(searchHandlerMatch[0]), "runGroundingSearch must guard against empty query, no types selected, and duplicate submissions");
 

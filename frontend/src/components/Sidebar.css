@@ -25,6 +25,17 @@
      visible and the toggle is never clipped. */
   overflow: visible;
 }
+
+/* Jarvis-first application shell shared by every authenticated screen. */
+.sidebar{width:248px;gap:.85rem;background:radial-gradient(circle at 20% 0%,rgba(116,87,255,.18),transparent 30%),linear-gradient(180deg,#11131d,#090b12 72%)}
+.sidebar--collapsed{width:86px}
+.sidebar__logo{background:linear-gradient(135deg,var(--ai-violet),var(--ai-cyan));box-shadow:0 12px 30px rgba(93,83,255,.28),inset 0 1px rgba(255,255,255,.25)}
+.sidebar__group-label{color:#5f6375}
+.sidebar__link{border-radius:13px;color:#9195a7}
+.sidebar__link:hover,.sidebar__link--active{color:#fff;background:linear-gradient(120deg,rgba(116,87,255,.22),rgba(41,199,237,.08));border-color:rgba(151,135,255,.22)}
+.sidebar__link--active{box-shadow:inset 3px 0 var(--ai-violet),0 8px 24px rgba(0,0,0,.12)}
+.sidebar__workspace-switcher select{border-radius:13px;background:rgba(255,255,255,.055)}
+.sidebar__collapse-toggle{border-color:rgba(155,140,255,.35);background:linear-gradient(145deg,#2e255f,#11131d 62%);box-shadow:0 8px 22px rgba(0,0,0,.36),inset 0 1px rgba(255,255,255,.25)}
 /* Attached directly to the sidebar's own right edge, vertically
    centered — the same small glossy circular arrow used elsewhere,
    docked to the rail itself rather than floating up in the top bar.

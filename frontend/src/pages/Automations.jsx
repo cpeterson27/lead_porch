@@ -155,8 +155,7 @@ export default function Automations() {
           <p className="eyebrow">Workflows</p>
           <h1>Automations</h1>
           <p>
-            Choose when something happens, any conditions, and what happens
-            next.
+            Choose a starting point, decide who it applies to, and select the follow-up.
           </p>
         </div>
         <span>New workflows start disabled</span>
@@ -225,9 +224,9 @@ export default function Automations() {
               }
             />
           </label>
-          <h3>WHEN</h3>
+          <h3>Start here</h3>
           <label>
-            Something happens
+            What starts this workflow?
             <select
               value={form.trigger}
               onChange={(e) => setForm({ ...form, trigger: e.target.value })}
@@ -239,7 +238,7 @@ export default function Automations() {
               ))}
             </select>
           </label>
-          <h3>IF · optional conditions</h3>
+          <h3>Who should it apply to? <small>Optional</small></h3>
           <label>
             Field
             <select
@@ -291,7 +290,7 @@ export default function Automations() {
               }
             />
           </label>
-          <h3>THEN · next action</h3>
+          <h3>Choose the follow-up</h3>
           <label>
             Action
             <select

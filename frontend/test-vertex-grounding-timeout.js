@@ -24,7 +24,7 @@ assert.ok(frontendTimeoutMs >= 60000 && frontendTimeoutMs <= 120000, `expected a
 // Timeout handling: a response-less client-side timeout (no err.response at
 // all) must get its own friendly message rather than falling through to a
 // generic string with no explanation.
-const tryGroundingMatch = source.match(/const tryGrounding = async \(\) => \{[\s\S]*?\n  \};/);
+const tryGroundingMatch = source.match(/const tryGrounding = async \(\) => \{[\s\S]*?\n {2}\};/);
 assert.ok(tryGroundingMatch, "Could not locate tryGrounding");
 const tryGrounding = tryGroundingMatch[0];
 assert.ok(/err\.code === "ECONNABORTED"/.test(tryGrounding), "a response-less timeout must be detected and given its own friendly message");

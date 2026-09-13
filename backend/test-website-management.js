@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const read = (file) => fs.readFileSync(require.resolve(file), "utf8");
-const model = read("./models/Testimonial"), management = read("./routes/publicManagement"), publicRoute = read("./routes/publicSite"), service = read("./services/publicSiteService"), media = require("./services/imageAssetService");
+const model = read("./models/Testimonial"), management = read("./routes/publicManagement"), publicRoute = read("./routes/publicSite"), service = read("./services/publicSiteService"), media = require("./services/imageAssetService"), apiClient = read("../frontend/src/services/api.js"), siteAdmin = read("../frontend/src/components/PublicSiteAdmin.jsx"), publicSite = read("../frontend/src/pages/PublicSite.jsx");
 for (const field of ["avatarUrl", "resultContext", "featured", "sortOrder", "status"]) assert(model.includes(field));
 assert(/router\.delete\(\s*"\/testimonials\/:id",\s*admin/.test(management));
 assert(/item\.status\s*!==\s*"approved"/.test(management));
@@ -13,5 +13,9 @@ assert(/router\.post\(\s*"\/homepage-media-signature",\s*admin/.test(management)
 assert(model.includes("videoUrl"));
 assert.throws(() => media.validateDataVideo("data:image/png;base64,AAAA"), /MP4, WEBM, or MOV/);
 assert.equal(media.validateDataVideo("data:video/mp4;base64,AAAA").mimeType, "video/mp4");
+assert(apiClient.includes('video/upload'), "homepage video must upload to Cloudinary's video endpoint");
+for (const mime of ["video/mp4", "video/webm", "video/quicktime"]) assert(apiClient.includes(mime), `${mime} must be accepted by the homepage uploader`);
+assert(siteAdmin.includes('Save video settings'), "homepage video settings must have an explicit save action");
+assert(publicSite.includes('controls'), "the public homepage video must provide playback controls");
 for (const privateField of ["approvedBy", "rejectedBy", "contactId", "workspaceId"]) assert(!service.match(new RegExp(`function testimonialProjection\\(item\\).*${privateField}`)), `${privateField} must not be projected publicly`);
 console.log("Canonical testimonial management, approved-only publication, deletion RBAC route and safe public projection passed.");

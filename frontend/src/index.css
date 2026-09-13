@@ -14,17 +14,22 @@
   background: #f4f3ef;
 
   /* Semantic color tokens */
-  --color-canvas: #f4f3ef;
-  --color-surface: #fffefa;
+  --color-canvas: #f7f8fc;
+  --color-surface: #ffffff;
   --color-surface-raised: #ffffff;
-  --color-surface-subtle: #f7f5ef;
-  --color-surface-muted: #ecebe5;
-  --color-border: #dfddd4;
-  --color-border-strong: #c8c6bd;
-  --color-text: #17201f;
-  --color-text-muted: #68716b;
-  --color-text-subtle: #858c87;
-  --color-brand: #1f5c50;
+  --color-surface-subtle: #f5f6fb;
+  --color-surface-muted: #ebeef6;
+  --color-border: #e2e4ee;
+  --color-border-strong: #cfd2df;
+  --color-text: #15161d;
+  --color-text-muted: #696d7d;
+  --color-text-subtle: #8a8d9e;
+  --color-brand: #7057e8;
+  --ai-violet: #7457ff;
+  --ai-cyan: #29c7ed;
+  --ai-emerald: #31c79a;
+  --ai-coral: #f07e58;
+  --ai-ink: #10121a;
   /* Derived FROM --color-brand (not independent hex values) so a
      workspace's chosen "Primary action" branding color — overridden on
      documentElement by WorkspaceThemeContext.jsx — automatically carries
@@ -33,15 +38,15 @@
      green while only --color-brand itself changes. */
   --color-brand-hover: color-mix(in srgb, var(--color-brand) 82%, black);
   --color-brand-soft: color-mix(in srgb, var(--color-brand) 14%, white);
-  --color-info: #285c87;
-  --color-info-soft: #e6f0f8;
-  --color-success: #246c4c;
-  --color-success-soft: #e3f2e9;
+  --color-info: #168db1;
+  --color-info-soft: #e4f8fd;
+  --color-success: #178b68;
+  --color-success-soft: #e6fbf4;
   --color-warning: #8a5a12;
   --color-warning-soft: #f8efd9;
   --color-danger: #b52d32;
   --color-danger-soft: #fbe8e9;
-  --color-focus: #357f70;
+  --color-focus: #7457ff;
   --color-overlay: rgba(11, 27, 24, 0.58);
 
   /* Type scale */
@@ -66,12 +71,12 @@
   --space-10: 2.5rem;
   --radius-sm: 8px;
   --radius-md: 10px;
-  --radius-lg: 14px;
-  --radius-xl: 18px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
   --radius-pill: 999px;
-  --shadow-sm: 0 4px 14px rgba(30, 39, 36, 0.06);
-  --shadow-md: 0 12px 34px rgba(30, 39, 36, 0.08);
-  --shadow-lg: 0 28px 80px rgba(8, 27, 23, 0.24);
+  --shadow-sm: 0 6px 20px rgba(24, 22, 55, 0.055);
+  --shadow-md: 0 16px 42px rgba(24, 22, 55, 0.075);
+  --shadow-lg: 0 30px 90px rgba(19, 16, 48, 0.22);
   --control-height-sm: 36px;
   --control-height-md: 40px;
   --control-height-lg: 46px;
@@ -107,6 +112,29 @@ body {
   min-height: 100vh;
   background: var(--color-canvas);
   color: var(--text);
+}
+
+/* One dashboard voice. Legacy feature styles occasionally specify serif or
+   platform-local stacks; the authenticated product uses the Command Center
+   type system everywhere. */
+.dashboard-content,
+.dashboard-content button,
+.dashboard-content input,
+.dashboard-content textarea,
+.dashboard-content select,
+.dashboard-content h1,
+.dashboard-content h2,
+.dashboard-content h3,
+.dashboard-content h4,
+.dashboard-content h5,
+.dashboard-content h6 {
+  font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+.dashboard-content h1,
+.dashboard-content h2,
+.dashboard-content h3 {
+  text-wrap: balance;
 }
 
 button,

@@ -92,7 +92,7 @@ export function WorkspaceThemeProvider({ children }) {
         document.head.appendChild(link);
       });
     }
-  }, [site, pathname]);
+  }, [site, pathname, publicRoute]);
   const value = useMemo(() => ({ site, loading }), [site, loading]);
   return (
     <WorkspaceThemeContext.Provider value={value}>

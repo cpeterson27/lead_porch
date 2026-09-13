@@ -236,7 +236,7 @@ export default function Discovery() {
   const [trackSignals, setTrackSignals] = useState([]);
   const [trackLoading, setTrackLoading] = useState(false);
   const [trackError, setTrackError] = useState("");
-  const [signalSummary, setSignalSummary] = useState({ total: 0, person: 0, community_partner: 0, organization: 0, intent_signal: 0, public_engagement: 0, needsIdentity: 0, contactReady: 0 });
+  const [, setSignalSummary] = useState({ total: 0, person: 0, community_partner: 0, organization: 0, intent_signal: 0, public_engagement: 0, needsIdentity: 0, contactReady: 0 });
   const [monitorSaving, setMonitorSaving] = useState(false);
   const [monitorRunningId, setMonitorRunningId] = useState("");
   const [signalBusyId, setSignalBusyId] = useState("");
@@ -738,11 +738,12 @@ export default function Discovery() {
 
   const loadAutomaticResearch = async () => {
     try {
-      const [monitorResponse, signalResponse, activityResponse, notificationResponse] = await Promise.all([fetchResearchMonitors(), fetchIntentSignals({ limit: 150 }), fetchResearchActivity({ limit: 100 }), fetchResearchNotifications()]);
+      const [monitorResponse, signalResponse, liveLeadResponse, activityResponse, notificationResponse] = await Promise.all([fetchResearchMonitors(), fetchIntentSignals({ limit: 150 }), fetchIntentSignals({ bucket: "live_lead", limit: 150 }), fetchResearchActivity({ limit: 100 }), fetchResearchNotifications()]);
       setMonitors(monitorResponse.monitors || []);
       setIntentSignals(signalResponse.signals || []);
       setSignalSummary(signalResponse.summary || { total: 0, person: 0, community_partner: 0, organization: 0, intent_signal: 0, needsIdentity: 0, contactReady: 0 });
       setBucketSummary(signalResponse.bucketSummary || { live_lead: 0, watchlist: 0, community_opportunity: 0, rejected: 0 });
+      setTrackSignals(liveLeadResponse.signals || []);
       const focusedSignalId = String(searchParams.get("signalId") || "");
       if (focusedSignalId) {
         const focusedSignal = (signalResponse.signals || []).find((item) => String(item._id) === focusedSignalId);
@@ -758,7 +759,6 @@ export default function Discovery() {
 
   const loadDiscoveryTrack = async (track) => {
     setDiscoveryTrack(track);
-    if (track === "live_lead") return;
     setTrackLoading(true);
     setTrackError("");
     try {
@@ -895,7 +895,7 @@ export default function Discovery() {
     setNotice("Notifications cleared. Monitoring and leads were not changed.");
   };
 
-  const visibleSignals = intentSignals.filter((signal) => {
+  const visibleSignals = trackSignals.filter((signal) => {
     const statusMatches = leadView === "all" ? signal.status !== "dismissed" : signal.status === leadView;
     return statusMatches && (opportunityView === "all" || signal.opportunityType === opportunityView);
   });
@@ -1252,16 +1252,19 @@ export default function Discovery() {
   };
 
   return <div className="discovery-page">
-    <header className="discovery-header discovery-header--minimal"><div><h1>Discovery</h1><p>Find people, listen for buying signals, and review every match.</p></div><button className="notification-button" type="button" onClick={() => setShowNotifications((value) => !value)} aria-expanded={showNotifications} aria-label={`${notifications.filter((item) => !item.readAt).length} discovery updates`}>Updates {notifications.filter((item) => !item.readAt).length ? <span>{notifications.filter((item) => !item.readAt).length}</span> : null}</button></header>
+    <header className="discovery-header discovery-header--minimal discovery-command-hero"><div className="discovery-command-hero__copy"><span className="eyebrow">Intelligence engine</span><h1>Turn market signals<br/>into real opportunities.</h1><p>Jarvis searches, qualifies, and organizes the people showing genuine intent—then guides each result into the right next action.</p><div className="discovery-command-hero__stats"><span><strong>{bucketSummary.live_lead || 0}</strong>ready to review</span><span><strong>{bucketSummary.watchlist || 0}</strong>signals developing</span><span><strong>{monitors.filter((item) => item.enabled).length}</strong>monitors working</span></div></div><div className="discovery-radar" aria-hidden="true"><i/><i/><i/><i/><span>LIVE<br/>SIGNALS</span></div><button className="notification-button" type="button" onClick={() => setShowNotifications((value) => !value)} aria-expanded={showNotifications} aria-label={`${notifications.filter((item) => !item.readAt).length} discovery updates`}>Updates {notifications.filter((item) => !item.readAt).length ? <span>{notifications.filter((item) => !item.readAt).length}</span> : null}</button></header>
 
     {showNotifications ? <div className="notification-overlay" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setShowNotifications(false); }}><section className="notification-panel" role="dialog" aria-modal="true" aria-label="Monitoring notifications"><header><div><strong>Notifications</strong><span>{notifications.filter((item) => !item.readAt).length} unread · select one to open its destination</span></div><div className="notification-panel__controls">{notifications.length ? <button type="button" onClick={clearNotifications}>Clear all</button> : null}<button type="button" onClick={() => setShowNotifications(false)} aria-label="Close notifications">Close ×</button></div></header><div className="notification-list">{notifications.length ? notifications.slice(0, 20).map((item) => <button type="button" key={item._id} className={item.readAt ? "is-read" : ""} onClick={() => openNotification(item)}><strong>{item.type === "source_failure" ? "Some sources are retrying" : item.title}</strong><span>{item.type === "source_failure" ? "Other sources still completed. Select this to open monitoring details." : item.message}</span><small>{new Date(item.createdAt).toLocaleString()} · Open {item.actionUrl ? "Privacy requests" : ["high_score", "published_email", "qualified_lead"].includes(item.type) ? "Live Leads" : "Intent Monitoring"}</small></button>) : <p>No notifications yet.</p>}</div></section></div> : null}
 
     <nav className="discovery-flow-nav" aria-label="Discovery actions">
-      <button type="button" className={activeTab === "people" ? "is-active" : ""} onClick={() => setActiveTab("people")}>Find people</button>
+      <button type="button" className={activeTab === "people" ? "is-active" : ""} onClick={() => setActiveTab("people")}>Find leads</button>
       <button type="button" className={activeTab === "leads" ? "is-active" : ""} onClick={() => setActiveTab("leads")}>Review leads {bucketSummary.live_lead ? <span>{bucketSummary.live_lead}</span> : null}</button>
-      <button type="button" className={activeTab === "monitoring" ? "is-active" : ""} onClick={() => setActiveTab("monitoring")}>LinkedIn listening</button>
-      <details><summary>Other tools</summary><div><button type="button" onClick={() => setActiveTab("company")}>Find companies</button><button type="button" onClick={() => setActiveTab("saved")}>Past searches</button></div></details>
+      <button type="button" className={activeTab === "monitoring" ? "is-active" : ""} onClick={() => setActiveTab("monitoring")}>Automatic searches</button>
+      <button type="button" className={activeTab === "company" ? "is-active" : ""} onClick={() => setActiveTab("company")}>Find companies</button>
+      <button type="button" className={activeTab === "saved" ? "is-active" : ""} onClick={() => setActiveTab("saved")}>Past searches</button>
     </nav>
+
+    <section className="discovery-journey" aria-label="Discovery workflow"><div className={activeTab === "people" ? "is-current" : ""}><span>01</span><strong>Find</strong><small>Build the audience</small></div><i/><div className={activeTab === "monitoring" ? "is-current" : ""}><span>02</span><strong>Listen</strong><small>Capture live intent</small></div><i/><div className={activeTab === "leads" ? "is-current" : ""}><span>03</span><strong>Qualify</strong><small>Review the evidence</small></div><i/><div><span>04</span><strong>Activate</strong><small>Move into outreach</small></div></section>
 
     {notice ? <div className="notice-banner" role="status">{notice}</div> : null}
 
@@ -1279,7 +1282,8 @@ export default function Discovery() {
       </section> : null}
     </DashboardCard></> : null}
 
-    {activeTab === "monitoring" ? <><section className="discovery-section-heading"><div><span>LinkedIn listening</span><h2>Profiles and topics to watch</h2><p>Add your LinkedIn URL, a competitor, and a teammate or expert below. Lead Porch checks publicly indexed activity only.</p></div></section>
+    {activeTab === "monitoring" ? <><section className="discovery-section-heading"><div><span>Signal monitors</span><h2>Listen for movement that matters</h2><p>Each monitor turns public activity into a clear outcome: a lead to review, a partnership opening, or a market insight. Nothing is contacted automatically.</p></div></section>
+    <section className="linkedin-intelligence-grid"><article><span>01</span><strong>Public LinkedIn profiles to watch</strong><p>Lead Porch checks publicly indexed activity only, connected to the URLs and topics you provide.</p></article><article><span>02</span><strong>Extract useful signals</strong><p>Jarvis looks for audience questions, competitor positioning, engagement themes, organizers, and visible buying intent.</p></article><article><span>03</span><strong>Route the outcome</strong><p>Qualified people move to Live Leads; organizations become partnership opportunities; themes inform campaigns and content.</p></article></section>
     <details className="monitor-performance-drawer"><summary>Search performance and recommendations</summary><DashboardCard title="Search quality — measured by enrollments and revenue, not raw volume" action={<div className="lead-view-tabs"><Button variant="outline" size="sm" loading={monitorPerformanceLoading} onClick={loadMonitorPerformance}>Refresh</Button><Button size="sm" disabled={strategyBusy} onClick={runStrategyRecommendations}>{strategyBusy ? "Analyzing…" : "Get AI strategy recommendations"}</Button></div>}>
       {!monitorPerformance ? <p>Loading monitor performance…</p> : <div className="monitor-performance-table"><table><thead><tr><th>Monitor</th><th>Candidates</th><th>Live leads</th><th>Rejected</th><th>Enrolled</th><th>Won revenue</th></tr></thead><tbody>{monitorPerformance.performance.map((row) => <tr key={row.monitorId}><td>{row.name}{!row.enabled ? <small> (disabled)</small> : null}</td><td>{row.totalCandidates}</td><td>{row.buckets.live_lead}</td><td>{row.rejectionRate}%</td><td>{row.enrolled}</td><td>${row.wonRevenue.toLocaleString()}</td></tr>)}</tbody></table></div>}
       {monitorPerformance?.recommendations?.length ? <div className="monitor-recommendations"><strong>Recommendations</strong><ul>{monitorPerformance.recommendations.map((rec, index) => <li key={index}><b>{rec.monitorName}:</b> {rec.detail}</li>)}</ul></div> : null}
@@ -1318,7 +1322,7 @@ export default function Discovery() {
     <details className="activity-drawer"><summary>View monitoring activity</summary><p className="activity-help">This is an optional audit trail. Source retries are informational; you do not need to fix them.</p><div className="monitor-timeline">{monitorActivity.length ? monitorActivity.slice(0, 20).map((item) => <article key={item._id} className={`is-${item.type}`}><span></span><div><strong>{friendlyActivityMessage(item)}</strong><small>{new Date(item.createdAt).toLocaleString()}</small></div></article>) : <p>No activity yet.</p>}</div></details></> : null}
 
     {activeTab === "leads" ? <><section className="discovery-section-heading"><div><span>Review leads</span><h2>{bucketSummary.live_lead} live lead{bucketSummary.live_lead === 1 ? "" : "s"}</h2><p>{intentSignals.length} lead records are loaded below. Choose a view to review or continue their next action.</p></div></section>
-    <section className="discovery-track-tabs" aria-label="Discovery track">{[["live_lead", "Live Leads", bucketSummary.live_lead], ["watchlist", "Watchlist", bucketSummary.watchlist], ["community_opportunity", "Community Opportunities", bucketSummary.community_opportunity], ["rejected", "Rejected", bucketSummary.rejected]].map(([id, label, count]) => <button key={id} type="button" className={discoveryTrack === id ? "is-active" : ""} onClick={() => loadDiscoveryTrack(id)}>{label} {count}</button>)}</section>
+    <section className="discovery-track-tabs" aria-label="Discovery track">{[["live_lead", "Live Leads", bucketSummary.live_lead], ["watchlist", "Watchlist", bucketSummary.watchlist], ["community_opportunity", "Community Opportunities", bucketSummary.community_opportunity], ["rejected", "Rejected", bucketSummary.rejected]].map(([id, label, count]) => <button key={id} type="button" className={discoveryTrack === id ? "is-active" : ""} onClick={() => loadDiscoveryTrack(id)}><span>{label}</span><strong>{count}</strong></button>)}</section>
     {discoveryTrack !== "live_lead" ? <DashboardCard title={discoveryTrack === "watchlist" ? "Watchlist — relevant people without confirmed current intent" : discoveryTrack === "community_opportunity" ? "Community Opportunities" : "Rejected — recorded reason for every irrelevant result"}>
       {trackError ? <p className="form-error" role="alert">{trackError}</p> : null}
       {trackLoading ? <p>Loading…</p> : trackSignals.length ? <div className="intent-signal-list">{trackSignals.map((signal) => <article key={signal._id} className="track-signal">
@@ -1335,7 +1339,7 @@ export default function Discovery() {
         </div>
       </article>)}</div> : <div className="friendly-empty"><strong>Nothing here yet</strong><p>{discoveryTrack === "rejected" ? "Rejected results and their reasons will appear here as monitors run." : discoveryTrack === "watchlist" ? "People with relevant background but no confirmed current need will appear here." : "Public community groups, organizers, and partners will appear here as monitors run."}</p></div>}
     </DashboardCard> : <>
-    <DashboardCard title="Research Agent: weekly Discovery brief" action={<Button variant="outline" size="sm" disabled={weeklyBriefBusy} onClick={runWeeklyBrief}>{weeklyBriefBusy ? "Summarizing…" : "Summarize this week's findings"}</Button>}>
+    <DashboardCard title="Jarvis weekly intelligence brief" action={<Button variant="outline" size="sm" disabled={weeklyBriefBusy} onClick={runWeeklyBrief}>{weeklyBriefBusy ? "Summarizing…" : "Summarize this week's findings"}</Button>}>
       <p className="weekly-brief-note">AI assistance only, grounded in this week's real Discovery signals. Nothing is contacted or added to CRM automatically.</p>
       {weeklyBriefError ? <p className="form-error" role="alert">{weeklyBriefError}</p> : null}
       {weeklyBrief ? <div className="weekly-brief-result">
@@ -1344,7 +1348,7 @@ export default function Discovery() {
         {weeklyBrief.data.recommendedFollowUps?.length ? <><strong>Recommended follow-ups</strong><ul>{weeklyBrief.data.recommendedFollowUps.map((item, index) => <li key={index}>{item}</li>)}</ul></> : null}
       </div> : null}
     </DashboardCard>
-    <section className="lead-type-tabs" aria-label="Opportunity type"><button type="button" className={opportunityView === "all" ? "is-active" : ""} onClick={() => setOpportunityView("all")}>All {signalSummary.total}</button><button type="button" className={opportunityView === "person" ? "is-active" : ""} onClick={() => setOpportunityView("person")}>People {signalSummary.person}</button><button type="button" className={opportunityView === "community_partner" ? "is-active" : ""} onClick={() => setOpportunityView("community_partner")}>Communities {signalSummary.community_partner}</button><button type="button" className={opportunityView === "organization" ? "is-active" : ""} onClick={() => setOpportunityView("organization")}>Organizations {signalSummary.organization}</button><button type="button" className={opportunityView === "intent_signal" ? "is-active" : ""} onClick={() => setOpportunityView("intent_signal")}>Intent signals {signalSummary.intent_signal}</button></section>
+    <section className="lead-type-tabs" aria-label="Opportunity type">{[["all","All"],["person","People"],["community_partner","Communities"],["organization","Organizations"],["intent_signal","Intent signals"]].map(([id,label]) => { const count = id === "all" ? trackSignals.length : trackSignals.filter((signal) => signal.opportunityType === id).length; return <button type="button" key={id} className={opportunityView === id ? "is-active" : ""} onClick={() => setOpportunityView(id)}><span>{label}</span><strong>{count}</strong></button>; })}</section>
     <section className="lead-workflow"><div><strong>People</strong><span>Verify the evidence and email, then add to CRM and prepare outreach.</span></div><div><strong>Communities</strong><span>Find the organizer and prepare a partnership request—not a member scrape.</span></div><div><strong>Organizations & intent</strong><span>Identify a real decision-maker before treating the result as contactable.</span></div></section>
     <DashboardCard title="Opportunity review" action={<div className="lead-view-tabs"><button type="button" className={leadView === "new" ? "is-active" : ""} onClick={() => setLeadView("new")}>Needs a decision</button><button type="button" className={leadView === "qualified" ? "is-active" : ""} onClick={() => setLeadView("qualified")}>Saved</button><button type="button" className={leadView === "all" ? "is-active" : ""} onClick={() => setLeadView("all")}>All active</button></div>}>
       {visibleSignals.length ? <div className="intent-signal-list">{visibleSignals.map((signal) => { const account = publicAccount(signal); const hasIdentifiedPerson = Boolean(identifiedPersonName(signal)); const identityResult = identityResults[signal._id]; return <article key={signal._id} className={`is-${signal.status}`}>
@@ -1438,11 +1442,11 @@ export default function Discovery() {
                   type="button"
                   className={`leadgen-pill${isSelected ? " is-selected" : ""}${isAvailable ? "" : " is-disabled"}`}
                   aria-pressed={isSelected}
-                  disabled={!isAvailable || leadGenProposeBusy}
+                  disabled={leadGenProposeBusy}
                   title={isAvailable ? "" : (availability?.reason || "Not currently available")}
-                  onClick={() => toggleLeadGenSource(key)}
+                  onClick={() => isAvailable ? toggleLeadGenSource(key) : navigate("/settings/ai-acquisition")}
                 >
-                  {label}
+                  {label}{isAvailable ? "" : " · Set up"}
                 </button>
               );
             })}
@@ -1469,13 +1473,13 @@ export default function Discovery() {
         </details>
 
         <div className="people-search-launcher">
-          <details className="leadgen-optional-request"><summary>Optional: give Jarvis extra direction</summary><label><span>Only use this if you want to narrow the program&apos;s normal audience</span><textarea value={leadGenRequest} onChange={(event) => setLeadGenRequest(event.target.value)} placeholder="For example: Focus on buyers in Texas" disabled={leadGenProposeBusy} /></label></details>
+          <label className="leadgen-audience-focus"><span>Audience focus</span><small>Jarvis filled this from your chosen program. Change it only when you want a narrower search.</small><input value={leadGenRequest} onChange={(event) => setLeadGenRequest(event.target.value)} placeholder="Who should Jarvis find?" disabled={leadGenProposeBusy} /></label>
           <div>
             <Button disabled={!leadGenRequest.trim() || !leadGenSelectedSources.length} loading={leadGenProposeBusy} onClick={proposeLeadGenSearch}>
               {leadGenProposeBusy ? "Building your plan…" : "Build my search plan"}
             </Button>
           </div>
-          {!leadGenSelectedSources.length ? <p className="form-error">Select at least one available source above.</p> : null}
+          {!leadGenSelectedSources.length ? <p className="leadgen-source-step"><strong>Choose a research source to continue</strong><span>Open Search settings and select any available provider. Unavailable providers remain disabled automatically.</span></p> : null}
           {leadGenError ? <p className="form-error">{leadGenError}</p> : null}
         </div>
 
@@ -1575,7 +1579,7 @@ export default function Discovery() {
       </DashboardCard>
 
       <details className="discovery-specialized-tools">
-        <summary>Specialized search tools <small>Optional — most people will not need these</small></summary>
+        <summary>Advanced research lab <small>Custom provider searches for research teams</small></summary>
         <p>These are direct provider controls for research professionals. They are separate from the guided program search above and are hidden so they do not interrupt the normal workflow.</p>
       <details className="leadgen-advanced-search">
         <summary>Direct public-web search</summary>
@@ -1700,7 +1704,7 @@ export default function Discovery() {
               <Button size="sm" variant="outline" onClick={selectAllNewFromRun}>Select all new from this run</Button>
               <Button size="sm" variant="outline" onClick={selectAllVisible}>Select all visible</Button>
               <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} onClick={clearGroundingSelection}>Clear selection</Button>
-              <span className="review-queue-selected-count">{selectedGroundingIds.length} selected of {visibleGroundingResults.length} shown</span>
+              <span className="review-queue-selected-count"><strong>{selectedGroundingIds.length}</strong> selected · <strong>{visibleGroundingResults.length}</strong> matching filters · {groundingResults.length} total pending</span>
               <Button size="sm" disabled={!selectedGroundingIds.length} loading={qualifyBusy} onClick={qualifySelectedGroundingResults}>
                 Have Jarvis qualify {selectedGroundingIds.length || ""} selected leads
               </Button>
@@ -1754,7 +1758,7 @@ export default function Discovery() {
 
                 <small>{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
                 {result.linkedinUrl ? <small><a href={result.linkedinUrl} target="_blank" rel="noreferrer">Profile URL ↗</a></small> : null}
-                {result.email ? <small>Contact: {result.email} ({result.emailVerificationStatus || result.emailState || "unverified"})</small> : <small className="review-card__missing">No contact information yet</small>}
+                {result.email ? <small>Contact: {result.email} ({result.emailVerificationStatus || result.emailState || "unverified"})</small> : <small className="review-card__missing">Public lead found · verified contact not supplied</small>}
                 {result.type === "person" && result.discoveryMode !== "icp_match" ? (
                   <small>{result.evidenceDate ? `Evidence date: ${new Date(result.evidenceDate).toLocaleDateString()} (${result.evidenceAgeDays} day${result.evidenceAgeDays === 1 ? "" : "s"} old)` : "No verifiable evidence date"}{result.freshnessTier ? ` · ${result.freshnessTier}` : ""}</small>
                 ) : result.discoveryMode === "icp_match" ? <small>Structured database match — not a dated public post, never described as recent intent.</small> : null}

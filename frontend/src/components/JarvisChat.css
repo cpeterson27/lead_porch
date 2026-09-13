@@ -533,3 +533,60 @@
 .jarvis-messages{grid-column:1!important;grid-row:2!important;padding:clamp(1rem,3vw,2.25rem) clamp(1rem,7vw,6rem)!important}.jarvis-input-form{grid-column:1!important;grid-row:3!important;margin:0 clamp(1rem,7vw,6rem) 1rem!important}
 .jarvis-persona-panel{grid-column:1!important;grid-row:2!important;z-index:20!important;margin:1rem clamp(1rem,7vw,6rem)!important;border-radius:22px!important}
 @media(max-width:700px){.jarvis-chat-container{height:100dvh!important}.jarvis-conversation-toolbar{padding:.75rem 4.25rem .75rem .75rem}.jarvis-conversation-identity small{display:none}.jarvis-conversation-toolbar>div:last-child button{padding:.55rem .7rem}.jarvis-conversation-toolbar>div:last-child button:last-child{display:none}.jarvis-input-form{margin:.5rem!important}.jarvis-messages{padding:.8rem!important}}
+
+/* Jarvis Creation Studio — the visual intelligence and the work belong in
+   the same room. This final layer intentionally restores the animated core. */
+.jarvis-chat-container{
+  position:relative;
+  grid-template-columns:minmax(280px,var(--jarvis-visual-width,44%)) minmax(0,1fr)!important;
+  grid-template-rows:auto minmax(0,1fr) auto!important;
+  height:calc(100dvh - 88px)!important;
+  overflow:hidden;
+  border:1px solid rgba(116,87,255,.12);
+  border-radius:28px;
+  background:#f7f8fc!important;
+  box-shadow:0 30px 90px rgba(26,22,67,.11);
+}
+.jarvis-resize-handle{position:absolute;z-index:30;top:50%;left:var(--jarvis-visual-width,44%);display:grid;place-items:center;width:30px;height:64px;padding:0;border:1px solid rgba(151,133,255,.5);border-radius:999px;color:#fff;background:linear-gradient(180deg,#6e52e8,#322282);box-shadow:0 10px 30px rgba(44,30,123,.35);cursor:col-resize;transform:translate(-50%,-50%);touch-action:none}.jarvis-resize-handle span{font-size:1.25rem;line-height:1;transform:rotate(90deg)}
+.jarvis-header{
+  display:flex!important;
+  grid-column:1!important;
+  grid-row:1/4!important;
+  min-height:0!important;
+  border-right:1px solid rgba(164,205,255,.13);
+}
+.jarvis-header{background:radial-gradient(ellipse at 20% 10%,rgba(113,54,255,.4),transparent 40%),radial-gradient(ellipse at 80% 80%,rgba(27,203,195,.2),transparent 44%),radial-gradient(circle at 50% 48%,rgba(104,65,255,.2),transparent 31%),linear-gradient(145deg,#080616 0%,#17103d 48%,#07161f 100%)!important}
+.jarvis-core-light{background:radial-gradient(circle at 38% 34%,#fff 0 6%,#9cdff6 13%,#7752ff 42%,#15103f 74%)!important;box-shadow:0 0 38px rgba(147,111,255,.95),0 0 125px rgba(106,68,255,.72),0 0 230px rgba(36,205,200,.35)!important}
+.jarvis-visualizer{justify-content:center!important;padding:5rem 1.5rem 2rem!important;transform:none!important}
+.jarvis-core{width:clamp(250px,28vw,440px)!important;height:clamp(250px,28vw,440px)!important;margin:0!important}
+.jarvis-visual-state{bottom:8.8rem!important;top:auto!important}
+.jarvis-visual-greeting{bottom:5.65rem!important;max-width:390px!important;font-size:clamp(.84rem,1.25vw,1rem)!important}
+.jarvis-primary-talk{bottom:1.75rem!important}
+.jarvis-conversation-toolbar{grid-column:2!important;grid-row:1!important;padding:1rem 1.5rem;background:rgba(255,255,255,.78);border-bottom:1px solid rgba(35,30,82,.08)}
+.jarvis-messages{grid-column:2!important;grid-row:2!important;padding:clamp(1.25rem,3vw,2.5rem)!important;background:radial-gradient(700px 420px at 0 0,rgba(41,199,237,.09),transparent 60%),radial-gradient(600px 400px at 100% 100%,rgba(116,87,255,.09),transparent 58%),#f8f9fd!important}
+.jarvis-input-form{grid-column:2!important;grid-row:3!important;margin:0 1.5rem 1.25rem!important;border-color:rgba(116,87,255,.16)!important;box-shadow:0 20px 55px rgba(34,26,93,.12)!important}
+.jarvis-send-btn{background:linear-gradient(135deg,#7457ff,#5269ed)!important;box-shadow:0 10px 25px rgba(103,82,235,.28)}
+.jarvis-mini-core{background:radial-gradient(circle at 35% 30%,#fff 0 5%,#51d9f0 17%,#7457ff 49%,#11152e 80%)!important;box-shadow:0 0 28px rgba(116,87,255,.36),inset 0 1px rgba(255,255,255,.5)!important}
+.jarvis-studio-welcome{display:grid;gap:1.5rem;max-width:900px;margin:auto;padding:clamp(.25rem,2vw,1.5rem)}
+.jarvis-studio-welcome__heading>span{color:#7057e8;font-size:.68rem;font-weight:850;letter-spacing:.14em;text-transform:uppercase}
+.jarvis-studio-welcome__heading h1{margin:.45rem 0 .65rem;color:#15161d;font-size:clamp(2rem,4.2vw,4rem);letter-spacing:-.06em;line-height:.98}
+.jarvis-studio-welcome__heading p{max-width:670px;margin:0;color:#696d7d;font-size:clamp(.88rem,1.25vw,1.02rem);line-height:1.6}
+.jarvis-studio-prompts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.75rem}
+.jarvis-studio-prompts button{display:grid;grid-template-columns:auto 1fr auto;align-items:start;gap:.8rem;padding:1rem;border:1px solid rgba(37,31,88,.1);border-radius:18px;background:rgba(255,255,255,.72);color:#171822;text-align:left;cursor:pointer;box-shadow:0 10px 30px rgba(34,26,93,.05);transition:transform .2s ease,border-color .2s ease,box-shadow .2s ease}
+.jarvis-studio-prompts button:hover{transform:translateY(-3px);border-color:rgba(116,87,255,.36);box-shadow:0 18px 42px rgba(61,47,145,.12)}
+.jarvis-studio-prompts button>svg:first-child{padding:.58rem;border-radius:12px;background:linear-gradient(135deg,rgba(116,87,255,.13),rgba(41,199,237,.14));color:#674fea;font-size:1.15rem;box-sizing:content-box}
+.jarvis-studio-prompts button>svg:last-child{color:#9295a4;margin-top:.55rem}
+.jarvis-studio-prompts span{display:grid;gap:.25rem}.jarvis-studio-prompts strong{font-size:.9rem}.jarvis-studio-prompts small{color:#747889;line-height:1.4}
+.jarvis-studio-flow{display:flex;align-items:center;gap:.7rem;color:#777b8c;font-size:.67rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em}
+.jarvis-studio-flow i{height:1px;flex:1;background:linear-gradient(90deg,rgba(116,87,255,.35),rgba(41,199,237,.25))}
+.jarvis-generated-image img{max-width:680px;border-color:rgba(116,87,255,.18);box-shadow:0 24px 70px rgba(42,31,112,.16)}
+.jarvis-package-preview{border-color:rgba(116,87,255,.15);box-shadow:0 24px 70px rgba(42,31,112,.12)}
+.jarvis-package-preview>header{background:linear-gradient(135deg,rgba(116,87,255,.1),rgba(41,199,237,.07),#fff)}
+.jarvis-package-preview>button{background:linear-gradient(135deg,#7457ff,#5269ed)}
+@media(max-width:1050px){.jarvis-chat-container{grid-template-columns:minmax(260px,var(--jarvis-visual-width,38%)) minmax(0,1fr)!important}.jarvis-core{width:240px!important;height:240px!important}.jarvis-studio-prompts{grid-template-columns:1fr}.jarvis-studio-flow{display:none}}
+@media(max-width:760px){.jarvis-chat-container{display:flex!important;height:auto!important;min-height:100dvh!important;overflow:visible;border:0;border-radius:0}.jarvis-resize-handle{display:none}.jarvis-header{min-height:280px!important;order:1;border:0}.jarvis-core{width:180px!important;height:180px!important}.jarvis-visualizer{padding:3.5rem 1rem 1rem!important}.jarvis-visual-state{bottom:2.8rem!important}.jarvis-visual-greeting,.jarvis-primary-talk{display:none}.jarvis-conversation-toolbar{order:2}.jarvis-messages{order:3;min-height:440px!important}.jarvis-input-form{order:4;margin:.6rem!important}.jarvis-studio-welcome{padding:.5rem}.jarvis-studio-welcome__heading h1{font-size:2.3rem}.jarvis-studio-prompts{grid-template-columns:1fr}}
+
+/* The dashboard shell already owns the viewport. Fill that exact space so the
+   Jarvis stage ends flush with the screen instead of reserving a phantom bar. */
+.jarvis-page-shell,.jarvis-page-shell .jarvis-chat-container{height:100%!important;min-height:0!important}
+.jarvis-page-shell .jarvis-chat-container{border-radius:0!important;border-block:0!important}

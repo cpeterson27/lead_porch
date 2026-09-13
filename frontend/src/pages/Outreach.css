@@ -98,6 +98,9 @@
   min-width: 280px;
   flex: 1;
 }
+
+/* Command Center visual system */
+.outreach-page{max-width:1580px}.outreach-header{min-height:230px;align-items:end;padding:clamp(28px,4vw,54px);border:1px solid rgba(255,255,255,.12);border-radius:28px;background:radial-gradient(circle at 85% 20%,rgba(41,199,237,.2),transparent 28%),radial-gradient(circle at 15% 0,rgba(116,87,255,.3),transparent 42%),linear-gradient(135deg,#10121f,#1b1934);box-shadow:0 28px 80px rgba(28,24,70,.18)}.outreach-eyebrow{color:#68dff0}.outreach-header p:last-child{color:#b8bbcd}.outreach-header .btn--outline{background:rgba(255,255,255,.08);border-color:rgba(255,255,255,.18)}.outreach-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}.outreach-summary>*{border-color:rgba(47,42,102,.08)!important;border-radius:18px!important;background:#fff!important;box-shadow:0 14px 38px rgba(36,29,93,.06)}.outreach-controls{border-color:rgba(47,42,102,.08);border-radius:18px;background:rgba(255,255,255,.82);box-shadow:0 14px 38px rgba(36,29,93,.055)}.outreach-page .dashboard-card{border-color:rgba(47,42,102,.08);border-radius:22px;box-shadow:0 18px 48px rgba(36,29,93,.06)}@media(max-width:850px){.outreach-summary{grid-template-columns:repeat(2,1fr)}}
 .outreach-search {
   width: min(440px, 100%);
 }
@@ -513,3 +516,5 @@
   .outreach-mailbox .outreach-item__actions { justify-self: stretch; }
   .outreach-mailbox .outreach-item__actions .btn:first-child { width: 100%; }
 }
+.outreach-page{max-width:1580px}.outreach-header{min-height:230px!important;border-color:rgba(255,255,255,.12)!important;border-radius:28px!important;background:radial-gradient(circle at 85% 20%,rgba(41,199,237,.2),transparent 28%),radial-gradient(circle at 15% 0,rgba(116,87,255,.3),transparent 42%),linear-gradient(135deg,#10121f,#1b1934)!important;box-shadow:0 28px 80px rgba(28,24,70,.18)}.outreach-eyebrow{color:#68dff0!important}.outreach-page .dashboard-card,.outreach-controls{border-color:rgba(47,42,102,.08)!important;border-radius:20px!important;box-shadow:0 16px 44px rgba(36,29,93,.06)!important}
+.outreach-page,.outreach-page h1,.outreach-page h2,.outreach-page h3,.outreach-page button,.outreach-page input,.outreach-page select{font-family:var(--font-sans,Inter,ui-sans-serif,system-ui,sans-serif)!important}.outreach-page select,.outreach-page input{border-radius:999px!important}.outreach-page .btn,.outreach-page button{border-radius:999px}.outreach-header{box-shadow:none!important}

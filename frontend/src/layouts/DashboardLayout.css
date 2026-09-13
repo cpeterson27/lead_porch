@@ -1,11 +1,11 @@
 .dashboard-shell {
   display: grid;
-  grid-template-columns: 236px 1fr;
+  grid-template-columns: 248px 1fr;
   min-height: 100vh;
-  background: var(--app-background, #f4f2ed);
+  background: var(--app-background, var(--color-canvas));
   position: relative;
 }
-.dashboard-shell--collapsed{grid-template-columns:78px 1fr}.dashboard-shell--collapsed .dashboard-view{grid-column:2}
+.dashboard-shell--collapsed{grid-template-columns:86px 1fr}.dashboard-shell--collapsed .dashboard-view{grid-column:2}
 
 .dashboard-view {
   grid-column: 2;
@@ -20,7 +20,7 @@
 
 .dashboard-content {
   flex: 1;
-  padding: 1.6rem 2rem 3rem;
+  padding: 1.8rem clamp(1.25rem,3vw,2.6rem) 3.5rem;
   width: 100%;
   min-width: 0;
   overflow-x: clip;
@@ -56,3 +56,13 @@
     z-index: 30;
   }
 }
+
+.dashboard-ask-jarvis{border-color:rgba(163,151,255,.42);color:#fff;background:linear-gradient(125deg,#151724,#4030a2 70%,#087e87);box-shadow:0 18px 48px rgba(51,39,135,.3),inset 0 1px rgba(255,255,255,.2);transition:transform .2s,box-shadow .2s}.dashboard-ask-jarvis:hover{transform:translateY(-3px);box-shadow:0 24px 58px rgba(51,39,135,.38)}.dashboard-ask-jarvis i{width:7px;height:7px;background:#62f2be;box-shadow:0 0 14px #62f2be;animation:dashboard-jarvis-pulse 2s ease-out infinite}@keyframes dashboard-jarvis-pulse{0%{box-shadow:0 0 0 0 rgba(98,242,190,.7)}100%{box-shadow:0 0 0 10px rgba(98,242,190,0)}}
+@media(prefers-reduced-motion:reduce){.dashboard-ask-jarvis,.dashboard-ask-jarvis i{animation:none;transition:none}}
+
+/* Jarvis is a destination, not a card inside another page. */
+.dashboard-content:has(.jarvis-page-shell){padding:0;overflow:hidden}
+.dashboard-view:has(.jarvis-page-shell) .dashboard-ask-jarvis{display:none}
+.dashboard-content:has(.jarvis-page-shell) .jarvis-chat-container{height:100vh!important;border:0;border-radius:0}
+@media(max-width:900px){.dashboard-content:has(.jarvis-page-shell){padding:0}.dashboard-content:has(.jarvis-page-shell) .jarvis-chat-container{min-height:100dvh!important}}
+.dashboard-content:has(.jarvis-page-shell){height:100dvh;min-height:0}.dashboard-content:has(.jarvis-page-shell) .jarvis-page-shell{height:100%;min-height:0}

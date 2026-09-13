@@ -297,7 +297,18 @@ export default function PublicSiteAdmin({ section = "website" }) {
   };
   const uploadHomepageVideo = async (file) => {
     if (!file) return;
-    if (!file.type.startsWith("video/") || file.size > 75 * 1024 * 1024)
+    const supportedType = [
+      "video/mp4",
+      "video/webm",
+      "video/quicktime",
+    ].includes(file.type);
+    const supportedExtension =
+      file.type === "" && /\.(mp4|webm|mov)$/i.test(file.name);
+    if (
+      file.size <= 0 ||
+      (!supportedType && !supportedExtension) ||
+      file.size > 75 * 1024 * 1024
+    )
       return setError("Choose an MP4, WEBM, or MOV video up to 75 MB.");
     try {
       setUploading("introVideoUrl");
@@ -306,8 +317,11 @@ export default function PublicSiteAdmin({ section = "website" }) {
       patchPublic("introVideoUrl", asset.url);
       setMessage("Homepage video uploaded. Save to publish the change.");
     } catch (err) {
+      const uploadError = err.response?.data?.error;
       setError(
-        err.response?.data?.error || "Unable to upload the homepage video.",
+        (typeof uploadError === "string" ? uploadError : uploadError?.message) ||
+          err.message ||
+          "Unable to upload the homepage video.",
       );
     } finally {
       setUploading("");
@@ -967,9 +981,11 @@ export default function PublicSiteAdmin({ section = "website" }) {
                     disabled={Boolean(uploading)}
                     type="file"
                     accept="video/mp4,video/webm,video/quicktime"
-                    onChange={(event) =>
-                      uploadHomepageVideo(event.target.files?.[0])
-                    }
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      uploadHomepageVideo(file);
+                    }}
                   />
                 </label>
               </div>

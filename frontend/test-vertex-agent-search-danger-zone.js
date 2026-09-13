@@ -30,7 +30,7 @@ assert.ok(/disabled=\{purgeConfirmText !== "PURGE"\}/.test(source), "The Confirm
 assert.ok(/if \(purgeConfirmText !== "PURGE"\) return;/.test(source), "confirmPurgeAgentSearchIndex must itself refuse to call the API unless the typed text is exactly \"PURGE\"");
 
 // Successful confirmation: must call the real API and then reset state so a repeat click can't double-fire.
-const confirmHandlerMatch = source.match(/const confirmPurgeAgentSearchIndex = async \(\) => \{[\s\S]*?\n  \};/);
+const confirmHandlerMatch = source.match(/const confirmPurgeAgentSearchIndex = async \(\) => \{[\s\S]*?\n {2}\};/);
 assert.ok(confirmHandlerMatch, "Could not locate confirmPurgeAgentSearchIndex");
 const confirmHandler = confirmHandlerMatch[0];
 assert.ok(confirmHandler.includes("await purgeVertexAgentSearchIndex();"), "Confirming must call the real purge API");

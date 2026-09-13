@@ -320,6 +320,23 @@ export const uploadHomepageVideo = async (file) => {
   const signed = await api
     .post("/public-management/homepage-media-signature")
     .then((res) => res.data.data);
+  const allowedTypes = new Set([
+    "video/mp4",
+    "video/webm",
+    "video/quicktime",
+  ]);
+  const hasSupportedExtension = /\.(mp4|webm|mov)$/i.test(file?.name || "");
+  if (!file || file.size <= 0) {
+    throw new Error("Choose a video file that is not empty.");
+  }
+  if (!allowedTypes.has(file.type) && !(file.type === "" && hasSupportedExtension)) {
+    throw new Error("Choose an MP4, WEBM, or MOV video.");
+  }
+  if (file.size > signed.maxBytes) {
+    throw new Error(
+      `This video is too large. The upload limit is ${Math.round(signed.maxBytes / 1024 / 1024)} MB.`,
+    );
+  }
   const body = new FormData();
   body.append("file", file);
   body.append("api_key", signed.apiKey);
