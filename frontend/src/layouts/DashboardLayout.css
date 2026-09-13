@@ -15,7 +15,7 @@
   flex-direction: column;
   min-width: 0;
   overflow-x: clip;
-  padding-top: 88px;
+  padding-top: 0;
 }
 
 .dashboard-content {
@@ -30,16 +30,7 @@
   display: none;
 }
 
-.dashboard-view .navbar {
-  position: fixed;
-  inset: 0 0 auto 236px;
-  width: auto;
-  z-index: 35;
-}
-
-.dashboard-shell--collapsed .dashboard-view .navbar {
-  left: 78px;
-}
+.dashboard-mobile-menu{display:none}.dashboard-ask-jarvis{position:fixed;right:22px;bottom:22px;z-index:35;display:inline-flex;align-items:center;gap:.55rem;min-height:50px;padding:0 18px;border:1px solid rgba(255,255,255,.2);border-radius:999px;color:#effff9;background:linear-gradient(120deg,#173b32,#0e2923);box-shadow:0 16px 44px rgba(8,39,32,.25),inset 0 1px rgba(255,255,255,.15);backdrop-filter:blur(20px);font:inherit;font-size:.8rem;font-weight:800;cursor:pointer}.dashboard-ask-jarvis i{width:6px;height:6px;border-radius:50%;background:#68e7bd;box-shadow:0 0 12px #68e7bd}
 
 @media (max-width: 900px) {
   .dashboard-shell {
@@ -48,17 +39,14 @@
 
   .dashboard-view {
     grid-column: 1;
-    padding-top: 76px;
-  }
-
-  .dashboard-view .navbar,
-  .dashboard-shell--collapsed .dashboard-view .navbar {
-    left: 0;
+    padding-top: 0;
   }
 
   .dashboard-content {
-    padding: 1.25rem 1rem 2rem;
+    padding: 4.5rem 1rem 2rem;
   }
+
+  .dashboard-mobile-menu{position:fixed;top:14px;left:14px;z-index:29;display:inline-flex;align-items:center;justify-content:center;width:42px;height:42px;padding:0;border:1px solid rgba(255,255,255,.35);border-radius:50%;color:#fff;background:linear-gradient(145deg,#353936,#111412 58%,#050606);box-shadow:0 8px 22px rgba(8,20,17,.35),inset 0 1px rgba(255,255,255,.35);font-size:1.1rem}.dashboard-ask-jarvis{right:14px;bottom:14px}
 
   .dashboard-overlay {
     display: block;

@@ -743,7 +743,7 @@ export default function JarvisChat() {
         <p className="jarvis-intent-task__outcome"><strong>Possible result:</strong> Jarvis may find a supported name and published contact, or conclude that the Reddit account cannot be safely connected to a real person. In that case, the only responsible contact method is a manual public reply or platform message—never a guessed email.</p>
       </section> : null}
 
-      {!intentResearchTask ? <div className="jarvis-conversation-toolbar"><div><span>Jarvis</span><strong>Your AI workspace</strong></div><div><button type="button" onClick={startNewConversation}><FiPlus /> New conversation</button><button type="button" onClick={() => setProfileOpen((value) => !value)}>Personalize</button></div></div> : null}
+      {!intentResearchTask ? <div className="jarvis-conversation-toolbar"><div className="jarvis-conversation-identity"><button type="button" className={`jarvis-mini-core is-${visualState}`} onClick={handleVoiceCore} aria-label="Talk to Jarvis"><span>J</span></button><span><b>{profile?.name || "Jarvis"}</b><small>{visualLabel} · your AI workspace</small></span></div><div><button type="button" onClick={startNewConversation}><FiPlus /> New conversation</button><button type="button" onClick={() => setProfileOpen((value) => !value)}>Personalize</button></div></div> : null}
 
       <div className="jarvis-messages">
         {messages.filter((msg) => !intentResearchTask || msg.type === "user" || msg.type === "error" || msg.data?.researchQuestion).map((msg) => (

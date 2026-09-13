@@ -172,6 +172,7 @@
     background 0.2s ease,
     color 0.2s ease;
 }
+.sidebar__workspace-switcher{display:grid;gap:.3rem;padding:0 .25rem}.sidebar__workspace-switcher>span{color:#93a19d;font-size:.58rem;font-weight:850;letter-spacing:.1em;text-transform:uppercase}.sidebar__workspace-switcher select{width:100%;min-height:40px;padding:.45rem 2rem .45rem .7rem;border:1px solid rgba(255,255,255,.13);border-radius:999px;color:#f6fffc;background:rgba(255,255,255,.08);font:inherit;font-size:.72rem;font-weight:750}.sidebar__workspace-switcher select:disabled{opacity:1}.sidebar--collapsed .sidebar__workspace-switcher{display:none}
 
 .sidebar__link small {
   margin-left: auto;

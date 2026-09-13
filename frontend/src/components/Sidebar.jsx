@@ -266,10 +266,21 @@ const ambassadorGroups = [
 ];
 
 export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse }) {
-  const { logout, session } = useAuth();
+  const { logout, session, workspaces, switchWorkspace } = useAuth();
   const { site } = useWorkspaceTheme();
   const socialConnectionOnly = isSocialConnectionOnly(session);
   const [organization, setOrganization] = useState(null);
+  const [switchingWorkspace, setSwitchingWorkspace] = useState(false);
+  const changeWorkspace = async (workspaceId) => {
+    if (!workspaceId || workspaceId === String(session?.workspace?.id)) return;
+    setSwitchingWorkspace(true);
+    try {
+      await switchWorkspace(workspaceId);
+      window.location.assign("/command-center");
+    } finally {
+      setSwitchingWorkspace(false);
+    }
+  };
   useEffect(() => {
     if (socialConnectionOnly) return undefined;
     let active = true;
@@ -389,6 +400,12 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse
           <small>Powered by Lead Porch</small>
         </div>
       </div>
+      <label className="sidebar__workspace-switcher">
+        <span>Current workspace</span>
+        <select aria-label="Current workspace" disabled={switchingWorkspace || workspaces.length < 2} value={session?.workspace?.id || ""} onChange={(event) => changeWorkspace(event.target.value)}>
+          {(workspaces.length ? workspaces : [{ id: session?.workspace?.id || "", name: session?.workspace?.name || "Workspace" }]).map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+        </select>
+      </label>
       <nav className="sidebar__nav" aria-label="Primary">
         {visibleGroups.map((group) => (
           <section
