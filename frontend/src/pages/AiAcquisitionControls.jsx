@@ -261,18 +261,40 @@ export default function AiAcquisitionControls() {
   return (
     <div className="ai-controls-page">
       <header className="ai-controls-header">
-        <p className="page-eyebrow">Settings · AI & Acquisition</p>
-        <h1>AI & Acquisition Controls</h1>
+        <p className="page-eyebrow">Workspace operations</p>
+        <h1>Usage & Agents</h1>
         <p>
-          Enable/disable AI providers and lead-discovery sources for this workspace, set spending
-          limits, and see provider health. Credentials always live in server environment
-          variables — nothing here can add or reveal a credential.
+          See what your AI agents are using, where the usage came from, and what it is estimated
+          to cost. Provider controls and safety limits are kept together below.
         </p>
         <Link to="/settings/workspace">Back to Settings</Link>
       </header>
 
       {error ? <p className="form-error">{error}</p> : null}
       {notice ? <p className="discovery-notice">{notice}</p> : null}
+
+      {usage ? <section className="ai-usage-command" aria-label="Monthly AI usage overview">
+        <div className="ai-usage-command__summary">
+          <span>This month</span>
+          <strong>{money(usage.estimatedTotalCostUsd)}</strong>
+          <p>Estimated OpenAI usage across {usage.requestCount} request{usage.requestCount === 1 ? "" : "s"}.</p>
+        </div>
+        <div className="ai-usage-command__metrics">
+          <article><span>Total tokens</span><strong>{usage.tokens?.total?.toLocaleString?.() || 0}</strong><small>{usage.tokens?.input?.toLocaleString?.() || 0} input · {usage.tokens?.output?.toLocaleString?.() || 0} output</small></article>
+          <article><span>Successful requests</span><strong>{usage.successCount || 0}</strong><small>{usage.failureCount || 0} failed</small></article>
+          <article><span>Tracked agents</span><strong>{usage.byAgent?.length || 0}</strong><small>Usage is attributed below</small></article>
+        </div>
+        <div className="ai-agent-ledger">
+          <header><strong>Usage by agent</strong><span>Requests · tokens · estimated cost</span></header>
+          {usage.byAgent?.length ? [...usage.byAgent].sort((a, b) => b.estimatedTotalCostUsd - a.estimatedTotalCostUsd).map((agent) => <div key={agent.key}>
+            <strong>{AGENT_LABELS[agent.key] || agent.key}</strong>
+            <span>{agent.requestCount} request{agent.requestCount === 1 ? "" : "s"}</span>
+            <span>{agent.totalTokens.toLocaleString()} tokens</span>
+            <b>{money(agent.estimatedTotalCostUsd)}</b>
+          </div>) : <p>No AI usage has been recorded this month.</p>}
+        </div>
+        <p className="ai-usage-command__note">Lead-data providers such as Apollo and People Data Labs report health here, but their external account credit balances are managed by those providers and are not included in this OpenAI cost estimate.</p>
+      </section> : null}
 
       <DashboardCard
         title="Emergency stop"

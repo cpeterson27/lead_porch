@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { FiMaximize2, FiMinimize2, FiChevronUp, FiChevronDown, FiVolume2 } from "react-icons/fi";
+import { FiMaximize2, FiMinimize2, FiChevronUp, FiChevronDown, FiVolume2, FiPlus } from "react-icons/fi";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useJarvis } from "../hooks/useJarvis";
 import {
@@ -662,6 +662,17 @@ export default function JarvisChat() {
   const visualState = listening ? "listening" : speakingId ? "speaking" : loading ? "thinking" : "idle";
   const visualLabel = { idle: "Systems ready", listening: "Listening", thinking: "Analyzing workspace", speaking: "Responding" }[visualState];
   const friendlyJarvisError = /429|credits? remaining|billing/i.test(String(error || "")) ? "OpenAI credits are unavailable. Jarvis will keep using browser voice and the no-credit public-source search. Restart this identity search to run the fallback sources." : error;
+  const startNewConversation = () => {
+    stopSpeaking();
+    recognitionRef.current?.stop();
+    setMessages([]);
+    setInput("");
+    setSelectedCampaignId(null);
+    setTestEmail("");
+    setResearchApprovals({});
+    setResearchActionId("");
+    setNextId(2);
+  };
 
   return (
     <div ref={containerRef} className={`jarvis-chat-container jarvis-chat-container--${profile?.theme || "executive"} ${intentResearchTask ? "jarvis-chat-container--intent-task" : ""} ${isFullscreen ? "jarvis-chat-container--fullscreen" : ""}`}>
@@ -703,6 +714,7 @@ export default function JarvisChat() {
           <p className="jarvis-voice-hint">{listening ? "Speak naturally. Jarvis will respond when you pause." : "Tap the core or press Command + J to begin."}</p>
         </div>
         <div className="jarvis-statuses" aria-label="Jarvis connection status">
+          <button type="button" className="jarvis-new-conversation" onClick={startNewConversation}><FiPlus /><span>New conversation</span></button>
           <span className={status?.imageGeneration?.enabled ? "is-ready" : ""}>Images {status?.imageGeneration?.enabled ? "ready" : "not enabled"}</span>
           <span className={status?.discoveryProviders?.vertex?.available ? "is-ready" : ""}>Vertex {status?.discoveryProviders?.vertex?.available ? "ready" : "not enabled"}</span>
           <span className={status?.discoveryProviders?.openai_web_search?.available ? "is-ready" : ""}>OpenAI research {status?.discoveryProviders?.openai_web_search?.available ? "ready" : "not enabled"}</span>

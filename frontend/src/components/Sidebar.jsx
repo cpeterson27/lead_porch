@@ -198,7 +198,7 @@ const navGroups = [
         ],
       },
       {
-        label: "AI & Acquisition",
+        label: "Usage & Agents",
         path: "/settings/ai-acquisition",
         icon: <FiCpu />,
         permissions: ["workspace.manage"],

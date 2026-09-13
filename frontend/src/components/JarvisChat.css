@@ -480,3 +480,47 @@
 .jarvis-package-preview__program dl{display:grid;grid-template-columns:2fr 1fr 1fr;gap:10px;margin:16px 0 0}.jarvis-package-preview__program dl div{padding:12px;border-radius:12px;background:#f4f7f5}.jarvis-package-preview__program dt{font-size:.72rem;text-transform:uppercase;font-weight:800;color:#71807b}.jarvis-package-preview__program dd{margin:4px 0 0;color:#1f2a27}
 .jarvis-package-preview__platforms{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:0 22px 20px}.jarvis-package-preview__platforms article{border:1px solid #e3e8e5;border-radius:14px;padding:15px;min-width:0}.jarvis-package-preview__platforms p{white-space:pre-wrap;color:#34413d}.jarvis-package-preview__platforms small{color:#617c72;overflow-wrap:anywhere}.jarvis-package-preview__safety{margin:0;padding:16px 22px;background:#fbf7ea;color:#665b38}.jarvis-package-preview>button{margin:18px 22px 22px;border:0;border-radius:999px;padding:13px 20px;background:var(--workspace-primary,#173f36);color:#fff;font-weight:800;cursor:pointer}.jarvis-package-preview>button:disabled{opacity:.55;cursor:wait}
 @media(max-width:700px){.jarvis-package-preview>header{display:block}.jarvis-package-preview>header>strong{display:inline-block;margin-top:12px}.jarvis-package-preview__program dl,.jarvis-package-preview__platforms{grid-template-columns:1fr}}
+
+/* Conversation-first Jarvis workspace. The visual core remains distinctive,
+   but no longer consumes half of the usable screen. */
+.jarvis-new-conversation{
+  display:inline-flex;align-items:center;gap:.4rem;padding:.46rem .72rem;border:1px solid rgba(218,255,247,.22);border-radius:999px;
+  color:#effffb;background:rgba(255,255,255,.1);box-shadow:inset 0 1px rgba(255,255,255,.16);backdrop-filter:blur(18px);font:inherit;font-size:.7rem;font-weight:780;cursor:pointer
+}
+.jarvis-new-conversation:hover{background:rgba(255,255,255,.18)}
+.jarvis-new-conversation svg{font-size:.92rem}
+@media(min-width:721px){
+  .jarvis-chat-container{grid-template-columns:300px minmax(0,1fr);grid-template-rows:minmax(0,1fr) auto;height:calc(100dvh - 88px);background:linear-gradient(135deg,#f7faf8,#fff 58%,#f4f8f6)}
+  .jarvis-header{grid-column:1;grid-row:1/3;min-height:0;border-right:1px solid rgba(209,255,242,.12);box-shadow:22px 0 70px rgba(6,28,23,.1)}
+  .jarvis-visualizer{width:100%;padding:5.25rem 1.25rem 1.5rem;justify-content:flex-start}
+  .jarvis-core{width:220px;height:220px;margin-top:clamp(2rem,9vh,6rem)}
+  .jarvis-visual-state{bottom:auto;top:calc(50% + 118px)}
+  .jarvis-visual-greeting{bottom:5.1rem;max-width:250px;white-space:normal;text-align:center;line-height:1.45}
+  .jarvis-primary-talk{bottom:1.65rem}
+  .jarvis-statuses{top:1rem;right:.75rem;left:.75rem;justify-content:center;gap:.35rem}
+  .jarvis-statuses>span{display:none}
+  .jarvis-persona-button,.jarvis-fullscreen-button,.jarvis-new-conversation{background:rgba(6,18,28,.34)}
+  .jarvis-messages{grid-column:2;grid-row:1;padding:clamp(1.25rem,3vw,2.25rem) clamp(1.25rem,4vw,3.5rem);background:radial-gradient(800px 520px at 0 0,rgba(68,210,170,.11),transparent 62%),radial-gradient(650px 460px at 100% 100%,rgba(103,88,235,.08),transparent 58%),rgba(250,252,251,.82)}
+  .jarvis-input-form{grid-column:2;grid-row:2;margin:0 clamp(1.25rem,4vw,3.5rem) 1.4rem;padding:.72rem;border:1px solid rgba(25,76,63,.13);border-radius:24px;background:rgba(255,255,255,.7);box-shadow:0 20px 55px rgba(20,49,42,.12),inset 0 1px rgba(255,255,255,.95);backdrop-filter:blur(28px) saturate(1.35)}
+  .jarvis-input-group{padding:.2rem}
+  .jarvis-input{min-height:52px;border:0;background:transparent;box-shadow:none}
+  .jarvis-send-btn{min-height:48px;border-radius:999px;padding-inline:1.25rem}
+  .jarvis-mic-btn{min-height:48px;border-radius:999px}
+  .jarvis-voice-controls-wrap{margin:.25rem .4rem 0}
+  .jarvis-persona-panel{grid-column:2;grid-row:1;z-index:20;margin:1.25rem;border:1px solid rgba(255,255,255,.72);border-radius:24px;background:rgba(247,252,250,.88);box-shadow:0 24px 80px rgba(10,35,29,.18);backdrop-filter:blur(28px)}
+  .jarvis-message-content{max-width:min(820px,92%);padding:1rem 1.15rem;border-radius:20px;background:rgba(255,255,255,.7);box-shadow:0 10px 34px rgba(24,54,47,.07);backdrop-filter:blur(18px)}
+  .jarvis-message--user .jarvis-message-content{background:color-mix(in srgb,var(--workspace-primary,#173f36) 88%,transparent);color:#fff}
+}
+@media(max-width:720px){
+  .jarvis-chat-container{min-height:calc(100dvh - 76px);background:#f8fbf9}
+  .jarvis-header{min-height:210px;padding:3.3rem 1rem 1rem}
+  .jarvis-visualizer{transform:none;padding:0}
+  .jarvis-core{width:126px;height:126px}
+  .jarvis-visual-state{bottom:2.65rem;font-size:.68rem}
+  .jarvis-visual-greeting,.jarvis-primary-talk{display:none}
+  .jarvis-statuses{justify-content:space-between}
+  .jarvis-statuses .jarvis-persona-button{display:none}
+  .jarvis-new-conversation span{display:inline}
+  .jarvis-messages{min-height:calc(100dvh - 430px);padding:1rem}
+  .jarvis-input-form{margin:.65rem;padding:.65rem;border:1px solid rgba(25,76,63,.13);border-radius:22px;box-shadow:0 14px 38px rgba(20,49,42,.1)}
+}
