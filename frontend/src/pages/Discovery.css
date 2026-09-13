@@ -42,3 +42,30 @@
 .discovery-command-icon{background:var(--app-accent,var(--color-brand));border-radius:50%;height:26px;width:26px}
 .discovery-command-grid>button.is-active .discovery-command-icon{background:color-mix(in srgb,var(--app-accent) 82%,#fff)}
 @media(max-width:700px){.discovery-command-grid{overflow-x:auto}.discovery-command-grid>button{flex:0 0 auto}.discovery-command-grid strong{font-size:.82rem}}
+
+/* Discovery is intentionally a calm, single-purpose workspace. The system
+   font stack keeps it native and highly legible without loading a third-party
+   font or imitating another company's trademarks. */
+.discovery-page{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Inter","Segoe UI",sans-serif;gap:18px;margin:0 auto;max-width:1500px;padding-bottom:48px}
+.discovery-header--minimal{align-items:center;background:rgba(255,255,255,.62);backdrop-filter:blur(22px) saturate(140%);-webkit-backdrop-filter:blur(22px) saturate(140%);border:1px solid rgba(255,255,255,.78);border-radius:24px;box-shadow:0 18px 60px rgba(57,53,75,.08);padding:clamp(20px,3vw,38px)}
+.discovery-header--minimal h1{font-size:clamp(2rem,4.2vw,4rem);letter-spacing:-.055em;line-height:1;margin:8px 0 12px}
+.discovery-header--minimal p{font-size:clamp(.9rem,1.4vw,1.05rem);line-height:1.55;max-width:680px}
+.discovery-header--minimal .notification-button{background:rgba(255,255,255,.72);border:1px solid rgba(32,61,53,.1);border-radius:999px;box-shadow:0 10px 30px rgba(18,38,33,.07);padding:11px 16px;white-space:nowrap}
+.discovery-flow-nav{align-items:center;display:flex;gap:7px;justify-content:center;position:relative}
+.discovery-flow-nav>button,.discovery-flow-nav>details>summary{background:rgba(255,255,255,.7);border:1px solid rgba(32,61,53,.1);border-radius:999px;color:var(--color-text);cursor:pointer;font:inherit;font-size:.78rem;font-weight:750;list-style:none;padding:10px 16px}
+.discovery-flow-nav>button.is-active{background:var(--color-text);border-color:var(--color-text);color:var(--color-surface)}
+.discovery-flow-nav button span{background:var(--app-accent,var(--color-brand));border-radius:999px;color:#fff;margin-left:6px;padding:2px 7px}
+.discovery-flow-nav>details{position:relative}.discovery-flow-nav>details>summary::-webkit-details-marker{display:none}
+.discovery-flow-nav>details>div{backdrop-filter:blur(24px);background:rgba(255,255,255,.9);border:1px solid rgba(32,61,53,.1);border-radius:16px;box-shadow:0 18px 55px rgba(18,38,33,.14);display:grid;gap:4px;padding:7px;position:absolute;right:0;top:calc(100% + 8px);width:220px;z-index:8}
+.discovery-flow-nav>details>div button{background:transparent;border:0;border-radius:10px;color:var(--color-text);cursor:pointer;font:inherit;font-size:.76rem;padding:10px;text-align:left}
+.discovery-flow-nav>details>div button:hover{background:var(--color-surface-muted)}
+.notice-banner{background:rgba(255,255,255,.74);border:1px solid color-mix(in srgb,var(--color-brand) 18%,transparent);border-left:0;border-radius:999px;box-shadow:0 8px 24px rgba(18,38,33,.05);font-size:.76rem;justify-self:start;padding:9px 14px}
+.people-research-workspace{gap:18px}
+.discovery-workflow-hero--simple{backdrop-filter:blur(26px) saturate(135%);background:radial-gradient(circle at 10% 100%,color-mix(in srgb,var(--app-accent) 15%,transparent),transparent 42%),rgba(255,255,255,.7);border-color:rgba(255,255,255,.82);box-shadow:0 24px 80px rgba(62,55,90,.09)}
+.discovery-workflow-section>.dashboard-card{background:rgba(255,255,255,.78);backdrop-filter:blur(20px);border-color:rgba(255,255,255,.9);border-radius:22px;box-shadow:0 18px 60px rgba(57,53,75,.07)}
+.leadgen-pill{border-radius:999px}
+.monitor-watchlist-options{background:rgba(255,255,255,.68);border:1px solid var(--color-border);border-radius:16px;padding:0}
+.monitor-watchlist-options>summary{cursor:pointer;font-size:.78rem;font-weight:800;list-style:none;padding:14px 16px}.monitor-watchlist-options>summary::-webkit-details-marker{display:none}
+.monitor-watchlist-options>summary:after{content:"+";float:right;font-size:1.1rem}.monitor-watchlist-options[open]>summary:after{content:"−"}
+.monitor-watchlist-options>.monitor-signal-card{border:0;border-radius:0 0 16px 16px}
+@media(max-width:700px){.discovery-header--minimal{align-items:flex-start}.discovery-header--minimal .notification-button{align-self:flex-start}.discovery-flow-nav{justify-content:flex-start;overflow:visible}.discovery-flow-nav>button,.discovery-flow-nav>details>summary{padding:9px 12px}.discovery-flow-nav>details>div{left:auto;right:0}.discovery-workflow-section>.dashboard-card{border-radius:17px}}
