@@ -32,7 +32,7 @@ const createEmptyForm = (campaignKind = "event") => ({
   ticketGoal: "",
   audience: [],
   description: "",
-  brand: { logoUrl: "", websiteUrl: "", accentColor: "#173f36" },
+  brand: { logoUrl: "", flyerUrl: "", websiteUrl: "", accentColor: "#173f36" },
   templateKey: campaignKind === "program" ? PROGRAM_TEMPLATES[0].key : EVENT_TEMPLATES[0].key,
 });
 
@@ -50,6 +50,7 @@ export default function CampaignModal({
   const [savedTemplates, setSavedTemplates] = useState([]);
   const [newAudience, setNewAudience] = useState("");
   const [logoUploading, setLogoUploading] = useState(false);
+  const [flyerUploading, setFlyerUploading] = useState(false);
   const [flyerPrompt, setFlyerPrompt] = useState("");
   const [flyerGenerating, setFlyerGenerating] = useState(false);
   const [flyerUrl, setFlyerUrl] = useState("");
@@ -92,7 +93,7 @@ export default function CampaignModal({
           ticketGoal: initialData.ticketGoal ?? "",
           audience: initialData.audience || [],
           description: initialData.description || "",
-          brand: { logoUrl: initialData.brand?.logoUrl || "", websiteUrl: initialData.brand?.websiteUrl || "", accentColor: initialData.brand?.accentColor || "#173f36" },
+          brand: { logoUrl: initialData.brand?.logoUrl || "", flyerUrl: initialData.brand?.flyerUrl || "", websiteUrl: initialData.brand?.websiteUrl || "", accentColor: initialData.brand?.accentColor || "#173f36" },
           templateKey: initialData.templateKey || choices[0].key,
         });
       } else {
@@ -163,6 +164,29 @@ export default function CampaignModal({
     }
   };
 
+  const uploadFlyer = async (file) => {
+    if (!file) return;
+    if (!file.type.startsWith("image/") || file.size > 8 * 1024 * 1024) {
+      setError("Choose a PNG, JPG, or WEBP flyer smaller than 8 MB.");
+      return;
+    }
+    try {
+      setFlyerUploading(true);
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const uploaded = await uploadEventImage({ file: dataUrl, filename: file.name });
+      setForm((current) => ({ ...current, brand: { ...current.brand, flyerUrl: uploaded.url } }));
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to upload that flyer.");
+    } finally {
+      setFlyerUploading(false);
+    }
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
@@ -220,6 +244,18 @@ export default function CampaignModal({
           <div className="form-field span-2">
             <label htmlFor="campaign-name">Campaign name <span>*</span></label>
             <input id="campaign-name" type="text" placeholder={isProgram ? "e.g. Elite Operator Program — Fall Enrollment" : "e.g. Deal to Close Bootcamp — September"} value={form.name} onChange={handleChange("name")} />
+          </div>
+
+          <div className="form-field span-2">
+            <label htmlFor="campaign-flyer">Flyer image</label>
+            <input id="campaign-flyer" type="file" accept="image/*" disabled={flyerUploading} onChange={(event) => uploadFlyer(event.target.files?.[0])} />
+            <small>{flyerUploading ? "Uploading…" : "Used in the outreach emails this campaign generates. Optional — a default is used if you skip this."}</small>
+            {form.brand.flyerUrl ? (
+              <div className="program-logo-preview span-2">
+                <img src={form.brand.flyerUrl} alt="Flyer preview" />
+                <button type="button" onClick={() => setForm((current) => ({ ...current, brand: { ...current.brand, flyerUrl: "" } }))}>Remove flyer</button>
+              </div>
+            ) : null}
           </div>
 
           {isProgram ? (

@@ -5,7 +5,7 @@ const CampaignTemplateVersion = require("../models/CampaignTemplateVersion");
 const Event = require("../models/Event");
 const Outreach = require("../models/Outreach");
 const WorkspaceConfig = require("../models/WorkspaceConfig");
-const { applyCanonicalEventDate, formatEventDate, generateOutreachDraft } = require("../utils/outreachGenerator");
+const { applyCanonicalEventDate, formatEventDate, generateOutreachDraft, generateOutreachSuggestions } = require("../utils/outreachGenerator");
 const { getCampaignTemplate } = require("../services/campaignTemplates");
 const ContentBrief = require("../models/ContentBrief");
 const { assignCampaignMatches, getCampaignMatches } = require("../services/campaignAudienceService");
@@ -553,15 +553,8 @@ router.post("/from-event/:eventId", async (req, res) => {
       });
 
     const audienceMatch = await assignCampaignMatches(campaign._id);
-
-
-
-    const outreachItems =
-      generateOutreachSuggestions(
-        campaign
-      );
-
-
+    const { matches } = await getCampaignMatches(campaign._id);
+    const outreachItems = generateOutreachSuggestions(campaign, matches.map(({ contact }) => contact));
 
     if (outreachItems.length) {
 
@@ -701,6 +694,7 @@ router.post("/", async (req, res) => {
         templateKey: savedTemplate ? `content:${savedTemplate._id}` : templateKey,
         brand: {
           logoUrl: String(brand.logoUrl || "").trim(),
+          flyerUrl: String(brand.flyerUrl || "").trim(),
           websiteUrl: String(brand.websiteUrl || "").trim(),
           accentColor: String(brand.accentColor || "#173f36").trim(),
         },
@@ -731,11 +725,8 @@ router.post("/", async (req, res) => {
       });
 
     const audienceMatch = await assignCampaignMatches(campaign._id);
-
-    const outreachItems =
-      generateOutreachSuggestions(
-        campaign
-      );
+    const { matches } = await getCampaignMatches(campaign._id);
+    const outreachItems = generateOutreachSuggestions(campaign, matches.map(({ contact }) => contact));
 
 
 

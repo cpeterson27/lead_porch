@@ -83,6 +83,39 @@ export const selectMeetupGroups = (groupUrlnames) =>
 
 export const fetchSocialAutomationOverview = () =>
   api.get("/social-automation/overview").then((res) => res.data.data);
+
+// LinkedIn personal-profile outreach (connection requests + AI-assisted
+// sequences), a separate integration from the LinkedIn org-page OAuth above.
+export const fetchLinkedinOutreachStatus = () =>
+  api.get("/social/linkedin-outreach/status").then((res) => res.data);
+export const beginLinkedinOutreachConnection = () =>
+  api.post("/social/linkedin-outreach/connect").then((res) => res.data);
+export const disconnectLinkedinOutreach = () =>
+  api.post("/social/linkedin-outreach/disconnect").then((res) => res.data);
+export const sendLinkedinInvitation = (contactId, message) =>
+  api
+    .post(`/social/linkedin-outreach/contacts/${contactId}/send-invitation`, { message })
+    .then((res) => res.data);
+export const fetchLinkedinSequences = () =>
+  api.get("/social/linkedin-outreach/sequences").then((res) => res.data.data);
+export const createLinkedinSequence = (values) =>
+  api.post("/social/linkedin-outreach/sequences", values).then((res) => res.data.data);
+export const updateLinkedinSequence = (id, values) =>
+  api.patch(`/social/linkedin-outreach/sequences/${id}`, values).then((res) => res.data.data);
+export const enrollLinkedinSequenceContacts = (id, contactIds) =>
+  api
+    .post(`/social/linkedin-outreach/sequences/${id}/enroll`, { contactIds })
+    .then((res) => res.data.data);
+export const fetchLinkedinSequenceEnrollments = (id) =>
+  api.get(`/social/linkedin-outreach/sequences/${id}/enrollments`).then((res) => res.data.data);
+export const fetchLinkedinReplyDrafts = () =>
+  api.get("/social/linkedin-outreach/reply-drafts").then((res) => res.data.data);
+export const sendLinkedinReplyDraft = (messageId, text) =>
+  api
+    .post(`/social/linkedin-outreach/reply-drafts/${messageId}/send`, { text })
+    .then((res) => res.data.data);
+export const discardLinkedinReplyDraft = (messageId) =>
+  api.post(`/social/linkedin-outreach/reply-drafts/${messageId}/discard`).then((res) => res.data);
 export const recommendSocialAutomation = (values) =>
   api.post("/social-automation/recommend", values).then((res) => res.data.data);
 export const generatePlatformMediaVariants = (contentId, mediaIndex, values) =>
@@ -161,6 +194,9 @@ export const fetchWorkspaceConfig = () =>
 
 export const updateWorkspaceConfig = (values) =>
   api.patch("/workspace", values).then((res) => res.data);
+
+export const uploadOrganizationLogo = (fileDataUrl) =>
+  api.post("/workspace/organization-logo", { file: fileDataUrl }).then((res) => res.data);
 
 export const fetchPrivacyRequests = () =>
   api.get("/privacy-requests").then((res) => res.data.data);

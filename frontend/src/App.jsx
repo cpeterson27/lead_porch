@@ -76,6 +76,7 @@ const AmbassadorAdmin = lazy(() => import("./pages/AmbassadorAdmin.jsx"));
 const AmbassadorResourceCenter = lazy(() => import("./pages/AmbassadorResourceCenter.jsx"));
 const AmbassadorWelcomeSettings = lazy(() => import("./pages/AmbassadorWelcomeSettings.jsx"));
 const SocialWorkspace = lazy(() => import("./pages/SocialWorkspace.jsx"));
+const LinkedinOutreach = lazy(() => import("./pages/LinkedinOutreach.jsx"));
 const MyProfile = lazy(() => import("./pages/MyProfile.jsx"));
 const Businesses = lazy(() => import("./pages/Businesses.jsx"));
 
@@ -147,7 +148,7 @@ function ProtectedApp() {
           <Route path="/discovery/:workspace" element={<Discovery />} />
           <Route path="/partners" element={<Partners />} />
           <Route path="/content" element={<Content />} />
-          {hasPermission(session, "social.manage") ? <><Route path="/social-leads" element={<SocialLeads />} /><Route path="/social" element={<SocialWorkspace />} /><Route path="/social/:section" element={<SocialWorkspace />} /></> : null}
+          {hasPermission(session, "social.manage") ? <><Route path="/social-leads" element={<SocialLeads />} /><Route path="/social/linkedin-outreach" element={<LinkedinOutreach />} /><Route path="/social" element={<SocialWorkspace />} /><Route path="/social/:section" element={<SocialWorkspace />} /></> : null}
           <Route path="/analytics" element={<Analytics />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/profile" element={<MyProfile />} />

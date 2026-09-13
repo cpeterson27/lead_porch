@@ -1,0 +1,145 @@
+.linkedin-outreach {
+  padding: 28px;
+  display: grid;
+  gap: 22px;
+  color: #173f36;
+  max-width: 860px;
+}
+.linkedin-outreach h1,
+.linkedin-outreach h2,
+.linkedin-outreach h3 {
+  margin-top: 0;
+}
+.linkedin-outreach-card {
+  background: #fff;
+  border: 1px solid #e1ece7;
+  border-radius: 14px;
+  padding: 20px;
+  display: grid;
+  gap: 12px;
+}
+.linkedin-outreach-hint {
+  color: #5b6f68;
+  font-size: 0.9rem;
+  margin: 0;
+}
+.linkedin-outreach-notice {
+  background: #daf2e8;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 0;
+}
+.linkedin-outreach-error {
+  background: #fdeceb;
+  color: #a12f28;
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 0;
+}
+.linkedin-outreach-status {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.linkedin-outreach-badge {
+  background: #eef3f1;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+.linkedin-outreach-badge--connected,
+.linkedin-outreach-badge--active,
+.linkedin-outreach-badge--connection_accepted,
+.linkedin-outreach-badge--meeting_booked {
+  background: #daf2e8;
+  color: #1f5c3a;
+}
+.linkedin-outreach-badge--failed,
+.linkedin-outreach-badge--stopped,
+.linkedin-outreach-badge--connection_declined {
+  background: #fdeceb;
+  color: #a12f28;
+}
+.linkedin-outreach-card label {
+  display: grid;
+  gap: 4px;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.linkedin-outreach-card input,
+.linkedin-outreach-card textarea {
+  border: 1px solid #d5e2dc;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+  font-weight: 400;
+}
+.linkedin-outreach-card textarea {
+  min-height: 70px;
+  resize: vertical;
+}
+.linkedin-outreach-checkbox {
+  display: flex !important;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.linkedin-outreach-sequence {
+  border-top: 1px solid #e1ece7;
+  padding-top: 14px;
+  margin-top: 14px;
+  display: grid;
+  gap: 10px;
+}
+.linkedin-outreach-sequence header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.linkedin-outreach-sequence-actions,
+.linkedin-outreach-enroll {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.linkedin-outreach-enroll input {
+  flex: 1;
+  min-width: 220px;
+  border: 1px solid #d5e2dc;
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.linkedin-outreach-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.linkedin-outreach-table th,
+.linkedin-outreach-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid #eef3f1;
+}
+.linkedin-outreach-draft {
+  border-top: 1px solid #e1ece7;
+  padding-top: 12px;
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+.linkedin-outreach-draft textarea {
+  min-height: 90px;
+  border: 1px solid #d5e2dc;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font: inherit;
+}
+.linkedin-outreach-draft-actions {
+  display: flex;
+  gap: 8px;
+}

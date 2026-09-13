@@ -35,6 +35,15 @@ const workspaceConfigSchema = new mongoose.Schema(
       trim: true,
       maxlength: 600,
     },
+    // Cloudinary public ID for organizationLogoUrl, kept so a re-upload can
+    // remove the previous asset instead of leaving it orphaned (same pattern
+    // as User.avatarPublicId in routes/auth.js).
+    organizationLogoPublicId: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 300,
+    },
     invitationIdentity: {
       senderName: { type: String, default: "", trim: true, maxlength: 120 },
       senderEmail: {

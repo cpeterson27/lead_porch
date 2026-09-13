@@ -4,6 +4,7 @@ const { startResearchMonitorRunner, runDueResearchMonitors } = require("./servic
 const { startCommunicationJobRunner, runDueCommunicationJobs } = require("./services/communicationJobRunner");
 const { startAutomationRunner, runDueAutomations } = require("./services/automationRunner");
 const { startSocialPublishingRunner, runDueSocialPublishing } = require("./services/socialPublishingRunner");
+const { startLinkedinSequenceRunner, runDueEnrollments } = require("./services/linkedinSequenceService");
 
 const mongoUri = process.env.MONGO_URI;
 if (!mongoUri) {
@@ -18,10 +19,12 @@ connectDatabase(mongoUri)
     await runDueCommunicationJobs();
     await runDueAutomations();
     await runDueSocialPublishing();
+    await runDueEnrollments();
     startResearchMonitorRunner();
     startCommunicationJobRunner({ force: true });
     startAutomationRunner({ force: true });
     startSocialPublishingRunner({ force: true });
+    startLinkedinSequenceRunner();
   })
   .catch((error) => {
     console.error("Research worker failed to start:", error.message || error);

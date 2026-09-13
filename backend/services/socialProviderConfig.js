@@ -1,4 +1,9 @@
-const SOCIAL_PROVIDERS = Object.freeze(["linkedin", "meta", "instagram", "x"]);
+// "linkedin" is LinkedIn's own Marketing API (organization-page publishing,
+// OAuth-based). "linkedin_unipile" is a separate personal-profile-outreach
+// connection (connection requests + DMs) brokered through Unipile via a
+// hosted login flow rather than OAuth — see services/unipileService.js and
+// routes/socialLinkedinOutreach.js. A workspace may hold both at once.
+const SOCIAL_PROVIDERS = Object.freeze(["linkedin", "linkedin_unipile", "meta", "instagram", "x"]);
 const allowed = {
   meta: new Set(["public_profile", "pages_show_list", "pages_read_engagement", "pages_read_user_content", "pages_manage_metadata", "pages_messaging", "pages_manage_posts", "pages_manage_engagement", "instagram_basic", "instagram_manage_messages", "instagram_manage_comments", "instagram_content_publish", "instagram_manage_insights", "read_insights"]),
   instagram: new Set(["instagram_business_basic", "instagram_business_manage_comments", "instagram_business_manage_messages", "instagram_business_content_publish", "instagram_business_manage_insights"]),

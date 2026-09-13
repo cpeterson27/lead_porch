@@ -155,6 +155,13 @@ const contactSchema = new mongoose.Schema(
       sentAt: { type: Date, default: null },
       followUpAt: { type: Date, default: null },
       lastGeneratedAt: { type: Date, default: null },
+      // Unipile's internal id for this person, resolved from their public
+      // LinkedIn URL. Required to send a connection request or, later, a
+      // chat message once one is accepted.
+      unipileProviderId: { type: String, default: "" },
+      // Which connected SocialConnection (linkedin_unipile) sent the request.
+      unipileAccountId: { type: String, default: "" },
+      connectionStatus: { type: String, enum: ["none", "pending", "accepted", "declined"], default: "none" },
     },
 
     campaignIds: [{

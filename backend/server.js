@@ -33,6 +33,7 @@ const mcpAccessRouter = require("./routes/mcpAccess");
 const mcpRouter = require("./routes/mcp");
 const oauthRouter = require("./routes/oauth");
 const socialRouter = require("./routes/social");
+const socialLinkedinOutreachRouter = require("./routes/socialLinkedinOutreach");
 const privacyRequestsRouter = require("./routes/privacyRequests");
 const gptActionsRouter = require("./routes/gptActions");
 const activitiesRouter = require("./routes/activities");
@@ -59,6 +60,7 @@ const publicWebDiscoveryRouter = require("./routes/publicWebDiscovery");
 const { requireAuth } = require("./middleware/auth");
 const { restrictNewRoleSurface } = require("./middleware/authorization");
 const { startResearchMonitorRunner } = require("./services/researchMonitorService");
+const { startLinkedinSequenceRunner } = require("./services/linkedinSequenceService");
 const { startCommunicationJobRunner } = require("./services/communicationJobRunner");
 const { startAutomationRunner } = require("./services/automationRunner");
 const { startSocialPublishingRunner } = require("./services/socialPublishingRunner");
@@ -186,6 +188,7 @@ connectDatabase(mongoUri)
         req.path === "/webhooks/resend" ||
         req.path.startsWith("/webhooks/twilio/") ||
         req.path === "/webhooks/meta" || req.path === "/webhooks/instagram" ||
+        req.path === "/webhooks/unipile" || req.path === "/webhooks/unipile-messages" ||
         req.path.startsWith("/social-automation/t/") ||
         req.path.startsWith("/chat/widget/") ||
         req.path === "/jarvis/memory/sync" ||
@@ -245,6 +248,7 @@ connectDatabase(mongoUri)
     app.use("/api/business-index", businessIndexRouter);
     app.use("/api/mcp-access-tokens", mcpAccessRouter);
     app.use("/api/social", socialRouter);
+    app.use("/api/social/linkedin-outreach", socialLinkedinOutreachRouter);
     app.use("/api/privacy-requests", privacyRequestsRouter);
     app.use("/api/system-agent", systemAgentRouter);
     app.use("/api/providers", providersRouter);
@@ -300,6 +304,7 @@ connectDatabase(mongoUri)
       // own header: it only ever acts on DiscoverySchedule docs with
       // enabled:true, and every schedule defaults to enabled:false.
       startPublicWebDiscoveryRunner();
+      if (process.env.LINKEDIN_SEQUENCE_WORKER_MODE !== "external") startLinkedinSequenceRunner();
     });
 
     server.on("error", (error) => {

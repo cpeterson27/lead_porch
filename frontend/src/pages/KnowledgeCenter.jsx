@@ -15,6 +15,8 @@ import {
   prepareKnowledgeMemory,
   confirmKnowledgeMemory,
   uploadKnowledgePdfs,
+  fetchWorkspaceConfig,
+  uploadOrganizationLogo,
 } from "../services/api.js";
 import "./KnowledgeCenter.css";
 
@@ -57,6 +59,15 @@ export default function KnowledgeCenter() {
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfResults, setPdfResults] = useState(null);
   const pdfInputRef = useRef(null);
+  const [logoUrl, setLogoUrl] = useState("");
+  const [logoBusy, setLogoBusy] = useState(false);
+  const logoInputRef = useRef(null);
+
+  useEffect(() => {
+    fetchWorkspaceConfig()
+      .then((config) => setLogoUrl(config.organizationLogoUrl || ""))
+      .catch(() => {});
+  }, []);
 
   const loadNotes = useCallback(() => {
     fetchKnowledgeNotes({
@@ -213,6 +224,33 @@ export default function KnowledgeCenter() {
     }
   };
 
+  const uploadLogo = async () => {
+    const file = logoInputRef.current?.files?.[0];
+    if (!file) return;
+    if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > 5 * 1024 * 1024) {
+      setError("Choose a PNG, JPG, or WEBP image up to 5 MB.");
+      return;
+    }
+    setLogoBusy(true);
+    setError("");
+    try {
+      const data = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      const res = await uploadOrganizationLogo(data);
+      setLogoUrl(res.organizationLogoUrl);
+      setNotice("Logo uploaded. Jarvis's campaign builder and outgoing emails will use it automatically.");
+      if (logoInputRef.current) logoInputRef.current.value = "";
+    } catch (err) {
+      setError(err.response?.data?.error || "Logo upload failed.");
+    } finally {
+      setLogoBusy(false);
+    }
+  };
+
   const importedCount = notes.filter((note) => note.source === "obsidian_bridge").length;
   const visibleNotes = notes.filter((note) => {
     if (!showImported && note.source === "obsidian_bridge") return false;
@@ -237,6 +275,7 @@ export default function KnowledgeCenter() {
 
       <nav className="knowledge-primary-actions" aria-label="Knowledge Center actions">
         {hasRole(session, "owner") ? <button type="button" className={workspaceView === "upload" ? "is-active" : ""} onClick={() => { setWorkspaceView("upload"); setShowNewForm(false); closeNote(); }}><strong>Upload new PDFs</strong><span>Add documents for review</span></button> : null}
+        {hasRole(session, "owner") ? <button type="button" className={workspaceView === "logo" ? "is-active" : ""} onClick={() => { setWorkspaceView("logo"); setShowNewForm(false); closeNote(); }}><strong>Brand logo</strong><span>Upload a PNG/JPG/WEBP for Jarvis to use</span></button> : null}
         <button type="button" className={workspaceView === "note" ? "is-active" : ""} onClick={() => { setWorkspaceView("note"); setShowNewForm(true); closeNote(); }}><strong>Add a written note</strong><span>Type facts or instructions</span></button>
         <button type="button" className={workspaceView === "library" ? "is-active" : ""} onClick={() => { setWorkspaceView("library"); setShowNewForm(false); }}><strong>View uploaded knowledge</strong><span>{notes.filter((note) => note.status !== "archived").length} current items</span></button>
       </nav>
@@ -247,6 +286,26 @@ export default function KnowledgeCenter() {
           <div className="knowledge-upload-grid"><label>Category<select value={pdfCategory} onChange={(e) => setPdfCategory(e.target.value)}>{CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>PDF files (up to 10)<input ref={pdfInputRef} type="file" accept="application/pdf" multiple disabled={pdfBusy} /></label></div>
           <Button loading={pdfBusy} onClick={uploadPdfs}>{pdfBusy ? "Checking and analyzing…" : "Check and upload PDFs"}</Button>
           {pdfResults ? <ul className="knowledge-pdf-results">{pdfResults.map((row, index) => <li key={index} className={row.success ? "is-success" : "is-error"}><strong>{row.filename}</strong>{row.success ? ` — staged for review${row.monitorDraftsCreated ? `, ${row.monitorDraftsCreated} suggested monitor(s) created inactive` : ""}` : row.code === "PDF_DUPLICATE" ? ` — not uploaded: ${row.error}` : ` — failed: ${row.error}`}</li>)}</ul> : null}
+        </DashboardCard>
+      ) : null}
+
+      {hasRole(session, "owner") && workspaceView === "logo" ? (
+        <DashboardCard title="Brand logo">
+          <p className="knowledge-upload-explainer">
+            This is your one workspace-wide brand logo. Jarvis's campaign
+            package builder and outgoing emails already read this same logo
+            automatically — uploading it here is enough, nothing else to
+            configure.
+          </p>
+          {logoUrl ? (
+            <p><img src={logoUrl} alt="Current organization logo" style={{ maxWidth: 220, maxHeight: 120, display: "block", marginBottom: 12 }} /></p>
+          ) : (
+            <p>No logo uploaded yet.</p>
+          )}
+          <div className="knowledge-upload-grid">
+            <label>Logo file (PNG, JPG, or WEBP, up to 5 MB)<input ref={logoInputRef} type="file" accept="image/png,image/jpeg,image/webp" disabled={logoBusy} /></label>
+          </div>
+          <Button loading={logoBusy} onClick={uploadLogo}>{logoBusy ? "Uploading…" : "Upload logo"}</Button>
         </DashboardCard>
       ) : null}
 

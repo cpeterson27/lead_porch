@@ -551,6 +551,10 @@ export default function SocialConnectedAccounts({
         <Link to="/automations/content-template">
           Manage introduction content template
         </Link>
+        <br />
+        <Link to="/social/linkedin-outreach">
+          LinkedIn outreach (connection requests, sequences, AI replies)
+        </Link>
       </details>
     </div>
   );

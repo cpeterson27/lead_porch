@@ -345,8 +345,24 @@ ${emailBrandFooter(brandLogoUrl, brandWebsiteUrl, campaignName)}
 
 
 
+/**
+ * Build one draft Outreach record per matched contact for a newly created
+ * campaign. This wraps generateOutreachDraft (which drafts a single
+ * contact's email) into the array shape routes/campaigns.js inserts via
+ * Outreach.insertMany — campaignId/contactId are added here since
+ * generateOutreachDraft itself only returns the drafted content.
+ */
+function generateOutreachSuggestions(campaign, matchedContacts = []) {
+  return matchedContacts.map((contact) => ({
+    campaignId: campaign._id,
+    contactId: contact._id,
+    ...generateOutreachDraft(contact, campaign),
+  }));
+}
+
 module.exports = {
   applyCanonicalEventDate,
   formatEventDate,
   generateOutreachDraft,
+  generateOutreachSuggestions,
 };

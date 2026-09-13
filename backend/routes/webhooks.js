@@ -11,6 +11,11 @@ const CommunicationConsent = require("../models/CommunicationConsent");
 const ConversationMessage = require("../models/ConversationMessage");
 const MessageDeliveryEvent = require("../models/MessageDeliveryEvent");
 const CrmActivity = require("../models/CrmActivity");
+const SocialConnection = require("../models/SocialConnection");
+const LinkedinSequenceEnrollment = require("../models/LinkedinSequenceEnrollment");
+const LinkedinSequence = require("../models/LinkedinSequence");
+const { connectionForAccount: linkedinConnectionForAccount, ingestLinkedinMessage } = require("../services/conversations/linkedinMessagingAdapter");
+const linkedinSequenceReplyService = require("../services/linkedinSequenceReplyService");
 const MessagingSender = require("../models/MessagingSender");
 const { normalizePhone } = require("../services/communicationPolicyService");
 const { twilioConversationAdapter, validateTwilioSignature } = require("../services/conversations/twilioConversationAdapter");
@@ -413,6 +418,98 @@ router.post("/resend", async (req, res) => {
     return res.json({ received: true, matched: true });
   } catch (error) {
     console.error("RESEND WEBHOOK ERROR:", error);
+    return res.status(500).json({ error: "Webhook failed" });
+  }
+});
+
+// Unipile hosted-auth completion callback (see services/unipileService.js and
+// routes/socialLinkedinOutreach.js). Unlike Meta's webhook, this has no
+// request-signing scheme documented, so it is protected the same way as the
+// Eventbrite webhook: a random shared token on the URL rather than a
+// verifiable signature.
+router.post("/unipile", async (req, res) => {
+  const expected = String(process.env.UNIPILE_WEBHOOK_TOKEN || "").trim();
+  if (!expected || req.query.token !== expected) {
+    console.warn("[Unipile webhook] ignored: invalid or missing token");
+    return res.status(403).json({ error: "Invalid Unipile webhook token" });
+  }
+  const { status, account_id: accountId, name } = req.body || {};
+  const [workspaceId, userId] = String(name || "").split(":");
+  if (!workspaceId) {
+    console.warn("[Unipile webhook] ignored: payload name did not encode a workspaceId", { status });
+    return res.status(200).json({ received: true, matched: false });
+  }
+  try {
+    await runWithWorkspace(workspaceId, async () => {
+      if (status === "CREATION_SUCCESS" && accountId && userId) {
+        await SocialConnection.findOneAndUpdate(
+          { workspaceId, provider: "linkedin_unipile" },
+          {
+            $set: {
+              status: "connected",
+              "providerAccount.id": accountId,
+              connectedByUserId: userId,
+              connectedAt: new Date(),
+              lastVerifiedAt: new Date(),
+              lastError: "",
+            },
+          },
+          { upsert: true, setDefaultsOnInsert: true },
+        );
+        console.log(`[Unipile webhook] LinkedIn account connected: workspaceId=${workspaceId} accountId=${accountId}`);
+      } else {
+        await SocialConnection.updateOne(
+          { workspaceId, provider: "linkedin_unipile" },
+          { $set: { status: "failed", lastError: String(status || "unknown_error") } },
+        );
+        console.warn(`[Unipile webhook] LinkedIn connection failed: workspaceId=${workspaceId} status=${status}`);
+      }
+    });
+    return res.json({ received: true, matched: true });
+  } catch (error) {
+    console.error("UNIPILE WEBHOOK ERROR:", error);
+    return res.status(500).json({ error: "Webhook failed" });
+  }
+});
+
+// Unipile messaging events (currently only message_received is registered,
+// see unipileService.registerMessagingWebhook). Same shared-token scheme as
+// /unipile above — Unipile does not sign these requests.
+router.post("/unipile-messages", async (req, res) => {
+  const expected = String(process.env.UNIPILE_WEBHOOK_TOKEN || "").trim();
+  if (!expected || req.query.token !== expected) {
+    console.warn("[Unipile messages webhook] ignored: invalid or missing token");
+    return res.status(403).json({ error: "Invalid Unipile webhook token" });
+  }
+  const payload = req.body || {};
+  try {
+    const connection = await linkedinConnectionForAccount(payload.account_id);
+    if (!connection) {
+      console.log(`[Unipile messages webhook] ignored: no connected workspace matches account_id=${payload.account_id}`);
+      return res.json({ received: true, matched: false });
+    }
+    await runWithWorkspace(connection.workspaceId, async () => {
+      const { contact, conversation } = await ingestLinkedinMessage({ connection, payload });
+      if (!contact) return;
+      const enrollment = await LinkedinSequenceEnrollment.findOne({
+        workspaceId: connection.workspaceId,
+        contactId: contact._id,
+        status: "awaiting_reply",
+      });
+      if (!enrollment) return;
+      const sequence = await LinkedinSequence.findById(enrollment.sequenceId);
+      if (!sequence) return;
+      await linkedinSequenceReplyService.handleInboundReply({
+        workspaceId: connection.workspaceId,
+        sequence,
+        enrollment,
+        contact,
+        thread: conversation.thread,
+      });
+    });
+    return res.json({ received: true, matched: true });
+  } catch (error) {
+    console.error("UNIPILE MESSAGES WEBHOOK ERROR:", error);
     return res.status(500).json({ error: "Webhook failed" });
   }
 });

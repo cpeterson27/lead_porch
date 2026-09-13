@@ -11,6 +11,7 @@ const invitationTemplateService = require("../services/invitationTemplateService
 const { requireCapability, requireRole } = require("../middleware/auth");
 const workspaceMemberService = require("../services/workspaceMemberService");
 const launchReadinessService = require("../services/launchReadinessService");
+const imageAssetService = require("../services/imageAssetService");
 const {
   CAPABILITIES,
   OWNER_PROTECTED,
@@ -172,6 +173,36 @@ router.patch("/", async (req, res) => {
       replyToEmail: "",
     },
   });
+});
+
+/**
+ * Upload a PNG/JPG/WEBP/GIF logo file directly (as opposed to pasting an
+ * already-hosted URL into organizationLogoUrl via PATCH "/" above). Stored
+ * through the same Cloudinary pipeline as every other image asset in this
+ * app. This is the org-wide brand logo Jarvis's campaign package builder
+ * already reads (see services/jarvisCampaignStudioService.js) and that
+ * outgoing email uses (see services/email.js) — uploading here makes it
+ * available to both without any other change.
+ */
+router.post("/organization-logo", async (req, res) => {
+  try {
+    const existing = await WorkspaceConfig.findOne({ workspaceId: req.auth.workspaceId, key: "primary" });
+    const uploaded = await imageAssetService.uploadImage({
+      file: req.body?.file,
+      folder: `growth-operator/branding/${req.auth.workspaceId}`,
+      transformation: "c_limit,w_800,h_800,q_auto,f_auto",
+    });
+    const config = await WorkspaceConfig.findOneAndUpdate(
+      { workspaceId: req.auth.workspaceId, key: "primary" },
+      { $set: { organizationLogoUrl: uploaded.url, organizationLogoPublicId: uploaded.publicId } },
+      { upsert: true, new: true },
+    );
+    if (existing?.organizationLogoPublicId && existing.organizationLogoPublicId !== uploaded.publicId)
+      imageAssetService.removeImage(existing.organizationLogoPublicId).catch(() => {});
+    return res.status(201).json({ organizationLogoUrl: config.organizationLogoUrl });
+  } catch (error) {
+    return res.status(error.status || 502).json({ error: error.message || "Logo upload failed", code: error.code });
+  }
 });
 
 function memberResponse(
