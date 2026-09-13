@@ -10,6 +10,7 @@ const { runWithWorkspace } = require("../tenancy/workspaceContext");
 const ConversationThread = require("../models/ConversationThread");
 const { gmailConversationAdapter, syncGmailThread } = require("../services/conversations/gmailConversationAdapter");
 const { requireRole } = require("../middleware/auth");
+const { primaryFrontendUrl } = require("../utils/frontendUrl");
 const router = express.Router();
 
 router.get("/status", async (_req, res) => {
@@ -23,7 +24,7 @@ router.get("/oauth/start", requireRole("owner", "admin"), (req, res) => {
 });
 
 router.get("/oauth/callback", async (req, res) => {
-  const frontend = String(process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+  const frontend = primaryFrontendUrl();
   try {
     const state = gmail.verifyState(req.query.state);
     if (!state) throw new Error("Google connection request expired or is invalid");
