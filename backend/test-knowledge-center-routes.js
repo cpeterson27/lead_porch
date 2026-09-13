@@ -67,6 +67,12 @@ async function run() {
     const foreignGet = await runRoute("/memory/notes/:id", "get", { auth: { ...owner, workspaceId: String(new mongoose.Types.ObjectId()) }, params: { id: String(note._id) } });
     assert.equal(foreignGet.statusCode, 404);
 
+    const disposable = await JarvisMemoryNote.create({ workspaceId, source: "approved_memory", category: "sops", path: "07 SOPs/delete-test.md", title: "Delete Test", content: "remove me", contentHash: "h2", status: "draft" });
+    const deleteRes = await runRoute("/memory/notes/:id", "delete", { auth: owner, params: { id: String(disposable._id) } });
+    assert.equal(deleteRes.statusCode, 200);
+    assert.equal(deleteRes.body.data.deleted, true);
+    assert.equal(await JarvisMemoryNote.exists({ _id: disposable._id }), null);
+
     // Vault credential routes: create (secret shown once), list (never re-shown), revoke.
     const createRes = await runRoute("/memory/vault-credentials", "post", { auth: owner, body: { label: "Test bridge" } });
     assert.equal(createRes.statusCode, 200);
@@ -80,7 +86,7 @@ async function run() {
     const revokeRes = await runRoute("/memory/vault-credentials/:id", "delete", { auth: owner, params: { id: credentialId } });
     assert.equal(revokeRes.body.data.status, "revoked");
 
-    console.log("Knowledge Center routes: RBAC gate, note review lifecycle, cross-workspace isolation, and vault-credential CRUD all passed.");
+    console.log("Knowledge Center routes: RBAC gate, note review lifecycle, scoped deletion, cross-workspace isolation, and vault-credential CRUD all passed.");
   } finally {
     await JarvisMemoryNote.deleteMany({ workspaceId });
     await VaultCredential.deleteMany({ workspaceId });

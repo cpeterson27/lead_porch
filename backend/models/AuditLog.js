@@ -13,7 +13,7 @@ const mongoose = require("mongoose");
 const workspacePlugin = require("../tenancy/workspacePlugin");
 
 const ACTIONS = [
-  "knowledge.note.created", "knowledge.note.approved", "knowledge.note.rejected", "knowledge.note.archived", "knowledge.note.version_restored",
+  "knowledge.note.created", "knowledge.note.approved", "knowledge.note.rejected", "knowledge.note.archived", "knowledge.note.deleted", "knowledge.note.version_restored",
   "obsidian.sync.completed", "obsidian.sync.failed", "obsidian.credential.created", "obsidian.credential.revoked",
   "resource.file.uploaded", "resource.file.versioned", "resource.file.archived", "resource.file.viewed", "resource.file.downloaded", "resource.file.acknowledged", "resource.jarvis_approval.changed",
   "invitation.sent", "invitation.accepted", "invitation.revoked",

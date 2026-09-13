@@ -10,13 +10,11 @@ import {
   approveKnowledgeNote,
   rejectKnowledgeNote,
   archiveKnowledgeNote,
+  deleteKnowledgeNote,
   restoreKnowledgeNoteVersion,
   prepareKnowledgeMemory,
   confirmKnowledgeMemory,
   uploadKnowledgePdfs,
-  fetchVaultCredentials,
-  createVaultCredential,
-  revokeVaultCredential,
 } from "../services/api.js";
 import "./KnowledgeCenter.css";
 
@@ -31,7 +29,7 @@ const CATEGORIES = [
   ["decisions", "Decisions"],
 ];
 const STATUS_LABELS = { draft: "Draft", approved: "Approved", rejected: "Rejected", archived: "Archived" };
-const SOURCE_LABELS = { obsidian_bridge: "Obsidian sync", approved_memory: "Typed in Lead Porch", pdf_upload: "PDF upload" };
+const SOURCE_LABELS = { obsidian_bridge: "Imported from an older setup", approved_memory: "Written in Lead Porch", pdf_upload: "PDF upload" };
 
 function formatDate(value) {
   return value ? new Date(value).toLocaleString() : "—";
@@ -53,9 +51,8 @@ export default function KnowledgeCenter() {
   const [draft, setDraft] = useState({ title: "", content: "", category: "sops" });
   const [pendingApproval, setPendingApproval] = useState(null);
   const [confirmationInput, setConfirmationInput] = useState("");
-  const [credentials, setCredentials] = useState([]);
-  const [newCredentialLabel, setNewCredentialLabel] = useState("");
-  const [newSecret, setNewSecret] = useState(null);
+  const [showLibrary, setShowLibrary] = useState(true);
+  const [showImported, setShowImported] = useState(false);
   const [pdfCategory, setPdfCategory] = useState("offers-programs");
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfResults, setPdfResults] = useState(null);
@@ -70,10 +67,6 @@ export default function KnowledgeCenter() {
   }, []);
 
   useEffect(() => { loadNotes(); }, [loadNotes]);
-  useEffect(() => {
-    fetchVaultCredentials().then((res) => setCredentials(res.data || [])).catch(() => {});
-  }, []);
-
   useEffect(() => {
     if (!selectedId) return;
     fetchKnowledgeNote(selectedId)
@@ -105,22 +98,6 @@ export default function KnowledgeCenter() {
     }
   };
 
-  const reject = async (id) => {
-    setBusy(true);
-    setError("");
-    try {
-      await rejectKnowledgeNote(id, rejectReason);
-      setNotice("Note rejected.");
-      setRejectReason("");
-      loadNotes();
-      if (selectedId === id) fetchKnowledgeNote(id).then((res) => setSelected(res.data));
-    } catch (err) {
-      setError(err.response?.data?.error || "Unable to reject that note.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const archive = async (id) => {
     if (!window.confirm("Archive this note? It will stop being used by Jarvis and every agent.")) return;
     setBusy(true);
@@ -137,18 +114,48 @@ export default function KnowledgeCenter() {
     }
   };
 
-  const restoreVersion = async (version) => {
-    if (!selected) return;
-    if (!window.confirm(`Restore version ${version}? This creates a new draft revision awaiting its own approval.`)) return;
+  const reject = async (id) => {
     setBusy(true);
     setError("");
     try {
+      await rejectKnowledgeNote(id, rejectReason);
+      setNotice("Knowledge item rejected. Jarvis will not use it.");
+      setRejectReason("");
+      loadNotes();
+      fetchKnowledgeNote(id).then((res) => setSelected(res.data));
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to reject that item.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const restoreVersion = async (version) => {
+    if (!selected || !window.confirm(`Restore version ${version} as a new draft?`)) return;
+    setBusy(true);
+    try {
       await restoreKnowledgeNoteVersion(selected._id, version);
-      setNotice(`Version ${version} restored as a new draft.`);
+      setNotice(`Version ${version} restored as a draft for review.`);
       loadNotes();
       fetchKnowledgeNote(selected._id).then((res) => setSelected(res.data));
     } catch (err) {
       setError(err.response?.data?.error || "Unable to restore that version.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async (id) => {
+    if (!window.confirm("Permanently delete this knowledge item? This cannot be undone and Jarvis will no longer be able to use it.")) return;
+    setBusy(true);
+    setError("");
+    try {
+      await deleteKnowledgeNote(id);
+      setNotice("Knowledge item permanently deleted.");
+      closeNote();
+      loadNotes();
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to delete that item.");
     } finally {
       setBusy(false);
     }
@@ -215,38 +222,10 @@ export default function KnowledgeCenter() {
     }
   };
 
-  const addCredential = async () => {
-    setBusy(true);
-    setError("");
-    try {
-      const result = await createVaultCredential(newCredentialLabel);
-      setNewSecret(result.data);
-      setNewCredentialLabel("");
-      fetchVaultCredentials().then((res) => setCredentials(res.data || []));
-    } catch (err) {
-      setError(err.response?.data?.error || "Unable to create that credential.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const revokeCredential = async (id) => {
-    if (!window.confirm("Revoke this vault-bridge credential? Any sync using it will stop working immediately.")) return;
-    setBusy(true);
-    setError("");
-    try {
-      await revokeVaultCredential(id);
-      setNotice("Credential revoked.");
-      fetchVaultCredentials().then((res) => setCredentials(res.data || []));
-    } catch (err) {
-      setError(err.response?.data?.error || "Unable to revoke that credential.");
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const counts = notes.reduce((result, note) => ({ ...result, [note.status]: (result[note.status] || 0) + 1 }), {});
+  const importedCount = notes.filter((note) => note.source === "obsidian_bridge").length;
   const visibleNotes = notes.filter((note) => {
+    if (!showImported && note.source === "obsidian_bridge") return false;
     if (statusFilter && note.status !== statusFilter) return false;
     if (!statusFilter && note.status === "archived") return false;
     if (categoryFilter && note.category !== categoryFilter) return false;
@@ -283,7 +262,10 @@ export default function KnowledgeCenter() {
         title="Your knowledge library"
         action={<Button size="sm" onClick={() => (showNewForm ? cancelNewKnowledge() : setShowNewForm(true))}>{showNewForm ? "Cancel" : "Add a written note"}</Button>}
       >
-        <p className="knowledge-library-intro"><strong>Search here before uploading.</strong> Every PDF, written note, and Obsidian sync is listed with its original source and whether Jarvis can use it.</p>
+        <div className="knowledge-library-toolbar">
+          <p className="knowledge-library-intro"><strong>Search before uploading.</strong> Open any item to read its full contents, review it, archive it, or delete it.</p>
+          <Button size="sm" variant="outline" onClick={() => setShowLibrary((value) => !value)}>{showLibrary ? "Hide list" : "Show list"}</Button>
+        </div>
         <div className="knowledge-filters">
           <input placeholder="Search file name, title, or words inside…" value={search} onChange={(e) => setSearch(e.target.value)} />
           <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
@@ -313,13 +295,37 @@ export default function KnowledgeCenter() {
           </div>
         ) : null}
 
-        <div className="knowledge-library-grid">
-          {visibleNotes.map((note) => <button type="button" key={note._id} className="knowledge-library-item" onClick={() => selectNote(note._id)}>
-            <span className={`knowledge-file-mark is-${note.source}`}>{note.source === "pdf_upload" ? "PDF" : note.source === "obsidian_bridge" ? "OBS" : "NOTE"}</span>
+        {importedCount ? <button type="button" className="knowledge-imported-toggle" onClick={() => setShowImported((value) => !value)}>{showImported ? "Hide" : "Show"} {importedCount} older imported note{importedCount === 1 ? "" : "s"}</button> : null}
+        <div className={`knowledge-workspace ${!showLibrary ? "knowledge-workspace--detail-only" : ""}`}>
+        {showLibrary ? <div className="knowledge-library-grid">
+          {visibleNotes.map((note) => <button type="button" key={note._id} className={`knowledge-library-item ${selectedId === note._id ? "is-selected" : ""}`} onClick={() => selectNote(note._id)}>
+            <span className={`knowledge-file-mark is-${note.source}`}>{note.source === "pdf_upload" ? "PDF" : "NOTE"}</span>
             <span className="knowledge-library-copy"><strong>{note.originalFilename || note.title}</strong>{note.originalFilename && note.title !== note.originalFilename ? <small>{note.title}</small> : null}<small>{CATEGORIES.find(([value]) => value === note.category)?.[1] || note.category} · {formatDate(note.updatedAt)}</small></span>
             <span className={`knowledge-status-pill knowledge-status-pill--${note.status}`}>{note.status === "approved" ? "Jarvis can use" : note.status === "draft" ? "Needs review" : STATUS_LABELS[note.status]}</span>
           </button>)}
           {!visibleNotes.length ? <div className="knowledge-empty"><strong>No matching knowledge</strong><p>Try another search or filter. If this is a new document, use the upload area below.</p></div> : null}
+        </div> : null}
+        <aside className="knowledge-detail-panel" aria-live="polite">
+          {selected ? <>
+            <header><div><small>Viewing knowledge item</small><h2>{selected.title}</h2></div><Button size="sm" variant="ghost" onClick={closeNote}>Close</Button></header>
+            <div className="knowledge-detail-meta">
+              <span>Status: <strong>{STATUS_LABELS[selected.status] || selected.status}</strong></span>
+              <span>Category: <strong>{CATEGORIES.find(([value]) => value === selected.category)?.[1] || selected.category}</strong></span>
+              <span>Added from: <strong>{SOURCE_LABELS[selected.source] || selected.source}</strong></span>
+              {selected.originalFilename ? <span>Original file: <strong>{selected.originalFilename}</strong></span> : null}
+              <span>Last updated: <strong>{formatDate(selected.updatedAt)}</strong></span>
+            </div>
+            {selected.rejectionReason ? <p className="form-error">Rejected: {selected.rejectionReason}</p> : null}
+            <pre className="knowledge-detail-content">{selected.content}</pre>
+            <div className="knowledge-detail-actions">
+              {selected.status !== "approved" ? <Button onClick={() => approve(selected._id)} loading={busy}>Allow Jarvis to use</Button> : null}
+              {selected.status !== "rejected" ? <><input aria-label="Reason for rejecting this item" placeholder="Why reject it? (optional)" value={rejectReason} onChange={(event) => setRejectReason(event.target.value)} /><Button variant="secondary" onClick={() => reject(selected._id)} loading={busy}>Reject</Button></> : null}
+              {selected.status !== "archived" ? <Button variant="outline" onClick={() => archive(selected._id)} loading={busy}>Archive</Button> : null}
+              {hasRole(session, "owner") ? <Button variant="ghost" onClick={() => remove(selected._id)} loading={busy}>Delete permanently</Button> : null}
+            </div>
+            {selected.versions?.length ? <details className="knowledge-version-history"><summary>Version history ({selected.versions.length})</summary><ul>{[...selected.versions].reverse().map((version) => <li key={version.version}><span>Version {version.version} · {formatDate(version.savedAt)}</span><Button size="sm" variant="outline" onClick={() => restoreVersion(version.version)} disabled={busy}>Restore</Button></li>)}</ul></details> : null}
+          </> : <div className="knowledge-detail-empty"><strong>Select an item to view it</strong><p>Its full contents and controls will appear here without sending you farther down the page.</p></div>}
+        </aside>
         </div>
       </DashboardCard>
 
@@ -352,79 +358,6 @@ export default function KnowledgeCenter() {
         </DashboardCard>
       ) : null}
 
-      {selected ? (
-        <DashboardCard title={selected.title} action={<Button size="sm" variant="ghost" onClick={closeNote}>Close</Button>}>
-          <div className="knowledge-detail-meta">
-            <span>Status: <strong>{STATUS_LABELS[selected.status] || selected.status}</strong></span>
-            <span>Owner: {selected.ownerLabel || "—"}</span>
-            <span>Effective: {formatDate(selected.effectiveDate)}</span>
-            <span>Review by: {formatDate(selected.reviewDate)}</span>
-            <span>Added from: {SOURCE_LABELS[selected.source] || selected.source}</span>
-            {selected.originalFilename ? <span>Original file: {selected.originalFilename}</span> : null}
-          </div>
-          {selected.rejectionReason ? <p className="form-error">Rejected: {selected.rejectionReason}</p> : null}
-          <pre className="knowledge-detail-content">{selected.content}</pre>
-          <div className="knowledge-detail-actions">
-            {selected.status !== "approved" ? <Button onClick={() => approve(selected._id)} loading={busy}>Approve</Button> : null}
-            {selected.status !== "rejected" ? (
-              <>
-                <input placeholder="Rejection reason (optional)" value={rejectReason} onChange={(e) => setRejectReason(e.target.value)} />
-                <Button variant="secondary" onClick={() => reject(selected._id)} loading={busy}>Reject</Button>
-              </>
-            ) : null}
-            {selected.status !== "archived" ? <Button variant="ghost" onClick={() => archive(selected._id)} loading={busy}>Archive</Button> : null}
-          </div>
-          {selected.versions?.length ? (
-            <div className="knowledge-version-history">
-              <h3>Version history</h3>
-              <ul>
-                {[...selected.versions].reverse().map((version) => (
-                  <li key={version.version}>
-                    <span>Version {version.version} · {formatDate(version.savedAt)} · {version.changeSource.replaceAll("_", " ")}</span>
-                    <Button size="sm" variant="outline" onClick={() => restoreVersion(version.version)} disabled={busy}>Restore</Button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ) : null}
-        </DashboardCard>
-      ) : null}
-
-      <DashboardCard title="Obsidian vault bridge (optional)">
-        <p>
-          Lead Porch remains fully canonical without Obsidian. If you use it as an optional local
-          mirror, create a credential here and paste it into the bridge tool's own configuration —
-          no server environment variable editing required. Revoking a credential here stops that
-          sync immediately.
-        </p>
-        {newSecret ? (
-          <div className="knowledge-new-secret">
-            <p>Copy this secret now — it will never be shown again.</p>
-            <code>{newSecret.secret}</code>
-            <Button size="sm" variant="ghost" onClick={() => setNewSecret(null)}>Done, I've copied it</Button>
-          </div>
-        ) : (
-          <div className="knowledge-credential-form">
-            <input placeholder="Label (e.g. Owner's laptop)" value={newCredentialLabel} onChange={(e) => setNewCredentialLabel(e.target.value)} />
-            <Button size="sm" onClick={addCredential} loading={busy}>Create credential</Button>
-          </div>
-        )}
-        <table className="knowledge-notes-table">
-          <thead><tr><th>Label</th><th>Status</th><th>Last success</th><th>Last error</th><th /></tr></thead>
-          <tbody>
-            {credentials.map((credential) => (
-              <tr key={credential._id}>
-                <td>{credential.label || "(unlabeled)"}</td>
-                <td>{credential.status}</td>
-                <td>{formatDate(credential.lastSuccessAt)}</td>
-                <td>{credential.lastError || "—"}</td>
-                <td>{credential.status === "active" ? <Button size="sm" variant="ghost" onClick={() => revokeCredential(credential._id)}>Revoke</Button> : null}</td>
-              </tr>
-            ))}
-            {!credentials.length ? <tr><td colSpan="5">No vault-bridge credentials yet.</td></tr> : null}
-          </tbody>
-        </table>
-      </DashboardCard>
     </div>
   );
 }

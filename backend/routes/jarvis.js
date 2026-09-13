@@ -658,6 +658,13 @@ router.post("/memory/notes/:id/archive", requireRole("owner", "admin"), async (r
     return res.status(error.code === "MEMORY_NOTE_NOT_FOUND" ? 404 : 400).json({ success: false, error: error.message, code: error.code });
   }
 });
+router.delete("/memory/notes/:id", requireRole("owner"), async (req, res) => {
+  try {
+    return res.json({ success: true, data: await jarvisMemoryService.deleteNote({ workspaceId: req.auth.workspaceId, noteId: req.params.id, userId: req.auth.userId }) });
+  } catch (error) {
+    return res.status(error.code === "MEMORY_NOTE_NOT_FOUND" ? 404 : 400).json({ success: false, error: error.message, code: error.code });
+  }
+});
 router.post("/memory/notes/:id/restore-version", requireRole("owner", "admin"), async (req, res) => {
   try {
     return res.json({ success: true, data: await jarvisMemoryService.restoreVersion({ workspaceId: req.auth.workspaceId, noteId: req.params.id, userId: req.auth.userId, version: req.body?.version }) });

@@ -337,9 +337,6 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse
       ),
     }))
     .filter((group) => group.items.length);
-  const appBranding = socialConnectionOnly
-    ? {}
-    : displayedOrganization?.appBranding || site?.appBranding || {};
   // The dashboard sidebar is always a dark surface, so it prefers the
   // dark-backgrounds logo — the same single light/dark logo pair used
   // everywhere else (public website, application page).
@@ -347,7 +344,6 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse
     ? {}
     : displayedOrganization?.branding || site?.branding || {};
   const appLogo = brand.publicSiteLogoDarkUrl || brand.publicSiteLogoUrl || "";
-  const compactLogo = appBranding.compactLogoUrl || appLogo;
   return (
     <aside
       className={`${isOpen ? "sidebar sidebar--open" : "sidebar"} ${isCollapsed ? "sidebar--collapsed" : ""}`}
@@ -368,15 +364,10 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse
       <div className="sidebar__brand">
         <div className="sidebar__logo">
           {appLogo ? (
-            <picture>
-              {compactLogo !== appLogo ? (
-                <source media="(max-width: 900px)" srcSet={compactLogo} />
-              ) : null}
-              <img
-                src={appLogo}
-                alt={`${displayedOrganization?.workspaceName || "Workspace"} dashboard logo`}
-              />
-            </picture>
+            <img
+              src={appLogo}
+              alt={`${displayedOrganization?.workspaceName || "Workspace"} dashboard logo`}
+            />
           ) : (
             <span aria-hidden="true">
               {(

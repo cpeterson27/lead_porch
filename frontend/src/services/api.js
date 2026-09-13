@@ -1632,6 +1632,8 @@ export const rejectKnowledgeNote = (id, reason) =>
   api.post(`/jarvis/memory/notes/${id}/reject`, { reason }).then((res) => res.data);
 export const archiveKnowledgeNote = (id) =>
   api.post(`/jarvis/memory/notes/${id}/archive`).then((res) => res.data);
+export const deleteKnowledgeNote = (id) =>
+  api.delete(`/jarvis/memory/notes/${id}`).then((res) => res.data);
 export const restoreKnowledgeNoteVersion = (id, version) =>
   api.post(`/jarvis/memory/notes/${id}/restore-version`, { version }).then((res) => res.data);
 export const prepareKnowledgeMemory = (payload) =>

@@ -322,6 +322,15 @@ async function archiveNote({ workspaceId, noteId, userId } = {}, Model = JarvisM
   return note;
 }
 
+async function deleteNote({ workspaceId, noteId, userId } = {}, Model = JarvisMemoryNote) {
+  const note = await Model.findOne({ _id: noteId, workspaceId });
+  if (!note) { const error = new Error("Knowledge note not found"); error.code = "MEMORY_NOTE_NOT_FOUND"; throw error; }
+  await require("./discoveryEngineSyncService").removeNote(note);
+  await Model.deleteOne({ _id: note._id, workspaceId });
+  await auditService.record({ workspaceId, actorUserId: userId, action: "knowledge.note.deleted", targetType: "JarvisMemoryNote", targetId: note._id, before: { title: note.title, source: note.source, status: note.status }, success: true });
+  return { id: note._id, deleted: true };
+}
+
 /** Restores a prior version's content as a new draft revision, awaiting its own approval — never restores directly into "approved". */
 async function restoreVersion({ workspaceId, noteId, userId, version } = {}, Model = JarvisMemoryNote) {
   const note = await Model.findOne({ _id: noteId, workspaceId });
@@ -344,4 +353,4 @@ async function restoreVersion({ workspaceId, noteId, userId, version } = {}, Mod
   return note;
 }
 
-module.exports = { CATEGORY_FOLDERS, KNOWLEDGE_FOLDERS, approveNote, archiveNote, categoryForPath, getNote, getStatus, isSafeNotePath, listNotes, localWorkspaceAllowed, memorySource, recordConversation, rejectNote, restoreVersion, retrieveCloudNotes, retrieveRelevantNotes, saveApprovedMemory, syncCloudNotes };
+module.exports = { CATEGORY_FOLDERS, KNOWLEDGE_FOLDERS, approveNote, archiveNote, categoryForPath, deleteNote, getNote, getStatus, isSafeNotePath, listNotes, localWorkspaceAllowed, memorySource, recordConversation, rejectNote, restoreVersion, retrieveCloudNotes, retrieveRelevantNotes, saveApprovedMemory, syncCloudNotes };
