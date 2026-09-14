@@ -178,9 +178,16 @@ async function testDedupStillWorksAcrossDifferentRawEmailShapes() {
     },
   );
 
-  assert.equal(result.runSummary.created, 1, "the first candidate creates one row");
-  assert.equal(result.runSummary.merged, 1, "the second, differently-shaped-but-same-email candidate must merge into it, not create a duplicate");
-  assert.equal(rows.length, 1);
+  // The gather-rank-merge step (leadGenerationCoordinatorService's
+  // gatherRankAndMergeIcpMatches) now dedupes the freshly-fetched pool by
+  // the same identity key BEFORE ever touching the DB, so a duplicate
+  // within one provider's own results never reaches mergeIcpMatchCandidate
+  // at all — it's correctly collapsed to one candidate pre-merge, not
+  // created-then-merged as two separate DB operations. The end state (one
+  // row, no duplicate) is unchanged; only where the merge happens moved.
+  assert.equal(result.runSummary.created, 1, "the deduped candidate creates one row");
+  assert.equal(result.runSummary.merged, 0, "the differently-shaped-but-same-email duplicate was already collapsed before reaching the DB, so no separate merge occurs");
+  assert.equal(rows.length, 1, "still only one row ever exists — dedup still works, just earlier in the pipeline");
 }
 
 async function run() {

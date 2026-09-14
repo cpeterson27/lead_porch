@@ -89,7 +89,10 @@ const LEADGEN_PROVIDERS = [
   ["pdl_person_search", "PDL Person Search"],
   ["apollo_person_search", "Apollo People Search"],
 ];
-const LEADGEN_COUNT_OPTIONS = [5, 10, 25];
+// Matches backend leadGenerationCoordinatorService.js's MAX_REQUESTED_COUNT
+// (100) — 50/100 are real options now that Apollo's pool-then-rank step
+// can actually fill them (see APOLLO_MAX_POOL_SIZE there).
+const LEADGEN_COUNT_OPTIONS = [5, 10, 25, 50, 100];
 const EMPTY_ICP_DRAFT = { titles: "", industries: "", locations: "", keywords: "", seniority: "", companySizeRange: "", exclusions: "" };
 const icpArrayToDraftString = (values) => (values || []).join(", ");
 const icpDraftStringToArray = (value) => String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
@@ -497,6 +500,11 @@ export default function Discovery() {
   };
 
   const updateLeadGenIcpDraft = (field, value) => setLeadGenIcpDraft((current) => ({ ...current, [field]: value }));
+  const removeLeadGenKeyword = (keyword) =>
+    updateLeadGenIcpDraft(
+      "keywords",
+      icpDraftStringToArray(leadGenIcpDraft.keywords).filter((item) => item !== keyword).join(", "),
+    );
 
   const approveLeadGenSearch = async () => {
     if (!leadGenProposal?._id || leadGenApproveBusy) return;
@@ -699,6 +707,16 @@ export default function Discovery() {
 
   const providerOptions = useMemo(() => [...new Set(groundingResults.flatMap((r) => r.providers || []))].sort(), [groundingResults]);
 
+  const reviewActiveFilterCount = [
+    reviewFilters.run !== "all",
+    reviewFilters.newOnly,
+    reviewFilters.provider !== "all",
+    reviewFilters.qualification !== "all",
+    Boolean(reviewFilters.location.trim()),
+    reviewFilters.freshness !== "all",
+    reviewFilters.identityConfidence !== "all",
+  ].filter(Boolean).length;
+
   const visibleGroundingResults = useMemo(() => groundingResults.filter((r) => {
     if (reviewFilters.run !== "all" && runKeyOf(r) !== reviewFilters.run) return false;
     if (reviewFilters.newOnly && !r.isNew) return false;
@@ -709,6 +727,16 @@ export default function Discovery() {
     if (reviewFilters.identityConfidence !== "all" && (r.identityConfidence || "low") !== reviewFilters.identityConfidence) return false;
     if (qualifyOutcomeFilter !== "all" && (r.qualificationLabel || "") !== qualifyOutcomeFilter) return false;
     return true;
+    // Best-fit first — a scored candidate (ICP keyword/title match, or the
+    // opt-in Jarvis qualify step) always sorts above an unscored one,
+    // regardless of which came in more recently. This is what actually
+    // surfaces "the best candidates" from a larger gathered pool instead
+    // of just whichever was found most recently.
+  }).sort((a, b) => {
+    const aScore = typeof a.fitScore === "number" ? a.fitScore : -1;
+    const bScore = typeof b.fitScore === "number" ? b.fitScore : -1;
+    if (aScore !== bScore) return bScore - aScore;
+    return new Date(b.createdAt) - new Date(a.createdAt);
   }), [groundingResults, reviewFilters, qualifyOutcomeFilter]);
 
   const groundingResultsByLane = useMemo(() => {
@@ -1488,7 +1516,7 @@ export default function Discovery() {
             <h4 id="leadgen-review-heading">{leadGenProposal.status === "proposed" ? "Review before running — nothing spent yet" : `Search ${leadGenProposal.status}`}</h4>
 
             {leadGenProposal.status === "proposed" ? (
-              <><section className="leadgen-signal-editor"><header><span>#</span><div><strong>Keywords and relevant topics</strong><small>Auto-generated from the selected program. Remove or edit anything that is not useful.</small></div></header><div className="leadgen-signal-chips">{icpDraftStringToArray(leadGenIcpDraft.keywords).map((keyword) => <span key={keyword}>{keyword}</span>)}</div></section><div className="leadgen-review-grid">
+              <><section className="leadgen-signal-editor"><header><span>#</span><div><strong>Keywords and relevant topics</strong><small>Auto-generated from the selected program. Remove or edit anything that is not useful.</small></div></header><div className="leadgen-signal-chips">{icpDraftStringToArray(leadGenIcpDraft.keywords).map((keyword) => <span key={keyword}>{keyword}<button type="button" aria-label={`Remove ${keyword}`} onClick={() => removeLeadGenKeyword(keyword)}>×</button></span>)}</div></section><div className="leadgen-review-grid">
                 <label><span>Program</span><input type="text" value={leadGenProposal.programName || "(not specified)"} readOnly /></label>
                 <label><span>Titles</span><input type="text" value={leadGenIcpDraft.titles} onChange={(event) => updateLeadGenIcpDraft("titles", event.target.value)} placeholder="comma-separated" /></label>
                 <label><span>Industries</span><input type="text" value={leadGenIcpDraft.industries} onChange={(event) => updateLeadGenIcpDraft("industries", event.target.value)} placeholder="comma-separated" /></label>
@@ -1506,46 +1534,54 @@ export default function Discovery() {
               </dl>
             )}
 
-            <dl className="leadgen-review-summary">
-              <dt>Freshness</dt><dd>Public-web evidence within {leadGenProposal.freshnessDays} days</dd>
-              <dt>Sources</dt><dd>{leadGenProposal.sources.join(", ")}</dd>
-              <dt>Requested count</dt><dd>Up to {leadGenProposal.requestedCount} people</dd>
-              <dt>Estimated credit use</dt>
-              <dd>
-                {leadGenProposal.estimatedCreditUse?.pdl ? `PDL: up to ${leadGenProposal.estimatedCreditUse.pdl} · ` : ""}
-                {leadGenProposal.estimatedCreditUse?.apollo ? `Apollo: up to ${leadGenProposal.estimatedCreditUse.apollo} · ` : ""}
-                {leadGenProposal.estimatedCreditUse?.vertex || ""} {leadGenProposal.estimatedCreditUse?.openai || ""}
-                <br /><small>{leadGenProposal.estimatedCreditUse?.note}</small>
-              </dd>
-              <dt>Destination</dt><dd>Review queue below — nothing is imported into the CRM automatically.</dd>
-            </dl>
+            <p className="leadgen-run-explanation">Searching for up to <strong>{leadGenProposal.requestedCount} people</strong>, best-fit first — nothing is imported into the CRM automatically.</p>
+            <details className="leadgen-search-settings">
+              <summary>Search details <small>Freshness, sources, and estimated cost</small></summary>
+              <dl className="leadgen-review-summary">
+                <dt>Freshness</dt><dd>Public-web evidence within {leadGenProposal.freshnessDays} days</dd>
+                <dt>Sources</dt><dd>{leadGenProposal.sources.join(", ")}</dd>
+                <dt>Requested count</dt><dd>Up to {leadGenProposal.requestedCount} people</dd>
+                <dt>Estimated credit use</dt>
+                <dd>
+                  {leadGenProposal.estimatedCreditUse?.pdl ? `PDL: up to ${leadGenProposal.estimatedCreditUse.pdl} · ` : ""}
+                  {leadGenProposal.estimatedCreditUse?.apollo ? `Apollo: up to ${leadGenProposal.estimatedCreditUse.apollo} · ` : ""}
+                  {leadGenProposal.estimatedCreditUse?.vertex || ""} {leadGenProposal.estimatedCreditUse?.openai || ""}
+                  <br /><small>{leadGenProposal.estimatedCreditUse?.note}</small>
+                </dd>
+                <dt>Destination</dt><dd>Review queue below — nothing is imported into the CRM automatically.</dd>
+              </dl>
+            </details>
 
             {leadGenProposal.status !== "proposed" && leadGenProposal.runSummary ? (
               <div className="leadgen-run-summary">
                 <p className="leadgen-run-explanation">{leadGenProposal.runSummary.explanation || `${leadGenProposal.runSummary.created || 0} new, ${leadGenProposal.runSummary.merged || 0} merged.`}</p>
                 {leadGenProposal.runSummary.providerBreakdown?.length ? (
-                  <div className="leadgen-provider-breakdown-wrap">
-                    <table className="leadgen-provider-breakdown">
-                      <thead>
-                        <tr><th>Provider</th><th>Requested</th><th>Returned</th><th>Rejected: self</th><th>Rejected: freshness</th><th>Matched existing</th><th>Over limit</th><th>Accepted</th><th>Status</th></tr>
-                      </thead>
-                      <tbody>
-                        {leadGenProposal.runSummary.providerBreakdown.map((row, index) => (
-                          <tr key={`${row.provider}-${index}`}>
-                            <td>{row.provider}</td>
-                            <td>{row.requested}</td>
-                            <td>{row.returned}</td>
-                            <td>{row.rejectedSelf}</td>
-                            <td>{row.rejectedFreshness}</td>
-                            <td>{row.rejectedDedup}</td>
-                            <td>{row.rejectedForCapacity || 0}</td>
-                            <td>{row.accepted}</td>
-                            <td>{row.error ? <span className="form-error">{row.error}</span> : "—"}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                  <details className="leadgen-search-settings">
+                    <summary>Show provider details <small>Per-source counts — requested, returned, rejected, accepted</small></summary>
+                    <div className="leadgen-provider-breakdown-wrap">
+                      <table className="leadgen-provider-breakdown">
+                        <thead>
+                          <tr><th>Provider</th><th>Requested</th><th>Returned</th><th>Rejected: self</th><th>Rejected: freshness</th><th>Matched existing</th><th>Over limit</th><th>Ranked lower</th><th>Accepted</th><th>Status</th></tr>
+                        </thead>
+                        <tbody>
+                          {leadGenProposal.runSummary.providerBreakdown.map((row, index) => (
+                            <tr key={`${row.provider}-${index}`}>
+                              <td>{row.provider}</td>
+                              <td>{row.requested}</td>
+                              <td>{row.returned}</td>
+                              <td>{row.rejectedSelf}</td>
+                              <td>{row.rejectedFreshness}</td>
+                              <td>{row.rejectedDedup}</td>
+                              <td>{row.rejectedForCapacity || 0}</td>
+                              <td title="Found and scored, but a higher-fit candidate filled the requested count instead">{row.rejectedForRanking || 0}</td>
+                              <td>{row.accepted}</td>
+                              <td>{row.error ? <span className="form-error">{row.error}</span> : "—"}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </details>
                 ) : null}
               </div>
             ) : null}
@@ -1667,39 +1703,47 @@ export default function Discovery() {
 
         {groundingResultsStatus === "pending_review" ? (
           <div className="review-queue-toolbar">
-            <div className="review-queue-filter-row">
-              <label><span>Run</span><select value={reviewFilters.run} onChange={(e) => setReviewFilters((c) => ({ ...c, run: e.target.value }))}>
-                <option value="all">All runs</option>
-                {runOptions.map((r) => <option key={r.key} value={r.key}>{r.key === "manual" ? "Manual search" : `${r.kind} · ${new Date(r.latest).toLocaleString()}`} ({r.count})</option>)}
-              </select></label>
-              <label className="review-queue-checkbox-filter"><input type="checkbox" checked={reviewFilters.newOnly} onChange={(e) => setReviewFilters((c) => ({ ...c, newOnly: e.target.checked }))} /><span>New only</span></label>
-              <label><span>Provider</span><select value={reviewFilters.provider} onChange={(e) => setReviewFilters((c) => ({ ...c, provider: e.target.value }))}>
-                <option value="all">All providers</option>
-                {providerOptions.map((p) => <option key={p} value={p}>{p}</option>)}
-              </select></label>
-              <label><span>Qualification</span><select value={reviewFilters.qualification} onChange={(e) => setReviewFilters((c) => ({ ...c, qualification: e.target.value }))}>
-                <option value="all">Any status</option>
-                <option value="qualified">Qualified</option>
-                <option value="needs_review">Needs review</option>
-                <option value="not_a_fit">Not a fit</option>
-                <option value="unscored">Not yet qualified</option>
-              </select></label>
-              <label><span>Location contains</span><input type="text" value={reviewFilters.location} onChange={(e) => setReviewFilters((c) => ({ ...c, location: e.target.value }))} placeholder="e.g. Texas" /></label>
-              <label><span>Freshness</span><select value={reviewFilters.freshness} onChange={(e) => setReviewFilters((c) => ({ ...c, freshness: e.target.value }))}>
-                <option value="all">Any freshness</option>
-                <option value="recent">Recent (0-90d)</option>
-                <option value="aging">Aging (91-365d)</option>
-                <option value="evergreen">Evergreen/undated</option>
-                <option value="n/a">Not applicable (ICP match)</option>
-              </select></label>
-              <label><span>Identity confidence</span><select value={reviewFilters.identityConfidence} onChange={(e) => setReviewFilters((c) => ({ ...c, identityConfidence: e.target.value }))}>
-                <option value="all">Any confidence</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-                <option value="conflict">Conflict / needs review</option>
-              </select></label>
-            </div>
+            <details className="leadgen-search-settings">
+              <summary>
+                Filters
+                <small>
+                  {reviewActiveFilterCount ? `${reviewActiveFilterCount} active — results below are best-fit first` : "Optional — results below are already sorted best-fit first"}
+                </small>
+              </summary>
+              <div className="review-queue-filter-row">
+                <label><span>Run</span><select value={reviewFilters.run} onChange={(e) => setReviewFilters((c) => ({ ...c, run: e.target.value }))}>
+                  <option value="all">All runs</option>
+                  {runOptions.map((r) => <option key={r.key} value={r.key}>{r.key === "manual" ? "Manual search" : `${r.kind} · ${new Date(r.latest).toLocaleString()}`} ({r.count})</option>)}
+                </select></label>
+                <label className="review-queue-checkbox-filter"><input type="checkbox" checked={reviewFilters.newOnly} onChange={(e) => setReviewFilters((c) => ({ ...c, newOnly: e.target.checked }))} /><span>New only</span></label>
+                <label><span>Provider</span><select value={reviewFilters.provider} onChange={(e) => setReviewFilters((c) => ({ ...c, provider: e.target.value }))}>
+                  <option value="all">All providers</option>
+                  {providerOptions.map((p) => <option key={p} value={p}>{p}</option>)}
+                </select></label>
+                <label><span>Qualification</span><select value={reviewFilters.qualification} onChange={(e) => setReviewFilters((c) => ({ ...c, qualification: e.target.value }))}>
+                  <option value="all">Any status</option>
+                  <option value="qualified">Qualified</option>
+                  <option value="needs_review">Needs review</option>
+                  <option value="not_a_fit">Not a fit</option>
+                  <option value="unscored">Not yet qualified</option>
+                </select></label>
+                <label><span>Location contains</span><input type="text" value={reviewFilters.location} onChange={(e) => setReviewFilters((c) => ({ ...c, location: e.target.value }))} placeholder="e.g. Texas" /></label>
+                <label><span>Freshness</span><select value={reviewFilters.freshness} onChange={(e) => setReviewFilters((c) => ({ ...c, freshness: e.target.value }))}>
+                  <option value="all">Any freshness</option>
+                  <option value="recent">Recent (0-90d)</option>
+                  <option value="aging">Aging (91-365d)</option>
+                  <option value="evergreen">Evergreen/undated</option>
+                  <option value="n/a">Not applicable (ICP match)</option>
+                </select></label>
+                <label><span>Identity confidence</span><select value={reviewFilters.identityConfidence} onChange={(e) => setReviewFilters((c) => ({ ...c, identityConfidence: e.target.value }))}>
+                  <option value="all">Any confidence</option>
+                  <option value="high">High</option>
+                  <option value="medium">Medium</option>
+                  <option value="low">Low</option>
+                  <option value="conflict">Conflict / needs review</option>
+                </select></label>
+              </div>
+            </details>
 
             <div className="review-queue-selection-row">
               <Button size="sm" variant="outline" onClick={selectAllNewFromRun}>Select all new from this run</Button>

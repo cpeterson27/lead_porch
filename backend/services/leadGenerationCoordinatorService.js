@@ -47,10 +47,28 @@ const auditService = require("./auditService");
 const workspaceSelfExclusionService = require("./workspaceSelfExclusionService");
 
 const clean = (value, length) => String(value || "").trim().slice(0, length);
-const MAX_REQUESTED_COUNT = 25;
+// Raised from 25 so a real search can actually reach APOLLO_MAX_POOL_SIZE
+// (300) below — at the old ceiling, 25 * APOLLO_POOL_MULTIPLIER (4) = 100
+// meant the pool never exceeded one Apollo page, so multi-page pagination
+// was dead code no real search ever exercised. At the new ceiling, 100 *
+// 4 = 400, clamped to 300, which needs 3 pages — see
+// test-lead-qualification.js's real-pagination test.
+const MAX_REQUESTED_COUNT = 100;
 const DEFAULT_REQUESTED_COUNT = 10;
 const ICP_SOURCES = ["vertex", "openai_web_search", "pdl_person_search", "apollo_person_search", "all"];
 const ALL_SOURCE_KEYS = ["vertex", "openai_web_search", "pdl_person_search", "apollo_person_search"];
+
+// Apollo is the volume source: search-only API calls, no per-result credit
+// charge, so it's safe to over-fetch a large pool and rank it down. PDL's
+// Search API bills by records returned, so it gets a much smaller,
+// "supplement and cross-reference" buffer instead — controlled credit use,
+// per the plan. Both feed the same rank-then-keep-the-best step.
+const APOLLO_POOL_MULTIPLIER = 4;
+const APOLLO_MAX_POOL_SIZE = 300;
+const APOLLO_MAX_PAGES = 4;
+const APOLLO_PAGE_SIZE = 100;
+const PDL_POOL_MULTIPLIER = 2;
+const PDL_MAX_POOL_SIZE = 50;
 
 /**
  * Pure, synchronous, no-network config checks — never a live provider call
@@ -84,7 +102,7 @@ const ICP_RESPONSE_SCHEMA = {
   type: "object",
   properties: {
     programName: { type: "string" },
-    requestedCount: { type: "number", description: "How many candidates were requested, 1-25. Default 10 if not stated. Never exceed 25 — cap and explain in reasoning if the owner asked for more." },
+    requestedCount: { type: "number", description: "How many candidates were requested, 1-100. Default 10 if not stated. Never exceed 100 — cap and explain in reasoning if the owner asked for more." },
     icp: {
       type: "object",
       properties: {
@@ -361,11 +379,11 @@ async function proposeSearch({ workspaceId, userId, auth, naturalLanguageRequest
     freshnessDays: safeFreshnessDays,
     requestedCount,
     estimatedCreditUse: {
-      pdl: includesPdl && availability.pdl_person_search.available ? requestedCount : 0,
-      apollo: includesApollo && availability.apollo_person_search.available ? requestedCount : 0,
+      pdl: includesPdl && availability.pdl_person_search.available ? Math.min(PDL_MAX_POOL_SIZE, Math.max(requestedCount * PDL_POOL_MULTIPLIER, requestedCount)) : 0,
+      apollo: includesApollo && availability.apollo_person_search.available ? Math.min(APOLLO_MAX_POOL_SIZE, Math.max(requestedCount * APOLLO_POOL_MULTIPLIER, requestedCount)) : 0,
       vertex: includesVertex && availability.vertex.available ? "1 grounded search call (~a few cents)" : "",
       openai: includesOpenai && availability.openai_web_search.available ? "1 web_search call (~a few cents)" : "",
-      note: "PDL/Apollo figures are a conservative upper bound (at most 1 credit-equivalent per requested candidate) for the Person Search step alone — actual charges depend on your plan, and a further, separate charge applies only if you explicitly run PDL/Apollo enrichment afterward."
+      note: `Lead Porch searches for a larger pool than requested (Apollo up to ${APOLLO_POOL_MULTIPLIER}x, PDL up to ${PDL_POOL_MULTIPLIER}x, both capped) and automatically keeps only the ${requestedCount} best-fit candidates by score — the figures above are the upper bound on what's fetched, not what's saved. This is the Person Search step only; a further, separate charge applies only if you explicitly run PDL/Apollo enrichment afterward.`
         + (unavailableSelected.length ? ` Selected but not currently enabled, so nothing will be spent on it: ${unavailableSelected.join(", ")} — running this plan will report that as a source error rather than silently skip it.` : ""),
     },
     status: "proposed",
@@ -457,7 +475,7 @@ function identityKey(candidate) {
  * new provider vs the existing row) is recorded in `conflicts` and keeps
  * the row in pending_review rather than silently picking one value.
  */
-async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlationId, candidate, allowCreate = true }, dependencies = {}) {
+async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlationId, candidate, fitScore = null, fitReasons = [], allowCreate = true }, dependencies = {}) {
   const Model = dependencies.GroundingResearchResult || GroundingResearchResult;
   const key = identityKey(candidate);
   const candidateEmail = sanitizeEmailValue(candidate.email);
@@ -479,6 +497,11 @@ async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlati
       evidenceUrls: [], evidenceDate: null, confidence: "single_source",
       discoveryMode: "icp_match", providers: [candidate.provider], discoverySearchId: searchId,
       identityConfidence: candidate.emailState === "verified" ? "medium" : "low",
+      // Deterministic ICP keyword/title/location fit computed at gather
+      // time (see computeIcpFitScore) — cheap enough to run on every
+      // candidate, unlike the opt-in OpenAI qualify step's fitScore, which
+      // this only seeds a starting value for and that step may overwrite.
+      fitScore, fitReasons,
       status: "pending_review", createdByUserId: userId, correlationId,
     });
     return { created: true, row: created };
@@ -502,6 +525,13 @@ async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlati
   existing.organizationName = existing.organizationName || candidate.organizationName;
   existing.organizationDomain = existing.organizationDomain || candidate.organizationDomain;
   existing.conflicts = conflicts;
+  // A second provider corroborating this same person is itself a fit
+  // signal — take the higher of the two independently-computed scores
+  // rather than whichever provider happened to be merged first.
+  if (fitScore != null && (existing.fitScore == null || fitScore > existing.fitScore)) {
+    existing.fitScore = fitScore;
+    if (fitReasons?.length) existing.fitReasons = fitReasons;
+  }
   // Confidence rises only on real agreement between independent providers —
   // never just because a second provider ALSO happened to mention this
   // person while disagreeing on a field.
@@ -511,6 +541,188 @@ async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlati
   }
   await existing.save();
   return { created: false, row: existing };
+}
+
+// ── High-volume pool gathering, deterministic ranking, and auto-broadening
+// for Apollo + PDL ───────────────────────────────────────────────────────
+// Apollo/PDL are structured ICP matches, not public-web evidence (see the
+// module header), so unlike Vertex/OpenAI it's safe and cheap to over-fetch
+// a bigger pool than the owner actually asked for, score every candidate
+// deterministically against the ICP — no OpenAI call, that stays reserved
+// for the opt-in "Have Jarvis qualify" step — and only keep the best
+// `desired` by score. If the ranked pool still falls short after that, the
+// ICP's most specific optional field is relaxed once and the fetch retried
+// before giving up, rather than just reporting a thin result.
+
+/**
+ * Scores a raw provider person (pre-normalization, so real `title`/
+ * `location`/`company` fields are still available) against the ICP. This
+ * never calls an LLM — it's meant to run on every candidate in a large
+ * pool, so it has to stay free and instant.
+ */
+function computeIcpFitScore(person, icp) {
+  const reasons = [];
+  let score = 20;
+  const title = String(person.title || "").toLowerCase();
+  const haystack = `${person.title || ""} ${person.company || ""}`.toLowerCase();
+  const titleHit = (icp.titles || []).find((t) => t && title.includes(String(t).toLowerCase()));
+  if (titleHit) { score += 35; reasons.push(`Title matches "${titleHit}"`); }
+  const keywordHits = (icp.keywords || []).filter((k) => k && haystack.includes(String(k).toLowerCase()));
+  if (keywordHits.length) { score += Math.min(25, keywordHits.length * 10); reasons.push(`Matches keyword${keywordHits.length === 1 ? "" : "s"}: ${keywordHits.slice(0, 3).join(", ")}`); }
+  const industryHits = (icp.industries || []).filter((i) => i && haystack.includes(String(i).toLowerCase()));
+  if (industryHits.length) { score += 15; reasons.push(`Matches industry: ${industryHits.slice(0, 2).join(", ")}`); }
+  const locationHit = (icp.locations || []).find((l) => l && String(person.location || "").toLowerCase().includes(String(l).toLowerCase()));
+  if (locationHit) { score += 10; reasons.push(`Located in ${locationHit}`); }
+  if (person.emailState === "verified") { score += 10; reasons.push("Verified email on file"); }
+  return { score: Math.max(0, Math.min(100, score)), reasons };
+}
+
+/** Relaxes the single most specific optional ICP field, in priority order, so an auto-broadened retry stays as close as possible to the original request. Returns null once nothing optional is left to relax. */
+function broadenIcp(icp) {
+  if (icp.industries?.length) return { icp: { ...icp, industries: [] }, relaxed: "industries" };
+  if (icp.seniority?.length) return { icp: { ...icp, seniority: [] }, relaxed: "seniority" };
+  if (icp.locations?.length) return { icp: { ...icp, locations: [] }, relaxed: "locations" };
+  return null;
+}
+
+/**
+ * Follows Apollo's pagination (capped at APOLLO_MAX_PAGES requests, each at
+ * Apollo's real per-request max of 100) to gather up to `poolSize` people —
+ * real multi-page harvesting, not one bigger single page. This is what
+ * makes Apollo the "primary, high-volume" source: 4 pages at 100 each can
+ * reach a 400-person pool for one search, capped by APOLLO_MAX_POOL_SIZE.
+ *
+ * Deliberately does NOT gate the loop on the response's own
+ * `pagination.totalPages` — confirmed live against the real API that for a
+ * broad query Apollo reports totalPages: 1 / totalEntries matching the
+ * requested perPage (an estimate/cap, not the true match count) while page
+ * 2 still returns mostly different real people. Trusting that field would
+ * silently stop after page 1 in exactly the high-volume case this exists
+ * for. An empty page (the one reliable "no more results" signal) or the
+ * hard APOLLO_MAX_PAGES safety cap are what actually stop the loop.
+ */
+async function fetchApolloPool({ apollo, workspaceId, userId, icp, poolSize, correlationId }) {
+  const filters = buildApolloFilters(icp);
+  if (!Object.keys(filters).length) return { people: [], filtersEmpty: true };
+  const people = [];
+  let page = 1;
+  while (people.length < poolSize && page <= APOLLO_MAX_PAGES) {
+    // eslint-disable-next-line no-await-in-loop
+    const outcome = await apollo.searchPeople({ workspaceId, userId, filters, page, perPage: APOLLO_PAGE_SIZE, correlationId });
+    if (!outcome.people.length) break;
+    people.push(...outcome.people);
+    page += 1;
+  }
+  return { people: people.slice(0, poolSize), filtersEmpty: false };
+}
+
+/** PDL's search already returns up to 100 in a single call, so a bigger `size` alone gives a bigger pool — no pagination loop needed. */
+async function fetchPdlPool({ pdl, workspaceId, userId, icp, poolSize, correlationId }) {
+  const sql = buildPdlSql(icp);
+  if (!sql) return { people: [], filtersEmpty: true };
+  const outcome = await pdl.searchPeople({ workspaceId, userId, sql, size: Math.min(100, Math.max(1, poolSize)), correlationId });
+  return { people: outcome.people, filtersEmpty: false };
+}
+
+/**
+ * Gathers Apollo's and PDL's pools together (over-fetched, not just
+ * `desired` results each), dedupes them in memory by the same identity key
+ * used against the DB, auto-broadens and retries once if the combined
+ * ranked pool still falls short of `desired`, then persists only the top
+ * `desired` by score. Everything else in the pool is simply never written
+ * to the review queue — "gather a large pool, rank everyone, show the
+ * best" without cluttering the queue with the rest.
+ */
+async function gatherRankAndMergeIcpMatches({ workspaceId, userId, searchId, icp, desired, includePdl, includeApollo, apollo, pdl, isSelfMatchCheck, selfSignals, correlationId }, dependencies = {}) {
+  const stats = {
+    pdl_person_search: { provider: "pdl_person_search", requested: desired, returned: 0, rejectedSelf: 0, rejectedFreshness: 0, rejectedForCapacity: 0, rejectedDedup: 0, rejectedForRanking: 0, accepted: 0, error: null },
+    apollo_person_search: { provider: "apollo_person_search", requested: desired, returned: 0, rejectedSelf: 0, rejectedFreshness: 0, rejectedForCapacity: 0, rejectedDedup: 0, rejectedForRanking: 0, accepted: 0, error: null },
+  };
+  const apolloPoolSize = Math.min(APOLLO_MAX_POOL_SIZE, Math.max(desired * APOLLO_POOL_MULTIPLIER, desired));
+  const pdlPoolSize = Math.min(PDL_MAX_POOL_SIZE, Math.max(desired * PDL_POOL_MULTIPLIER, desired));
+  let broadenedField = "";
+
+  const gatherOnce = async (currentIcp) => {
+    const pool = [];
+    if (includePdl) {
+      try {
+        const { people, filtersEmpty } = await fetchPdlPool({ pdl, workspaceId, userId, icp: currentIcp, poolSize: pdlPoolSize, correlationId });
+        if (filtersEmpty) throw Object.assign(new Error("The ICP has no criteria PDL can search on (titles, locations, or industries required)"), { code: "PDL_ICP_EMPTY" });
+        stats.pdl_person_search.error = null;
+        stats.pdl_person_search.returned += people.length;
+        for (const person of people) {
+          const candidate = normalizePdlCandidate(person);
+          if (isSelfMatchCheck(candidate, selfSignals).isSelf) { stats.pdl_person_search.rejectedSelf += 1; continue; }
+          const fit = computeIcpFitScore(person, currentIcp);
+          pool.push({ candidate, fitScore: fit.score, fitReasons: fit.reasons, providerKey: "pdl_person_search" });
+        }
+      } catch (error) {
+        stats.pdl_person_search.error = error.message;
+      }
+    }
+    if (includeApollo) {
+      try {
+        const { people, filtersEmpty } = await fetchApolloPool({ apollo, workspaceId, userId, icp: currentIcp, poolSize: apolloPoolSize, correlationId });
+        if (filtersEmpty) throw Object.assign(new Error("The ICP has no criteria Apollo can search on (titles, locations, seniority, or keywords required)"), { code: "APOLLO_ICP_EMPTY" });
+        stats.apollo_person_search.error = null;
+        stats.apollo_person_search.returned += people.length;
+        for (const person of people) {
+          const candidate = normalizeApolloCandidate(person);
+          if (isSelfMatchCheck(candidate, selfSignals).isSelf) { stats.apollo_person_search.rejectedSelf += 1; continue; }
+          const fit = computeIcpFitScore(person, currentIcp);
+          pool.push({ candidate, fitScore: fit.score, fitReasons: fit.reasons, providerKey: "apollo_person_search" });
+        }
+      } catch (error) {
+        stats.apollo_person_search.error = error.message;
+      }
+    }
+    return pool;
+  };
+
+  const dedupePool = (pool) => {
+    const byKey = new Map();
+    for (const entry of pool) {
+      const key = identityKey(entry.candidate);
+      const existing = byKey.get(key);
+      if (!existing || entry.fitScore > existing.fitScore) byKey.set(key, entry);
+    }
+    return [...byKey.values()];
+  };
+
+  let combinedPool = dedupePool(await gatherOnce(icp));
+
+  if (combinedPool.length < desired) {
+    const broadened = broadenIcp(icp);
+    if (broadened) {
+      broadenedField = broadened.relaxed;
+      const morePool = await gatherOnce(broadened.icp);
+      combinedPool = dedupePool([...combinedPool, ...morePool]);
+    }
+  }
+
+  combinedPool.sort((a, b) => b.fitScore - a.fitScore);
+  const toPersist = combinedPool.slice(0, desired);
+  const overflow = combinedPool.slice(desired);
+  for (const entry of overflow) stats[entry.providerKey].rejectedForRanking += 1;
+
+  let created = 0, merged = 0, withConflicts = 0;
+  for (const entry of toPersist) {
+    // eslint-disable-next-line no-await-in-loop
+    const result = await mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlationId, candidate: entry.candidate, fitScore: entry.fitScore, fitReasons: entry.fitReasons, allowCreate: true }, dependencies);
+    const bucket = stats[entry.providerKey];
+    if (result.created) { created += 1; bucket.accepted += 1; } else { merged += 1; bucket.rejectedDedup += 1; }
+    if (result.row?.conflicts?.length) withConflicts += 1;
+  }
+
+  const rejectedSelf = (includePdl ? stats.pdl_person_search.rejectedSelf : 0) + (includeApollo ? stats.apollo_person_search.rejectedSelf : 0);
+  const providerStats = [];
+  if (includePdl) providerStats.push(stats.pdl_person_search);
+  if (includeApollo) providerStats.push(stats.apollo_person_search);
+  const sourceErrors = providerStats
+    .filter((s) => s.error && s.accepted === 0)
+    .map((s) => ({ source: s.provider, code: s.provider === "pdl_person_search" ? "PDL_SEARCH_FAILED" : "APOLLO_SEARCH_FAILED", message: s.error }));
+
+  return { created, merged, withConflicts, excludedForSelfMatch: rejectedSelf, broadenedField, providerStats, sourceErrors };
 }
 
 /**
@@ -581,50 +793,21 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
     }
   }
 
-  if (effectiveSources.includes("pdl_person_search")) {
-    const stats = { provider: "pdl_person_search", requested: search.requestedCount, returned: 0, rejectedSelf: 0, rejectedFreshness: 0, rejectedForCapacity: 0, rejectedDedup: 0, accepted: 0, error: null };
-    try {
-      const sql = buildPdlSql(search.icp);
-      if (!sql) throw Object.assign(new Error("The ICP has no criteria PDL can search on (titles, locations, or industries required)"), { code: "PDL_ICP_EMPTY" });
-      const outcome = await pdl.searchPeople({ workspaceId, userId, sql, size: search.requestedCount, correlationId });
-      stats.returned = outcome.people.length;
-      for (const person of outcome.people) {
-        const candidate = normalizePdlCandidate(person);
-        if (isSelfMatchCheck(candidate, selfSignals).isSelf) { excludedForSelfMatch += 1; stats.rejectedSelf += 1; continue; }
-        // eslint-disable-next-line no-await-in-loop
-        const result = await mergeIcpMatchCandidate({ workspaceId, userId, searchId: search._id, correlationId, candidate, allowCreate: requestRemaining() > 0 }, dependencies);
-        if (result.capacityRejected) { stats.rejectedForCapacity += 1; continue; }
-        if (result.created) { created += 1; stats.accepted += 1; } else { merged += 1; stats.rejectedDedup += 1; }
-        if (result.row?.conflicts?.length) withConflicts += 1;
-      }
-    } catch (error) {
-      sourceErrors.push({ source: "pdl_person_search", code: error.code || "PDL_SEARCH_FAILED", message: error.message });
-      stats.error = error.message;
-    }
-    providerBreakdown.push(stats);
-  }
-
-  if (effectiveSources.includes("apollo_person_search")) {
-    const stats = { provider: "apollo_person_search", requested: search.requestedCount, returned: 0, rejectedSelf: 0, rejectedFreshness: 0, rejectedForCapacity: 0, rejectedDedup: 0, accepted: 0, error: null };
-    try {
-      const filters = buildApolloFilters(search.icp);
-      if (!Object.keys(filters).length) throw Object.assign(new Error("The ICP has no criteria Apollo can search on (titles, locations, seniority, or keywords required)"), { code: "APOLLO_ICP_EMPTY" });
-      const outcome = await apollo.searchPeople({ workspaceId, userId, filters, perPage: search.requestedCount, correlationId });
-      stats.returned = outcome.people.length;
-      for (const person of outcome.people) {
-        const candidate = normalizeApolloCandidate(person);
-        if (isSelfMatchCheck(candidate, selfSignals).isSelf) { excludedForSelfMatch += 1; stats.rejectedSelf += 1; continue; }
-        // eslint-disable-next-line no-await-in-loop
-        const result = await mergeIcpMatchCandidate({ workspaceId, userId, searchId: search._id, correlationId, candidate, allowCreate: requestRemaining() > 0 }, dependencies);
-        if (result.capacityRejected) { stats.rejectedForCapacity += 1; continue; }
-        if (result.created) { created += 1; stats.accepted += 1; } else { merged += 1; stats.rejectedDedup += 1; }
-        if (result.row?.conflicts?.length) withConflicts += 1;
-      }
-    } catch (error) {
-      sourceErrors.push({ source: "apollo_person_search", code: error.code || "APOLLO_SEARCH_FAILED", message: error.message });
-      stats.error = error.message;
-    }
-    providerBreakdown.push(stats);
+  let icpBroadenedField = "";
+  const includePdl = effectiveSources.includes("pdl_person_search");
+  const includeApollo = effectiveSources.includes("apollo_person_search");
+  if ((includePdl || includeApollo) && requestRemaining() > 0) {
+    const outcome = await gatherRankAndMergeIcpMatches({
+      workspaceId, userId, searchId: search._id, icp: search.icp, desired: requestRemaining(),
+      includePdl, includeApollo, apollo, pdl, isSelfMatchCheck, selfSignals, correlationId,
+    }, dependencies);
+    created += outcome.created;
+    merged += outcome.merged;
+    withConflicts += outcome.withConflicts;
+    excludedForSelfMatch += outcome.excludedForSelfMatch;
+    icpBroadenedField = outcome.broadenedField;
+    providerBreakdown.push(...outcome.providerStats);
+    sourceErrors.push(...outcome.sourceErrors);
   }
 
   const allFailed = sourceErrors.length >= effectiveSources.length && created === 0 && merged === 0;
@@ -632,7 +815,8 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
   search.runSummary = {
     created, merged, withConflicts, excludedForFreshness, excludedForSelfMatch, sourceErrors,
     providerBreakdown,
-    explanation: buildRunExplanation({ requestedCount: search.requestedCount, created, merged, excludedForSelfMatch, excludedForFreshness, sourceErrors }),
+    explanation: buildRunExplanation({ requestedCount: search.requestedCount, created, merged, excludedForSelfMatch, excludedForFreshness, sourceErrors })
+      + (icpBroadenedField ? ` Broadened the search by dropping the ${icpBroadenedField} filter to find more candidates.` : ""),
   };
   await search.save();
 

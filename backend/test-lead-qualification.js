@@ -167,7 +167,7 @@ async function testQualifyAndRecommendReportsAnAccurateCompletionSummary() {
 
 // ==================== approveAndRunSearch: every selected provider runs, queue stays capped ====================
 
-async function testApproveAndRunSearchHonorsTheOverallCapAcrossProviders() {
+async function testApproveAndRunSearchGathersARankedPoolAndKeepsOnlyTheBestByFit() {
   const DiscoverySearchModel = {
     doc: {
       _id: "search-cap", status: "proposed", sources: ["pdl_person_search", "apollo_person_search"], requestedCount: 5,
@@ -176,11 +176,13 @@ async function testApproveAndRunSearchHonorsTheOverallCapAcrossProviders() {
     },
     findOne: async () => DiscoverySearchModel.doc,
   };
-  // Each provider independently offers 5 fresh, non-duplicate, non-self
-  // candidates. Both selected providers must be called, but only 5 new
-  // queue rows may be created overall.
-  const peopleDataLabsService = { searchPeople: async ({ size }) => ({ people: Array.from({ length: size }, (_, i) => ({ fullName: `PDL Person ${i}`, company: "", companyDomain: "", linkedinUrl: `pdl-${i}`, email: "", emailState: "" })) }) };
-  const apolloService = { searchPeople: async ({ perPage }) => ({ people: Array.from({ length: perPage }, (_, i) => ({ fullName: `Apollo Person ${i}`, company: "", companyDomain: "", linkedinUrl: `apollo-${i}`, email: "", emailState: "" })) }) };
+  // Both providers over-fetch a pool larger than requestedCount (the whole
+  // point of gatherRankAndMergeIcpMatches) — PDL's candidates don't match
+  // the ICP title (low fit score), Apollo's do (high fit score), so this
+  // also proves ranking actually picks the best candidates rather than
+  // just whichever provider ran first.
+  const peopleDataLabsService = { searchPeople: async ({ size }) => ({ people: Array.from({ length: size }, (_, i) => ({ fullName: `PDL Person ${i}`, title: "Barista", company: "", companyDomain: "", linkedinUrl: `pdl-${i}`, email: "", emailState: "" })) }) };
+  const apolloService = { searchPeople: async ({ perPage }) => ({ people: Array.from({ length: perPage }, (_, i) => ({ fullName: `Apollo Person ${i}`, title: "Real Estate Agent", company: "", companyDomain: "", linkedinUrl: `apollo-${i}`, email: "", emailState: "" })), pagination: { totalPages: 1 } }) };
   const rows = [];
   const GroundingResearchResult = {
     rows,
@@ -193,12 +195,72 @@ async function testApproveAndRunSearchHonorsTheOverallCapAcrossProviders() {
     { DiscoverySearch: DiscoverySearchModel, peopleDataLabsService, apolloService, GroundingResearchResult, getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }), isSelfMatch: () => ({ isSelf: false, reasons: [] }) },
   );
 
-  assert.equal(result.runSummary.created, 5, "the OVERALL created count must respect the requested cap of 5, regardless of how many providers were selected");
+  assert.equal(result.runSummary.created, 5, "the OVERALL created count must respect the requested cap of 5, regardless of how many providers were selected or how large a pool was gathered");
   assert.equal(rows.length, 5);
+  assert.ok(rows.every((row) => row.name.startsWith("Apollo")), "the 5 persisted rows must be the higher-fit Apollo candidates, not whichever provider happened to run first");
+  assert.ok(rows.every((row) => row.fitScore > 20), "persisted rows must carry the computed ICP fit score, not a null/default");
   const apolloStats = result.runSummary.providerBreakdown.find((p) => p.provider === "apollo_person_search");
-  assert.equal(apolloStats.requested, 5, "a selected later provider must still run even when an earlier provider filled the queue cap");
-  assert.equal(apolloStats.returned, 5);
-  assert.equal(apolloStats.rejectedForCapacity, 5, "new identities beyond the queue cap must be reported without creating extra rows");
+  const pdlStats = result.runSummary.providerBreakdown.find((p) => p.provider === "pdl_person_search");
+  assert.ok(pdlStats.returned > 0 && apolloStats.returned > 5, "both providers must genuinely over-fetch a pool larger than the requested count");
+  assert.equal(apolloStats.accepted, 5, "all 5 accepted slots went to the higher-fit provider");
+  assert.equal(pdlStats.accepted, 0, "the lower-fit provider's candidates were correctly ranked below the cap, not accepted just for running first");
+  assert.ok(pdlStats.rejectedForRanking + apolloStats.rejectedForRanking > 0, "candidates beyond the cap are reported as ranked-lower, not silently dropped");
+}
+
+// A 100-person request needs a 300-person Apollo pool (100 * APOLLO_POOL_
+// MULTIPLIER, capped at APOLLO_MAX_POOL_SIZE) — 3 full pages at 100/page.
+// Only page 3's candidates are given a real ICP title match (higher fit
+// score); pages 1 and 2's are given a non-matching title (lower score).
+// If fetchApolloPool only ever requested page 1 — or requested later pages
+// but discarded them instead of merging them into the scored pool — page
+// 3's higher-fit candidates could never end up in the final accepted set.
+// Their presence there is only possible if page 2 AND page 3 were both
+// genuinely requested (proving real multi-page pagination, not just a
+// bigger page 1) AND merged into the ranked pool (not fetched and
+// dropped).
+async function testApproveAndRunSearchRequestsAndMergesRealApolloPagesBeyondPage1() {
+  const DiscoverySearchModel = {
+    doc: {
+      _id: "search-pages", status: "proposed", sources: ["apollo_person_search"], requestedCount: 100,
+      icp: { titles: ["Real Estate Agent"], locations: [], industries: [], keywords: [], seniority: [] },
+      programName: "Test", save: async function save() { return this; },
+    },
+    findOne: async () => DiscoverySearchModel.doc,
+  };
+  const pagesRequested = [];
+  const apolloService = {
+    searchPeople: async ({ page, perPage }) => {
+      pagesRequested.push(page);
+      const isMatchingPage = page === 3;
+      const people = Array.from({ length: perPage }, (_, i) => ({
+        fullName: `Apollo P${page}-${i}`,
+        title: isMatchingPage ? "Real Estate Agent" : "Notary Public",
+        company: "", companyDomain: "", linkedinUrl: `apollo-page${page}-${i}`, email: "", emailState: "",
+      }));
+      // A real, larger-than-one-page upstream result set (5 total pages
+      // available) — the loop must keep paging until it has enough people
+      // or hits its own page cap, not stop after an arbitrary first call.
+      return { people, pagination: { page, totalPages: 5 } };
+    },
+  };
+  const rows = [];
+  const GroundingResearchResult = {
+    rows,
+    findOne: async () => null,
+    create: async (doc) => { const row = { _id: `gr-${rows.length}`, conflicts: [], providers: [], ...doc }; rows.push(row); return row; },
+  };
+
+  const result = await approveAndRunSearch(
+    { workspaceId: "workspace-1", userId: "u1", auth: { workspaceId: "workspace-1" }, searchId: "search-pages" },
+    { DiscoverySearch: DiscoverySearchModel, apolloService, GroundingResearchResult, getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }), isSelfMatch: () => ({ isSelf: false, reasons: [] }) },
+  );
+
+  assert.deepEqual(pagesRequested, [1, 2, 3], "a 100-person request needing a 300-person pool must fetch exactly 3 real Apollo pages — not stop after page 1, and not fetch more than needed");
+  const apolloStats = result.runSummary.providerBreakdown.find((p) => p.provider === "apollo_person_search");
+  assert.equal(apolloStats.returned, 300, "all 3 pages' results (100 each) must be merged into the pool total, not just the first page's");
+  assert.equal(result.runSummary.created, 100, "the requested count is filled");
+  assert.equal(rows.length, 100);
+  assert.ok(rows.every((row) => row.name.startsWith("Apollo P3-")), "the persisted rows must be page 3's higher-fit candidates specifically — only possible if page 3 was both requested AND merged into the ranked pool, not fetched and discarded");
 }
 
 async function run() {
@@ -213,7 +275,8 @@ async function run() {
   await testQualifyAndRecommendPersistsOnlyARealApprovedProgramId();
   await testQualifyAndRecommendDiscardsAFabricatedProgramIdIfOneEverSlipsThrough();
   await testQualifyAndRecommendReportsAnAccurateCompletionSummary();
-  await testApproveAndRunSearchHonorsTheOverallCapAcrossProviders();
+  await testApproveAndRunSearchGathersARankedPoolAndKeepsOnlyTheBestByFit();
+  await testApproveAndRunSearchRequestsAndMergesRealApolloPagesBeyondPage1();
   console.log("Lead qualification: identityConfidence is computed deterministically from real provider/corroboration/conflict signals (never left at a stale 'low' for a strongly-corroborated identity — the Ellie Baxter fix), the qualify schema structurally cannot return a program outside the workspace's real approved list (the fabrication fix, plus a defensive discard if one ever slips through), qualification requires ALL THREE separate signals — identity, program fit, and buyer-intent evidence — before 'qualified'/outreach is ever recommended (never a title alone), ICP exclusions and identity conflicts are handled as distinct, sensible outcomes, the completion summary accurately counts processed/qualified/needsReview/notAFit/failed including a candidate the model silently omitted, every selected provider runs, and the overall new-candidate cap remains enforced — all passed.");
 }
 

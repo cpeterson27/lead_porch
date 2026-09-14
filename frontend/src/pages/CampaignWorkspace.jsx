@@ -657,9 +657,6 @@ export default function CampaignWorkspace() {
           </div>
         </div>
         <div className="campaign-workspace__actions">
-          <Button variant="outline" onClick={() => navigate(`/discovery?tab=people&provider=apollo&campaignId=${campaign._id}`)}>
-            Find people with Apollo
-          </Button>
           <Button
             onClick={() => navigate(`/outreach?campaignId=${campaign._id}`)}
           >
@@ -779,8 +776,13 @@ export default function CampaignWorkspace() {
           </summary>
           <DashboardCard title="Choose who this email is for">
             <p className="campaign-audience-intro">
-              Keep these groups broad. Apollo will find people next; you will
-              review them before anyone enters outreach.
+              Keep these groups broad — Lead Porch matches contacts to this
+              campaign by comparing their title, industry, and company
+              against the groups below. Find and add contacts from the{" "}
+              <button type="button" className="campaign-inline-link" onClick={() => navigate("/discovery")}>
+                Discovery
+              </button>{" "}
+              page.
             </p>
                 <div className="campaign-audience-groups campaign-audience-groups--editable">
                   {(campaign.audience || []).map((audience) => (
@@ -821,17 +823,6 @@ export default function CampaignWorkspace() {
                     onClick={addAudienceTag}
                   >
                     Add group
-                  </Button>
-                </div>
-                <div className="campaign-audience-actions">
-                  <Button
-                    variant="outline"
-                    onClick={() => navigate(`/discovery?tab=people&provider=apollo&campaignId=${campaign._id}`)}
-                  >
-                    Find people with Apollo
-                  </Button>
-                  <Button variant="ghost" onClick={() => navigate("/contacts")}>
-                    View saved contacts
                   </Button>
                 </div>
           </DashboardCard>

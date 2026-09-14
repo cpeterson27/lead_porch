@@ -158,7 +158,45 @@ async function searchPeople({ workspaceId, userId = null, sql, size = 25, correl
     await logUsage({ workspaceId, userId, endpoint: "person/search", operation: "search_people", success: true, resultCount: people.length, latencyMs: Date.now() - started, correlationId });
     return result;
   } catch (error) {
-    await logUsage({ workspaceId, userId, endpoint: "person/search", operation: "search_people", success: false, latencyMs: Date.now() - started, errorCategory: error.category || "unknown", errorCode: String(error.response?.status || error.code || ""), correlationId });
+    const status = Number(error.response?.status);
+    await logUsage({ workspaceId, userId, endpoint: "person/search", operation: "search_people", success: false, latencyMs: Date.now() - started, errorCategory: error.category || "unknown", errorCode: String(status || error.code || ""), correlationId });
+    if (status === 404) {
+      // Unlike person/enrich and company/enrich, a 404 here is NOT a
+      // benign "no match" — PDL's Search API returns matches inside a 200
+      // with an empty `data` array, never a 404 for zero results. A 404 on
+      // this specific endpoint means the request itself couldn't be
+      // served — most commonly the account's plan doesn't have Search API
+      // access enabled (PDL gates Search separately from Enrich), or the
+      // base URL/API version has changed. Logging the real response body
+      // here (never done before) is what makes a recurrence diagnosable
+      // instead of just an opaque rethrown error.
+      console.error("[PDL] person/search returned 404 — see body for the real cause", {
+        correlationId,
+        requestBody: { sql, size: safeSize },
+        responseBody: error.response?.data,
+      });
+      const wrapped = new Error(
+        "People Data Labs' search API returned 404. This usually means Search isn't enabled on this PDL account/plan (separate from Enrich access) — check the PDL dashboard, or see server logs for the exact response body.",
+      );
+      wrapped.code = "PDL_SEARCH_NOT_FOUND";
+      wrapped.cause = error;
+      throw wrapped;
+    }
+    if (status === 402) {
+      // Confirmed live against the real production API key while building
+      // this: person/search returns 402, not a benign response, when the
+      // account has no available Search credits (out of quota, or the
+      // current plan never included Search credits at all — this is
+      // billed separately from Enrich). This needs a PDL billing/plan fix,
+      // not a code fix.
+      console.error("[PDL] person/search returned 402 (payment required) — this PDL account/plan has no available Search credits", { correlationId, responseBody: error.response?.data });
+      const wrapped = new Error(
+        "People Data Labs' search API returned 402 (payment required) — this account has no available Search credits right now. Check the PDL billing dashboard; Search is billed separately from Enrich.",
+      );
+      wrapped.code = "PDL_SEARCH_PAYMENT_REQUIRED";
+      wrapped.cause = error;
+      throw wrapped;
+    }
     throw error;
   }
 }
