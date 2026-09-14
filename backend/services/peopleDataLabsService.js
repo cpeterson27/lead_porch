@@ -214,7 +214,14 @@ async function healthCheck({ workspaceId, userId = null, correlationId = "" } = 
   if (!isEnabled()) return { enabled: false, configured: Boolean(process.env.PDL_API_KEY?.trim()), healthy: false, reason: "disabled" };
   const started = Date.now();
   try {
-    await withResilience(CIRCUIT_KEY, () => client().get("/person/enrich", { params: { name: "health check", min_likelihood: 10 } }).catch((error) => { if (Number(error.response?.status) === 404) return { data: null }; throw error; }));
+    await withResilience(CIRCUIT_KEY, () => client().get("/person/enrich", { params: { name: "health check", min_likelihood: 10 } }).catch((error) => {
+      // A validation error or no-match response proves PDL received the
+      // authenticated request. Neither returns a profile, so neither spends
+      // a PDL enrichment credit. Authentication/quota/provider errors still
+      // pass through and remain visible as real connection failures.
+      if ([400, 404].includes(Number(error.response?.status))) return { data: null };
+      throw error;
+    }));
     await logUsage({ workspaceId, userId, endpoint: "person/enrich", operation: "health_check", success: true, latencyMs: Date.now() - started, correlationId });
     return { enabled: true, configured: true, healthy: true };
   } catch (error) {

@@ -72,6 +72,7 @@ export default function AiAcquisitionControls() {
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [checkingConnections, setCheckingConnections] = useState(false);
   const [groundingQuery, setGroundingQuery] = useState("");
   const [groundingResult, setGroundingResult] = useState(null);
   const [groundingBusy, setGroundingBusy] = useState(false);
@@ -102,6 +103,21 @@ export default function AiAcquisitionControls() {
   }, [session?.isPlatformOwner]);
 
   useEffect(() => { load(); }, [load]);
+
+  const checkConnections = async () => {
+    setCheckingConnections(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetchProvidersHealth();
+      setHealth(res.data);
+      setNotice("Provider connections checked just now.");
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to check provider connections.");
+    } finally {
+      setCheckingConnections(false);
+    }
+  };
 
   const saveAiConfig = async (patch) => {
     setSaving(true);
@@ -310,7 +326,7 @@ export default function AiAcquisitionControls() {
         </p>
       </DashboardCard>
 
-      <DashboardCard title="Provider connections" action={<Button variant="outline" size="sm" onClick={load}>Check again</Button>}>
+      <DashboardCard title="Provider connections" action={<Button variant="outline" size="sm" loading={checkingConnections} onClick={checkConnections}>{checkingConnections ? "Checking…" : "Check again"}</Button>}>
         <p className="provider-health-explainer">These are provider connections, not the on/off state of Jarvis or your other agents. “Connected setup · inactive” means credentials were found, but the server-side provider switch is currently off.</p>
         {health ? (
           <div className="provider-status-grid">
@@ -364,7 +380,7 @@ export default function AiAcquisitionControls() {
           </fieldset>
           {usage ? (
             <div className="ai-controls-usage">
-              <StatCard title="This month's OpenAI spend" value={money(usage.estimatedTotalCostUsd)} subtitle={`${usage.requestCount} request(s)`} />
+              <StatCard title="This month's tracked AI spend" value={money(usage.estimatedTotalCostUsd)} subtitle={`${usage.requestCount} request(s) across OpenAI, Gemini, and Vertex`} />
               <StatCard title="Tokens used" value={usage.tokens?.total?.toLocaleString?.() || 0} subtitle={`${usage.tokens?.input || 0} in / ${usage.tokens?.output || 0} out`} />
               <StatCard title="Success rate" value={usage.requestCount ? `${Math.round((usage.successCount / usage.requestCount) * 100)}%` : "—"} subtitle={`${usage.failureCount} failed`} />
             </div>

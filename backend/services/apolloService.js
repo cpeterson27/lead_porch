@@ -125,17 +125,17 @@ async function searchPeople({ workspaceId, userId = null, filters = {}, page = 1
   const safePerPage = Math.min(100, Math.max(1, Number(perPage) || 25));
   const key = cacheKey("searchPeople", { filters, page, perPage: safePerPage });
   const cached = readCache(key);
-  if (cached) { await logUsage({ workspaceId, userId, endpoint: "mixed_people/search", operation: "search_people", success: true, resultCount: cached.people.length, latencyMs: 0, cacheHit: true, correlationId }); return cached; }
+  if (cached) { await logUsage({ workspaceId, userId, endpoint: "mixed_people/api_search", operation: "search_people", success: true, resultCount: cached.people.length, latencyMs: 0, cacheHit: true, correlationId }); return cached; }
   const started = Date.now();
   try {
-    const response = await withResilience(CIRCUIT_KEY, () => client().post("/mixed_people/search", { ...filters, page: Math.max(1, Number(page) || 1), per_page: safePerPage }));
+    const response = await withResilience(CIRCUIT_KEY, () => client().post("/mixed_people/api_search", { ...filters, page: Math.max(1, Number(page) || 1), per_page: safePerPage }));
     const people = dedupePeople((response.data?.people || []).map(normalizePerson));
     const result = { people, pagination: { page: response.data?.pagination?.page || page, totalEntries: response.data?.pagination?.total_entries ?? people.length, totalPages: response.data?.pagination?.total_pages ?? 1 } };
     writeCache(key, result);
-    await logUsage({ workspaceId, userId, endpoint: "mixed_people/search", operation: "search_people", success: true, resultCount: people.length, latencyMs: Date.now() - started, correlationId });
+    await logUsage({ workspaceId, userId, endpoint: "mixed_people/api_search", operation: "search_people", success: true, resultCount: people.length, latencyMs: Date.now() - started, correlationId });
     return result;
   } catch (error) {
-    await logUsage({ workspaceId, userId, endpoint: "mixed_people/search", operation: "search_people", success: false, latencyMs: Date.now() - started, errorCategory: error.category || "unknown", errorCode: String(error.response?.status || error.code || ""), correlationId });
+    await logUsage({ workspaceId, userId, endpoint: "mixed_people/api_search", operation: "search_people", success: false, latencyMs: Date.now() - started, errorCategory: error.category || "unknown", errorCode: String(error.response?.status || error.code || ""), correlationId });
     throw error;
   }
 }
