@@ -47,6 +47,7 @@ const auditService = require("./auditService");
 const workspaceSelfExclusionService = require("./workspaceSelfExclusionService");
 
 const clean = (value, length) => String(value || "").trim().slice(0, length);
+const joinWithAnd = (items) => items.length <= 2 ? items.join(" and ") : `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
 // Raised from 25 so a real search can actually reach APOLLO_MAX_POOL_SIZE
 // (300) below — at the old ceiling, 25 * APOLLO_POOL_MULTIPLIER (4) = 100
 // meant the pool never exceeded one Apollo page, so multi-page pagination
@@ -402,12 +403,36 @@ function buildPdlSql(icp) {
   return `SELECT * FROM person WHERE ${clauses.map((c) => `(${c})`).join(" AND ")}`;
 }
 
+// Confirmed live against the real API: Apollo's q_keywords rejects the
+// ENTIRE search with a 422 ("Value too long") once the joined string
+// crosses roughly 225 characters (200 chars: accepted; 227: rejected) —
+// undocumented, and not specific to any special character. A Jarvis-
+// derived ICP for a keyword-rich program can easily produce a longer
+// joined string than that, which previously killed the whole Apollo call
+// silently (surfaced only as an opaque "Request failed with status code
+// 422", exactly what caused a real search to return zero Apollo results).
+const APOLLO_KEYWORDS_MAX_LENGTH = 200;
+
+/** Keeps as many whole keywords as fit within maxLength, joined by spaces — never cuts a keyword mid-word, and never exceeds the limit. */
+function truncateKeywordsToFit(keywords, maxLength) {
+  let result = "";
+  for (const keyword of keywords) {
+    const candidate = result ? `${result} ${keyword}` : keyword;
+    if (candidate.length > maxLength) break;
+    result = candidate;
+  }
+  return result;
+}
+
 function buildApolloFilters(icp) {
   const filters = {};
   if (icp.titles?.length) filters.person_titles = icp.titles;
   if (icp.locations?.length) filters.person_locations = icp.locations;
   if (icp.seniority?.length) filters.person_seniorities = icp.seniority;
-  if (icp.keywords?.length) filters.q_keywords = icp.keywords.join(" ");
+  if (icp.keywords?.length) {
+    const joined = icp.keywords.join(" ");
+    filters.q_keywords = joined.length > APOLLO_KEYWORDS_MAX_LENGTH ? truncateKeywordsToFit(icp.keywords, APOLLO_KEYWORDS_MAX_LENGTH) : joined;
+  }
   return filters;
 }
 
@@ -582,6 +607,12 @@ function broadenIcp(icp) {
   if (icp.industries?.length) return { icp: { ...icp, industries: [] }, relaxed: "industries" };
   if (icp.seniority?.length) return { icp: { ...icp, seniority: [] }, relaxed: "seniority" };
   if (icp.locations?.length) return { icp: { ...icp, locations: [] }, relaxed: "locations" };
+  // Confirmed live: Apollo's q_keywords appears to require most/all terms
+  // to co-occur on a profile, so a long, program-derived keyword list
+  // combined with titles can narrow results to zero even when the titles
+  // alone match real people. Keywords relax last, after every other
+  // optional field, since they're also PDL's only free-text signal.
+  if (icp.keywords?.length) return { icp: { ...icp, keywords: [] }, relaxed: "keywords" };
   return null;
 }
 
@@ -640,7 +671,7 @@ async function gatherRankAndMergeIcpMatches({ workspaceId, userId, searchId, icp
   };
   const apolloPoolSize = Math.min(APOLLO_MAX_POOL_SIZE, Math.max(desired * APOLLO_POOL_MULTIPLIER, desired));
   const pdlPoolSize = Math.min(PDL_MAX_POOL_SIZE, Math.max(desired * PDL_POOL_MULTIPLIER, desired));
-  let broadenedField = "";
+  const broadenedFields = [];
 
   const gatherOnce = async (currentIcp) => {
     const pool = [];
@@ -691,13 +722,20 @@ async function gatherRankAndMergeIcpMatches({ workspaceId, userId, searchId, icp
 
   let combinedPool = dedupePool(await gatherOnce(icp));
 
-  if (combinedPool.length < desired) {
-    const broadened = broadenIcp(icp);
-    if (broadened) {
-      broadenedField = broadened.relaxed;
-      const morePool = await gatherOnce(broadened.icp);
-      combinedPool = dedupePool([...combinedPool, ...morePool]);
-    }
+  // One relaxation can land on a field that wasn't actually the blocking
+  // constraint (e.g. dropping industries when an ICP-mismatched seniority
+  // value was the real cause of zero results) — keep relaxing one field at
+  // a time until either enough candidates are found or broadenIcp() has
+  // nothing optional left to drop (it always returns null at that point,
+  // which bounds this loop without a separate attempt counter).
+  let currentIcp = icp;
+  while (combinedPool.length < desired) {
+    const broadened = broadenIcp(currentIcp);
+    if (!broadened) break;
+    currentIcp = broadened.icp;
+    broadenedFields.push(broadened.relaxed);
+    const morePool = await gatherOnce(currentIcp);
+    combinedPool = dedupePool([...combinedPool, ...morePool]);
   }
 
   combinedPool.sort((a, b) => b.fitScore - a.fitScore);
@@ -722,7 +760,7 @@ async function gatherRankAndMergeIcpMatches({ workspaceId, userId, searchId, icp
     .filter((s) => s.error && s.accepted === 0)
     .map((s) => ({ source: s.provider, code: s.provider === "pdl_person_search" ? "PDL_SEARCH_FAILED" : "APOLLO_SEARCH_FAILED", message: s.error }));
 
-  return { created, merged, withConflicts, excludedForSelfMatch: rejectedSelf, broadenedField, providerStats, sourceErrors };
+  return { created, merged, withConflicts, excludedForSelfMatch: rejectedSelf, broadenedFields, providerStats, sourceErrors };
 }
 
 /**
@@ -793,7 +831,7 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
     }
   }
 
-  let icpBroadenedField = "";
+  let icpBroadenedFields = [];
   const includePdl = effectiveSources.includes("pdl_person_search");
   const includeApollo = effectiveSources.includes("apollo_person_search");
   if ((includePdl || includeApollo) && requestRemaining() > 0) {
@@ -805,7 +843,7 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
     merged += outcome.merged;
     withConflicts += outcome.withConflicts;
     excludedForSelfMatch += outcome.excludedForSelfMatch;
-    icpBroadenedField = outcome.broadenedField;
+    icpBroadenedFields = outcome.broadenedFields;
     providerBreakdown.push(...outcome.providerStats);
     sourceErrors.push(...outcome.sourceErrors);
   }
@@ -816,7 +854,7 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
     created, merged, withConflicts, excludedForFreshness, excludedForSelfMatch, sourceErrors,
     providerBreakdown,
     explanation: buildRunExplanation({ requestedCount: search.requestedCount, created, merged, excludedForSelfMatch, excludedForFreshness, sourceErrors })
-      + (icpBroadenedField ? ` Broadened the search by dropping the ${icpBroadenedField} filter to find more candidates.` : ""),
+      + (icpBroadenedFields.length ? ` Broadened the search by dropping the ${joinWithAnd(icpBroadenedFields)} filter${icpBroadenedFields.length === 1 ? "" : "s"} to find more candidates.` : ""),
   };
   await search.save();
 
