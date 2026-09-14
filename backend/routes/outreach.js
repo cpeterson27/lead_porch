@@ -316,11 +316,16 @@ router.post("/generate", async (req,res)=>{
 
 
 
+    // Verification is no longer required just to draft a message — it's
+    // still the default gate at actual send time (services/email.js's
+    // checkSendEligibility), but the sender can explicitly override that
+    // per send. Excluding "undeliverable" here is a hard floor, not an
+    // override: that status means a real bounce was already confirmed.
     const contacts =
       await Contact.find({
         type: "lead",
         status: { $nin: ["archived", "unsubscribed", "invalid", "rejected"] },
-        emailStatus: "verified",
+        emailStatus: { $ne: "undeliverable" },
         email: { $exists: true, $nin: ["", null] },
         campaignIds: campaign._id,
       });
@@ -672,7 +677,8 @@ router.post("/send", async(req,res)=>{
   try {
 
     const {
-      outreachIds
+      outreachIds,
+      allowUnverified,
     } = req.body;
 
 
@@ -719,7 +725,7 @@ router.post("/send", async(req,res)=>{
 
 
       const result =
-        await sendEmail(item);
+        await sendEmail(item, { allowUnverified: allowUnverified === true });
 
 
 

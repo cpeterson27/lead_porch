@@ -78,8 +78,14 @@ async function renderEmailContent(
  * marketing opt-in. Every code path that sends email on the recipient's
  * behalf (not a one-off admin connectivity test) must call this first; see
  * marketingCampaignExecution.js for the bulk-send caller.
+ *
+ * `allowUnverified` is an explicit, per-send opt-in (never a default) that
+ * skips only the emailStatus === "verified" requirement — someone who's
+ * confident an address is real despite verification saying otherwise. It
+ * does not touch suppression, unsubscribe, or marketing-opt-in checks; those
+ * still apply, so this can't be used to email someone who never consented.
  */
-async function checkSendEligibility(recipientEmail, { contactId, emailTopic } = {}) {
+async function checkSendEligibility(recipientEmail, { contactId, emailTopic, allowUnverified = false } = {}) {
   const recipient = String(recipientEmail || "").trim();
   if (!recipient) return { eligible: false, message: "No recipient email found." };
 
@@ -105,7 +111,13 @@ async function checkSendEligibility(recipientEmail, { contactId, emailTopic } = 
   if (!contact) {
     return { eligible: false, message: "A CRM contact is required before campaign email can be sent." };
   }
-  if (contact.emailStatus !== "verified") {
+  if (contact.emailStatus === "undeliverable") {
+    return {
+      eligible: false,
+      message: "This email address is known to bounce and cannot be sent to.",
+    };
+  }
+  if (contact.emailStatus !== "verified" && !allowUnverified) {
     return {
       eligible: false,
       message: "This email address is not verified. Verify or directly confirm the corrected address before sending.",
@@ -139,7 +151,7 @@ async function checkSendEligibility(recipientEmail, { contactId, emailTopic } = 
   return { eligible: true, contact };
 }
 
-async function sendEmail(outreachItem) {
+async function sendEmail(outreachItem, { allowUnverified = false } = {}) {
   if (!outreachItem) {
     return {
       success: false,
@@ -152,6 +164,7 @@ async function sendEmail(outreachItem) {
   const eligibility = await checkSendEligibility(recipient, {
     contactId: outreachItem.contactId,
     emailTopic: outreachItem.emailTopic,
+    allowUnverified,
   });
   if (!eligibility.eligible) {
     return { success: false, message: eligibility.message };

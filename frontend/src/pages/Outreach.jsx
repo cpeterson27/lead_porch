@@ -12,6 +12,7 @@ import {
   fetchOutreach,
   fetchOutreachPreview,
   generateOutreach,
+  recordCampaignConsent,
   replaceBouncedOutreachEmail,
   sendOutreachTestEmail,
   sendEmails,
@@ -85,6 +86,8 @@ export default function Outreach() {
   const [replacementSendError, setReplacementSendError] = useState("");
   const [approveAllOpen, setApproveAllOpen] = useState(false);
   const [deletePendingOpen, setDeletePendingOpen] = useState(false);
+  const [consentConfirmOpen, setConsentConfirmOpen] = useState(false);
+  const [allowUnverified, setAllowUnverified] = useState(false);
   const [bulkCorrecting, setBulkCorrecting] = useState(false);
   const correctionFileRef = useRef(null);
   const [loading, setLoading] = useState(true);
@@ -273,6 +276,21 @@ export default function Outreach() {
       setSaving(false);
     }
   };
+  const confirmConsent = async () => {
+    if (!selected) return;
+    try {
+      setSaving(true);
+      setError("");
+      const result = await recordCampaignConsent(selected._id, { attested: true });
+      setConsentConfirmOpen(false);
+      await loadItems(selected);
+      setNotice(result.message || `Recorded permission for ${result.updatedCount || 0} contact${result.updatedCount === 1 ? "" : "s"}.`);
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to record permission for these contacts.");
+    } finally {
+      setSaving(false);
+    }
+  };
   const sendTest = async () => {
     if (!preview?._id) return;
     try {
@@ -339,7 +357,7 @@ export default function Outreach() {
     try {
       setSaving(true);
       setError("");
-      const result = await sendEmails(ids);
+      const result = await sendEmails(ids, { allowUnverified });
       await loadItems(selected);
       if (result.failedCount)
         setError(
@@ -457,12 +475,31 @@ export default function Outreach() {
           >
             Delete pending · {counts.pending || 0}
           </Button>
+          <Button
+            variant="outline"
+            disabled={!selected || saving}
+            onClick={() => setConsentConfirmOpen(true)}
+          >
+            Confirm permission
+          </Button>
           <Button loading={saving} onClick={send}>
             <FiMail />
             Send approved · {counts.approved || 0}
           </Button>
         </div>
       </header>
+      <label className="outreach-allow-unverified">
+        <input
+          type="checkbox"
+          checked={allowUnverified}
+          onChange={(event) => setAllowUnverified(event.target.checked)}
+        />
+        Send even if the email isn't verified
+        <small>
+          Only skips the verification requirement — suppressed, unsubscribed,
+          and no-consent contacts are still blocked.
+        </small>
+      </label>
       {error ? <p className="form-error">{error}</p> : null}
       {notice ? <p className="outreach-notice">{notice}</p> : null}
       <section className="outreach-controls">
@@ -601,8 +638,8 @@ export default function Outreach() {
                     </Button>
                   ) : null}
                   {item.status === "failed" && item.errorMessage ? (
-                    <span className="outreach-item__error">
-                      Delivery error recorded
+                    <span className="outreach-item__error" title={item.errorMessage}>
+                      {item.errorMessage}
                     </span>
                   ) : null}
                 </div>
@@ -785,6 +822,30 @@ export default function Outreach() {
       >
         <p>This permanently deletes only the unsent drafts waiting for review in <strong>{selected?.name || "this campaign"}</strong>.</p>
         <p>Approved, sent, delivered, and replied-to emails are not touched.</p>
+      </Modal>
+      <Modal
+        isOpen={consentConfirmOpen}
+        onClose={() => !saving && setConsentConfirmOpen(false)}
+        title="Confirm permission to email these contacts"
+        footer={
+          <>
+            <Button variant="outline" disabled={saving} onClick={() => setConsentConfirmOpen(false)}>Cancel</Button>
+            <Button loading={saving} onClick={confirmConsent}>I confirm, record permission</Button>
+          </>
+        }
+      >
+        <p>
+          This marks every contact with a pending, approved, or failed draft
+          in <strong>{selected?.name || "this campaign"}</strong> as having
+          given permission to receive this campaign's email — it clears any
+          unsubscribe on file and opts them into this campaign's topic.
+        </p>
+        <p>
+          Only confirm this if you actually have permission to email these
+          contacts (they opted in, requested contact, or you have another
+          legitimate basis). This does not verify their email address —
+          use <strong>Send even if the email isn't verified</strong> for that.
+        </p>
       </Modal>
     </div>
   );

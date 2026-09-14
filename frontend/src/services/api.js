@@ -1490,10 +1490,11 @@ export const previewCampaignEmailTemplate = (campaignId, template) =>
 // EMAILS / OUTREACH SEND
 // ======================================
 
-export const sendEmails = (outreachIds) =>
+export const sendEmails = (outreachIds, { allowUnverified = false } = {}) =>
   api
     .post("/outreach/send", {
       outreachIds,
+      allowUnverified,
     })
     .then((res) => res.data);
 
