@@ -165,7 +165,7 @@ async function testQualifyAndRecommendReportsAnAccurateCompletionSummary() {
   assert.equal(result.summary.failed, 1, "a requested candidate never found in pending_review or never returned by the model must be counted as failed, not silently ignored");
 }
 
-// ==================== approveAndRunSearch: overall merged cap, not per-provider ====================
+// ==================== approveAndRunSearch: every selected provider runs, queue stays capped ====================
 
 async function testApproveAndRunSearchHonorsTheOverallCapAcrossProviders() {
   const DiscoverySearchModel = {
@@ -177,8 +177,8 @@ async function testApproveAndRunSearchHonorsTheOverallCapAcrossProviders() {
     findOne: async () => DiscoverySearchModel.doc,
   };
   // Each provider independently offers 5 fresh, non-duplicate, non-self
-  // candidates — if the cap were (bugged) per-provider, this would create
-  // 10 total; the fix must cap the COMBINED total at 5.
+  // candidates. Both selected providers must be called, but only 5 new
+  // queue rows may be created overall.
   const peopleDataLabsService = { searchPeople: async ({ size }) => ({ people: Array.from({ length: size }, (_, i) => ({ fullName: `PDL Person ${i}`, company: "", companyDomain: "", linkedinUrl: `pdl-${i}`, email: "", emailState: "" })) }) };
   const apolloService = { searchPeople: async ({ perPage }) => ({ people: Array.from({ length: perPage }, (_, i) => ({ fullName: `Apollo Person ${i}`, company: "", companyDomain: "", linkedinUrl: `apollo-${i}`, email: "", emailState: "" })) }) };
   const rows = [];
@@ -196,7 +196,9 @@ async function testApproveAndRunSearchHonorsTheOverallCapAcrossProviders() {
   assert.equal(result.runSummary.created, 5, "the OVERALL created count must respect the requested cap of 5, regardless of how many providers were selected");
   assert.equal(rows.length, 5);
   const apolloStats = result.runSummary.providerBreakdown.find((p) => p.provider === "apollo_person_search");
-  assert.ok(apolloStats.requested <= 5, "a later provider must be asked for only what's left of the overall cap, never the full requested count again");
+  assert.equal(apolloStats.requested, 5, "a selected later provider must still run even when an earlier provider filled the queue cap");
+  assert.equal(apolloStats.returned, 5);
+  assert.equal(apolloStats.rejectedForCapacity, 5, "new identities beyond the queue cap must be reported without creating extra rows");
 }
 
 async function run() {
@@ -212,7 +214,7 @@ async function run() {
   await testQualifyAndRecommendDiscardsAFabricatedProgramIdIfOneEverSlipsThrough();
   await testQualifyAndRecommendReportsAnAccurateCompletionSummary();
   await testApproveAndRunSearchHonorsTheOverallCapAcrossProviders();
-  console.log("Lead qualification: identityConfidence is computed deterministically from real provider/corroboration/conflict signals (never left at a stale 'low' for a strongly-corroborated identity — the Ellie Baxter fix), the qualify schema structurally cannot return a program outside the workspace's real approved list (the fabrication fix, plus a defensive discard if one ever slips through), qualification requires ALL THREE separate signals — identity, program fit, and buyer-intent evidence — before 'qualified'/outreach is ever recommended (never a title alone), ICP exclusions and identity conflicts are handled as distinct, sensible outcomes, the completion summary accurately counts processed/qualified/needsReview/notAFit/failed including a candidate the model silently omitted, and the overall requested-count cap in approveAndRunSearch is honored across ALL selected providers combined rather than treated as a separate allowance per provider — all passed.");
+  console.log("Lead qualification: identityConfidence is computed deterministically from real provider/corroboration/conflict signals (never left at a stale 'low' for a strongly-corroborated identity — the Ellie Baxter fix), the qualify schema structurally cannot return a program outside the workspace's real approved list (the fabrication fix, plus a defensive discard if one ever slips through), qualification requires ALL THREE separate signals — identity, program fit, and buyer-intent evidence — before 'qualified'/outreach is ever recommended (never a title alone), ICP exclusions and identity conflicts are handled as distinct, sensible outcomes, the completion summary accurately counts processed/qualified/needsReview/notAFit/failed including a candidate the model silently omitted, every selected provider runs, and the overall new-candidate cap remains enforced — all passed.");
 }
 
 run().catch((error) => {

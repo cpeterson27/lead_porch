@@ -93,6 +93,7 @@ export default function CampaignWorkspace() {
   // event of its own.
   const [editorInstanceKey, setEditorInstanceKey] = useState(0);
   const autosaveRevisionRef = useRef(0);
+  const previewRevisionRef = useRef(0);
   const messageRef = useRef(null);
 
   useEffect(() => {
@@ -440,8 +441,8 @@ export default function CampaignWorkspace() {
   // but this gives a reliable, immediate way to force it regardless.
   const refreshPreviewNow = async () => {
     try {
-      await exportCurrentTemplate();
-      await previewTemplate();
+      const current = await exportCurrentTemplate();
+      await previewTemplate({ template: current });
     } catch (err) {
       setPreviewError(err.message || "Unable to refresh the preview.");
     }
@@ -512,9 +513,10 @@ export default function CampaignWorkspace() {
       setTemplateSaving(false);
     }
   };
-  const previewTemplate = async ({ silent = false } = {}) => {
-    const hasDesignedContent = Boolean(emailTemplate?.designJson?.body?.rows?.length);
-    if (!String(emailTemplate?.subject || "").trim() && !hasDesignedContent) {
+  const previewTemplate = async ({ silent = false, template = emailTemplate } = {}) => {
+    const revision = ++previewRevisionRef.current;
+    const hasDesignedContent = Boolean(template?.designJson?.body?.rows?.length);
+    if (!String(template?.subject || "").trim() && !hasDesignedContent) {
       setEmailPreview(null);
       setPreviewError("");
       setPreviewLoading(false);
@@ -524,21 +526,22 @@ export default function CampaignWorkspace() {
       if (!silent) setTemplateSaving(true);
       setPreviewLoading(true);
       setPreviewError("");
-      setEmailPreview(
-        await previewCampaignEmailTemplate(id, {
-          ...emailTemplate,
+      const nextPreview = await previewCampaignEmailTemplate(id, {
+          ...template,
           logoUrl: campaign.brand?.logoUrl || "",
           flyerUrl: campaign.brand?.flyerUrl || "",
           accentColor: campaign.brand?.accentColor || "#173f36",
-        }),
-      );
+        });
+      if (previewRevisionRef.current === revision) setEmailPreview(nextPreview);
     } catch (err) {
-      setPreviewError(
-        err.response?.data?.error || "The live preview could not be refreshed.",
-      );
+      if (previewRevisionRef.current === revision) {
+        setPreviewError(
+          err.response?.data?.error || "The live preview could not be refreshed.",
+        );
+      }
     } finally {
       if (!silent) setTemplateSaving(false);
-      setPreviewLoading(false);
+      if (previewRevisionRef.current === revision) setPreviewLoading(false);
     }
   };
   useEffect(() => {

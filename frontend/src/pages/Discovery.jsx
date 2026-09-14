@@ -1527,7 +1527,7 @@ export default function Discovery() {
                   <div className="leadgen-provider-breakdown-wrap">
                     <table className="leadgen-provider-breakdown">
                       <thead>
-                        <tr><th>Provider</th><th>Requested</th><th>Returned</th><th>Rejected: self</th><th>Rejected: freshness</th><th>Rejected: dedup</th><th>Accepted</th><th>Error</th></tr>
+                        <tr><th>Provider</th><th>Requested</th><th>Returned</th><th>Rejected: self</th><th>Rejected: freshness</th><th>Matched existing</th><th>Over limit</th><th>Accepted</th><th>Status</th></tr>
                       </thead>
                       <tbody>
                         {leadGenProposal.runSummary.providerBreakdown.map((row, index) => (
@@ -1538,6 +1538,7 @@ export default function Discovery() {
                             <td>{row.rejectedSelf}</td>
                             <td>{row.rejectedFreshness}</td>
                             <td>{row.rejectedDedup}</td>
+                            <td>{row.rejectedForCapacity || 0}</td>
                             <td>{row.accepted}</td>
                             <td>{row.error ? <span className="form-error">{row.error}</span> : "—"}</td>
                           </tr>

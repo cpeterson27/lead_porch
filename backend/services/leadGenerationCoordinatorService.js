@@ -457,7 +457,7 @@ function identityKey(candidate) {
  * new provider vs the existing row) is recorded in `conflicts` and keeps
  * the row in pending_review rather than silently picking one value.
  */
-async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlationId, candidate }, dependencies = {}) {
+async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlationId, candidate, allowCreate = true }, dependencies = {}) {
   const Model = dependencies.GroundingResearchResult || GroundingResearchResult;
   const key = identityKey(candidate);
   const candidateEmail = sanitizeEmailValue(candidate.email);
@@ -469,6 +469,7 @@ async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlati
   const existing = await Model.findOne({ workspaceId, status: "pending_review", type: "person", $or: orClauses });
 
   if (!existing) {
+    if (!allowCreate) return { created: false, row: null, capacityRejected: true };
     const created = await Model.create({
       workspaceId, query: `icp_match:${key}`, type: "person",
       name: candidate.name, organizationName: candidate.organizationName, organizationDomain: candidate.organizationDomain,
@@ -553,12 +554,12 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
   // PDL/Apollo candidate before it's ever merged into the review queue.
   const selfSignals = await (dependencies.getWorkspaceSelfSignals || workspaceSelfExclusionService.getWorkspaceSelfSignals)({ workspaceId }, dependencies);
   const isSelfMatchCheck = dependencies.isSelfMatch || workspaceSelfExclusionService.isSelfMatch;
-  // The owner's requested count is an OVERALL cap across every selected
-  // provider combined — never a separate per-provider allowance. Each
-  // provider block below is asked for only what's still remaining after
-  // whatever earlier providers already accepted, and is skipped entirely
-  // (with an honest reason) once nothing remains.
-  const requestRemaining = () => Math.max(0, search.requestedCount - (created + merged));
+  // The owner's requested count caps NEW queue rows, but every explicitly
+  // selected provider still runs. Later providers may corroborate/merge a
+  // person already found by an earlier provider; new identities returned
+  // after the cap is reached are reported as capacity rejections instead of
+  // silently skipping the provider the owner selected.
+  const requestRemaining = () => Math.max(0, search.requestedCount - created);
 
   const includesVertex = effectiveSources.includes("vertex");
   const includesOpenai = effectiveSources.includes("openai_web_search");
@@ -581,61 +582,49 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
   }
 
   if (effectiveSources.includes("pdl_person_search")) {
-    const remainingBeforePdl = requestRemaining();
-    const stats = { provider: "pdl_person_search", requested: remainingBeforePdl, returned: 0, rejectedSelf: 0, rejectedFreshness: 0, rejectedForCapacity: 0, rejectedDedup: 0, accepted: 0, error: null };
-    if (remainingBeforePdl <= 0) {
-      stats.error = `Skipped — the overall requested count of ${search.requestedCount} was already reached by an earlier provider.`;
-      providerBreakdown.push(stats);
-    } else {
+    const stats = { provider: "pdl_person_search", requested: search.requestedCount, returned: 0, rejectedSelf: 0, rejectedFreshness: 0, rejectedForCapacity: 0, rejectedDedup: 0, accepted: 0, error: null };
     try {
       const sql = buildPdlSql(search.icp);
       if (!sql) throw Object.assign(new Error("The ICP has no criteria PDL can search on (titles, locations, or industries required)"), { code: "PDL_ICP_EMPTY" });
-      const outcome = await pdl.searchPeople({ workspaceId, userId, sql, size: remainingBeforePdl, correlationId });
+      const outcome = await pdl.searchPeople({ workspaceId, userId, sql, size: search.requestedCount, correlationId });
       stats.returned = outcome.people.length;
       for (const person of outcome.people) {
-        if (requestRemaining() <= 0) break;
         const candidate = normalizePdlCandidate(person);
         if (isSelfMatchCheck(candidate, selfSignals).isSelf) { excludedForSelfMatch += 1; stats.rejectedSelf += 1; continue; }
         // eslint-disable-next-line no-await-in-loop
-        const result = await mergeIcpMatchCandidate({ workspaceId, userId, searchId: search._id, correlationId, candidate }, dependencies);
+        const result = await mergeIcpMatchCandidate({ workspaceId, userId, searchId: search._id, correlationId, candidate, allowCreate: requestRemaining() > 0 }, dependencies);
+        if (result.capacityRejected) { stats.rejectedForCapacity += 1; continue; }
         if (result.created) { created += 1; stats.accepted += 1; } else { merged += 1; stats.rejectedDedup += 1; }
-        if (result.row.conflicts?.length) withConflicts += 1;
+        if (result.row?.conflicts?.length) withConflicts += 1;
       }
     } catch (error) {
       sourceErrors.push({ source: "pdl_person_search", code: error.code || "PDL_SEARCH_FAILED", message: error.message });
       stats.error = error.message;
     }
     providerBreakdown.push(stats);
-    }
   }
 
   if (effectiveSources.includes("apollo_person_search")) {
-    const remainingBeforeApollo = requestRemaining();
-    const stats = { provider: "apollo_person_search", requested: remainingBeforeApollo, returned: 0, rejectedSelf: 0, rejectedFreshness: 0, rejectedForCapacity: 0, rejectedDedup: 0, accepted: 0, error: null };
-    if (remainingBeforeApollo <= 0) {
-      stats.error = `Skipped — the overall requested count of ${search.requestedCount} was already reached by an earlier provider.`;
-      providerBreakdown.push(stats);
-    } else {
+    const stats = { provider: "apollo_person_search", requested: search.requestedCount, returned: 0, rejectedSelf: 0, rejectedFreshness: 0, rejectedForCapacity: 0, rejectedDedup: 0, accepted: 0, error: null };
     try {
       const filters = buildApolloFilters(search.icp);
       if (!Object.keys(filters).length) throw Object.assign(new Error("The ICP has no criteria Apollo can search on (titles, locations, seniority, or keywords required)"), { code: "APOLLO_ICP_EMPTY" });
-      const outcome = await apollo.searchPeople({ workspaceId, userId, filters, perPage: remainingBeforeApollo, correlationId });
+      const outcome = await apollo.searchPeople({ workspaceId, userId, filters, perPage: search.requestedCount, correlationId });
       stats.returned = outcome.people.length;
       for (const person of outcome.people) {
-        if (requestRemaining() <= 0) break;
         const candidate = normalizeApolloCandidate(person);
         if (isSelfMatchCheck(candidate, selfSignals).isSelf) { excludedForSelfMatch += 1; stats.rejectedSelf += 1; continue; }
         // eslint-disable-next-line no-await-in-loop
-        const result = await mergeIcpMatchCandidate({ workspaceId, userId, searchId: search._id, correlationId, candidate }, dependencies);
+        const result = await mergeIcpMatchCandidate({ workspaceId, userId, searchId: search._id, correlationId, candidate, allowCreate: requestRemaining() > 0 }, dependencies);
+        if (result.capacityRejected) { stats.rejectedForCapacity += 1; continue; }
         if (result.created) { created += 1; stats.accepted += 1; } else { merged += 1; stats.rejectedDedup += 1; }
-        if (result.row.conflicts?.length) withConflicts += 1;
+        if (result.row?.conflicts?.length) withConflicts += 1;
       }
     } catch (error) {
       sourceErrors.push({ source: "apollo_person_search", code: error.code || "APOLLO_SEARCH_FAILED", message: error.message });
       stats.error = error.message;
     }
     providerBreakdown.push(stats);
-    }
   }
 
   const allFailed = sourceErrors.length >= effectiveSources.length && created === 0 && merged === 0;
