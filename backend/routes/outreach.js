@@ -431,7 +431,6 @@ router.post("/generate", async (req,res)=>{
           exists.subject = draft.subject;
           exists.emailDraft = draft.emailDraft;
           exists.htmlBody = draft.htmlBody || "";
-          exists.designJson = recipientTemplate.designJson || null;
           exists.eventLink = draft.eventLink || "";
           exists.flyerUrl = draft.flyerUrl || "";
           exists.templateVersion = recipientTemplate.version;
@@ -477,9 +476,6 @@ router.post("/generate", async (req,res)=>{
 
   htmlBody:
     draft.htmlBody || "",
-
-  designJson:
-    recipientTemplate.designJson || null,
 
   eventLink:
     draft.eventLink || "",
@@ -892,7 +888,6 @@ router.post("/:id/replace-email", async (req, res) => {
         subject: original.subject,
         emailDraft: original.emailDraft,
         htmlBody: original.htmlBody,
-        designJson: original.designJson || null,
         eventLink: original.eventLink,
         flyerUrl: original.flyerUrl,
         templateVersion: original.templateVersion,

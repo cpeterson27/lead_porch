@@ -1,7 +1,6 @@
 const integrationHub = require("./integrationHub");
 const IntegrationConnection = require("../models/IntegrationConnection");
 const Contact = require("../models/Contact");
-const Campaign = require("../models/Campaign");
 const Workspace = require("../models/Workspace");
 const WorkspaceConfig = require("../models/WorkspaceConfig");
 const EmailSuppression = require("../models/EmailSuppression");
@@ -25,16 +24,6 @@ async function renderEmailContent(
       : {}),
     key: "primary",
   }).lean();
-  // A campaign can choose its own logo (Email design -> Logo); when it
-  // hasn't, the workspace's Knowledge Center logo is the default. Resolved
-  // here, in the one place both a real send and the preview render from,
-  // so the two can never show a different logo than what's actually sent.
-  const campaignLogoUrl = outreachItem.campaignId
-    ? String(
-        (await Campaign.findById(outreachItem.campaignId).select("brand.emailLogoUrl").lean())
-          ?.brand?.emailLogoUrl || "",
-      ).trim()
-    : "";
   if (!workspaceConfig?.postalAddress?.trim() && !preview) {
     throw new Error(
       "Add the business mailing address in Settings before sending campaign email.",
@@ -70,22 +59,9 @@ async function renderEmailContent(
           `<p>${String(paragraph).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replaceAll("\n", "<br>")}</p>`,
       )
       .join("")}</body></html>`;
-  const organizationLogo = String(
-    campaignLogoUrl ||
-      workspaceConfig?.branding?.publicSiteLogoUrl ||
-      workspaceConfig?.organizationLogoUrl ||
-      "",
-  ).trim();
-  // A campaign designed in the Unlayer drag-and-drop editor already gives
-  // the sender full control over whether a logo appears and where — only
-  // auto-inject a top-of-email logo banner for legacy plain-text/manual
-  // HTML templates that never had that control in the first place.
-  if (organizationLogo && !outreachItem.designJson && !html.includes(organizationLogo)) {
-    const logoHtml = `<div style="margin:0 0 28px"><img src="${organizationLogo.replace(/"/g, "&quot;")}" alt="${String(businessName).replace(/[<>&"]/g, "")}" style="display:block;max-height:84px;max-width:220px;object-fit:contain"></div>`;
-    html = html.includes("<body")
-      ? html.replace(/(<body[^>]*>)/i, `$1${logoHtml}`)
-      : `${logoHtml}${html}`;
-  }
+  // No logo is ever auto-inserted here — the sender controls entirely
+  // whether one appears and where, by dragging it into the Unlayer editor
+  // themselves (see CampaignWorkspace.jsx's "Insert logo" control).
   html = html.includes("</body>")
     ? html.replace("</body>", `${footerHtml}</body>`)
     : `${html}${footerHtml}`;

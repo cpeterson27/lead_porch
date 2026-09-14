@@ -305,9 +305,9 @@ router.post("/:id/email-template/preview", async (req, res) => {
     sources: ["preview"],
   }, previewCampaign);
   // Renders through the exact same function a real send uses (compliance
-  // footer, unsubscribe link, and the campaign's chosen-or-default logo) so
-  // this preview can never drift out of sync with what actually goes out —
-  // see services/email.js's renderEmailContent for why that matters.
+  // footer and unsubscribe link) so this preview can never drift out of
+  // sync with what actually goes out — see services/email.js's
+  // renderEmailContent for why that matters.
   const { html } = await renderEmailContent(
     {
       workspaceId: campaign.workspaceId,
@@ -316,7 +316,6 @@ router.post("/:id/email-template/preview", async (req, res) => {
       contactEmail: previewContact?.email || "preview@example.com",
       htmlBody: draft.htmlBody,
       emailDraft: draft.emailDraft,
-      designJson: template.designJson || null,
     },
     { contact: previewContact, preview: true },
   );
