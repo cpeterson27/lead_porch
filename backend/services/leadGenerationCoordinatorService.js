@@ -403,36 +403,35 @@ function buildPdlSql(icp) {
   return `SELECT * FROM person WHERE ${clauses.map((c) => `(${c})`).join(" AND ")}`;
 }
 
-// Confirmed live against the real API: Apollo's q_keywords rejects the
-// ENTIRE search with a 422 ("Value too long") once the joined string
-// crosses roughly 225 characters (200 chars: accepted; 227: rejected) —
-// undocumented, and not specific to any special character. A Jarvis-
-// derived ICP for a keyword-rich program can easily produce a longer
-// joined string than that, which previously killed the whole Apollo call
-// silently (surfaced only as an opaque "Request failed with status code
-// 422", exactly what caused a real search to return zero Apollo results).
-const APOLLO_KEYWORDS_MAX_LENGTH = 200;
-
-/** Keeps as many whole keywords as fit within maxLength, joined by spaces — never cuts a keyword mid-word, and never exceeds the limit. */
-function truncateKeywordsToFit(keywords, maxLength) {
-  let result = "";
-  for (const keyword of keywords) {
-    const candidate = result ? `${result} ${keyword}` : keyword;
-    if (candidate.length > maxLength) break;
-    result = candidate;
-  }
-  return result;
-}
-
+/**
+ * Deliberately sends ONLY titles and locations as hard Apollo search
+ * filters — confirmed live against the real API that person_seniorities
+ * and q_keywords can each silently zero out an otherwise-good search:
+ *
+ * - person_seniorities only recognizes Apollo's own fixed vocabulary
+ *   (owner/founder/c_suite/partner/vp/head/director/manager/senior/entry/
+ *   intern). Jarvis's freeform ICP guesses ("Individual Contributor" etc.)
+ *   aren't in that list, and Apollo doesn't ignore an unrecognized value —
+ *   it returns ZERO people for the whole search, even when the titles
+ *   alone match hundreds of real people. Confirmed: the exact same title
+ *   list found 100+ people alone, and 0 with Jarvis's seniority values.
+ * - q_keywords requires most/all of the joined phrases to co-occur on a
+ *   profile — a natural-language keyword list (e.g. 12 phrases from a
+ *   program description) is a bar almost nobody clears, and it also has
+ *   an undocumented ~225-character length limit that 422s the whole
+ *   request outright above it.
+ *
+ * Neither signal is wasted — both are still fully used by
+ * computeIcpFitScore() to RANK the fetched pool afterward, where a
+ * substring match is forgiving instead of a hard, closed-vocabulary
+ * filter that can return nothing. This is what makes an automated search
+ * behave like a person searching apollo.com directly (broad title search,
+ * then eyeball-prioritize) instead of silently over-constraining itself.
+ */
 function buildApolloFilters(icp) {
   const filters = {};
   if (icp.titles?.length) filters.person_titles = icp.titles;
   if (icp.locations?.length) filters.person_locations = icp.locations;
-  if (icp.seniority?.length) filters.person_seniorities = icp.seniority;
-  if (icp.keywords?.length) {
-    const joined = icp.keywords.join(" ");
-    filters.q_keywords = joined.length > APOLLO_KEYWORDS_MAX_LENGTH ? truncateKeywordsToFit(icp.keywords, APOLLO_KEYWORDS_MAX_LENGTH) : joined;
-  }
   return filters;
 }
 
