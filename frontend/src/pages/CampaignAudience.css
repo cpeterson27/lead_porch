@@ -1,112 +1,17 @@
+/* Tile styling itself lives in CampaignWorkspace.css's .campaign-stat-tile —
+   this just lays them out, sized to the actual number of tiles in each
+   group (4 for "this campaign", 2 for "across your CRM") rather than a
+   fixed 4-column grid that left the smaller group looking sparse. */
 .campaign-audience-counts {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: 0.65rem;
-  margin: 1rem 0;
+  margin: 0 0 var(--space-4);
 }
 
-.campaign-audience-counts button {
-  appearance: none;
-  background: var(--surface-strong);
-  border: 0;
-  border-radius: 10px;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  padding: 0.8rem;
-  text-align: left;
-}
-
-.campaign-audience-counts button:hover {
-  box-shadow: inset 0 0 0 1px var(--accent);
-}
-
-.campaign-audience-counts > div {
-  padding: 0.8rem;
-  border-radius: 10px;
-  background: var(--surface-strong);
-}
-
-.campaign-audience-counts strong,
-.campaign-audience-counts span {
-  display: block;
-}
-
-.campaign-audience-counts strong {
-  font-size: 1.35rem;
-}
-
-.campaign-audience-counts span,
 .campaign-match-table span,
 .campaign-match-table small {
   color: var(--text-muted);
-}
-
-.campaign-audience-counts span {
-  font-size: 0.76rem;
-}
-
-.audience-flow {
-  display: grid;
-  gap: 0.6rem;
-}
-
-.audience-flow > div {
-  align-items: flex-start;
-  background: var(--surface-strong);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  display: grid;
-  gap: 0.65rem;
-  grid-template-columns: 28px 1fr;
-  padding: 0.7rem;
-}
-
-.audience-flow > div > span {
-  align-items: center;
-  background: var(--accent-soft);
-  border-radius: 8px;
-  color: var(--accent);
-  display: inline-flex;
-  font-size: 0.76rem;
-  font-weight: 850;
-  height: 28px;
-  justify-content: center;
-  width: 28px;
-}
-
-.audience-flow p {
-  color: var(--text-muted);
-  display: grid;
-  font-size: 0.8rem;
-  gap: 2px;
-  line-height: 1.4;
-  margin: 0;
-}
-
-.audience-flow strong {
-  color: var(--text);
-  font-size: 0.86rem;
-}
-
-.audience-strategy-action {
-  align-items: center;
-  border-bottom: 1px solid var(--border);
-  display: flex;
-  gap: 1rem;
-  justify-content: space-between;
-  padding: 1rem 0;
-}
-
-.audience-strategy-action p {
-  display: grid;
-  gap: 3px;
-  margin: 0;
-}
-
-.audience-strategy-action span {
-  color: var(--text-muted);
-  font-size: 0.82rem;
 }
 
 .campaign-match-table {
@@ -203,7 +108,6 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .audience-strategy-action,
   .campaign-audience-actions {
     align-items: stretch;
     flex-direction: column;

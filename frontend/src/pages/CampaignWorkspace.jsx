@@ -14,6 +14,7 @@ import {
   previewCampaignAudience,
   previewCampaignEmailTemplate,
   saveCampaignEmailTemplate,
+  updateCampaignAudienceTags,
   updateCampaignBrand,
   updateCampaignSchedule,
   uploadEventImage,
@@ -77,6 +78,8 @@ export default function CampaignWorkspace() {
   const [ideaPrompt, setIdeaPrompt] = useState("");
   const [workspaceDefaultLogoUrl, setWorkspaceDefaultLogoUrl] = useState("");
   const [logoSaving, setLogoSaving] = useState(false);
+  const [audienceTagsSaving, setAudienceTagsSaving] = useState(false);
+  const [newAudienceTag, setNewAudienceTag] = useState("");
   const [templateDirty, setTemplateDirty] = useState(false);
   const [templateNotice, setTemplateNotice] = useState("");
   const [emailPreview, setEmailPreview] = useState(null);
@@ -205,6 +208,33 @@ export default function CampaignWorkspace() {
     } finally {
       setLogoSaving(false);
     }
+  };
+
+  const saveAudienceTags = async (nextAudience) => {
+    setAudienceTagsSaving(true);
+    setError("");
+    try {
+      setCampaign(normalizeBrandAssets(await updateCampaignAudienceTags(id, nextAudience)));
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to update the target audience.");
+    } finally {
+      setAudienceTagsSaving(false);
+    }
+  };
+
+  const addAudienceTag = () => {
+    const value = newAudienceTag.trim();
+    if (!value) return;
+    if ((campaign.audience || []).some((tag) => tag.toLowerCase() === value.toLowerCase())) {
+      setNewAudienceTag("");
+      return;
+    }
+    setNewAudienceTag("");
+    saveAudienceTags([...(campaign.audience || []), value]);
+  };
+
+  const removeAudienceTag = (tag) => {
+    saveAudienceTags((campaign.audience || []).filter((item) => item !== tag));
   };
 
   const saveSchedule = async () => {
@@ -418,14 +448,22 @@ export default function CampaignWorkspace() {
   const overview = isProgram
     ? [
         ["Offer", campaign.programName || "Premium program"],
-        ["Target groups", campaign.audience?.length || 0],
+        [
+          "Target audience segments",
+          campaign.audience?.length || 0,
+          "The groups you chose to target when this campaign was created — see and edit them on the Target audience step.",
+        ],
         ["Campaign type", "Program enrollment"],
       ]
     : [
         ["Event date", formatDate(campaign.startDate)],
         ["Ticket price", formatMoney(campaign.ticketPrice)],
         ["Registration goal", campaign.ticketGoal || "Not specified"],
-        ["Target groups", campaign.audience?.length || 0],
+        [
+          "Target audience segments",
+          campaign.audience?.length || 0,
+          "The groups you chose to target when this campaign was created — see and edit them on the Target audience step.",
+        ],
       ];
   const registrationLinks = [
     ["Eventbrite", campaign.registrationLinks?.eventbrite],
@@ -533,12 +571,25 @@ export default function CampaignWorkspace() {
         {activeSection === "overview" ? (
           <DashboardCard title="Campaign details">
             <div className="campaign-overview-list">
-              {overview.map(([label, value]) => (
-                <div key={label}>
-                  <span>{label}</span>
-                  <strong>{value}</strong>
-                </div>
-              ))}
+              {overview.map(([label, value, hint]) =>
+                hint ? (
+                  <button
+                    type="button"
+                    key={label}
+                    className="campaign-overview-list__linked"
+                    onClick={() => setActiveSection("audience")}
+                  >
+                    <span>{label}</span>
+                    <strong>{value}</strong>
+                    <small>{hint}</small>
+                  </button>
+                ) : (
+                  <div key={label}>
+                    <span>{label}</span>
+                    <strong>{value}</strong>
+                  </div>
+                ),
+              )}
             </div>
             {campaign.description ? (
               <p className="campaign-workspace__description">
@@ -876,35 +927,71 @@ export default function CampaignWorkspace() {
         )}
 
         {activeSection === "audience" ? (
-          <DashboardCard title="Confirmed target audience">
+          <DashboardCard title="Target audience">
             {audienceMatch ? (
               <>
-                <div className="campaign-audience-source">
-                  <div>
-                    <strong>Source of truth</strong>
-                    <p>
-                      The confirmed target audience below is the audience Growth
-                      Operator uses for matching, templates, and future
-                      searches.
-                    </p>
-                  </div>
-                  {eventId ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
+                <p className="campaign-audience-intro">
+                  Lead Porch matches your contacts against the groups below —
+                  add or remove groups any time, then use{" "}
+                  <strong>Refresh and assign safe matches</strong> to re-run
+                  matching.
+                </p>
+                <div className="campaign-audience-groups campaign-audience-groups--editable">
+                  {(campaign.audience || []).map((audience) => (
+                    <span key={audience}>
+                      {audience}
+                      <button
+                        type="button"
+                        aria-label={`Remove ${audience}`}
+                        disabled={audienceTagsSaving}
+                        onClick={() => removeAudienceTag(audience)}
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                  {!(campaign.audience || []).length ? (
+                    <em>No target groups yet — add at least one below.</em>
+                  ) : null}
+                </div>
+                <div className="campaign-audience-add">
+                  <input
+                    value={newAudienceTag}
+                    onChange={(event) => setNewAudienceTag(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        addAudienceTag();
+                      }
+                    }}
+                    placeholder="e.g. Real estate investors"
+                    disabled={audienceTagsSaving}
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    loading={audienceTagsSaving}
+                    disabled={!newAudienceTag.trim()}
+                    onClick={addAudienceTag}
+                  >
+                    Add group
+                  </Button>
+                </div>
+                {eventId ? (
+                  <p className="campaign-template-help">
+                    This event may also have its own targeting notes in
+                    Eventbrite strategy.{" "}
+                    <button
+                      type="button"
+                      className="campaign-inline-link"
                       onClick={() =>
                         navigate(`/events?eventId=${eventId}&tab=strategy`)
                       }
                     >
-                      Edit target audience
-                    </Button>
-                  ) : null}
-                </div>
-                <div className="campaign-audience-groups">
-                  {(campaign.audience || []).map((audience) => (
-                    <span key={audience}>{audience}</span>
-                  ))}
-                </div>
+                      Open event targeting brief
+                    </button>
+                  </p>
+                ) : null}
                 {campaign.eventId?.audienceSuggestions?.length ? (
                   <details className="campaign-audience-suggestions">
                     <summary>
@@ -912,71 +999,84 @@ export default function CampaignWorkspace() {
                     </summary>
                     <p>
                       These are suggestions only. They do not become active
-                      unless you select and save them in Event strategy.
+                      unless you add them above.
                     </p>
                     <div>
                       {campaign.eventId.audienceSuggestions.map((audience) => (
-                        <span key={audience}>{audience}</span>
+                        <button
+                          type="button"
+                          key={audience}
+                          disabled={audienceTagsSaving || (campaign.audience || []).includes(audience)}
+                          onClick={() => saveAudienceTags([...(campaign.audience || []), audience])}
+                        >
+                          + {audience}
+                        </button>
                       ))}
                     </div>
                   </details>
                 ) : null}
-                <div className="audience-flow">
-                  <div>
-                    <span>1</span>
-                    <p>
-                      <strong>Confirm the targeting brief</strong>Growth
-                      Operator can suggest segments from the event, but you
-                      decide the official audience for this campaign.
-                    </p>
+                <details className="campaign-audience-how">
+                  <summary>How Lead Porch matches your audience</summary>
+                  <ol>
+                    <li>You decide the official target groups above.</li>
+                    <li>
+                      Contacts come from Lead Porch research, CRM records, CSV
+                      uploads, manual entry, and approved integrations.
+                    </li>
+                    <li>
+                      Lead Porch compares your groups against each contact's
+                      title, industry, tags, keywords, companies, lists, and
+                      notes. Nothing is emailed automatically — you always
+                      review and send from Outreach.
+                    </li>
+                  </ol>
+                </details>
+
+                <h3 className="campaign-audience-stats-heading">
+                  This campaign's matches
+                </h3>
+                <div className="campaign-audience-counts">
+                  <div className="campaign-stat-tile">
+                    <strong>{audienceMatch.matched || 0}</strong>
+                    <span>Safe matches</span>
+                    <small>
+                      Fit your target groups, have a verified email, and are
+                      approved to receive campaign email.
+                    </small>
                   </div>
-                  <div>
-                    <span>2</span>
-                    <p>
-                      <strong>Use real contact sources</strong>Contacts come
-                      from Lead Porch research, CRM records, CSV uploads,
-                      manual entry, and future approved integrations.
-                    </p>
+                  <div className="campaign-stat-tile">
+                    <strong>{audienceMatch.alreadyAssigned || 0}</strong>
+                    <span>Already assigned</span>
+                    <small>
+                      Of those safe matches, already linked to this campaign
+                      from an earlier match run.
+                    </small>
                   </div>
-                  <div>
-                    <span>3</span>
-                    <p>
-                      <strong>Match safely</strong>Lead Porch compares the
-                      brief with titles, industries, tags, keywords, companies,
-                      lists, and notes. Nothing is emailed automatically.
-                    </p>
+                  <div className="campaign-stat-tile">
+                    <strong>{audienceMatch.routedToMain || 0}</strong>
+                    <span>Using the main template</span>
+                    <small>
+                      Matched, but no specific group's template fit better —
+                      they'll get your default template.
+                    </small>
+                  </div>
+                  <div className="campaign-stat-tile">
+                    <strong>{audienceMatch.ambiguousRouting || 0}</strong>
+                    <span>Need routing review</span>
+                    <small>
+                      Fit two templates equally well — review the table below
+                      and choose one manually.
+                    </small>
                   </div>
                 </div>
-                {eventId ? (
-                  <div className="audience-strategy-action">
-                    <p>
-                      <strong>Targeting brief</strong>
-                      <span>
-                        {campaign.audience?.join(", ") || "Not approved yet"}
-                      </span>
-                    </p>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        navigate(`/events?eventId=${eventId}&tab=strategy`)
-                      }
-                    >
-                      Review targeting brief
-                    </Button>
-                  </div>
-                ) : null}
+
+                <h3 className="campaign-audience-stats-heading">
+                  Across your whole CRM
+                </h3>
                 <div className="campaign-audience-counts">
-                  <div>
-                    <strong>{audienceMatch.matched || 0}</strong>
-                    <span>safe matches</span>
-                  </div>
-                  <div>
-                    <strong>{audienceMatch.alreadyAssigned || 0}</strong>
-                    <span>already assigned</span>
-                  </div>
                   <button
                     type="button"
+                    className="campaign-stat-tile campaign-stat-tile--link"
                     onClick={() =>
                       navigate(
                         "/contacts?allCampaigns=true&researchStatus=needs_research",
@@ -984,18 +1084,16 @@ export default function CampaignWorkspace() {
                     }
                   >
                     <strong>{audienceMatch.needsResearch || 0}</strong>
-                    <span>need research</span>
+                    <span>Need research</span>
+                    <small>
+                      Not scoped to this campaign — every contact in your CRM
+                      without enough info yet to confirm a fit. Click to
+                      review them.
+                    </small>
                   </button>
-                  <div>
-                    <strong>{audienceMatch.routedToMain || 0}</strong>
-                    <span>use main fallback</span>
-                  </div>
-                  <div>
-                    <strong>{audienceMatch.ambiguousRouting || 0}</strong>
-                    <span>need routing review</span>
-                  </div>
                   <button
                     type="button"
+                    className="campaign-stat-tile campaign-stat-tile--link"
                     onClick={() =>
                       navigate(
                         "/contacts?allCampaigns=true&researchStatus=ready_for_review",
@@ -1003,7 +1101,12 @@ export default function CampaignWorkspace() {
                     }
                   >
                     <strong>{audienceMatch.readyForReview || 0}</strong>
-                    <span>ready for review</span>
+                    <span>Ready for review</span>
+                    <small>
+                      Not scoped to this campaign — research finished and
+                      waiting on a human to confirm the profile. Click to
+                      review them.
+                    </small>
                   </button>
                 </div>
                 {matchedContacts.length ? (

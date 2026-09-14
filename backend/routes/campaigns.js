@@ -473,6 +473,25 @@ router.patch("/:id/brand", async (req, res) => {
   }
 });
 
+// Program campaigns have no linked Eventbrite event, so before this there
+// was no way at all to change a campaign's target-audience tags once it was
+// created — the Target audience step could only ever display them.
+router.patch("/:id/audience", async (req, res) => {
+  try {
+    if (!Array.isArray(req.body?.audience)) return res.status(400).json({ error: "audience must be a list of group names." });
+    const audience = [...new Set(req.body.audience.map((value) => String(value || "").trim()).filter(Boolean))].slice(0, 30);
+    const campaign = await Campaign.findByIdAndUpdate(
+      req.params.id,
+      { $set: { audience } },
+      { new: true, runValidators: true },
+    );
+    if (!campaign) return res.status(404).json({ error: "Campaign not found." });
+    res.json(campaign);
+  } catch (error) {
+    res.status(400).json({ error: "Unable to update the target audience." });
+  }
+});
+
 router.patch("/:id/schedule", requireRole("owner", "admin"), async (req, res) => {
   try {
     const startDate = new Date(req.body?.startDate);

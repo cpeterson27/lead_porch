@@ -133,7 +133,12 @@
 .campaign-workspace__tabs button.active > span:first-child,
 .campaign-workspace__tabs button.is-complete > span:first-child { background: var(--accent); color: #fff; }
 
-.campaign-step-actions { display: flex; justify-content: flex-end; gap: 0.7rem; flex-wrap: wrap; }
+/* The global "Ask Jarvis" widget (layouts/DashboardLayout.css) is
+   fixed at right:22px/bottom:22px on every page — right where this
+   right-aligned action bar naturally lands at the bottom of the page.
+   Clearing 90px keeps its ~50px-tall pill from ever sitting on top of
+   these buttons. */
+.campaign-step-actions { display: flex; justify-content: flex-end; gap: 0.7rem; flex-wrap: wrap; margin-bottom: 90px; }
 
 .campaign-workspace__grid {
   display: grid;
@@ -164,6 +169,30 @@
 
 .campaign-overview-list strong {
   line-height: 1.45;
+}
+
+.campaign-overview-list__linked {
+  display: grid;
+  gap: 0.18rem;
+  padding: 0.6rem;
+  margin: -0.6rem -0.6rem 0.2rem;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+}
+
+.campaign-overview-list__linked:hover {
+  background: var(--surface-strong);
+}
+
+.campaign-overview-list__linked small {
+  color: var(--accent);
+  font-size: 0.76rem;
+  font-weight: 700;
 }
 
 .campaign-workspace__description,
@@ -578,33 +607,24 @@
 /* Target audience tab
    ------------------------------------------------------------------ */
 
-.campaign-audience-source {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface-strong);
-}
-
-.campaign-audience-source p {
-  margin: 0.25rem 0 0;
+.campaign-audience-intro {
+  margin: 0 0 var(--space-3);
   color: var(--text-muted);
+  line-height: 1.55;
 }
 
-.campaign-audience-groups,
-.campaign-audience-suggestions > div {
+.campaign-audience-groups {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
-  margin: var(--space-4) 0;
+  margin: 0 0 var(--space-3);
 }
 
-.campaign-audience-groups span,
-.campaign-audience-suggestions span {
-  padding: 0.45rem 0.7rem;
+.campaign-audience-groups span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.5rem 0.45rem 0.7rem;
   border-radius: var(--radius-pill);
   background: var(--color-success-soft);
   color: var(--color-success);
@@ -612,8 +632,61 @@
   font-weight: 750;
 }
 
+.campaign-audience-groups em {
+  color: var(--text-muted);
+  font-style: normal;
+  font-size: 0.85rem;
+}
+
+.campaign-audience-groups--editable span button {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.08);
+  color: inherit;
+  font-size: 0.85rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.campaign-audience-groups--editable span button:hover {
+  background: rgba(0, 0, 0, 0.16);
+}
+
+.campaign-audience-add {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0 0 var(--space-4);
+}
+
+.campaign-audience-add input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.6rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.campaign-inline-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .campaign-audience-suggestions {
   padding-top: var(--space-4);
+  margin-bottom: var(--space-4);
   border-top: 1px solid var(--border);
 }
 
@@ -625,6 +698,96 @@
 .campaign-audience-suggestions p {
   color: var(--text-muted);
   font-size: 0.86rem;
+}
+
+.campaign-audience-suggestions > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.campaign-audience-suggestions > div button {
+  padding: 0.45rem 0.7rem;
+  border: 1px dashed var(--color-success);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-success);
+  font-size: 0.78rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.campaign-audience-suggestions > div button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.campaign-audience-how {
+  margin-bottom: var(--space-4);
+}
+
+.campaign-audience-how summary {
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 0.86rem;
+}
+
+.campaign-audience-how ol {
+  margin: 0.6rem 0 0;
+  padding-left: 1.2rem;
+  color: var(--text-muted);
+  font-size: 0.86rem;
+  line-height: 1.6;
+}
+
+.campaign-audience-stats-heading {
+  margin: 0 0 0.6rem;
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.campaign-stat-tile {
+  display: grid;
+  gap: 0.3rem;
+  align-content: start;
+  min-height: 92px;
+  padding: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface-strong);
+  text-align: left;
+  font: inherit;
+  color: var(--text);
+}
+
+.campaign-stat-tile strong {
+  font-size: 1.5rem;
+  letter-spacing: -0.03em;
+}
+
+.campaign-stat-tile > span {
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.campaign-stat-tile small {
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.4;
+}
+
+.campaign-stat-tile--link {
+  cursor: pointer;
+}
+
+.campaign-stat-tile--link:hover {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
 }
 
 @media (max-width: 1080px) {
@@ -667,7 +830,6 @@
   .campaign-idea-generator {
     grid-template-columns: 1fr;
   }
-  .campaign-audience-source,
   .campaign-email-logo {
     align-items: flex-start;
     flex-direction: column;
