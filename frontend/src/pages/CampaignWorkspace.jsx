@@ -9,7 +9,6 @@ import {
   assignCampaignAudience,
   fetchCampaign,
   fetchCampaignEmailTemplate,
-  fetchContacts,
   generateCampaignEmailIdeas,
   previewCampaignAudience,
   previewCampaignEmailTemplate,
@@ -73,15 +72,14 @@ export default function CampaignWorkspace() {
   const [templateHistoryOpen, setTemplateHistoryOpen] = useState(false);
   const [templateSaving, setTemplateSaving] = useState(false);
   const [ideaGenerating, setIdeaGenerating] = useState(false);
+  const [ideaPrompt, setIdeaPrompt] = useState("");
   const [templateDirty, setTemplateDirty] = useState(false);
   const [templateNotice, setTemplateNotice] = useState("");
   const [emailPreview, setEmailPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
-  const [previewContacts, setPreviewContacts] = useState([]);
-  const [previewContactId, setPreviewContactId] = useState("");
   const [templateAudience, setTemplateAudience] = useState("general");
-  const [activeSection, setActiveSection] = useState("email");
+  const [activeSection, setActiveSection] = useState("overview");
   // Unlayer only loads its `design` prop once, on mount — bumping this key
   // forces a clean remount (and re-load) when restoring a historical
   // version, since the editor has no supported "swap design mid-session"
@@ -103,19 +101,6 @@ export default function CampaignWorkspace() {
         setError(err.response?.data?.error || "Unable to load campaign."),
       )
       .finally(() => setLoading(false));
-  }, [id]);
-
-  useEffect(() => {
-    if (!id) return;
-    fetchContacts({ campaignId: id, limit: 500 })
-      .then((response) => {
-        const contacts = response.data || [];
-        setPreviewContacts(contacts);
-        setPreviewContactId(
-          (current) => current || String(contacts[0]?._id || ""),
-        );
-      })
-      .catch(() => setPreviewContacts([]));
   }, [id]);
 
   useEffect(() => {
@@ -225,7 +210,10 @@ export default function CampaignWorkspace() {
     try {
       setIdeaGenerating(true);
       setError("");
-      const generated = await generateCampaignEmailIdeas(id, { audienceLabel: selectedAudienceLabel() });
+      const generated = await generateCampaignEmailIdeas(id, {
+        audienceLabel: selectedAudienceLabel(),
+        prompt: ideaPrompt,
+      });
       setEmailTemplate((current) => ({ ...current, ...generated, status: "draft" }));
       setTemplateDirty(true);
       setTemplateNotice("OpenAI created an editable draft. Review it, then save or approve it when ready.");
@@ -354,7 +342,6 @@ export default function CampaignWorkspace() {
           logoUrl: campaign.brand?.logoUrl || "",
           flyerUrl: campaign.brand?.flyerUrl || "",
           accentColor: campaign.brand?.accentColor || "#173f36",
-          previewContactId,
         }),
       );
     } catch (err) {
@@ -374,7 +361,7 @@ export default function CampaignWorkspace() {
     );
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, emailTemplate, previewContactId, campaign?.brand]);
+  }, [id, emailTemplate, campaign?.brand]);
   if (loading)
     return (
       <div className="page-dashboard">
@@ -479,33 +466,33 @@ export default function CampaignWorkspace() {
 
       <nav
         className="campaign-workspace__tabs"
-        aria-label="Campaign workspace sections"
+        aria-label="Campaign setup steps"
       >
         <button
-          className={activeSection === "email" ? "active" : ""}
-          onClick={() => setActiveSection("email")}
-        >
-          Email design
-        </button>
-        <button
-          className={activeSection === "audience" ? "active" : ""}
-          onClick={() => setActiveSection("audience")}
-        >
-          Target audience
-        </button>
-        <button
-          className={activeSection === "overview" ? "active" : ""}
+          className={`${activeSection === "overview" ? "active" : ""} ${campaign.name ? "is-complete" : ""}`}
+          aria-current={activeSection === "overview" ? "step" : undefined}
           onClick={() => setActiveSection("overview")}
         >
-          Campaign setup
+          <span>1</span><span><strong>Campaign setup</strong><small>Check the essentials</small></span>
+        </button>
+        <button
+          className={`${activeSection === "audience" ? "active" : ""} ${campaign.audience?.length ? "is-complete" : ""}`}
+          aria-current={activeSection === "audience" ? "step" : undefined}
+          onClick={() => setActiveSection("audience")}
+        >
+          <span>2</span><span><strong>Target audience</strong><small>Confirm who should receive it</small></span>
+        </button>
+        <button
+          className={`${activeSection === "email" ? "active" : ""} ${emailTemplate?.status === "approved" && !templateDirty ? "is-complete" : ""}`}
+          aria-current={activeSection === "email" ? "step" : undefined}
+          onClick={() => setActiveSection("email")}
+        >
+          <span>3</span><span><strong>Email design</strong><small>Create and approve the message</small></span>
+        </button>
+        <button onClick={() => navigate(`/outreach?campaignId=${campaign._id}`)}>
+          <span>4</span><span><strong>Review &amp; send</strong><small>Check every draft first</small></span>
         </button>
       </nav>
-
-      <ol className="campaign-professional-flow" aria-label="Campaign workflow">
-        {["Confirm audience", "Design main email", "Add useful variations", "Preview routing", "Review exceptions", "Approve routing & drafts", "Review before sending"].map((step, index) => (
-          <li key={step}><span>{index + 1}</span>{step}</li>
-        ))}
-      </ol>
 
       <section className="campaign-workspace__grid">
         {activeSection === "overview" ? (
@@ -667,27 +654,6 @@ export default function CampaignWorkspace() {
                         Refresh
                       </Button>
                     </header>
-                    <label className="campaign-preview-recipient">
-                      <span>Previewing as</span>
-                      <select
-                        value={previewContactId}
-                        onChange={(event) =>
-                          setPreviewContactId(event.target.value)
-                        }
-                      >
-                        <option value="">Example contact</option>
-                        {previewContacts.map((contact) => (
-                          <option key={contact._id} value={contact._id}>
-                            {contact.name ||
-                              [contact.firstName, contact.lastName]
-                                .filter(Boolean)
-                                .join(" ") ||
-                              "Unnamed contact"}
-                            {contact.company ? ` · ${contact.company}` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
                     {previewError ? (
                       <p className="form-error">{previewError}</p>
                     ) : null}
@@ -704,7 +670,15 @@ export default function CampaignWorkspace() {
                     )}
                   </div>
                 </div>
-                <div className="campaign-template-editor__actions">
+                <div className="campaign-idea-generator">
+                  <label>
+                    <span>Tell AI what to focus on (optional)</span>
+                    <input
+                      value={ideaPrompt}
+                      onChange={(event) => setIdeaPrompt(event.target.value)}
+                      placeholder="e.g. Make it urgent about the early-bird deadline, keep it casual"
+                    />
+                  </label>
                   <Button
                     variant="outline"
                     loading={ideaGenerating}
@@ -712,6 +686,8 @@ export default function CampaignWorkspace() {
                   >
                     Generate ideas with AI
                   </Button>
+                </div>
+                <div className="campaign-template-editor__actions">
                   <Button
                     variant="outline"
                     loading={templateSaving}
@@ -1041,6 +1017,17 @@ export default function CampaignWorkspace() {
             )}
           </DashboardCard>
         ) : null}
+        <div className="campaign-step-actions">
+          {activeSection === "overview" ? (
+            <Button onClick={() => setActiveSection("audience")}>Continue to target audience</Button>
+          ) : null}
+          {activeSection === "audience" ? (
+            <><Button variant="outline" onClick={() => setActiveSection("overview")}>Back to campaign setup</Button><Button onClick={() => setActiveSection("email")}>Continue to email design</Button></>
+          ) : null}
+          {activeSection === "email" ? (
+            <><Button variant="outline" onClick={() => setActiveSection("audience")}>Back to target audience</Button><Button onClick={() => navigate(`/outreach?campaignId=${campaign._id}`)}>Review drafts before sending</Button></>
+          ) : null}
+        </div>
       </section>
     </div>
   );
