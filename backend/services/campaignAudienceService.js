@@ -73,7 +73,7 @@ function matchReasons(contact, audiences = []) {
   return reasons;
 }
 
-function selectAutomaticAudienceTemplate(contact = {}, audienceTemplates = []) {
+function rankAutomaticAudienceTemplates(contact = {}, audienceTemplates = []) {
   const normalizedProfiles = (contact.audienceProfiles || [])
     .map((profile) => String(profile).toLowerCase().trim());
   return audienceTemplates
@@ -87,7 +87,11 @@ function selectAutomaticAudienceTemplate(contact = {}, audienceTemplates = []) {
       };
     })
     .filter((candidate) => candidate.routingScore > 0)
-    .sort((left, right) => right.routingScore - left.routingScore || left.routingIndex - right.routingIndex)[0] || null;
+    .sort((left, right) => right.routingScore - left.routingScore || left.routingIndex - right.routingIndex);
+}
+
+function selectAutomaticAudienceTemplate(contact = {}, audienceTemplates = []) {
+  return rankAutomaticAudienceTemplates(contact, audienceTemplates)[0] || null;
 }
 
 function connectionPriority(contact, campaign) {
@@ -140,11 +144,29 @@ async function getCampaignMatches(campaignId) {
     emailStatus: "verified",
     email: { $exists: true, $nin: ["", null] },
   };
-  const eligible = await Contact.find(base).select("name email company title industry tags keywords lists notes seniority campaignIds").lean();
-  const matches = eligible.map((contact) => ({
-    contact,
-    reasons: matchReasons(contact, campaign.audience),
-  })).filter((item) => item.reasons.length);
+  const eligible = await Contact.find(base).select("name email company title industry tags keywords lists notes seniority audienceProfiles campaignIds campaignTemplateOverrides").lean();
+  const audienceTemplateDefinitions = Object.entries(campaign.emailAudienceTemplates || {})
+    .filter(([, template]) => template?.status === "approved" && template?.currentVersion && template?.audienceLabel)
+    .map(([key, template]) => ({ key, label: template.audienceLabel }));
+  const matches = eligible.map((contact) => {
+    const reasons = matchReasons(contact, campaign.audience);
+    const rankedTemplates = rankAutomaticAudienceTemplates(contact, audienceTemplateDefinitions);
+    const overrideKey = String(contact.campaignTemplateOverrides?.[String(campaign._id)] || "auto");
+    const override = audienceTemplateDefinitions.find((template) => template.key === overrideKey);
+    const selected = overrideKey === "general" ? null : override || rankedTemplates[0] || null;
+    const ambiguous = overrideKey === "auto" && rankedTemplates.length > 1 && rankedTemplates[0].routingScore === rankedTemplates[1].routingScore;
+    return {
+      contact,
+      reasons,
+      routing: {
+        templateKey: overrideKey === "general" ? "general" : selected?.key || "general",
+        templateLabel: overrideKey === "general" ? "Main template" : selected?.label || "Main template",
+        mode: overrideKey !== "auto" ? "manual" : selected ? "automatic" : "fallback",
+        ambiguous,
+        alternatives: rankedTemplates.slice(1, 3).map((template) => template.label),
+      },
+    };
+  }).filter((item) => item.reasons.length);
 
   const [needsResearch, readyForReview, unverified] = await Promise.all([
     Contact.countDocuments({ status: { $ne: "archived" }, researchStatus: "needs_research" }),
@@ -162,6 +184,8 @@ async function getCampaignMatches(campaignId) {
       needsResearch,
       readyForReview,
       qualifiedButUnverified: unverified,
+      routedToMain: matches.filter((item) => item.routing.mode === "fallback").length,
+      ambiguousRouting: matches.filter((item) => item.routing.ambiguous).length,
     },
   };
 }
@@ -175,17 +199,20 @@ async function assignCampaignMatches(campaignId) {
   preview.campaign.audienceMatch = {
     matchedCount: ids.length,
     lastMatchedAt: new Date(),
+    routingApprovedAt: null,
+    routingApprovedByUserId: null,
   };
   await preview.campaign.save();
   return {
     ...preview.counts,
     assigned: ids.length,
-    contacts: preview.matches.map(({ contact, reasons }) => ({
+    contacts: preview.matches.map(({ contact, reasons, routing }) => ({
       _id: contact._id,
       name: contact.name,
       email: contact.email,
       company: contact.company,
       reasons,
+      routing,
     })),
   };
 }
@@ -196,6 +223,7 @@ module.exports = {
   getCampaignMatches,
   matchReasons,
   selectAutomaticAudienceTemplate,
+  rankAutomaticAudienceTemplates,
   searchableText,
   connectionPriority,
   getConnectionPriorities,

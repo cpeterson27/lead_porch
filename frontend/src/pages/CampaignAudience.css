@@ -148,6 +148,17 @@
   font-size: 0.76rem;
 }
 
+.campaign-match-table__row small b {
+  display: block;
+  margin-top: 0.4rem;
+  color: var(--accent);
+  font-size: 0.76rem;
+}
+
+.campaign-match-table__row small b.is-warning {
+  color: var(--color-warning-text, #8a5a08);
+}
+
 .campaign-match-pagination,
 .campaign-match-pagination > div,
 .campaign-audience-actions {

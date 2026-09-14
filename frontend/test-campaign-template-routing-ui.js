@@ -8,6 +8,10 @@ assert.match(workspace, /Automatic recipient routing/);
 assert.match(workspace, /You do not assign contacts here/);
 assert.match(workspace, /Template you are editing/);
 assert.match(workspace, /Individual overrides are optional/);
+assert.match(workspace, /Generate ideas with AI/);
+assert.match(workspace, /Approve recipient routing/);
+assert.match(workspace, /use main fallback/);
+assert.match(workspace, /need routing review/);
 assert.match(outreach, /Draft routing complete/);
 
 console.log("Campaign template routing UI tests passed.");

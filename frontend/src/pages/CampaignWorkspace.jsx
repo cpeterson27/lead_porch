@@ -5,10 +5,12 @@ import DashboardCard from "../components/DashboardCard.jsx";
 import UnlayerEmailEditor from "../components/UnlayerEmailEditor.jsx";
 import {
   approveCampaignEmailTemplate,
+  approveCampaignAudienceRouting,
   assignCampaignAudience,
   fetchCampaign,
   fetchCampaignEmailTemplate,
   fetchContacts,
+  generateCampaignEmailIdeas,
   previewCampaignAudience,
   previewCampaignEmailTemplate,
   saveCampaignEmailTemplate,
@@ -62,6 +64,7 @@ export default function CampaignWorkspace() {
   const [error, setError] = useState("");
   const [audienceMatch, setAudienceMatch] = useState(null);
   const [matchingAudience, setMatchingAudience] = useState(false);
+  const [approvingRouting, setApprovingRouting] = useState(false);
   const [matchPage, setMatchPage] = useState(1);
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [scheduleNotice, setScheduleNotice] = useState("");
@@ -69,6 +72,7 @@ export default function CampaignWorkspace() {
   const [templateVersions, setTemplateVersions] = useState([]);
   const [templateHistoryOpen, setTemplateHistoryOpen] = useState(false);
   const [templateSaving, setTemplateSaving] = useState(false);
+  const [ideaGenerating, setIdeaGenerating] = useState(false);
   const [templateDirty, setTemplateDirty] = useState(false);
   const [templateNotice, setTemplateNotice] = useState("");
   const [emailPreview, setEmailPreview] = useState(null);
@@ -148,6 +152,19 @@ export default function CampaignWorkspace() {
     }
   };
 
+  const approveRouting = async () => {
+    try {
+      setApprovingRouting(true);
+      setError("");
+      await approveCampaignAudienceRouting(id);
+      setAudienceMatch(await previewCampaignAudience(id));
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to approve recipient routing.");
+    } finally {
+      setApprovingRouting(false);
+    }
+  };
+
   const handleDesignChange = ({ html, design }) => {
     setEmailTemplate((current) => ({ ...current, body: html, designJson: design }));
     setTemplateDirty(true);
@@ -196,6 +213,29 @@ export default function CampaignWorkspace() {
     setTemplateDirty(true);
     setTemplateNotice("");
   };
+  const selectedAudienceLabel = () =>
+    templateAudience === "general"
+      ? "All campaign contacts"
+      : RESEARCH_EMAIL_AUDIENCES.find((item) => item.key === templateAudience)?.label ||
+        campaign.audience?.[Number(templateAudience.replace("audience-", ""))] ||
+        "Selected audience";
+
+  const generateIdeas = async () => {
+    if (templateDirty && !window.confirm("Replace the current unsaved canvas with a new AI draft?")) return;
+    try {
+      setIdeaGenerating(true);
+      setError("");
+      const generated = await generateCampaignEmailIdeas(id, { audienceLabel: selectedAudienceLabel() });
+      setEmailTemplate((current) => ({ ...current, ...generated, status: "draft" }));
+      setTemplateDirty(true);
+      setTemplateNotice("OpenAI created an editable draft. Review it, then save or approve it when ready.");
+      setEditorInstanceKey((current) => current + 1);
+    } catch (err) {
+      setError(err.response?.data?.error || "OpenAI could not generate ideas right now.");
+    } finally {
+      setIdeaGenerating(false);
+    }
+  };
   const loadHistoricalTemplate = (version) => {
     setEmailTemplate({
       subject: version.subject || "",
@@ -223,6 +263,19 @@ export default function CampaignWorkspace() {
     const next = { ...emailTemplate, body: html, designJson: design };
     setEmailTemplate(next);
     return next;
+  };
+
+  // Manual fallback for the preview panel's "Refresh" button — the
+  // automatic live-sync (UnlayerEmailEditor's onDesignUpdated -> this
+  // effect's 450ms debounce) should keep the preview current on its own,
+  // but this gives a reliable, immediate way to force it regardless.
+  const refreshPreviewNow = async () => {
+    try {
+      await exportCurrentTemplate();
+      await previewTemplate();
+    } catch (err) {
+      setPreviewError(err.message || "Unable to refresh the preview.");
+    }
   };
 
   const saveTemplate = async () => {
@@ -448,6 +501,12 @@ export default function CampaignWorkspace() {
         </button>
       </nav>
 
+      <ol className="campaign-professional-flow" aria-label="Campaign workflow">
+        {["Confirm audience", "Design main email", "Add useful variations", "Preview routing", "Review exceptions", "Approve routing & drafts", "Review before sending"].map((step, index) => (
+          <li key={step}><span>{index + 1}</span>{step}</li>
+        ))}
+      </ol>
+
       <section className="campaign-workspace__grid">
         {activeSection === "overview" ? (
           <DashboardCard title="Campaign details">
@@ -495,7 +554,7 @@ export default function CampaignWorkspace() {
         ) : null}
 
         {activeSection === "email" ? (
-          <DashboardCard title="Email design" className="campaign-email-studio">
+          <DashboardCard title="Email campaign studio" className="campaign-email-studio">
             {emailTemplate ? (
               <div className="campaign-template-editor">
                 <div className="campaign-email-meta">
@@ -520,8 +579,8 @@ export default function CampaignWorkspace() {
                   >
                     <strong>Automatic recipient routing</strong>
                     <span>
-                      Lead Porch chooses the approved template for each
-                      contact.
+                      Start with one main email. Audience versions are optional;
+                      Lead Porch previews every routing decision before drafts are created.
                     </span>
                   </div>
                   <div className="campaign-email-meta__row">
@@ -534,9 +593,9 @@ export default function CampaignWorkspace() {
                         }
                       >
                         <option value="general">
-                          Main template · automatic fallback
+                          Main email · required fallback
                         </option>
-                        <optgroup label="Research audiences">
+                        <optgroup label="Optional research variations">
                           {RESEARCH_EMAIL_AUDIENCES.map((audience) => (
                             <option value={audience.key} key={audience.key}>
                               {audience.label}
@@ -544,7 +603,7 @@ export default function CampaignWorkspace() {
                           ))}
                         </optgroup>
                         {(campaign.audience || []).length ? (
-                          <optgroup label="Campaign audiences">
+                          <optgroup label="Optional campaign variations">
                             {campaign.audience.map((audience, index) => (
                               <option
                                 value={`audience-${index}`}
@@ -598,6 +657,15 @@ export default function CampaignWorkspace() {
                         <i aria-hidden="true" />
                         {previewLoading ? "Updating" : "Updated"}
                       </small>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        loading={previewLoading}
+                        onClick={refreshPreviewNow}
+                      >
+                        Refresh
+                      </Button>
                     </header>
                     <label className="campaign-preview-recipient">
                       <span>Previewing as</span>
@@ -637,6 +705,13 @@ export default function CampaignWorkspace() {
                   </div>
                 </div>
                 <div className="campaign-template-editor__actions">
+                  <Button
+                    variant="outline"
+                    loading={ideaGenerating}
+                    onClick={generateIdeas}
+                  >
+                    Generate ideas with AI
+                  </Button>
                   <Button
                     variant="outline"
                     loading={templateSaving}
@@ -862,6 +937,14 @@ export default function CampaignWorkspace() {
                     <strong>{audienceMatch.needsResearch || 0}</strong>
                     <span>need research</span>
                   </button>
+                  <div>
+                    <strong>{audienceMatch.routedToMain || 0}</strong>
+                    <span>use main fallback</span>
+                  </div>
+                  <div>
+                    <strong>{audienceMatch.ambiguousRouting || 0}</strong>
+                    <span>need routing review</span>
+                  </div>
                   <button
                     type="button"
                     onClick={() =>
@@ -894,6 +977,11 @@ export default function CampaignWorkspace() {
                             {contact.reasons
                               .flatMap((reason) => reason.terms)
                               .join(", ") || "Qualified audience profile"}
+                            <b className={contact.routing?.ambiguous ? "is-warning" : ""}>
+                              {contact.routing?.templateLabel || "Main template"}
+                              {contact.routing?.mode === "fallback" ? " · fallback" : ""}
+                              {contact.routing?.ambiguous ? ` · review overlap${contact.routing.alternatives?.length ? ` with ${contact.routing.alternatives.join(", ")}` : ""}` : ""}
+                            </b>
                           </small>
                         </div>
                       ))}
@@ -938,6 +1026,13 @@ export default function CampaignWorkspace() {
                   </Button>
                   <Button loading={matchingAudience} onClick={refreshAudience}>
                     Refresh and assign safe matches
+                  </Button>
+                  <Button
+                    loading={approvingRouting}
+                    disabled={Boolean(audienceMatch.ambiguousRouting) || Boolean(audienceMatch.routingApproval?.approvedAt)}
+                    onClick={approveRouting}
+                  >
+                    {audienceMatch.routingApproval?.approvedAt ? "Routing approved" : "Approve recipient routing"}
                   </Button>
                 </div>
               </>

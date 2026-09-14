@@ -17,6 +17,13 @@ const MERGE_TAGS = {
 
 const DEBOUNCE_MS = 600;
 
+// A genuinely empty design. Passed explicitly whenever there's no saved
+// designJson, instead of leaving Unlayer to decide what "no design" means —
+// left unspecified, some editor versions/configurations reopen whatever was
+// last edited under this Unlayer project rather than a blank canvas, which
+// looks exactly like a stale campaign coming back from the dead.
+const BLANK_DESIGN = { body: { rows: [], values: {} } };
+
 // Thin wrapper around Unlayer's embeddable drag-and-drop editor
 // (react-email-editor). Renders campaign emails as real blocks (rows,
 // columns, images, buttons, text) instead of one plain HTML body, with
@@ -61,10 +68,8 @@ const UnlayerEmailEditor = forwardRef(function UnlayerEmailEditor(
       if (url) done({ url });
       else done({ error: "Upload failed." });
     });
-    if (design) {
-      unlayer.loadDesign(design);
-      loadedDesignRef.current = design;
-    }
+    unlayer.loadDesign(design || BLANK_DESIGN);
+    loadedDesignRef.current = design || null;
   };
 
   const handleDesignUpdated = () => {

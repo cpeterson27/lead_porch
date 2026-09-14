@@ -771,6 +771,9 @@ export const previewCampaignAudience = (campaignId) =>
 export const assignCampaignAudience = (campaignId) =>
   api.post(`/campaigns/${campaignId}/audience-match`).then((res) => res.data);
 
+export const approveCampaignAudienceRouting = (campaignId) =>
+  api.post(`/campaigns/${campaignId}/audience-routing/approve`).then((res) => res.data);
+
 export const updateCampaignRegistrationLinks = (campaignId, links) =>
   api
     .patch(`/campaigns/${campaignId}/registration-links`, links)
@@ -803,6 +806,11 @@ export const approveCampaignEmailTemplate = (
 ) =>
   api
     .post(`/campaigns/${campaignId}/email-template/approve`, { audienceKey })
+    .then((res) => res.data);
+
+export const generateCampaignEmailIdeas = (campaignId, payload) =>
+  api
+    .post(`/campaigns/${campaignId}/email-template/ideas`, payload)
     .then((res) => res.data);
 
 export const fetchMarketingCampaign = async (campaignId) => {

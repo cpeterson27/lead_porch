@@ -1,5 +1,5 @@
 const assert = require("assert");
-const { matchReasons, searchableText, selectAutomaticAudienceTemplate } = require("./services/campaignAudienceService");
+const { matchReasons, rankAutomaticAudienceTemplates, searchableText, selectAutomaticAudienceTemplate } = require("./services/campaignAudienceService");
 
 const multifamilyInvestor = {
   title: "Real Estate Investor and Developer",
@@ -22,5 +22,9 @@ const templates = [
 assert.strictEqual(selectAutomaticAudienceTemplate(multifamilyInvestor, templates).key, "multifamily");
 assert.strictEqual(selectAutomaticAudienceTemplate({ audienceProfiles: ["Community partner"] }, templates).key, "community");
 assert.strictEqual(selectAutomaticAudienceTemplate({ title: "Dentist" }, templates), null);
+assert.deepStrictEqual(
+  rankAutomaticAudienceTemplates({ audienceProfiles: ["Community partner"] }, templates).map((item) => item.key),
+  ["community"],
+);
 
 console.log("Campaign audience matching tests passed");

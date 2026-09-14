@@ -42,6 +42,8 @@ const campaignSchema = new mongoose.Schema(
   audienceMatch: {
     matchedCount: { type: Number, default: 0 },
     lastMatchedAt: { type: Date, default: null },
+    routingApprovedAt: { type: Date, default: null },
+    routingApprovedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   },
 
 
