@@ -5,13 +5,10 @@ import DashboardCard from "../components/DashboardCard.jsx";
 import UnlayerEmailEditor from "../components/UnlayerEmailEditor.jsx";
 import {
   approveCampaignEmailTemplate,
-  approveCampaignAudienceRouting,
-  assignCampaignAudience,
   fetchCampaign,
   fetchCampaignEmailTemplate,
   fetchWorkspaceConfig,
   generateCampaignEmailIdeas,
-  previewCampaignAudience,
   previewCampaignEmailTemplate,
   saveCampaignEmailTemplate,
   updateCampaignAudienceTags,
@@ -71,10 +68,6 @@ export default function CampaignWorkspace() {
   const [campaign, setCampaign] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [audienceMatch, setAudienceMatch] = useState(null);
-  const [matchingAudience, setMatchingAudience] = useState(false);
-  const [approvingRouting, setApprovingRouting] = useState(false);
-  const [matchPage, setMatchPage] = useState(1);
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [scheduleNotice, setScheduleNotice] = useState("");
   const [emailTemplate, setEmailTemplate] = useState(null);
@@ -99,8 +92,8 @@ export default function CampaignWorkspace() {
   // version, since the editor has no supported "swap design mid-session"
   // event of its own.
   const [editorInstanceKey, setEditorInstanceKey] = useState(0);
+  const autosaveRevisionRef = useRef(0);
   const messageRef = useRef(null);
-  const audienceDetailsRef = useRef(null);
 
   useEffect(() => {
     if (!id) {
@@ -131,45 +124,10 @@ export default function CampaignWorkspace() {
   }, [id, templateAudience]);
 
   useEffect(() => {
-    if (!id) return;
-    previewCampaignAudience(id)
-      .then(setAudienceMatch)
-      .catch(() => setAudienceMatch(null));
-  }, [id]);
-
-  useEffect(() => {
     fetchWorkspaceConfig()
       .then((config) => setWorkspaceDefaultLogoUrl(config.organizationLogoUrl || ""))
       .catch(() => {});
   }, []);
-
-  const refreshAudience = async () => {
-    try {
-      setMatchingAudience(true);
-      setError("");
-      await assignCampaignAudience(id);
-      setAudienceMatch(await previewCampaignAudience(id));
-    } catch (err) {
-      setError(
-        err.response?.data?.error || "Unable to match campaign contacts.",
-      );
-    } finally {
-      setMatchingAudience(false);
-    }
-  };
-
-  const approveRouting = async () => {
-    try {
-      setApprovingRouting(true);
-      setError("");
-      await approveCampaignAudienceRouting(id);
-      setAudienceMatch(await previewCampaignAudience(id));
-    } catch (err) {
-      setError(err.response?.data?.error || "Unable to approve recipient routing.");
-    } finally {
-      setApprovingRouting(false);
-    }
-  };
 
   const handleDesignChange = ({ html, design }) => {
     setEmailTemplate((current) => ({ ...current, body: html, designJson: design }));
@@ -304,7 +262,7 @@ export default function CampaignWorkspace() {
             values: { padding: "0px" },
           },
         ],
-        values: { columns: false },
+        values: { columns: false, doNotStackOnMobile: true },
       };
       const nextDesign = {
         ...base,
@@ -316,6 +274,46 @@ export default function CampaignWorkspace() {
       setTemplateNotice("Logo + text added side by side. Click either side to edit its size, spacing, or content.");
     } catch (err) {
       setError(err.message || "Unable to insert the side-by-side layout right now.");
+    }
+  };
+
+  const insertArrowButton = async () => {
+    try {
+      const current = await messageRef.current.exportHtml();
+      const base = current?.design?.body ? current.design : { body: { rows: [], values: {} } };
+      const buttonRow = {
+        cells: [1],
+        columns: [
+          {
+            contents: [
+              {
+                type: "button",
+                values: {
+                  text: "Button text →",
+                  textAlign: "center",
+                  containerPadding: "16px",
+                  backgroundColor: campaign.brand?.accentColor || "#173f36",
+                  color: "#ffffff",
+                  borderRadius: "999px",
+                  href: { name: "web", values: { href: "{{eventLink}}", target: "_blank" } },
+                },
+              },
+            ],
+            values: {},
+          },
+        ],
+        values: {},
+      };
+      const nextDesign = {
+        ...base,
+        body: { ...base.body, rows: [...(base.body.rows || []), buttonRow] },
+      };
+      await messageRef.current.loadDesign(nextDesign);
+      const exported = await messageRef.current.exportHtml();
+      handleDesignChange(exported);
+      setTemplateNotice("Arrow button added. Click it to change its wording, link, color, or arrow character.");
+    } catch (err) {
+      setError(err.message || "Unable to insert the arrow button right now.");
     }
   };
 
@@ -381,13 +379,6 @@ export default function CampaignWorkspace() {
       setTemplateNotice(`Copy ${token}, then paste it where you want it in the subject or message.`);
     }
   };
-  const openAudienceDetails = () => {
-    const node = audienceDetailsRef.current;
-    if (!node) return;
-    node.open = true;
-    node.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
   const selectedAudienceLabel = () =>
     templateAudience === "general"
       ? "All campaign contacts"
@@ -559,6 +550,40 @@ export default function CampaignWorkspace() {
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, emailTemplate, campaign?.brand]);
+  useEffect(() => {
+    if (!id || !emailTemplate || !templateDirty) return undefined;
+    const revision = ++autosaveRevisionRef.current;
+    const timer = window.setTimeout(async () => {
+      try {
+        const exported = await messageRef.current?.exportHtml();
+        if (!exported) return;
+        const audienceLabel = selectedAudienceLabel();
+        await saveCampaignEmailTemplate(id, {
+          ...emailTemplate,
+          body: exported.html,
+          designJson: exported.design,
+          audienceKey: templateAudience,
+          audienceLabel,
+        });
+        if (autosaveRevisionRef.current === revision) {
+          setEmailTemplate((current) => ({
+            ...current,
+            body: exported.html,
+            designJson: exported.design,
+          }));
+          setTemplateDirty(false);
+          setTemplateNotice("Draft autosaved.");
+        }
+      } catch (err) {
+        if (autosaveRevisionRef.current === revision) {
+          setTemplateNotice(err.response?.data?.error || "Autosave paused — use Save draft before leaving.");
+        }
+      }
+    }, 1200);
+    return () => window.clearTimeout(timer);
+    // selectedAudienceLabel is derived from the same campaign/template state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, emailTemplate, templateAudience, templateDirty]);
   if (loading)
     return (
       <div className="page-dashboard">
@@ -601,18 +626,6 @@ export default function CampaignWorkspace() {
     ["Eventbrite", campaign.registrationLinks?.eventbrite],
     ["Meetup", campaign.registrationLinks?.meetup],
   ].filter(([, link]) => link?.enabled && link?.url);
-  const eventId = String(campaign.eventId?._id || campaign.eventId || "");
-  const matchedContacts = audienceMatch?.contacts || [];
-  const matchPageSize = 5;
-  const matchPageCount = Math.max(
-    1,
-    Math.ceil(matchedContacts.length / matchPageSize),
-  );
-  const visibleMatches = matchedContacts.slice(
-    (matchPage - 1) * matchPageSize,
-    matchPage * matchPageSize,
-  );
-
   return (
     <div className="page-dashboard campaign-workspace">
       <header className="campaign-workspace__header">
@@ -641,8 +654,8 @@ export default function CampaignWorkspace() {
           </div>
         </div>
         <div className="campaign-workspace__actions">
-          <Button variant="outline" onClick={() => navigate("/contacts")}>
-            Manage contacts
+          <Button variant="outline" onClick={() => navigate(`/discovery?tab=people&provider=apollo&campaignId=${campaign._id}`)}>
+            Find people with Apollo
           </Button>
           <Button
             onClick={() => navigate(`/outreach?campaignId=${campaign._id}`)}
@@ -677,25 +690,12 @@ export default function CampaignWorkspace() {
           </summary>
           <DashboardCard title="Campaign details">
             <div className="campaign-overview-list">
-              {overview.map(([label, value, hint]) =>
-                hint ? (
-                  <button
-                    type="button"
-                    key={label}
-                    className="campaign-overview-list__linked"
-                    onClick={openAudienceDetails}
-                  >
-                    <span>{label}</span>
-                    <strong>{value}</strong>
-                    <small>{hint}</small>
-                  </button>
-                ) : (
-                  <div key={label}>
-                    <span>{label}</span>
-                    <strong>{value}</strong>
-                  </div>
-                ),
-              )}
+              {overview.map(([label, value]) => (
+                <div key={label}>
+                  <span>{label}</span>
+                  <strong>{value}</strong>
+                </div>
+              ))}
             </div>
             {campaign.description ? (
               <p className="campaign-workspace__description">
@@ -765,7 +765,7 @@ export default function CampaignWorkspace() {
           )}
         </details>
 
-        <details className="campaign-collapsible" ref={audienceDetailsRef}>
+        <details className="campaign-collapsible">
           <summary>
             <span>Target audience</span>
             <small>
@@ -774,15 +774,11 @@ export default function CampaignWorkspace() {
                 : "No target groups yet"}
             </small>
           </summary>
-          <DashboardCard title="Target audience">
-            {audienceMatch ? (
-              <>
-                <p className="campaign-audience-intro">
-                  Lead Porch matches your contacts against the groups below —
-                  add or remove groups any time, then use{" "}
-                  <strong>Refresh and assign safe matches</strong> to re-run
-                  matching.
-                </p>
+          <DashboardCard title="Choose who this email is for">
+            <p className="campaign-audience-intro">
+              Keep these groups broad. Apollo will find people next; you will
+              review them before anyone enters outreach.
+            </p>
                 <div className="campaign-audience-groups campaign-audience-groups--editable">
                   {(campaign.audience || []).map((audience) => (
                     <span key={audience}>
@@ -824,220 +820,17 @@ export default function CampaignWorkspace() {
                     Add group
                   </Button>
                 </div>
-                {eventId ? (
-                  <p className="campaign-template-help">
-                    This event may also have its own targeting notes in
-                    Eventbrite strategy.{" "}
-                    <button
-                      type="button"
-                      className="campaign-inline-link"
-                      onClick={() =>
-                        navigate(`/events?eventId=${eventId}&tab=strategy`)
-                      }
-                    >
-                      Open event targeting brief
-                    </button>
-                  </p>
-                ) : null}
-                {campaign.eventId?.audienceSuggestions?.length ? (
-                  <details className="campaign-audience-suggestions">
-                    <summary>
-                      Suggestions found in the Eventbrite listing
-                    </summary>
-                    <p>
-                      These are suggestions only. They do not become active
-                      unless you add them above.
-                    </p>
-                    <div>
-                      {campaign.eventId.audienceSuggestions.map((audience) => (
-                        <button
-                          type="button"
-                          key={audience}
-                          disabled={audienceTagsSaving || (campaign.audience || []).includes(audience)}
-                          onClick={() => saveAudienceTags([...(campaign.audience || []), audience])}
-                        >
-                          + {audience}
-                        </button>
-                      ))}
-                    </div>
-                  </details>
-                ) : null}
-                <details className="campaign-audience-how">
-                  <summary>How Lead Porch matches your audience</summary>
-                  <ol>
-                    <li>You decide the official target groups above.</li>
-                    <li>
-                      Contacts come from Lead Porch research, CRM records, CSV
-                      uploads, manual entry, and approved integrations.
-                    </li>
-                    <li>
-                      Lead Porch compares your groups against each contact's
-                      title, industry, tags, keywords, companies, lists, and
-                      notes. Nothing is emailed automatically — you always
-                      review and send from Outreach.
-                    </li>
-                  </ol>
-                </details>
-
-                <h3 className="campaign-audience-stats-heading">
-                  This campaign's matches
-                </h3>
-                <div className="campaign-audience-counts">
-                  <div className="campaign-stat-tile">
-                    <strong>{audienceMatch.matched || 0}</strong>
-                    <span>Safe matches</span>
-                    <small>
-                      Fit your target groups, have a verified email, and are
-                      approved to receive campaign email.
-                    </small>
-                  </div>
-                  <div className="campaign-stat-tile">
-                    <strong>{audienceMatch.alreadyAssigned || 0}</strong>
-                    <span>Already assigned</span>
-                    <small>
-                      Of those safe matches, already linked to this campaign
-                      from an earlier match run.
-                    </small>
-                  </div>
-                  <div className="campaign-stat-tile">
-                    <strong>{audienceMatch.routedToMain || 0}</strong>
-                    <span>Using the main template</span>
-                    <small>
-                      Matched, but no specific group's template fit better —
-                      they'll get your default template.
-                    </small>
-                  </div>
-                  <div className="campaign-stat-tile">
-                    <strong>{audienceMatch.ambiguousRouting || 0}</strong>
-                    <span>Need routing review</span>
-                    <small>
-                      Fit two templates equally well — review the table below
-                      and choose one manually.
-                    </small>
-                  </div>
-                </div>
-
-                <h3 className="campaign-audience-stats-heading">
-                  Across your whole CRM
-                </h3>
-                <div className="campaign-audience-counts">
-                  <button
-                    type="button"
-                    className="campaign-stat-tile campaign-stat-tile--link"
-                    onClick={() =>
-                      navigate(
-                        "/contacts?allCampaigns=true&researchStatus=needs_research",
-                      )
-                    }
-                  >
-                    <strong>{audienceMatch.needsResearch || 0}</strong>
-                    <span>Need research</span>
-                    <small>
-                      Not scoped to this campaign — every contact in your CRM
-                      without enough info yet to confirm a fit. Click to
-                      review them.
-                    </small>
-                  </button>
-                  <button
-                    type="button"
-                    className="campaign-stat-tile campaign-stat-tile--link"
-                    onClick={() =>
-                      navigate(
-                        "/contacts?allCampaigns=true&researchStatus=ready_for_review",
-                      )
-                    }
-                  >
-                    <strong>{audienceMatch.readyForReview || 0}</strong>
-                    <span>Ready for review</span>
-                    <small>
-                      Not scoped to this campaign — research finished and
-                      waiting on a human to confirm the profile. Click to
-                      review them.
-                    </small>
-                  </button>
-                </div>
-                {matchedContacts.length ? (
-                  <>
-                    <div className="campaign-match-table">
-                      <div className="campaign-match-table__head">
-                        <span>Contact</span>
-                        <span>Why they match</span>
-                      </div>
-                      {visibleMatches.map((contact) => (
-                        <div
-                          className="campaign-match-table__row"
-                          key={contact._id}
-                        >
-                          <p>
-                            <strong>{contact.name}</strong>
-                            <span>{contact.company || contact.email}</span>
-                          </p>
-                          <small>
-                            {contact.reasons
-                              .flatMap((reason) => reason.terms)
-                              .join(", ") || "Qualified audience profile"}
-                            <b className={contact.routing?.ambiguous ? "is-warning" : ""}>
-                              {contact.routing?.templateLabel || "Main template"}
-                              {contact.routing?.mode === "fallback" ? " · fallback" : ""}
-                              {contact.routing?.ambiguous ? ` · review overlap${contact.routing.alternatives?.length ? ` with ${contact.routing.alternatives.join(", ")}` : ""}` : ""}
-                            </b>
-                          </small>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="campaign-match-pagination">
-                      <span>
-                        Showing {(matchPage - 1) * matchPageSize + 1}–
-                        {Math.min(
-                          matchPage * matchPageSize,
-                          matchedContacts.length,
-                        )}{" "}
-                        of {matchedContacts.length}
-                      </span>
-                      <div>
-                        <button
-                          disabled={matchPage === 1}
-                          onClick={() => setMatchPage((page) => page - 1)}
-                        >
-                          Previous
-                        </button>
-                        <button
-                          disabled={matchPage === matchPageCount}
-                          onClick={() => setMatchPage((page) => page + 1)}
-                        >
-                          Next
-                        </button>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <p className="campaign-workspace__empty">
-                    No safe matches yet. Add audience information to contacts,
-                    then qualify them for outreach.
-                  </p>
-                )}
                 <div className="campaign-audience-actions">
                   <Button
                     variant="outline"
-                    onClick={() => navigate("/contacts")}
+                    onClick={() => navigate(`/discovery?tab=people&provider=apollo&campaignId=${campaign._id}`)}
                   >
-                    Review contacts
+                    Find people with Apollo
                   </Button>
-                  <Button loading={matchingAudience} onClick={refreshAudience}>
-                    Refresh and assign safe matches
-                  </Button>
-                  <Button
-                    loading={approvingRouting}
-                    disabled={Boolean(audienceMatch.ambiguousRouting) || Boolean(audienceMatch.routingApproval?.approvedAt)}
-                    onClick={approveRouting}
-                  >
-                    {audienceMatch.routingApproval?.approvedAt ? "Routing approved" : "Approve recipient routing"}
+                  <Button variant="ghost" onClick={() => navigate("/contacts")}>
+                    View saved contacts
                   </Button>
                 </div>
-              </>
-            ) : (
-              <p>Checking qualified contacts…</p>
-            )}
           </DashboardCard>
         </details>
 
@@ -1158,6 +951,14 @@ export default function CampaignWorkspace() {
                   >
                     Insert logo + text
                   </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={insertArrowButton}
+                  >
+                    Insert arrow button
+                  </Button>
                   <small>
                     Add the logo by itself or beside editable words. Both
                     options stay movable and resizable.
@@ -1192,6 +993,7 @@ export default function CampaignWorkspace() {
                     key={editorInstanceKey}
                     ref={messageRef}
                     design={emailTemplate.designJson}
+                    accentColor={campaign.brand?.accentColor || "#173f36"}
                     onDesignChange={handleDesignChange}
                     onUploadImage={uploadInlineImage}
                   />

@@ -23,6 +23,11 @@ const DEBOUNCE_MS = 600;
 // last edited under this Unlayer project rather than a blank canvas, which
 // looks exactly like a stale campaign coming back from the dead.
 const BLANK_DESIGN = { body: { rows: [], values: {} } };
+const COMMON_EMAIL_COLORS = [
+  "#000000", "#ffffff", "#f5f5f5", "#6b7280", "#374151",
+  "#173f36", "#0f766e", "#15803d", "#2563eb", "#4f46e5",
+  "#7c3aed", "#be185d", "#dc2626", "#ea580c", "#ca8a04",
+];
 
 // Thin wrapper around Unlayer's embeddable drag-and-drop editor
 // (react-email-editor). Renders campaign emails as real blocks (rows,
@@ -40,7 +45,7 @@ const BLANK_DESIGN = { body: { rows: [], values: {} } };
 //   to a blank design rather than the old content — the old body is still
 //   stored and still sendable until re-saved, just not re-editable here.
 const UnlayerEmailEditor = forwardRef(function UnlayerEmailEditor(
-  { design, onDesignChange, onUploadImage },
+  { design, onDesignChange, onUploadImage, accentColor = "#173f36" },
   ref,
 ) {
   const editorRef = useRef(null);
@@ -64,6 +69,18 @@ const UnlayerEmailEditor = forwardRef(function UnlayerEmailEditor(
   }));
 
   const onLoad = (unlayer) => {
+    const colorPickerConfig = {
+      colors: [
+        { id: "brand_colors", label: "Campaign colors", colors: [accentColor], default: true },
+        { id: "common_colors", label: "Common colors", colors: COMMON_EMAIL_COLORS },
+        { id: "recent_colors", label: "Recent colors" },
+        { id: "template_colors", label: "Colors already used" },
+      ],
+      recentColors: true,
+    };
+    // Keep the full picker (hex/RGB plus grouped colors) available even when
+    // Unlayer's responsive toolbar initially renders its abbreviated palette.
+    unlayer.setColorPickerConfig(colorPickerConfig);
     unlayer.registerCallback("image", async (data, done) => {
       const file = data.accepted?.[0];
       if (!file || !onUploadImage) {
@@ -96,6 +113,20 @@ const UnlayerEmailEditor = forwardRef(function UnlayerEmailEditor(
         projectId: Number(import.meta.env.VITE_UNLAYER_PROJECT_ID) || undefined,
         mergeTags: MERGE_TAGS,
         mergeTagsConfig: { autocompleteTriggerChar: "{" },
+        features: {
+          colorPicker: {
+            colors: [
+              { id: "brand_colors", label: "Campaign colors", colors: [accentColor], default: true },
+              { id: "common_colors", label: "Common colors", colors: COMMON_EMAIL_COLORS },
+              { id: "recent_colors", label: "Recent colors" },
+              { id: "template_colors", label: "Colors already used" },
+            ],
+            recentColors: true,
+          },
+          textEditor: {
+            inlineColorGroups: ["brand_colors", "common_colors", "recent_colors", "template_colors"],
+          },
+        },
       }}
     />
   );

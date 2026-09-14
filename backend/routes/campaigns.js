@@ -394,7 +394,10 @@ router.put("/:id/email-template", requireRole("owner", "admin", "member"), async
     if (!campaign) return res.status(404).json({ error: "Campaign not found" });
     const subject = String(req.body?.subject || "").trim();
     const body = String(req.body?.body || "").trim();
-    if (!subject || !body) return res.status(400).json({ error: "Subject and message body are required" });
+    // Drafts may be incomplete while the owner is designing them. Approval
+    // remains the hard validation boundary below, so autosave can safely
+    // preserve a blank subject or an unfinished canvas without making it
+    // sendable.
     const audienceKey = String(req.body?.audienceKey || "general");
     const nextTemplate = {
       subject,

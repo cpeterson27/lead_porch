@@ -1,6 +1,17 @@
 .campaign-workspace {
   display: grid;
-  gap: var(--space-6);
+  gap: var(--space-4);
+  font-family: var(--font-sans, Inter, ui-sans-serif, system-ui, sans-serif);
+}
+
+.campaign-workspace h1,
+.campaign-workspace h2,
+.campaign-workspace h3,
+.campaign-workspace button,
+.campaign-workspace input,
+.campaign-workspace select,
+.campaign-workspace textarea {
+  font-family: inherit !important;
 }
 
 .campaign-workspace__header {
@@ -56,17 +67,22 @@
 }
 
 .campaign-workspace__metrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-3);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
 }
 
 .campaign-workspace__metrics > div {
-  padding: var(--space-4);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1.25rem;
+  flex: 0 0 150px;
+  padding: 0.65rem 0.8rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: var(--surface);
-  box-shadow: var(--shadow-sm);
+  box-shadow: none;
 }
 
 .campaign-workspace__metrics span {
@@ -77,9 +93,7 @@
 }
 
 .campaign-workspace__metrics strong {
-  display: block;
-  margin-top: 0.25rem;
-  font-size: 1.65rem;
+  font-size: 1.15rem;
   letter-spacing: -0.04em;
 }
 
@@ -88,19 +102,25 @@
    always-visible email design studio instead of forcing step-by-step
    navigation through them every time. */
 .campaign-collapsible {
+  flex: 0 1 auto;
+  min-width: 260px;
   border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: var(--surface);
   /* The global "Ask Jarvis" widget (layouts/DashboardLayout.css) is fixed
      at right:22px/bottom:22px on every page — clearing extra space below
      the last collapsible keeps its pill from sitting on top of content. */
 }
 
+.campaign-collapsible[open] {
+  flex-basis: 100%;
+}
+
 .campaign-collapsible > summary {
   display: flex;
   align-items: baseline;
   gap: 0.6rem;
-  padding: 1rem 1.2rem;
+  padding: 0.65rem 0.85rem;
   list-style: none;
   cursor: pointer;
   font-weight: 750;
@@ -141,8 +161,10 @@
 }
 
 .campaign-workspace__grid {
-  display: grid;
-  gap: var(--space-4);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.65rem;
   margin-bottom: 90px;
 }
 
@@ -243,7 +265,14 @@
    ------------------------------------------------------------------ */
 
 .campaign-email-studio.dashboard-card {
+  flex: 1 0 100%;
   max-width: none;
+}
+
+.campaign-email-studio .dashboard-card__header h2 {
+  font-family: inherit !important;
+  font-size: 1.05rem;
+  font-weight: 750;
 }
 
 .campaign-template-editor {
