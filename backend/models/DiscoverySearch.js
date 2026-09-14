@@ -38,7 +38,7 @@ const discoverySearchSchema = new mongoose.Schema({
   sources: { type: [String], enum: SOURCES, default: ["all"] },
   freshnessDays: { type: Number, default: 90, min: 1, max: 365 },
   // Matches leadGenerationCoordinatorService.js's MAX_REQUESTED_COUNT.
-  requestedCount: { type: Number, default: 10, min: 1, max: 100 },
+  requestedCount: { type: Number, default: 10, min: 1, max: 500 },
   estimatedCreditUse: {
     pdl: { type: Number, default: 0 },
     apollo: { type: Number, default: 0 },

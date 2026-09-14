@@ -48,13 +48,14 @@ const workspaceSelfExclusionService = require("./workspaceSelfExclusionService")
 
 const clean = (value, length) => String(value || "").trim().slice(0, length);
 const joinWithAnd = (items) => items.length <= 2 ? items.join(" and ") : `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
-// Raised from 25 so a real search can actually reach APOLLO_MAX_POOL_SIZE
-// (300) below — at the old ceiling, 25 * APOLLO_POOL_MULTIPLIER (4) = 100
-// meant the pool never exceeded one Apollo page, so multi-page pagination
-// was dead code no real search ever exercised. At the new ceiling, 100 *
-// 4 = 400, clamped to 300, which needs 3 pages — see
-// test-lead-qualification.js's real-pagination test.
-const MAX_REQUESTED_COUNT = 100;
+// Confirmed live: a single broad title search against the real Apollo API
+// had 1,300+ genuinely distinct real people reachable across just 15
+// pages — Apollo's database is not the bottleneck, an overly conservative
+// cap was. 500 (with APOLLO_MAX_POOL_SIZE/PAGES below) is chosen to stay
+// well under the 90-second client timeout this route already uses
+// (proposeLeadGenerationSearch/approveLeadGenerationSearch in
+// frontend/src/services/api.js), not because Apollo can't go higher.
+const MAX_REQUESTED_COUNT = 500;
 const DEFAULT_REQUESTED_COUNT = 10;
 const ICP_SOURCES = ["vertex", "openai_web_search", "pdl_person_search", "apollo_person_search", "all"];
 const ALL_SOURCE_KEYS = ["vertex", "openai_web_search", "pdl_person_search", "apollo_person_search"];
@@ -64,12 +65,28 @@ const ALL_SOURCE_KEYS = ["vertex", "openai_web_search", "pdl_person_search", "ap
 // Search API bills by records returned, so it gets a much smaller,
 // "supplement and cross-reference" buffer instead — controlled credit use,
 // per the plan. Both feed the same rank-then-keep-the-best step.
+//
+// APOLLO_MAX_PAGES=20 at APOLLO_PAGE_SIZE=100 reaches the full
+// APOLLO_MAX_POOL_SIZE=2000 ceiling in ~20 sequential requests — confirmed
+// live at roughly 250-500ms each, so ~5-10 seconds of real fetch time even
+// at the largest pool, leaving generous headroom under the 90s timeout for
+// enrichment afterward (see AUTO_ENRICH_LIMIT).
 const APOLLO_POOL_MULTIPLIER = 4;
-const APOLLO_MAX_POOL_SIZE = 300;
-const APOLLO_MAX_PAGES = 4;
+const APOLLO_MAX_POOL_SIZE = 2000;
+const APOLLO_MAX_PAGES = 20;
 const APOLLO_PAGE_SIZE = 100;
 const PDL_POOL_MULTIPLIER = 2;
 const PDL_MAX_POOL_SIZE = 50;
+// Gathering/ranking/persisting can scale into the hundreds cheaply (it's
+// just search calls), but automatic enrichment is a real, metered Apollo/
+// PDL credit spend AND a real network call per candidate — auto-running it
+// on every persisted candidate at MAX_REQUESTED_COUNT scale would both
+// blow the request timeout and silently burn a lot of credits nobody
+// explicitly asked to spend. Auto-enrichment is capped to the top
+// AUTO_ENRICH_LIMIT candidates by fit score regardless of how many were
+// requested; anything beyond that is still fully visible in the review
+// queue and can be enriched manually, one click at a time, same as today.
+const AUTO_ENRICH_LIMIT = 25;
 
 /**
  * Pure, synchronous, no-network config checks — never a live provider call
@@ -103,7 +120,7 @@ const ICP_RESPONSE_SCHEMA = {
   type: "object",
   properties: {
     programName: { type: "string" },
-    requestedCount: { type: "number", description: "How many candidates were requested, 1-100. Default 10 if not stated. Never exceed 100 — cap and explain in reasoning if the owner asked for more." },
+    requestedCount: { type: "number", description: "How many candidates were requested, 1-500. Default 10 if not stated. Never exceed 500 — cap and explain in reasoning if the owner asked for more." },
     icp: {
       type: "object",
       properties: {
@@ -384,7 +401,7 @@ async function proposeSearch({ workspaceId, userId, auth, naturalLanguageRequest
       apollo: includesApollo && availability.apollo_person_search.available ? Math.min(APOLLO_MAX_POOL_SIZE, Math.max(requestedCount * APOLLO_POOL_MULTIPLIER, requestedCount)) : 0,
       vertex: includesVertex && availability.vertex.available ? "1 grounded search call (~a few cents)" : "",
       openai: includesOpenai && availability.openai_web_search.available ? "1 web_search call (~a few cents)" : "",
-      note: `Lead Porch searches for a larger pool than requested (Apollo up to ${APOLLO_POOL_MULTIPLIER}x, PDL up to ${PDL_POOL_MULTIPLIER}x, both capped) and automatically keeps only the ${requestedCount} best-fit candidates by score — the figures above are the upper bound on what's fetched, not what's saved. This is the Person Search step only; a further, separate charge applies only if you explicitly run PDL/Apollo enrichment afterward.`
+      note: `Lead Porch searches for a larger pool than requested (Apollo up to ${APOLLO_POOL_MULTIPLIER}x, PDL up to ${PDL_POOL_MULTIPLIER}x, both capped) and automatically keeps only the ${requestedCount} best-fit candidates by score — the figures above are the upper bound on what's fetched, not what's saved. This is the Person Search step only. Automatic email enrichment then runs on the top ${AUTO_ENRICH_LIMIT} best-fit candidates only, to control credit spend — any more than that can still be enriched manually, one click at a time, from the review queue.`
         + (unavailableSelected.length ? ` Selected but not currently enabled, so nothing will be spent on it: ${unavailableSelected.join(", ")} — running this plan will report that as a source error rather than silently skip it.` : ""),
     },
     status: "proposed",
@@ -824,23 +841,27 @@ async function gatherRankAndMergeIcpMatches({ workspaceId, userId, searchId, icp
   for (const entry of overflow) stats[entry.providerKey].rejectedForRanking += 1;
 
   let created = 0, merged = 0, withConflicts = 0, autoEnriched = 0;
-  for (const entry of toPersist) {
+  for (const [index, entry] of toPersist.entries()) {
     // eslint-disable-next-line no-await-in-loop
     const result = await mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlationId, candidate: entry.candidate, fitScore: entry.fitScore, fitReasons: entry.fitReasons, allowCreate: true }, dependencies);
     const bucket = stats[entry.providerKey];
     if (result.created) { created += 1; bucket.accepted += 1; } else { merged += 1; bucket.rejectedDedup += 1; }
     if (result.row?.conflicts?.length) withConflicts += 1;
+    if (index >= AUTO_ENRICH_LIMIT) continue;
 
     // Automatic enrichment waterfall — a lead with no email is useless
     // for outreach, so don't make the owner click "PDL"/"Apollo" by hand
     // on every row. Runs ONLY on this final, ranked, shortlisted set
-    // (never the raw over-fetched pool), Apollo first since it's the
-    // account's own primary paid source, PDL second as a fallback. Both
-    // enrich functions are already idempotent and self-contained — they
-    // persist their own outcome (including failures) and never throw
-    // past their own pre-checks — so one provider being down (e.g. PDL's
-    // current billing issue) never breaks the search or the other's
-    // attempt; `.catch()` here is only a defensive backstop.
+    // (never the raw over-fetched pool), capped at AUTO_ENRICH_LIMIT (the
+    // set is already sorted best-fit-first, so this always enriches the
+    // best candidates first) to bound real credit spend and request time.
+    // Apollo first since it's the account's own primary paid source, PDL
+    // second as a fallback. Both enrich functions are already idempotent
+    // and self-contained — they persist their own outcome (including
+    // failures) and never throw past their own pre-checks — so one
+    // provider being down (e.g. PDL's current billing issue) never breaks
+    // the search or the other's attempt; `.catch()` here is only a
+    // defensive backstop.
     // "matched" only means Apollo/PDL recognized the person's identity —
     // confirmed live that a real match commonly still comes back with no
     // revealable email (emailState "unavailable"). Gate the PDL fallback
@@ -969,7 +990,8 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
     providerBreakdown,
     explanation: buildRunExplanation({ requestedCount: search.requestedCount, created, merged, excludedForSelfMatch, excludedForFreshness, sourceErrors })
       + (icpBroadenedFields.length ? ` Broadened the search by dropping the ${joinWithAnd(icpBroadenedFields)} filter${icpBroadenedFields.length === 1 ? "" : "s"} to find more candidates.` : "")
-      + (autoEnrichedCount ? ` Automatically found a verified email for ${autoEnrichedCount} of ${created} new candidate${created === 1 ? "" : "s"}.` : ""),
+      + (autoEnrichedCount ? ` Automatically found a verified email for ${autoEnrichedCount} of ${created} new candidate${created === 1 ? "" : "s"}.` : "")
+      + (created > AUTO_ENRICH_LIMIT ? ` Automatic enrichment ran on the top ${AUTO_ENRICH_LIMIT} best-fit candidates only, to control credit spend — enrich the rest manually from the review queue if you want their emails too.` : ""),
   };
   await search.save();
 

@@ -1228,8 +1228,13 @@ export const fetchLeadGenerationProgramSearchSuggestions = (noteId) =>
   api.get(`/lead-generation/programs/${noteId}/search-suggestions`).then((res) => res.data);
 export const proposeLeadGenerationSearch = (payload) =>
   api.post("/lead-generation/searches/propose", payload, { timeout: 60000 }).then((res) => res.data);
+// A large, high-volume search (up to 500 requested) plus automatic
+// enrichment on the top candidates can genuinely take over a minute —
+// confirmed live at ~72s for a 250-person search with enrichment. 90s cut
+// it too close; 240s gives real headroom without the request hanging
+// indefinitely on a genuine failure.
 export const approveLeadGenerationSearch = (searchId, overrides = {}) =>
-  api.post(`/lead-generation/searches/${searchId}/approve`, overrides, { timeout: 90000 }).then((res) => res.data);
+  api.post(`/lead-generation/searches/${searchId}/approve`, overrides, { timeout: 240000 }).then((res) => res.data);
 export const fetchLeadGenerationSearch = (searchId) =>
   api.get(`/lead-generation/searches/${searchId}`).then((res) => res.data);
 export const enrichVertexGroundingResultWithApollo = (id) =>

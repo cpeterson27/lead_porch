@@ -209,19 +209,27 @@ async function testApproveAndRunSearchGathersARankedPoolAndKeepsOnlyTheBestByFit
 
 // A 100-person request needs a 300-person Apollo pool (100 * APOLLO_POOL_
 // MULTIPLIER, capped at APOLLO_MAX_POOL_SIZE) — 3 full pages at 100/page.
-// Only page 3's candidates are given a real ICP title match (higher fit
-// score); pages 1 and 2's are given a non-matching title (lower score).
-// If fetchApolloPool only ever requested page 1 — or requested later pages
-// but discarded them instead of merging them into the scored pool — page
-// 3's higher-fit candidates could never end up in the final accepted set.
-// Their presence there is only possible if page 2 AND page 3 were both
-// genuinely requested (proving real multi-page pagination, not just a
-// bigger page 1) AND merged into the ranked pool (not fetched and
-// dropped).
+// Only the LAST expected page's candidates are given a real ICP title
+// match (higher fit score); every earlier page's are given a non-matching
+// title (lower score). If fetchApolloPool only ever requested page 1 — or
+// requested later pages but discarded them instead of merging them into
+// the scored pool — the last page's higher-fit candidates could never end
+// up in the final accepted set. Their presence there is only possible if
+// every page up to it was genuinely requested (proving real multi-page
+// pagination, not just a bigger page 1) AND merged into the ranked pool
+// (not fetched and dropped). Page count is derived from the real formula
+// (poolSize = min(APOLLO_MAX_POOL_SIZE, requestedCount * APOLLO_POOL_
+// MULTIPLIER), pages = poolSize / 100) rather than hardcoded, so this
+// keeps testing real behavior if those constants are ever retuned.
 async function testApproveAndRunSearchRequestsAndMergesRealApolloPagesBeyondPage1() {
+  const requestedCount = 100;
+  const poolSize = Math.min(2000, requestedCount * 4);
+  const expectedPages = Math.ceil(poolSize / 100);
+  const lastPage = expectedPages;
+
   const DiscoverySearchModel = {
     doc: {
-      _id: "search-pages", status: "proposed", sources: ["apollo_person_search"], requestedCount: 100,
+      _id: "search-pages", status: "proposed", sources: ["apollo_person_search"], requestedCount,
       icp: { titles: ["Real Estate Agent"], locations: [], industries: [], keywords: [], seniority: [] },
       programName: "Test", save: async function save() { return this; },
     },
@@ -231,16 +239,16 @@ async function testApproveAndRunSearchRequestsAndMergesRealApolloPagesBeyondPage
   const apolloService = {
     searchPeople: async ({ page, perPage }) => {
       pagesRequested.push(page);
-      const isMatchingPage = page === 3;
+      const isMatchingPage = page === lastPage;
       const people = Array.from({ length: perPage }, (_, i) => ({
         fullName: `Apollo P${page}-${i}`,
         title: isMatchingPage ? "Real Estate Agent" : "Notary Public",
         company: "", companyDomain: "", linkedinUrl: `apollo-page${page}-${i}`, email: "", emailState: "",
       }));
-      // A real, larger-than-one-page upstream result set (5 total pages
+      // A real, larger-than-needed upstream result set (10 total pages
       // available) — the loop must keep paging until it has enough people
       // or hits its own page cap, not stop after an arbitrary first call.
-      return { people, pagination: { page, totalPages: 5 } };
+      return { people, pagination: { page, totalPages: 10 } };
     },
   };
   const rows = [];
@@ -255,12 +263,12 @@ async function testApproveAndRunSearchRequestsAndMergesRealApolloPagesBeyondPage
     { DiscoverySearch: DiscoverySearchModel, apolloService, GroundingResearchResult, getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }), isSelfMatch: () => ({ isSelf: false, reasons: [] }) },
   );
 
-  assert.deepEqual(pagesRequested, [1, 2, 3], "a 100-person request needing a 300-person pool must fetch exactly 3 real Apollo pages — not stop after page 1, and not fetch more than needed");
+  assert.deepEqual(pagesRequested, Array.from({ length: expectedPages }, (_, i) => i + 1), `a ${requestedCount}-person request needing a ${poolSize}-person pool must fetch exactly ${expectedPages} real Apollo pages — not stop after page 1, and not fetch more than needed`);
   const apolloStats = result.runSummary.providerBreakdown.find((p) => p.provider === "apollo_person_search");
-  assert.equal(apolloStats.returned, 300, "all 3 pages' results (100 each) must be merged into the pool total, not just the first page's");
-  assert.equal(result.runSummary.created, 100, "the requested count is filled");
-  assert.equal(rows.length, 100);
-  assert.ok(rows.every((row) => row.name.startsWith("Apollo P3-")), "the persisted rows must be page 3's higher-fit candidates specifically — only possible if page 3 was both requested AND merged into the ranked pool, not fetched and discarded");
+  assert.equal(apolloStats.returned, poolSize, "every page's results must be merged into the pool total, not just the first page's");
+  assert.equal(result.runSummary.created, requestedCount, "the requested count is filled");
+  assert.equal(rows.length, requestedCount);
+  assert.ok(rows.every((row) => row.name.startsWith(`Apollo P${lastPage}-`)), `the persisted rows must be the last page's (${lastPage}) higher-fit candidates specifically — only possible if every page up to it was both requested AND merged into the ranked pool, not fetched and discarded`);
 }
 
 // Confirmed live against the real API: Apollo's person_seniorities 422s/

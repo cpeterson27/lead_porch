@@ -90,9 +90,10 @@ const LEADGEN_PROVIDERS = [
   ["apollo_person_search", "Apollo People Search"],
 ];
 // Matches backend leadGenerationCoordinatorService.js's MAX_REQUESTED_COUNT
-// (100) — 50/100 are real options now that Apollo's pool-then-rank step
-// can actually fill them (see APOLLO_MAX_POOL_SIZE there).
-const LEADGEN_COUNT_OPTIONS = [5, 10, 25, 50, 100];
+// (500) — confirmed live that Apollo's real database easily supports this
+// (1,300+ distinct real people found in 15 pages for one broad search), so
+// the ceiling here reflects Apollo's real capacity, not an arbitrary cap.
+const LEADGEN_COUNT_OPTIONS = [5, 10, 25, 50, 100, 250, 500];
 const EMPTY_ICP_DRAFT = { titles: "", industries: "", locations: "", keywords: "", seniority: "", companySizeRange: "", exclusions: "" };
 const icpArrayToDraftString = (values) => (values || []).join(", ");
 const icpDraftStringToArray = (value) => String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
@@ -325,6 +326,7 @@ export default function Discovery() {
   const [leadGenApproveBusy, setLeadGenApproveBusy] = useState(false);
   const [leadGenError, setLeadGenError] = useState("");
   const [apolloEnrichBusyId, setApolloEnrichBusyId] = useState("");
+  const [apolloBulkEnrichBusy, setApolloBulkEnrichBusy] = useState(false);
   const [qualifyBusy, setQualifyBusy] = useState(false);
   const [monitorSuggestion, setMonitorSuggestion] = useState(null);
   const [monitorProposeBusy, setMonitorProposeBusy] = useState(false);
@@ -672,6 +674,40 @@ export default function Discovery() {
     setSelectedGroundingIds(visibleGroundingResults.map((r) => r._id));
   };
   const clearGroundingSelection = () => setSelectedGroundingIds([]);
+
+  const researchSelectedWithApollo = async () => {
+    const eligible = visibleGroundingResults.filter((result) =>
+      selectedGroundingIds.includes(result._id)
+      && result.type === "person"
+      && !result.apolloEnrichment?.attempted,
+    );
+    if (!eligible.length || apolloBulkEnrichBusy) return;
+    const approved = window.confirm(
+      `Research ${eligible.length} selected contact${eligible.length === 1 ? "" : "s"} with Apollo? `
+      + "Apollo enrichment can consume credits for each person when contact data is found. Search results themselves are not charged by this action.",
+    );
+    if (!approved) return;
+    setApolloBulkEnrichBusy(true);
+    let matched = 0;
+    let failed = 0;
+    try {
+      for (const result of eligible) {
+        try {
+          // Deliberately sequential: this is a user-approved, credit-bearing
+          // action and should not burst duplicate requests into Apollo.
+          const response = await enrichVertexGroundingResultWithApollo(result._id);
+          if (response.data.apolloEnrichment?.matched) matched += 1;
+          if (response.data.apolloEnrichment?.error) failed += 1;
+        } catch {
+          failed += 1;
+        }
+      }
+      setNotice(`Apollo researched ${eligible.length} selected contact${eligible.length === 1 ? "" : "s"}: ${matched} matched${failed ? `, ${failed} failed` : ""}. Review the contact details, then add the people you want to your CRM.`);
+      await loadGroundingResults();
+    } finally {
+      setApolloBulkEnrichBusy(false);
+    }
+  };
 
   const saveSelectedQualified = async () => {
     const qualifiedIds = visibleGroundingResults.filter((r) => selectedGroundingIds.includes(r._id) && r.qualificationLabel === "qualified").map((r) => r._id);
@@ -1590,6 +1626,9 @@ export default function Discovery() {
               <div className="leadgen-review-actions">
                 <Button loading={leadGenApproveBusy} onClick={approveLeadGenSearch}>Approve &amp; find people</Button>
                 <Button variant="outline" onClick={discardLeadGenProposal}>Discard</Button>
+                {leadGenApproveBusy && leadGenProposal.requestedCount > 25 ? (
+                  <p className="leadgen-run-disclosure">A search this size (with automatic email enrichment on the best candidates) can take a minute or two — this isn't frozen.</p>
+                ) : null}
               </div>
             ) : (
               <div>
@@ -1689,8 +1728,7 @@ export default function Discovery() {
       <section className="discovery-workflow-section discovery-results-section" aria-labelledby="todays-results-heading"><header><span>Step 2</span><h2 id="todays-results-heading">Today&apos;s Results</h2><p>Every finding stays in its own lane so a prospective student is never confused with a vendor, competitor, or community.</p></header>
       <DashboardCard title="Review queue">
         <p className="people-preview-intro">
-          Every person Jarvis or the advanced manual search finds lands here first. Nothing enters the CRM,
-          a monitor, or outreach without your explicit action below.
+          Review why each person was found, research contact information for the promising people, then add the leads you want to your CRM. Nothing enters your CRM or outreach without your action.
         </p>
         <div className="discovery-review-filters">
           {["pending_review", "saved", "dismissed"].map((status) => (
@@ -1765,8 +1803,12 @@ export default function Discovery() {
               {[["all", "All"], ["qualified", "View Qualified"], ["needs_review", "View Needs review"], ["not_a_fit", "View Not a fit"]].map(([value, label]) => (
                 <Button key={value} size="sm" variant={qualifyOutcomeFilter === value ? "primary" : "outline"} onClick={() => setQualifyOutcomeFilter(value)}>{label}</Button>
               ))}
-              <Button size="sm" variant="outline" disabled={!selectedGroundingIds.some((id) => visibleGroundingResults.find((r) => r._id === id)?.qualificationLabel === "qualified")} onClick={saveSelectedQualified}>Save selected qualified candidates</Button>
-              <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} onClick={dismissSelected}>Dismiss selected</Button>
+              <Button size="sm" variant="outline" loading={apolloBulkEnrichBusy} disabled={!selectedGroundingIds.some((id) => {
+                const result = visibleGroundingResults.find((row) => row._id === id);
+                return result?.type === "person" && !result.apolloEnrichment?.attempted;
+              })} onClick={researchSelectedWithApollo}>Research selected with Apollo</Button>
+              <Button size="sm" variant="outline" disabled={!selectedGroundingIds.some((id) => visibleGroundingResults.find((r) => r._id === id)?.qualificationLabel === "qualified")} onClick={saveSelectedQualified}>Add selected qualified leads to CRM</Button>
+              <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} onClick={dismissSelected}>Mark selected as not leads</Button>
             </div>
           </div>
         ) : null}
@@ -1861,17 +1903,17 @@ export default function Discovery() {
                   <div className="leadgen-row-actions">
                     {(result.type === "person" && (!result.pdlEnrichment?.attempted || !result.apolloEnrichment?.attempted)) ? (
                       <div className="leadgen-row-actions__group">
-                        <span>Enrich:</span>
+                        <span>Find contact information:</span>
                         {!result.pdlEnrichment?.attempted ? (
-                          <Button size="sm" variant="outline" loading={pdlEnrichBusyId === result._id} disabled={Boolean(pdlEnrichBusyId) && pdlEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithPdl(result._id)}>PDL</Button>
+                          <Button size="sm" variant="outline" loading={pdlEnrichBusyId === result._id} disabled={Boolean(pdlEnrichBusyId) && pdlEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithPdl(result._id)}>Research with PDL</Button>
                         ) : null}
                         {!result.apolloEnrichment?.attempted ? (
-                          <Button size="sm" variant="outline" loading={apolloEnrichBusyId === result._id} disabled={Boolean(apolloEnrichBusyId) && apolloEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithApollo(result._id)}>Apollo</Button>
+                          <Button size="sm" variant="outline" loading={apolloEnrichBusyId === result._id} disabled={Boolean(apolloEnrichBusyId) && apolloEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithApollo(result._id)}>Research with Apollo</Button>
                         ) : null}
                       </div>
                     ) : null}
-                    <Button size="sm" onClick={() => saveGroundingResult(result._id)}>Save</Button>
-                    <Button size="sm" variant="outline" onClick={() => dismissGroundingResult(result._id)}>Dismiss</Button>
+                    <Button size="sm" onClick={() => saveGroundingResult(result._id)}>Add to CRM</Button>
+                    <Button size="sm" variant="outline" onClick={() => dismissGroundingResult(result._id)}>Not a lead</Button>
                   </div>
                 ) : <span className="people-preview-footnote">{result.status === "saved" ? "Saved" : "Dismissed"}</span>}
               </article>
