@@ -76,7 +76,11 @@ async function renderEmailContent(
       workspaceConfig?.organizationLogoUrl ||
       "",
   ).trim();
-  if (organizationLogo && !html.includes(organizationLogo)) {
+  // A campaign designed in the Unlayer drag-and-drop editor already gives
+  // the sender full control over whether a logo appears and where — only
+  // auto-inject a top-of-email logo banner for legacy plain-text/manual
+  // HTML templates that never had that control in the first place.
+  if (organizationLogo && !outreachItem.designJson && !html.includes(organizationLogo)) {
     const logoHtml = `<div style="margin:0 0 28px"><img src="${organizationLogo.replace(/"/g, "&quot;")}" alt="${String(businessName).replace(/[<>&"]/g, "")}" style="display:block;max-height:84px;max-width:220px;object-fit:contain"></div>`;
     html = html.includes("<body")
       ? html.replace(/(<body[^>]*>)/i, `$1${logoHtml}`)

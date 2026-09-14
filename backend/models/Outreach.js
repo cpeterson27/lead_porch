@@ -88,6 +88,14 @@ const outreachSchema = new mongoose.Schema(
     },
 
 
+    // The Unlayer design JSON behind htmlBody, when the template that
+    // produced it was authored in the drag-and-drop editor. Its presence
+    // tells renderEmailContent() the sender already controls logo/image
+    // placement inside htmlBody, so it should skip its own auto-inject.
+    designJson: {
+      type: mongoose.Schema.Types.Mixed,
+      default: null,
+    },
     htmlBody: {
       type: String,
       default: "",

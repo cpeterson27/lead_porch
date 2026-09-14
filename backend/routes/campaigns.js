@@ -316,6 +316,7 @@ router.post("/:id/email-template/preview", async (req, res) => {
       contactEmail: previewContact?.email || "preview@example.com",
       htmlBody: draft.htmlBody,
       emailDraft: draft.emailDraft,
+      designJson: template.designJson || null,
     },
     { contact: previewContact, preview: true },
   );

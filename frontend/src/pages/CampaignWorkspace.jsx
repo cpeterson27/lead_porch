@@ -86,13 +86,13 @@ export default function CampaignWorkspace() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
   const [templateAudience, setTemplateAudience] = useState("general");
-  const [activeSection, setActiveSection] = useState("overview");
   // Unlayer only loads its `design` prop once, on mount — bumping this key
   // forces a clean remount (and re-load) when restoring a historical
   // version, since the editor has no supported "swap design mid-session"
   // event of its own.
   const [editorInstanceKey, setEditorInstanceKey] = useState(0);
   const messageRef = useRef(null);
+  const audienceDetailsRef = useRef(null);
 
   useEffect(() => {
     if (!id) {
@@ -263,6 +263,13 @@ export default function CampaignWorkspace() {
     setTemplateDirty(true);
     setTemplateNotice("");
   };
+  const openAudienceDetails = () => {
+    const node = audienceDetailsRef.current;
+    if (!node) return;
+    node.open = true;
+    node.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
   const selectedAudienceLabel = () =>
     templateAudience === "general"
       ? "All campaign contacts"
@@ -537,38 +544,12 @@ export default function CampaignWorkspace() {
         ))}
       </section>
 
-      <nav
-        className="campaign-workspace__tabs"
-        aria-label="Campaign setup steps"
-      >
-        <button
-          className={`${activeSection === "overview" ? "active" : ""} ${campaign.name ? "is-complete" : ""}`}
-          aria-current={activeSection === "overview" ? "step" : undefined}
-          onClick={() => setActiveSection("overview")}
-        >
-          <span>1</span><span><strong>Campaign setup</strong><small>Check the essentials</small></span>
-        </button>
-        <button
-          className={`${activeSection === "audience" ? "active" : ""} ${campaign.audience?.length ? "is-complete" : ""}`}
-          aria-current={activeSection === "audience" ? "step" : undefined}
-          onClick={() => setActiveSection("audience")}
-        >
-          <span>2</span><span><strong>Target audience</strong><small>Confirm who should receive it</small></span>
-        </button>
-        <button
-          className={`${activeSection === "email" ? "active" : ""} ${emailTemplate?.status === "approved" && !templateDirty ? "is-complete" : ""}`}
-          aria-current={activeSection === "email" ? "step" : undefined}
-          onClick={() => setActiveSection("email")}
-        >
-          <span>3</span><span><strong>Email design</strong><small>Create and approve the message</small></span>
-        </button>
-        <button onClick={() => navigate(`/outreach?campaignId=${campaign._id}`)}>
-          <span>4</span><span><strong>Review &amp; send</strong><small>Check every draft first</small></span>
-        </button>
-      </nav>
-
       <section className="campaign-workspace__grid">
-        {activeSection === "overview" ? (
+        <details className="campaign-collapsible">
+          <summary>
+            <span>Campaign setup</span>
+            <small>Event date, description, and registration channels</small>
+          </summary>
           <DashboardCard title="Campaign details">
             <div className="campaign-overview-list">
               {overview.map(([label, value, hint]) =>
@@ -577,7 +558,7 @@ export default function CampaignWorkspace() {
                     type="button"
                     key={label}
                     className="campaign-overview-list__linked"
-                    onClick={() => setActiveSection("audience")}
+                    onClick={openAudienceDetails}
                   >
                     <span>{label}</span>
                     <strong>{value}</strong>
@@ -624,309 +605,50 @@ export default function CampaignWorkspace() {
               </section>
             ) : null}
           </DashboardCard>
-        ) : null}
-
-        {activeSection === "email" ? (
-          <DashboardCard title="Email campaign studio" className="campaign-email-studio">
-            {emailTemplate ? (
-              <div className="campaign-template-editor">
-                <div className="campaign-email-meta">
-                  <div className="campaign-template-editor__status">
-                    <span
-                      className={`campaign-status-dot ${!templateDirty && emailTemplate.status === "approved" ? "is-approved" : ""}`}
-                    />{" "}
-                    <strong>
-                      {templateDirty
-                        ? "Unsaved changes"
-                        : emailTemplate.status === "approved"
-                          ? `Approved · version ${emailTemplate.currentVersion}`
-                          : "Draft saved"}
-                    </strong>
-                    {templateNotice ? (
-                      <small role="status">{templateNotice}</small>
-                    ) : null}
-                  </div>
-                  <div
-                    className="campaign-routing-explainer"
-                    aria-label="You do not assign contacts here. Lead Porch routes each contact automatically."
-                  >
-                    <strong>Automatic recipient routing</strong>
-                    <span>
-                      Start with one main email. Audience versions are optional;
-                      Lead Porch previews every routing decision before drafts are created.
-                    </span>
-                  </div>
-                  <div className="campaign-email-meta__row">
-                    <label aria-description="Individual overrides are optional.">
-                      <span>Template you are editing</span>
-                      <select
-                        value={templateAudience}
-                        onChange={(event) =>
-                          setTemplateAudience(event.target.value)
-                        }
-                      >
-                        <option value="general">
-                          Main email · required fallback
-                        </option>
-                        <optgroup label="Optional research variations">
-                          {RESEARCH_EMAIL_AUDIENCES.map((audience) => (
-                            <option value={audience.key} key={audience.key}>
-                              {audience.label}
-                            </option>
-                          ))}
-                        </optgroup>
-                        {(campaign.audience || []).length ? (
-                          <optgroup label="Optional campaign variations">
-                            {campaign.audience.map((audience, index) => (
-                              <option
-                                value={`audience-${index}`}
-                                key={`${audience}-${index}`}
-                              >
-                                {audience}
-                              </option>
-                            ))}
-                          </optgroup>
-                        ) : null}
-                      </select>
-                    </label>
-                    <label>
-                      <span>Subject</span>
-                      <input
-                        value={emailTemplate.subject}
-                        onChange={(event) =>
-                          updateTemplateField("subject", event.target.value)
-                        }
-                      />
-                    </label>
-                  </div>
-                  <div className="campaign-email-logo">
-                    <img
-                      src={campaign.brand?.emailLogoUrl || workspaceDefaultLogoUrl}
-                      alt="Email logo"
-                      onError={(event) => { event.currentTarget.style.visibility = "hidden"; }}
-                    />
-                    <div>
-                      <span>Email logo</span>
-                      <small>
-                        {campaign.brand?.emailLogoUrl
-                          ? "Using a logo chosen for this campaign."
-                          : "Using your Knowledge Center default logo."}
-                      </small>
-                    </div>
-                    <label className="campaign-email-logo__upload">
-                      {logoSaving ? "Saving…" : "Choose a different logo"}
-                      <input
-                        type="file"
-                        accept="image/*"
-                        disabled={logoSaving}
-                        onChange={(event) => {
-                          chooseEmailLogo(event.target.files?.[0]);
-                          event.target.value = "";
-                        }}
-                      />
-                    </label>
-                    {campaign.brand?.emailLogoUrl ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        disabled={logoSaving}
-                        onClick={resetEmailLogoToDefault}
-                      >
-                        Reset to default
-                      </Button>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="campaign-email-workspace">
-                  <div className="campaign-email-workspace__editor">
-                    <UnlayerEmailEditor
-                      key={editorInstanceKey}
-                      ref={messageRef}
-                      design={emailTemplate.designJson}
-                      onDesignChange={handleDesignChange}
-                      onUploadImage={uploadInlineImage}
-                    />
-                    <small>
-                      Drag in blocks, images, and buttons; every element has
-                      its own size, alignment, and font controls when
-                      selected. Use the {"{ }"} icon in the text tool to
-                      insert personalization like the recipient's first
-                      name — and to wire a button to the real registration
-                      link, use {"{{eventLink}}"} as its URL.
-                    </small>
-                  </div>
-                  <div className="campaign-email-workspace__preview">
-                    <header>
-                      <div>
-                        <span>Live preview</span>
-                        <strong>
-                          {emailPreview?.subject || "Preparing preview…"}
-                        </strong>
-                      </div>
-                      <small className={`campaign-preview-status ${previewLoading ? "is-loading" : ""}`}>
-                        <i aria-hidden="true" />
-                        {previewLoading ? "Updating" : "Updated"}
-                      </small>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        loading={previewLoading}
-                        onClick={refreshPreviewNow}
-                      >
-                        Refresh
-                      </Button>
-                    </header>
-                    {previewError ? (
-                      <p className="form-error">{previewError}</p>
-                    ) : null}
-                    {emailPreview ? (
-                      <iframe
-                        title="Live campaign email preview"
-                        srcDoc={emailPreview.html}
-                        sandbox="allow-popups allow-popups-to-escape-sandbox"
-                      />
-                    ) : (
-                      <div className="campaign-preview-placeholder">
-                        Building your email preview…
-                      </div>
-                    )}
-                  </div>
-                </div>
-                <div className="campaign-idea-generator">
-                  <label>
-                    <span>Tell AI what to focus on (optional)</span>
-                    <input
-                      value={ideaPrompt}
-                      onChange={(event) => setIdeaPrompt(event.target.value)}
-                      placeholder="e.g. Make it urgent about the early-bird deadline, keep it casual"
-                    />
-                  </label>
-                  <Button
-                    variant="outline"
-                    loading={ideaGenerating}
-                    onClick={generateIdeas}
-                  >
-                    Generate ideas with AI
-                  </Button>
-                </div>
-                <div className="campaign-template-editor__actions">
-                  <Button
-                    variant="outline"
-                    loading={templateSaving}
-                    onClick={saveTemplate}
-                  >
-                    Save draft
-                  </Button>
-                  <Button loading={templateSaving} onClick={approveTemplate}>
-                    Approve new version
-                  </Button>
-                </div>
-                {templateVersions.length ? (
-                  <section className="campaign-template-history">
-                    <button
-                      type="button"
-                      className="campaign-template-history__toggle"
-                      onClick={() => setTemplateHistoryOpen((open) => !open)}
+          {!isProgram && (
+            <DashboardCard title="Registration channels">
+              {registrationLinks.length ? (
+                <div className="campaign-registration-links">
+                  {registrationLinks.map(([provider, link], index) => (
+                    <a
+                      href={link.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      key={provider}
                     >
                       <span>
-                        <strong>Template history</strong>
-                        <small>
-                          {templateVersions.length} saved version
-                          {templateVersions.length === 1 ? "" : "s"} · sent
-                          copies are preserved
-                        </small>
+                        {index === 0
+                          ? "Primary registration"
+                          : "Additional listing"}
                       </span>
-                      <b>{templateHistoryOpen ? "Hide" : "View all"}</b>
-                    </button>
-                    {templateHistoryOpen ? (
-                      <div className="campaign-template-history__list">
-                        {templateVersions.map((version) => (
-                          <article key={version.version}>
-                            <header>
-                              <span>Version {version.version}</span>
-                              <small>
-                                {version.approvedAt
-                                  ? new Date(
-                                      version.approvedAt,
-                                    ).toLocaleString()
-                                  : "Approval date unavailable"}
-                              </small>
-                            </header>
-                            <strong>{version.subject}</strong>
-                            <small>
-                              {version.audienceLabel ||
-                                "Historical campaign template"}
-                              {version.sentCount
-                                ? ` · used for ${version.sentCount} sent email${version.sentCount === 1 ? "" : "s"}`
-                                : " · never sent"}
-                            </small>
-                            <footer>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => loadHistoricalTemplate(version)}
-                              >
-                                Use as new draft
-                              </Button>
-                              {version.lastSentAt ? (
-                                <small>
-                                  Last sent{" "}
-                                  {new Date(
-                                    version.lastSentAt,
-                                  ).toLocaleString()}
-                                </small>
-                              ) : null}
-                            </footer>
-                          </article>
-                        ))}
-                      </div>
-                    ) : null}
-                  </section>
-                ) : null}
-              </div>
-            ) : (
-              <p>Loading the master template…</p>
-            )}
-          </DashboardCard>
-        ) : null}
+                      <strong>{provider}</strong>
+                      <small>
+                        {index === 0
+                          ? "Ticket checkout and main email button"
+                          : "Meetup discovery and RSVPs"}{" "}
+                        ↗
+                      </small>
+                    </a>
+                  ))}
+                </div>
+              ) : (
+                <p className="campaign-workspace__empty">
+                  No registration channels connected yet.
+                </p>
+              )}
+            </DashboardCard>
+          )}
+        </details>
 
-        {activeSection === "overview" && !isProgram && (
-          <DashboardCard title="Registration channels">
-            {registrationLinks.length ? (
-              <div className="campaign-registration-links">
-                {registrationLinks.map(([provider, link], index) => (
-                  <a
-                    href={link.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    key={provider}
-                  >
-                    <span>
-                      {index === 0
-                        ? "Primary registration"
-                        : "Additional listing"}
-                    </span>
-                    <strong>{provider}</strong>
-                    <small>
-                      {index === 0
-                        ? "Ticket checkout and main email button"
-                        : "Meetup discovery and RSVPs"}{" "}
-                      ↗
-                    </small>
-                  </a>
-                ))}
-              </div>
-            ) : (
-              <p className="campaign-workspace__empty">
-                No registration channels connected yet.
-              </p>
-            )}
-          </DashboardCard>
-        )}
-
-        {activeSection === "audience" ? (
+        <details className="campaign-collapsible" ref={audienceDetailsRef}>
+          <summary>
+            <span>Target audience</span>
+            <small>
+              {campaign.audience?.length
+                ? `${campaign.audience.length} group${campaign.audience.length === 1 ? "" : "s"} configured`
+                : "No target groups yet"}
+            </small>
+          </summary>
           <DashboardCard title="Target audience">
             {audienceMatch ? (
               <>
@@ -1192,18 +914,282 @@ export default function CampaignWorkspace() {
               <p>Checking qualified contacts…</p>
             )}
           </DashboardCard>
-        ) : null}
-        <div className="campaign-step-actions">
-          {activeSection === "overview" ? (
-            <Button onClick={() => setActiveSection("audience")}>Continue to target audience</Button>
-          ) : null}
-          {activeSection === "audience" ? (
-            <><Button variant="outline" onClick={() => setActiveSection("overview")}>Back to campaign setup</Button><Button onClick={() => setActiveSection("email")}>Continue to email design</Button></>
-          ) : null}
-          {activeSection === "email" ? (
-            <><Button variant="outline" onClick={() => setActiveSection("audience")}>Back to target audience</Button><Button onClick={() => navigate(`/outreach?campaignId=${campaign._id}`)}>Review drafts before sending</Button></>
-          ) : null}
-        </div>
+        </details>
+
+        <DashboardCard title="Email campaign studio" className="campaign-email-studio">
+          {emailTemplate ? (
+            <div className="campaign-template-editor">
+              <div className="campaign-email-meta">
+                <div className="campaign-template-editor__status">
+                  <span
+                    className={`campaign-status-dot ${!templateDirty && emailTemplate.status === "approved" ? "is-approved" : ""}`}
+                  />{" "}
+                  <strong>
+                    {templateDirty
+                      ? "Unsaved changes"
+                      : emailTemplate.status === "approved"
+                        ? `Approved · version ${emailTemplate.currentVersion}`
+                        : "Draft saved"}
+                  </strong>
+                  {templateNotice ? (
+                    <small role="status">{templateNotice}</small>
+                  ) : null}
+                </div>
+                <div
+                  className="campaign-routing-explainer"
+                  aria-label="You do not assign contacts here. Lead Porch routes each contact automatically."
+                >
+                  <strong>Automatic recipient routing</strong>
+                  <span>
+                    Start with one main email. Audience versions are optional;
+                    Lead Porch previews every routing decision before drafts are created.
+                  </span>
+                </div>
+                <div className="campaign-email-meta__row">
+                  <label aria-description="Individual overrides are optional.">
+                    <span>Template you are editing</span>
+                    <select
+                      value={templateAudience}
+                      onChange={(event) =>
+                        setTemplateAudience(event.target.value)
+                      }
+                    >
+                      <option value="general">
+                        Main email · required fallback
+                      </option>
+                      <optgroup label="Optional research variations">
+                        {RESEARCH_EMAIL_AUDIENCES.map((audience) => (
+                          <option value={audience.key} key={audience.key}>
+                            {audience.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                      {(campaign.audience || []).length ? (
+                        <optgroup label="Optional campaign variations">
+                          {campaign.audience.map((audience, index) => (
+                            <option
+                              value={`audience-${index}`}
+                              key={`${audience}-${index}`}
+                            >
+                              {audience}
+                            </option>
+                          ))}
+                        </optgroup>
+                      ) : null}
+                    </select>
+                  </label>
+                  <label>
+                    <span>Subject</span>
+                    <input
+                      value={emailTemplate.subject}
+                      onChange={(event) =>
+                        updateTemplateField("subject", event.target.value)
+                      }
+                    />
+                  </label>
+                </div>
+                <details className="campaign-email-logo">
+                  <summary>
+                    <img
+                      src={campaign.brand?.emailLogoUrl || workspaceDefaultLogoUrl}
+                      alt="Email logo"
+                      onError={(event) => { event.currentTarget.style.visibility = "hidden"; }}
+                    />
+                    <span>Email logo</span>
+                    <small>
+                      {campaign.brand?.emailLogoUrl ? "Custom" : "Default"}
+                    </small>
+                  </summary>
+                  <div className="campaign-email-logo__panel">
+                    <p>
+                      {campaign.brand?.emailLogoUrl
+                        ? "Using a logo chosen for this campaign."
+                        : "Using your Knowledge Center default logo."}{" "}
+                      This is only a reference image — nothing is added to
+                      your email automatically. Drag the logo into the
+                      editor yourself if you want it in the message, and
+                      place it wherever you like.
+                    </p>
+                    <div className="campaign-email-logo__actions">
+                      <label className="campaign-email-logo__upload">
+                        {logoSaving ? "Saving…" : "Choose a different logo"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={logoSaving}
+                          onChange={(event) => {
+                            chooseEmailLogo(event.target.files?.[0]);
+                            event.target.value = "";
+                          }}
+                        />
+                      </label>
+                      {campaign.brand?.emailLogoUrl ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={logoSaving}
+                          onClick={resetEmailLogoToDefault}
+                        >
+                          Reset to default
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                </details>
+              </div>
+              <div className="campaign-email-workspace">
+                <div className="campaign-email-workspace__editor">
+                  <UnlayerEmailEditor
+                    key={editorInstanceKey}
+                    ref={messageRef}
+                    design={emailTemplate.designJson}
+                    onDesignChange={handleDesignChange}
+                    onUploadImage={uploadInlineImage}
+                  />
+                  <small>
+                    Drag in blocks, images, and buttons; every element has
+                    its own size, alignment, and font controls when
+                    selected. Use the {"{ }"} icon in the text tool to
+                    insert personalization like the recipient's first
+                    name — and to wire a button to the real registration
+                    link, use {"{{eventLink}}"} as its URL.
+                  </small>
+                </div>
+                <div className="campaign-email-workspace__preview">
+                  <header>
+                    <div>
+                      <span>Live preview</span>
+                      <strong>
+                        {emailPreview?.subject || "Preparing preview…"}
+                      </strong>
+                    </div>
+                    <small className={`campaign-preview-status ${previewLoading ? "is-loading" : ""}`}>
+                      <i aria-hidden="true" />
+                      {previewLoading ? "Updating" : "Updated"}
+                    </small>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      loading={previewLoading}
+                      onClick={refreshPreviewNow}
+                    >
+                      Refresh
+                    </Button>
+                  </header>
+                  {previewError ? (
+                    <p className="form-error">{previewError}</p>
+                  ) : null}
+                  {emailPreview ? (
+                    <iframe
+                      title="Live campaign email preview"
+                      srcDoc={emailPreview.html}
+                      sandbox="allow-popups allow-popups-to-escape-sandbox"
+                    />
+                  ) : (
+                    <div className="campaign-preview-placeholder">
+                      Building your email preview…
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="campaign-idea-generator">
+                <label>
+                  <span>Tell AI what to focus on (optional)</span>
+                  <input
+                    value={ideaPrompt}
+                    onChange={(event) => setIdeaPrompt(event.target.value)}
+                    placeholder="e.g. Make it urgent about the early-bird deadline, keep it casual"
+                  />
+                </label>
+                <Button
+                  variant="outline"
+                  loading={ideaGenerating}
+                  onClick={generateIdeas}
+                >
+                  Generate ideas with AI
+                </Button>
+              </div>
+              <div className="campaign-template-editor__actions">
+                <Button
+                  variant="outline"
+                  loading={templateSaving}
+                  onClick={saveTemplate}
+                >
+                  Save draft
+                </Button>
+                <Button loading={templateSaving} onClick={approveTemplate}>
+                  Approve new version
+                </Button>
+              </div>
+              {templateVersions.length ? (
+                <section className="campaign-template-history">
+                  <button
+                    type="button"
+                    className="campaign-template-history__toggle"
+                    onClick={() => setTemplateHistoryOpen((open) => !open)}
+                  >
+                    <span>
+                      <strong>Template history</strong>
+                      <small>
+                        {templateVersions.length} saved version
+                        {templateVersions.length === 1 ? "" : "s"} · sent
+                        copies are preserved
+                      </small>
+                    </span>
+                    <b>{templateHistoryOpen ? "Hide" : "View all"}</b>
+                  </button>
+                  {templateHistoryOpen ? (
+                    <div className="campaign-template-history__list">
+                      {templateVersions.map((version) => (
+                        <article key={version.version}>
+                          <header>
+                            <span>Version {version.version}</span>
+                            <small>
+                              {version.approvedAt
+                                ? new Date(
+                                    version.approvedAt,
+                                  ).toLocaleString()
+                                : "Approval date unavailable"}
+                            </small>
+                          </header>
+                          <strong>{version.subject}</strong>
+                          <small>
+                            {version.audienceLabel ||
+                              "Historical campaign template"}
+                            {version.sentCount
+                              ? ` · used for ${version.sentCount} sent email${version.sentCount === 1 ? "" : "s"}`
+                              : " · never sent"}
+                          </small>
+                          <footer>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => loadHistoricalTemplate(version)}
+                            >
+                              Use as new draft
+                            </Button>
+                            {version.lastSentAt ? (
+                              <small>
+                                Last sent{" "}
+                                {new Date(
+                                  version.lastSentAt,
+                                ).toLocaleString()}
+                              </small>
+                            ) : null}
+                          </footer>
+                        </article>
+                      ))}
+                    </div>
+                  ) : null}
+                </section>
+              ) : null}
+            </div>
+          ) : (
+            <p>Loading the master template…</p>
+          )}
+        </DashboardCard>
       </section>
     </div>
   );
