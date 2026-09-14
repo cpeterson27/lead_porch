@@ -55,6 +55,12 @@ const UnlayerEmailEditor = forwardRef(function UnlayerEmailEditor(
         editor.exportHtml((data) => resolve(data));
       });
     },
+    // Swaps in a modified design (e.g. one with a logo row inserted) without
+    // remounting the whole editor — unlike the `design` prop, this applies
+    // immediately to the live canvas. Unlayer's loadDesign() is synchronous.
+    loadDesign(design) {
+      editorRef.current?.editor?.loadDesign(design);
+    },
   }));
 
   const onLoad = (unlayer) => {

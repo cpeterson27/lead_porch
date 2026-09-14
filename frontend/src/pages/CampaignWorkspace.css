@@ -288,30 +288,22 @@
   grid-template-columns: 1fr 1fr;
 }
 
-/* A compact disclosure rather than a full-width banner — collapsed, it's
-   a single inline row; expanding it reveals the upload/reset controls and
-   an explanation that this logo is a reference asset only, not something
-   auto-inserted into the email (see services/email.js's renderEmailContent,
-   which now only auto-injects a logo for legacy non-Unlayer templates). */
+/* A single compact row — the logo isn't auto-placed anywhere; "Insert logo"
+   drops it into the canvas as a normal image block (see insertLogoBlock in
+   CampaignWorkspace.jsx), which the user can then drag, resize, realign, or
+   delete with Unlayer's own controls, same as any other block. See also
+   services/email.js's renderEmailContent, which no longer auto-injects a
+   logo for Unlayer-designed templates. */
 .campaign-email-logo {
-  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   max-width: 100%;
+  padding: 0.4rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   background: var(--surface-strong);
 }
-
-.campaign-email-logo > summary {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.4rem 0.7rem;
-  list-style: none;
-  cursor: pointer;
-  font-size: 0.8rem;
-}
-
-.campaign-email-logo > summary::-webkit-details-marker { display: none; }
 
 .campaign-email-logo img {
   width: 22px;
@@ -320,50 +312,31 @@
   border-radius: var(--radius-sm);
   background: var(--surface);
   border: 1px solid var(--border);
+  flex-shrink: 0;
 }
 
-.campaign-email-logo > summary span {
-  font-weight: 700;
-}
-
-.campaign-email-logo > summary small {
+.campaign-email-logo > small {
   color: var(--text-muted);
+  font-size: 0.74rem;
+  line-height: 1.3;
+  flex: 1 1 auto;
+  min-width: 120px;
 }
 
-.campaign-email-logo__panel {
-  display: grid;
-  gap: 0.6rem;
-  padding: 0 0.7rem 0.7rem;
-}
-
-.campaign-email-logo__panel p {
-  margin: 0;
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  line-height: 1.5;
-}
-
-.campaign-email-logo__actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-}
-
-.campaign-email-logo__upload {
+.campaign-email-logo__change,
+.campaign-email-logo__reset {
   position: relative;
-  padding: 0.5rem 0.9rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--text);
-  font-size: 0.82rem;
+  padding: 0.3rem 0.1rem;
+  background: none;
+  border: 0;
+  color: var(--accent);
+  font-size: 0.78rem;
   font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
 }
 
-.campaign-email-logo__upload input {
+.campaign-email-logo__change input {
   position: absolute;
   inset: 0;
   opacity: 0;

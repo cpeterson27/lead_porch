@@ -210,6 +210,53 @@ export default function CampaignWorkspace() {
     }
   };
 
+  // Drops the chosen logo in as a normal, editable image block instead of
+  // auto-placing it anywhere — once it's in the canvas the user drags it
+  // wherever they want (header, footer, centered), resizes or realigns it
+  // with Unlayer's own image controls, or deletes the block entirely if
+  // they decide against it.
+  const insertLogoBlock = async () => {
+    const logoUrl = campaign.brand?.emailLogoUrl || workspaceDefaultLogoUrl;
+    if (!logoUrl) {
+      setError("Upload a logo below (or set a default in Knowledge Center) before inserting it.");
+      return;
+    }
+    try {
+      const current = await messageRef.current.exportHtml();
+      const base = current?.design?.body ? current.design : { body: { rows: [], values: {} } };
+      const logoRow = {
+        cells: [1],
+        columns: [
+          {
+            contents: [
+              {
+                type: "image",
+                values: {
+                  containerPadding: "16px",
+                  src: { url: logoUrl, width: 160 },
+                  textAlign: "center",
+                  altText: "Logo",
+                },
+              },
+            ],
+            values: {},
+          },
+        ],
+        values: {},
+      };
+      const nextDesign = {
+        ...base,
+        body: { ...base.body, rows: [logoRow, ...(base.body.rows || [])] },
+      };
+      await messageRef.current.loadDesign(nextDesign);
+      const exported = await messageRef.current.exportHtml();
+      handleDesignChange(exported);
+      setTemplateNotice("Logo added — drag it, resize it, or delete it like any other block.");
+    } catch (err) {
+      setError(err.message || "Unable to insert the logo right now.");
+    }
+  };
+
   const saveAudienceTags = async (nextAudience) => {
     setAudienceTagsSaving(true);
     setError("");
@@ -988,55 +1035,48 @@ export default function CampaignWorkspace() {
                     />
                   </label>
                 </div>
-                <details className="campaign-email-logo">
-                  <summary>
-                    <img
-                      src={campaign.brand?.emailLogoUrl || workspaceDefaultLogoUrl}
-                      alt="Email logo"
-                      onError={(event) => { event.currentTarget.style.visibility = "hidden"; }}
+                <div className="campaign-email-logo">
+                  <img
+                    src={campaign.brand?.emailLogoUrl || workspaceDefaultLogoUrl}
+                    alt=""
+                    onError={(event) => { event.currentTarget.style.visibility = "hidden"; }}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!(campaign.brand?.emailLogoUrl || workspaceDefaultLogoUrl)}
+                    onClick={insertLogoBlock}
+                  >
+                    Insert logo
+                  </Button>
+                  <small>
+                    Adds it as a normal block — drag, resize, or delete it
+                    like anything else.
+                  </small>
+                  <label className="campaign-email-logo__change">
+                    {logoSaving ? "Saving…" : "Change"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={logoSaving}
+                      onChange={(event) => {
+                        chooseEmailLogo(event.target.files?.[0]);
+                        event.target.value = "";
+                      }}
                     />
-                    <span>Email logo</span>
-                    <small>
-                      {campaign.brand?.emailLogoUrl ? "Custom" : "Default"}
-                    </small>
-                  </summary>
-                  <div className="campaign-email-logo__panel">
-                    <p>
-                      {campaign.brand?.emailLogoUrl
-                        ? "Using a logo chosen for this campaign."
-                        : "Using your Knowledge Center default logo."}{" "}
-                      This is only a reference image — nothing is added to
-                      your email automatically. Drag the logo into the
-                      editor yourself if you want it in the message, and
-                      place it wherever you like.
-                    </p>
-                    <div className="campaign-email-logo__actions">
-                      <label className="campaign-email-logo__upload">
-                        {logoSaving ? "Saving…" : "Choose a different logo"}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          disabled={logoSaving}
-                          onChange={(event) => {
-                            chooseEmailLogo(event.target.files?.[0]);
-                            event.target.value = "";
-                          }}
-                        />
-                      </label>
-                      {campaign.brand?.emailLogoUrl ? (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          disabled={logoSaving}
-                          onClick={resetEmailLogoToDefault}
-                        >
-                          Reset to default
-                        </Button>
-                      ) : null}
-                    </div>
-                  </div>
-                </details>
+                  </label>
+                  {campaign.brand?.emailLogoUrl ? (
+                    <button
+                      type="button"
+                      className="campaign-email-logo__reset"
+                      disabled={logoSaving}
+                      onClick={resetEmailLogoToDefault}
+                    >
+                      Reset
+                    </button>
+                  ) : null}
+                </div>
               </div>
               <div className="campaign-email-workspace">
                 <div className="campaign-email-workspace__editor">
