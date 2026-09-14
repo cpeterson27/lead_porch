@@ -1,6 +1,7 @@
 const integrationHub = require("./integrationHub");
 const IntegrationConnection = require("../models/IntegrationConnection");
 const Contact = require("../models/Contact");
+const Campaign = require("../models/Campaign");
 const Workspace = require("../models/Workspace");
 const WorkspaceConfig = require("../models/WorkspaceConfig");
 const EmailSuppression = require("../models/EmailSuppression");
@@ -24,6 +25,16 @@ async function renderEmailContent(
       : {}),
     key: "primary",
   }).lean();
+  // A campaign can choose its own logo (Email design -> Logo); when it
+  // hasn't, the workspace's Knowledge Center logo is the default. Resolved
+  // here, in the one place both a real send and the preview render from,
+  // so the two can never show a different logo than what's actually sent.
+  const campaignLogoUrl = outreachItem.campaignId
+    ? String(
+        (await Campaign.findById(outreachItem.campaignId).select("brand.logoUrl").lean())
+          ?.brand?.logoUrl || "",
+      ).trim()
+    : "";
   if (!workspaceConfig?.postalAddress?.trim() && !preview) {
     throw new Error(
       "Add the business mailing address in Settings before sending campaign email.",
@@ -60,7 +71,8 @@ async function renderEmailContent(
       )
       .join("")}</body></html>`;
   const organizationLogo = String(
-    workspaceConfig?.branding?.publicSiteLogoUrl ||
+    campaignLogoUrl ||
+      workspaceConfig?.branding?.publicSiteLogoUrl ||
       workspaceConfig?.organizationLogoUrl ||
       "",
   ).trim();

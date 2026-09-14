@@ -61,21 +61,6 @@ function emailButtonRow(buttons = [], backgroundColor = "#000000") {
   return `<table role="presentation" border="0" cellpadding="0" cellspacing="0" style="border-collapse:separate;margin:18px 0 0;"><tr>${validButtons.map((button) => `<td style="padding:0 10px 10px 0;vertical-align:top;">${emailButton(button.url, button.label, button.backgroundColor || backgroundColor)}</td>`).join("")}</tr></table>`;
 }
 
-function normalizePublicUrl(value = "") {
-  const trimmed = String(value || "").trim();
-  if (!trimmed) return "";
-  return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
-}
-
-function emailBrandFooter(logoUrl, websiteUrl, campaignName) {
-  const normalizedWebsite = normalizePublicUrl(websiteUrl);
-  if (!logoUrl && !normalizedWebsite) return "";
-  return `<div style="border-top:1px solid #e4e0d8;margin-top:32px;padding-top:22px;text-align:center;">
-${logoUrl ? `<img src="${escapeHtml(logoUrl)}" alt="${escapeHtml(campaignName)} logo" style="display:block;max-width:160px;max-height:64px;height:auto;width:auto;object-fit:contain;margin:0 auto 12px;">` : ""}
-${normalizedWebsite ? `<a href="${escapeHtml(normalizedWebsite)}" target="_blank" style="color:#315f52;text-decoration:underline;">${escapeHtml(normalizedWebsite.replace(/^https?:\/\//i, "").replace(/\/$/, ""))}</a>` : ""}
-</div>`;
-}
-
 function fillTemplate(value = "", variables = {}) {
   const filled = Object.entries(variables).reduce(
     (output, [key, replacement]) => output.replaceAll(`{{${key}}}`, String(replacement || "")),
@@ -168,8 +153,6 @@ function generateOutreachDraft(contact, campaign) {
       ? ""
       : "https://res.cloudinary.com/de1vvqtp3/image/upload/v1784844473/deal-to-close-flyer.png_bmxmbw.png"
   );
-  const brandLogoUrl = campaign.brand?.flyerUrl ? campaign.brand?.logoUrl || "" : "";
-  const brandWebsiteUrl = String(campaign.brand?.websiteUrl || "").trim();
   const eventDate = formatEventDate(campaign.startDate) || "Saturday, September 12, 2026";
 
 
@@ -246,7 +229,6 @@ ${savedBodyIsHtml
     : textToHtml(applyCanonicalEventDate(fillTemplate(savedBody, variables), eventDate, campaignName))}
 ${flyerUrl && !savedBodyIsHtml ? `<img src="${escapeHtml(flyerUrl)}" alt="${escapeHtml(campaign.programName || campaignName)}" style="display:block;width:100%;max-width:600px;height:auto;border-radius:8px;margin:28px 0;">` : ""}
 ${emailButtonRow(emailButtons, campaign.brand?.accentColor || "#173f36")}
-${emailBrandFooter(brandLogoUrl, brandWebsiteUrl, campaignName)}
 </body>
 </html>
 `.trim() : `
@@ -296,8 +278,6 @@ Would you be open to discussing a potential partnership?
 Thank you,<br>
 Ellie's Coaching
 </p>
-
-${emailBrandFooter(brandLogoUrl, brandWebsiteUrl, campaignName)}
 
 </body>
 </html>
