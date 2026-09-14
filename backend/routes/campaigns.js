@@ -240,7 +240,26 @@ router.get("/:id/email-template", async (req, res) => {
       lastSentAt: used?.lastSentAt || null,
     };
   });
-  const selectedTemplate = audienceTemplate || effectiveTemplate(campaign);
+  const savedMainTemplate = campaign.emailTemplate?.subject
+    || campaign.emailTemplate?.body
+    || campaign.emailTemplate?.designJson
+    ? campaign.emailTemplate.toObject?.() || campaign.emailTemplate
+    : {
+        subject: "",
+        body: "",
+        designJson: null,
+        callToAction: "",
+        callToActionUrl: "",
+        additionalButtons: [],
+        topic: campaign.campaignKind === "program" ? "program_offers" : "event_invitations",
+        status: "draft",
+        currentVersion: 0,
+        approvedAt: null,
+      };
+  // A new main email should open as a blank canvas. Canned campaign copy is
+  // still available through "Generate ideas with AI", but is no longer
+  // silently presented as though the owner wrote or saved it.
+  const selectedTemplate = audienceTemplate || savedMainTemplate;
   const template = {
     ...selectedTemplate,
     body: applyCanonicalEventDate(

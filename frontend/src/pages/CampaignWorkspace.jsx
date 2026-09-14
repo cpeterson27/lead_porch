@@ -57,6 +57,13 @@ const RESEARCH_EMAIL_AUDIENCES = [
   { key: "research-community-partner", label: "Community partner" },
   { key: "research-ticket-buyer", label: "Individual ticket buyer" },
 ];
+const PERSONALIZATION_TOKENS = [
+  ["First name", "{{firstName}}"],
+  ["Company", "{{company}}"],
+  ["Campaign name", "{{campaignName}}"],
+  ["Event date", "{{eventDate}}"],
+  ["Registration link", "{{eventLink}}"],
+];
 
 export default function CampaignWorkspace() {
   const { id } = useParams();
@@ -82,6 +89,7 @@ export default function CampaignWorkspace() {
   const [newAudienceTag, setNewAudienceTag] = useState("");
   const [templateDirty, setTemplateDirty] = useState(false);
   const [templateNotice, setTemplateNotice] = useState("");
+  const [copiedToken, setCopiedToken] = useState("");
   const [emailPreview, setEmailPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
@@ -257,6 +265,60 @@ export default function CampaignWorkspace() {
     }
   };
 
+  const insertLogoWithTextBlock = async () => {
+    const logoUrl = campaign.brand?.emailLogoUrl || workspaceDefaultLogoUrl;
+    if (!logoUrl) {
+      setError("Upload a logo below (or set a default in Knowledge Center) before inserting it.");
+      return;
+    }
+    try {
+      const current = await messageRef.current.exportHtml();
+      const base = current?.design?.body ? current.design : { body: { rows: [], values: {} } };
+      const sideBySideRow = {
+        cells: [1, 2],
+        columns: [
+          {
+            contents: [
+              {
+                type: "image",
+                values: {
+                  containerPadding: "12px",
+                  src: { url: logoUrl, width: 150 },
+                  textAlign: "center",
+                  altText: "Logo",
+                },
+              },
+            ],
+            values: { padding: "0px" },
+          },
+          {
+            contents: [
+              {
+                type: "text",
+                values: {
+                  containerPadding: "12px",
+                  text: "<p style=\"font-size:16px;line-height:1.5;margin:0;\"><strong>Your name</strong><br>Your title or message</p>",
+                },
+              },
+            ],
+            values: { padding: "0px" },
+          },
+        ],
+        values: { columns: false },
+      };
+      const nextDesign = {
+        ...base,
+        body: { ...base.body, rows: [...(base.body.rows || []), sideBySideRow] },
+      };
+      await messageRef.current.loadDesign(nextDesign);
+      const exported = await messageRef.current.exportHtml();
+      handleDesignChange(exported);
+      setTemplateNotice("Logo + text added side by side. Click either side to edit its size, spacing, or content.");
+    } catch (err) {
+      setError(err.message || "Unable to insert the side-by-side layout right now.");
+    }
+  };
+
   const saveAudienceTags = async (nextAudience) => {
     setAudienceTagsSaving(true);
     setError("");
@@ -309,6 +371,15 @@ export default function CampaignWorkspace() {
     setEmailTemplate((current) => ({ ...current, [field]: value }));
     setTemplateDirty(true);
     setTemplateNotice("");
+  };
+  const copyPersonalizationToken = async (token) => {
+    try {
+      await navigator.clipboard.writeText(token);
+      setCopiedToken(token);
+      window.setTimeout(() => setCopiedToken(""), 1800);
+    } catch {
+      setTemplateNotice(`Copy ${token}, then paste it where you want it in the subject or message.`);
+    }
   };
   const openAudienceDetails = () => {
     const node = audienceDetailsRef.current;
@@ -451,6 +522,13 @@ export default function CampaignWorkspace() {
     }
   };
   const previewTemplate = async ({ silent = false } = {}) => {
+    const hasDesignedContent = Boolean(emailTemplate?.designJson?.body?.rows?.length);
+    if (!String(emailTemplate?.subject || "").trim() && !hasDesignedContent) {
+      setEmailPreview(null);
+      setPreviewError("");
+      setPreviewLoading(false);
+      return;
+    }
     try {
       if (!silent) setTemplateSaving(true);
       setPreviewLoading(true);
@@ -1035,6 +1113,27 @@ export default function CampaignWorkspace() {
                     />
                   </label>
                 </div>
+                <div className="campaign-personalization" aria-label="Email personalization fields">
+                  <div>
+                    <strong>Personalize your email</strong>
+                    <small>
+                      Click a field to copy it, then paste it exactly where you want it in the subject or message.
+                    </small>
+                  </div>
+                  <div className="campaign-personalization__tokens">
+                    {PERSONALIZATION_TOKENS.map(([label, token]) => (
+                      <button
+                        type="button"
+                        key={token}
+                        onClick={() => copyPersonalizationToken(token)}
+                        title={`Copy ${token}`}
+                      >
+                        <span>{label}</span>
+                        <code>{copiedToken === token ? "Copied" : token}</code>
+                      </button>
+                    ))}
+                  </div>
+                </div>
                 <div className="campaign-email-logo">
                   <img
                     src={campaign.brand?.emailLogoUrl || workspaceDefaultLogoUrl}
@@ -1050,9 +1149,18 @@ export default function CampaignWorkspace() {
                   >
                     Insert logo
                   </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!(campaign.brand?.emailLogoUrl || workspaceDefaultLogoUrl)}
+                    onClick={insertLogoWithTextBlock}
+                  >
+                    Insert logo + text
+                  </Button>
                   <small>
-                    Adds it as a normal block — drag, resize, or delete it
-                    like anything else.
+                    Add the logo by itself or beside editable words. Both
+                    options stay movable and resizable.
                   </small>
                   <label className="campaign-email-logo__change">
                     {logoSaving ? "Saving…" : "Change"}
@@ -1090,9 +1198,9 @@ export default function CampaignWorkspace() {
                   <small>
                     Drag in blocks, images, and buttons; every element has
                     its own size, alignment, and font controls when
-                    selected. Use the {"{ }"} icon in the text tool to
-                    insert personalization like the recipient's first
-                    name — and to wire a button to the real registration
+                    selected. You can also select a text block and use its
+                    {" { } "} menu to insert the same personalization fields.
+                    To wire a button to the real registration
                     link, use {"{{eventLink}}"} as its URL.
                   </small>
                 </div>
@@ -1129,7 +1237,7 @@ export default function CampaignWorkspace() {
                     />
                   ) : (
                     <div className="campaign-preview-placeholder">
-                      Building your email preview…
+                      Start with a blank email, add a row, and your preview will appear here.
                     </div>
                   )}
                 </div>
