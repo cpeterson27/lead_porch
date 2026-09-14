@@ -53,7 +53,7 @@
 
 .audience-flow > div {
   align-items: flex-start;
-  background: #f7f6f2;
+  background: var(--surface-strong);
   border: 1px solid var(--border);
   border-radius: 10px;
   display: grid;
@@ -64,9 +64,9 @@
 
 .audience-flow > div > span {
   align-items: center;
-  background: #dcebe6;
+  background: var(--accent-soft);
   border-radius: 8px;
-  color: #1f5c50;
+  color: var(--accent);
   display: inline-flex;
   font-size: 0.76rem;
   font-weight: 850;
@@ -125,7 +125,7 @@
 }
 
 .campaign-match-table__head {
-  background: #f3f2ed;
+  background: var(--surface-strong);
   color: var(--text-muted);
   font-size: 0.68rem;
   font-weight: 850;
@@ -168,7 +168,7 @@
 }
 
 .campaign-match-pagination button {
-  background: #fff;
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text);

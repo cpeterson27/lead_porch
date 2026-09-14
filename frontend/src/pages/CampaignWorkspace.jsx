@@ -9,11 +9,9 @@ import {
   fetchCampaign,
   fetchCampaignEmailTemplate,
   fetchContacts,
-  fetchImageUploadStatus,
   previewCampaignAudience,
   previewCampaignEmailTemplate,
   saveCampaignEmailTemplate,
-  updateCampaignBrand,
   updateCampaignSchedule,
   uploadEventImage,
 } from "../services/api.js";
@@ -65,13 +63,8 @@ export default function CampaignWorkspace() {
   const [audienceMatch, setAudienceMatch] = useState(null);
   const [matchingAudience, setMatchingAudience] = useState(false);
   const [matchPage, setMatchPage] = useState(1);
-  const [brandSaving, setBrandSaving] = useState(false);
-  const [brandNotice, setBrandNotice] = useState("");
   const [scheduleSaving, setScheduleSaving] = useState(false);
-  const [imageUpload, setImageUpload] = useState({
-    configured: false,
-    loaded: false,
-  });
+  const [scheduleNotice, setScheduleNotice] = useState("");
   const [emailTemplate, setEmailTemplate] = useState(null);
   const [templateVersions, setTemplateVersions] = useState([]);
   const [templateHistoryOpen, setTemplateHistoryOpen] = useState(false);
@@ -85,6 +78,11 @@ export default function CampaignWorkspace() {
   const [previewContactId, setPreviewContactId] = useState("");
   const [templateAudience, setTemplateAudience] = useState("general");
   const [activeSection, setActiveSection] = useState("email");
+  // Unlayer only loads its `design` prop once, on mount — bumping this key
+  // forces a clean remount (and re-load) when restoring a historical
+  // version, since the editor has no supported "swap design mid-session"
+  // event of its own.
+  const [editorInstanceKey, setEditorInstanceKey] = useState(0);
   const messageRef = useRef(null);
 
   useEffect(() => {
@@ -133,9 +131,6 @@ export default function CampaignWorkspace() {
     previewCampaignAudience(id)
       .then(setAudienceMatch)
       .catch(() => setAudienceMatch(null));
-    fetchImageUploadStatus()
-      .then((status) => setImageUpload({ ...status, loaded: true }))
-      .catch(() => setImageUpload({ configured: false, loaded: true }));
   }, [id]);
 
   const refreshAudience = async () => {
@@ -152,12 +147,6 @@ export default function CampaignWorkspace() {
       setMatchingAudience(false);
     }
   };
-
-  const updateBrandField = (field, value) =>
-    setCampaign((current) => ({
-      ...current,
-      brand: { ...current.brand, [field]: value },
-    }));
 
   const handleDesignChange = ({ html, design }) => {
     setEmailTemplate((current) => ({ ...current, body: html, designJson: design }));
@@ -181,28 +170,10 @@ export default function CampaignWorkspace() {
     }
   };
 
-  const saveBrand = async () => {
-    try {
-      setBrandSaving(true);
-      setBrandNotice("");
-      setCampaign(
-        normalizeBrandAssets(
-          await updateCampaignBrand(id, campaign.brand || {}),
-        ),
-      );
-      setBrandNotice(`${isProgram ? "Program" : "Event"} brand saved.`);
-    } catch (err) {
-      setError(
-        err.response?.data?.error || "Unable to save the program brand.",
-      );
-    } finally {
-      setBrandSaving(false);
-    }
-  };
   const saveSchedule = async () => {
     try {
       setScheduleSaving(true);
-      setBrandNotice("");
+      setScheduleNotice("");
       setCampaign(
         normalizeBrandAssets(
           await updateCampaignSchedule(id, campaign.startDate),
@@ -210,7 +181,7 @@ export default function CampaignWorkspace() {
       );
       const refreshed = await fetchCampaignEmailTemplate(id, templateAudience);
       setEmailTemplate(refreshed.template);
-      setBrandNotice(
+      setScheduleNotice(
         "Event date saved. Every campaign template now uses the updated date.",
       );
     } catch (err) {
@@ -225,40 +196,11 @@ export default function CampaignWorkspace() {
     setTemplateDirty(true);
     setTemplateNotice("");
   };
-  const updateAdditionalButton = (index, field, value) => {
-    setEmailTemplate((current) => ({
-      ...current,
-      additionalButtons: (current.additionalButtons || []).map(
-        (button, buttonIndex) =>
-          buttonIndex === index ? { ...button, [field]: value } : button,
-      ),
-    }));
-    setTemplateDirty(true);
-    setTemplateNotice("");
-  };
-  const addEmailButton = () => {
-    setEmailTemplate((current) => ({
-      ...current,
-      additionalButtons: [
-        ...(current.additionalButtons || []),
-        { label: "", url: "" },
-      ],
-    }));
-    setTemplateDirty(true);
-  };
-  const removeEmailButton = (index) => {
-    setEmailTemplate((current) => ({
-      ...current,
-      additionalButtons: (current.additionalButtons || []).filter(
-        (_, buttonIndex) => buttonIndex !== index,
-      ),
-    }));
-    setTemplateDirty(true);
-  };
   const loadHistoricalTemplate = (version) => {
     setEmailTemplate({
       subject: version.subject || "",
       body: version.body || "",
+      designJson: version.designJson || null,
       callToAction: version.callToAction || "",
       callToActionUrl: version.callToActionUrl || "",
       additionalButtons: version.additionalButtons || [],
@@ -269,6 +211,7 @@ export default function CampaignWorkspace() {
     setTemplateHistoryOpen(false);
     setEmailPreview(null);
     setTemplateDirty(true);
+    setEditorInstanceKey((current) => current + 1);
   };
   // The live editor debounces its own auto-sync into `emailTemplate` (see
   // UnlayerEmailEditor's onDesignUpdated), so state is usually fresh — but
@@ -521,14 +464,41 @@ export default function CampaignWorkspace() {
                 {campaign.description}
               </p>
             ) : null}
+            {!isProgram ? (
+              <section className="campaign-date-card">
+                <div>
+                  <span>Event date</span>
+                  <strong>{formatDate(campaign.startDate)}</strong>
+                </div>
+                <input
+                  aria-label="Event date"
+                  type="date"
+                  value={dateInputValue(campaign.startDate)}
+                  onChange={(event) =>
+                    setCampaign((current) => ({
+                      ...current,
+                      startDate: `${event.target.value}T12:00:00.000Z`,
+                    }))
+                  }
+                />
+                <Button
+                  variant="outline"
+                  loading={scheduleSaving}
+                  onClick={saveSchedule}
+                >
+                  Save date
+                </Button>
+                {scheduleNotice ? <p role="status">{scheduleNotice}</p> : null}
+              </section>
+            ) : null}
           </DashboardCard>
         ) : null}
 
         {activeSection === "email" ? (
-          <DashboardCard title="Email campaign studio">
+          <DashboardCard title="Email design" className="campaign-email-studio">
             {emailTemplate ? (
               <div className="campaign-template-editor">
-                <div className="campaign-email-controls">
+                <div className="campaign-email-meta">
                   <div className="campaign-template-editor__status">
                     <span
                       className={`campaign-status-dot ${!templateDirty && emailTemplate.status === "approved" ? "is-approved" : ""}`}
@@ -554,50 +524,54 @@ export default function CampaignWorkspace() {
                       contact.
                     </span>
                   </div>
-                  <label aria-description="Individual overrides are optional.">
-                    <span>Template you are editing</span>
-                    <select
-                      value={templateAudience}
-                      onChange={(event) =>
-                        setTemplateAudience(event.target.value)
-                      }
-                    >
-                      <option value="general">
-                        Main template · automatic fallback
-                      </option>
-                      <optgroup label="Research audiences">
-                        {RESEARCH_EMAIL_AUDIENCES.map((audience) => (
-                          <option value={audience.key} key={audience.key}>
-                            {audience.label}
-                          </option>
-                        ))}
-                      </optgroup>
-                      {(campaign.audience || []).length ? (
-                        <optgroup label="Campaign audiences">
-                          {campaign.audience.map((audience, index) => (
-                            <option
-                              value={`audience-${index}`}
-                              key={`${audience}-${index}`}
-                            >
-                              {audience}
+                  <div className="campaign-email-meta__row">
+                    <label aria-description="Individual overrides are optional.">
+                      <span>Template you are editing</span>
+                      <select
+                        value={templateAudience}
+                        onChange={(event) =>
+                          setTemplateAudience(event.target.value)
+                        }
+                      >
+                        <option value="general">
+                          Main template · automatic fallback
+                        </option>
+                        <optgroup label="Research audiences">
+                          {RESEARCH_EMAIL_AUDIENCES.map((audience) => (
+                            <option value={audience.key} key={audience.key}>
+                              {audience.label}
                             </option>
                           ))}
                         </optgroup>
-                      ) : null}
-                    </select>
-                  </label>
-                  <label>
-                    <span>Subject</span>
-                    <input
-                      value={emailTemplate.subject}
-                      onChange={(event) =>
-                        updateTemplateField("subject", event.target.value)
-                      }
-                    />
-                  </label>
-                  <label>
-                    <span>Message</span>
+                        {(campaign.audience || []).length ? (
+                          <optgroup label="Campaign audiences">
+                            {campaign.audience.map((audience, index) => (
+                              <option
+                                value={`audience-${index}`}
+                                key={`${audience}-${index}`}
+                              >
+                                {audience}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ) : null}
+                      </select>
+                    </label>
+                    <label>
+                      <span>Subject</span>
+                      <input
+                        value={emailTemplate.subject}
+                        onChange={(event) =>
+                          updateTemplateField("subject", event.target.value)
+                        }
+                      />
+                    </label>
+                  </div>
+                </div>
+                <div className="campaign-email-workspace">
+                  <div className="campaign-email-workspace__editor">
                     <UnlayerEmailEditor
+                      key={editorInstanceKey}
                       ref={messageRef}
                       design={emailTemplate.designJson}
                       onDesignChange={handleDesignChange}
@@ -607,166 +581,73 @@ export default function CampaignWorkspace() {
                       Drag in blocks, images, and buttons; every element has
                       its own size, alignment, and font controls when
                       selected. Use the {"{ }"} icon in the text tool to
-                      insert personalization like the recipient's first name.
+                      insert personalization like the recipient's first
+                      name — and to wire a button to the real registration
+                      link, use {"{{eventLink}}"} as its URL.
                     </small>
-                  </label>
-                  <details className="campaign-email-buttons">
-                    <summary>
-                      <span>Links shown as buttons</span>
-                      <small>{1 + (emailTemplate.additionalButtons || []).length} configured</small>
-                    </summary>
-                    <div className="campaign-email-buttons__content">
-                      <p>Add the links readers can choose beneath the message.</p>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        disabled={
-                          (emailTemplate.additionalButtons || []).length >= 4
+                  </div>
+                  <div className="campaign-email-workspace__preview">
+                    <header>
+                      <div>
+                        <span>Live preview</span>
+                        <strong>
+                          {emailPreview?.subject || "Preparing preview…"}
+                        </strong>
+                      </div>
+                      <small className={`campaign-preview-status ${previewLoading ? "is-loading" : ""}`}>
+                        <i aria-hidden="true" />
+                        {previewLoading ? "Updating" : "Updated"}
+                      </small>
+                    </header>
+                    <label className="campaign-preview-recipient">
+                      <span>Previewing as</span>
+                      <select
+                        value={previewContactId}
+                        onChange={(event) =>
+                          setPreviewContactId(event.target.value)
                         }
-                        onClick={addEmailButton}
                       >
-                        + Add another link
-                      </Button>
-                    <div className="campaign-email-button-grid">
-                      <article>
-                        <strong>Registration link</strong>
-                        <label>
-                          <span>What it says</span>
-                          <input
-                            value={emailTemplate.callToAction || ""}
-                            onChange={(event) =>
-                              updateTemplateField(
-                                "callToAction",
-                                event.target.value,
-                              )
-                            }
-                            placeholder="Register now"
-                          />
-                        </label>
-                        <label>
-                          <span>Where it goes</span>
-                          <input
-                            type="url"
-                            value={emailTemplate.callToActionUrl || ""}
-                            onChange={(event) =>
-                              updateTemplateField(
-                                "callToActionUrl",
-                                event.target.value,
-                              )
-                            }
-                            placeholder="https://"
-                          />
-                        </label>
-                      </article>
-                      {(emailTemplate.additionalButtons || []).map(
-                        (button, index) => (
-                          <article key={index}>
-                            <header>
-                              <strong>Additional link</strong>
-                              <button
-                                type="button"
-                                onClick={() => removeEmailButton(index)}
-                              >
-                                Remove
-                              </button>
-                            </header>
-                            <label>
-                              <span>What it says</span>
-                              <input
-                                value={button.label || ""}
-                                onChange={(event) =>
-                                  updateAdditionalButton(
-                                    index,
-                                    "label",
-                                    event.target.value,
-                                  )
-                                }
-                                placeholder="View on Meetup"
-                              />
-                            </label>
-                            <label>
-                              <span>Where it goes</span>
-                              <input
-                                type="url"
-                                value={button.url || ""}
-                                onChange={(event) =>
-                                  updateAdditionalButton(
-                                    index,
-                                    "url",
-                                    event.target.value,
-                                  )
-                                }
-                                placeholder="https://"
-                              />
-                            </label>
-                          </article>
-                        ),
-                      )}
-                    </div>
-                    </div>
-                  </details>
-                  <label>
-                    <span>Preview recipient</span>
-                    <select
-                      value={previewContactId}
-                      onChange={(event) =>
-                        setPreviewContactId(event.target.value)
-                      }
-                    >
-                      <option value="">Example contact</option>
-                      {previewContacts.map((contact) => (
-                        <option key={contact._id} value={contact._id}>
-                          {contact.name ||
-                            [contact.firstName, contact.lastName]
-                              .filter(Boolean)
-                              .join(" ") ||
-                            "Unnamed contact"}
-                          {contact.company ? ` · ${contact.company}` : ""}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <div className="campaign-template-editor__actions">
-                    <Button
-                      variant="outline"
-                      loading={templateSaving}
-                      onClick={saveTemplate}
-                    >
-                      Save draft
-                    </Button>
-                    <Button loading={templateSaving} onClick={approveTemplate}>
-                      Approve new version
-                    </Button>
+                        <option value="">Example contact</option>
+                        {previewContacts.map((contact) => (
+                          <option key={contact._id} value={contact._id}>
+                            {contact.name ||
+                              [contact.firstName, contact.lastName]
+                                .filter(Boolean)
+                                .join(" ") ||
+                              "Unnamed contact"}
+                            {contact.company ? ` · ${contact.company}` : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {previewError ? (
+                      <p className="form-error">{previewError}</p>
+                    ) : null}
+                    {emailPreview ? (
+                      <iframe
+                        title="Live campaign email preview"
+                        srcDoc={emailPreview.html}
+                        sandbox="allow-popups allow-popups-to-escape-sandbox"
+                      />
+                    ) : (
+                      <div className="campaign-preview-placeholder">
+                        Building your email preview…
+                      </div>
+                    )}
                   </div>
                 </div>
-                <aside className="campaign-live-preview">
-                  <header>
-                    <div>
-                      <span>Live preview</span>
-                      <strong>
-                        {emailPreview?.subject || "Preparing preview…"}
-                      </strong>
-                    </div>
-                    <small className={`campaign-preview-status ${previewLoading ? "is-loading" : ""}`}>
-                      <i aria-hidden="true" />
-                      {previewLoading ? "Updating preview" : "Preview updated"}
-                    </small>
-                  </header>
-                  {previewError ? (
-                    <p className="form-error">{previewError}</p>
-                  ) : null}
-                  {emailPreview ? (
-                    <iframe
-                      title="Live campaign email preview"
-                      srcDoc={emailPreview.html}
-                      sandbox="allow-popups allow-popups-to-escape-sandbox"
-                    />
-                  ) : (
-                    <div className="campaign-preview-placeholder">
-                      Building your email preview…
-                    </div>
-                  )}
-                </aside>
+                <div className="campaign-template-editor__actions">
+                  <Button
+                    variant="outline"
+                    loading={templateSaving}
+                    onClick={saveTemplate}
+                  >
+                    Save draft
+                  </Button>
+                  <Button loading={templateSaving} onClick={approveTemplate}>
+                    Approve new version
+                  </Button>
+                </div>
                 {templateVersions.length ? (
                   <section className="campaign-template-history">
                     <button
@@ -806,7 +687,6 @@ export default function CampaignWorkspace() {
                                 ? ` · used for ${version.sentCount} sent email${version.sentCount === 1 ? "" : "s"}`
                                 : " · never sent"}
                             </small>
-                            <pre>{version.body}</pre>
                             <footer>
                               <Button
                                 variant="outline"
@@ -834,78 +714,6 @@ export default function CampaignWorkspace() {
             ) : (
               <p>Loading the master template…</p>
             )}
-          </DashboardCard>
-        ) : null}
-
-        {activeSection === "email" ? (
-          <DashboardCard title={isProgram ? "Program brand" : "Event brand"}>
-            <div className="program-brand-editor">
-              {!isProgram ? (
-                <section className="campaign-date-card">
-                  <div>
-                    <span>Event date</span>
-                    <strong>{formatDate(campaign.startDate)}</strong>
-                  </div>
-                  <input
-                    aria-label="Event date"
-                    type="date"
-                    value={dateInputValue(campaign.startDate)}
-                    onChange={(event) =>
-                      setCampaign((current) => ({
-                        ...current,
-                        startDate: `${event.target.value}T12:00:00.000Z`,
-                      }))
-                    }
-                  />
-                  <Button
-                    variant="outline"
-                    loading={scheduleSaving}
-                    onClick={saveSchedule}
-                  >
-                    Save date
-                  </Button>
-                </section>
-              ) : null}
-              <p className="campaign-template-help">
-                Add your flyer or logo directly in the Message editor above
-                (Insert image) — that's the one place to place and size any
-                image in this email now.
-              </p>
-              <div className="campaign-brand-fields">
-                <label>
-                  <span>Website</span>
-                  <input
-                    type="url"
-                    value={campaign.brand?.websiteUrl || ""}
-                    placeholder="https://"
-                    onChange={(event) =>
-                      updateBrandField("websiteUrl", event.target.value)
-                    }
-                  />
-                </label>
-                <label>
-                  <span>Accent color</span>
-                  <input
-                    type="color"
-                    value={campaign.brand?.accentColor || "#173f36"}
-                    onChange={(event) =>
-                      updateBrandField("accentColor", event.target.value)
-                    }
-                  />
-                </label>
-              </div>
-              {!imageUpload.configured ? (
-                <p className="image-hosting-note">
-                  Image upload is not configured for this workspace.
-                </p>
-              ) : null}
-              <div className="campaign-brand-save">
-                <Button loading={brandSaving} onClick={saveBrand}>
-                  Save {isProgram ? "program" : "event"} brand
-                </Button>
-                {brandNotice ? <p role="status">{brandNotice}</p> : null}
-              </div>
-            </div>
           </DashboardCard>
         ) : null}
 

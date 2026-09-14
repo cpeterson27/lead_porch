@@ -177,7 +177,7 @@ router.get("/:id/email-template", async (req, res) => {
   const audienceTemplate = audienceKey === "general" ? null : campaign.emailAudienceTemplates?.[audienceKey] || defaultResearchAudienceTemplate(audienceKey, campaign);
   const versions = await CampaignTemplateVersion.find({ campaignId: campaign._id })
     .sort({ version: -1 })
-    .select("version subject body callToAction callToActionUrl additionalButtons topic approvedAt approvedByUserId createdAt")
+    .select("version subject body designJson callToAction callToActionUrl additionalButtons topic approvedAt approvedByUserId createdAt")
     .lean();
   const usage = await Outreach.aggregate([
     { $match: { campaignId: campaign._id, status: { $in: ["sent", "replied"] } } },

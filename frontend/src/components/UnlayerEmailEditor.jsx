@@ -80,7 +80,7 @@ const UnlayerEmailEditor = forwardRef(function UnlayerEmailEditor(
       ref={editorRef}
       onLoad={onLoad}
       onDesignUpdated={handleDesignUpdated}
-      minHeight={560}
+      minHeight={780}
       options={{
         projectId: Number(import.meta.env.VITE_UNLAYER_PROJECT_ID) || undefined,
         mergeTags: MERGE_TAGS,
