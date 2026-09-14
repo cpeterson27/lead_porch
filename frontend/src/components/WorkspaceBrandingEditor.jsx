@@ -20,6 +20,22 @@ const SOCIALS = [
   ["YouTube", "https://youtube.com/"],
 ];
 
+function ColorSwatch({ value, onChange, label }) {
+  return (
+    <span
+      className="brand-color-swatch"
+      style={{ "--swatch-color": value }}
+    >
+      <input
+        type="color"
+        value={value}
+        aria-label={label}
+        onChange={onChange}
+      />
+    </span>
+  );
+}
+
 function AssetField({ label, help, value, onChange, onUpload, busy }) {
   const [advanced, setAdvanced] = useState(false);
   return (
@@ -245,7 +261,7 @@ export default function WorkspaceBrandingEditor({
     <div className="workspace-branding-editor">
       <section
         className="public-branding-section"
-        style={{ "--branding-accent": brand.accentColor || "#a8d65e" }}
+        style={{ "--branding-accent": app.accentColor || "#7457ff" }}
       >
         <header>
           <p className="page-eyebrow">Public website branding</p>
@@ -360,9 +376,9 @@ export default function WorkspaceBrandingEditor({
         <div className="brand-color-grid">
           <label>
             Primary color
-            <input
-              type="color"
+            <ColorSwatch
               value={brand.primaryColor || "#173f36"}
+              label="Public website primary color"
               onChange={(event) =>
                 patchPublic("primaryColor", event.target.value)
               }
@@ -370,9 +386,9 @@ export default function WorkspaceBrandingEditor({
           </label>
           <label>
             Accent color
-            <input
-              type="color"
+            <ColorSwatch
               value={brand.accentColor || "#a8d65e"}
+              label="Public website accent color"
               onChange={(event) =>
                 patchPublic("accentColor", event.target.value)
               }
@@ -477,9 +493,9 @@ export default function WorkspaceBrandingEditor({
           ].map(([key, label]) => (
             <label key={key}>
               {label}
-              <input
-                type="color"
+              <ColorSwatch
                 value={app[key] || "#ffffff"}
+                label={label}
                 onChange={(event) => patchApp(key, event.target.value)}
               />
             </label>

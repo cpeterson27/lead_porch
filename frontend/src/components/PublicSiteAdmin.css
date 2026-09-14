@@ -471,44 +471,46 @@
   padding: 8px 12px;
   font-size: 0.82rem;
 }
-.brand-color-grid input[type="color"] {
-  flex: none;
-  box-sizing: border-box !important;
-  flex: 0 0 38px !important;
-  width: 38px !important;
-  min-width: 38px !important;
-  max-width: 38px !important;
-  height: 38px !important;
-  min-height: 38px !important;
-  max-height: 38px !important;
-  aspect-ratio: 1;
-  padding: 3px;
+.brand-color-swatch {
+  position: relative;
+  display: block;
+  box-sizing: border-box;
+  flex: 0 0 42px;
+  inline-size: 42px;
+  min-inline-size: 42px;
+  max-inline-size: 42px;
+  block-size: 42px;
+  min-block-size: 42px;
+  max-block-size: 42px;
+  aspect-ratio: 1 / 1;
   border: 1px solid #d9e2de;
-  border-radius: 50% !important;
-  background: #fff;
+  border-radius: 50%;
+  background: var(--swatch-color, #fff);
   box-shadow: none;
   overflow: hidden;
   cursor: pointer;
-  appearance: none;
-  -webkit-appearance: none;
+}
+.brand-color-swatch input[type="color"] {
+  position: absolute !important;
+  inset: 0 !important;
+  box-sizing: border-box !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: 100% !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 50% !important;
+  opacity: 0;
+  cursor: pointer;
 }
 .workspace-branding-editor > section .page-eyebrow {
   color: var(--branding-accent, var(--app-accent, #7457ff)) !important;
 }
 /* Chrome/Safari paint the native color swatch as a small rect with its
    own inset padding by default — clip it to fill the circle above. */
-.brand-color-grid input[type="color"]::-webkit-color-swatch-wrapper {
-  padding: 0;
-  border-radius: 50%;
-}
-.brand-color-grid input[type="color"]::-webkit-color-swatch {
-  border: 0;
-  border-radius: 50%;
-}
-.brand-color-grid input[type="color"]::-moz-color-swatch {
-  border: 0;
-  border-radius: 50%;
-}
 .brand-live-preview {
   align-items: center;
   background: #f7f8f7;

@@ -75,3 +75,26 @@
 .public-admin>nav button:hover{background:#f3f2f8!important;border-color:#e7e4f0!important}
 .public-admin>nav button.is-active{background:color-mix(in srgb,var(--app-primary-action,#7457ff) 12%,#fff)!important;border-color:color-mix(in srgb,var(--app-primary-action,#7457ff) 26%,#fff)!important;color:var(--app-primary-action,#5a43dc)!important}
 .public-admin>.page-eyebrow,.public-admin>header .page-eyebrow{color:var(--website-editor-accent,var(--app-accent,#7457ff))!important}
+
+/* Settings theme wins over the legacy green website-manager palette. */
+.settings-page .website-brand-tabs button:hover:not(.is-active){background:#f3f2f8!important;color:#30333d!important;box-shadow:none!important}
+.settings-page .website-brand-tabs button.is-active{background:var(--app-primary-action,#7457ff)!important;color:#fff!important;box-shadow:none!important}
+.workspace-branding-editor .website-upload-button,
+.workspace-branding-editor .brand-asset-field__actions button,
+.workspace-branding-editor .logo-slot__actions button{
+  border:1px solid var(--app-primary-action,#7457ff)!important;
+  border-radius:999px!important;
+  background:var(--app-primary-action,#7457ff)!important;
+  color:#fff!important;
+  box-shadow:none!important;
+  cursor:pointer!important;
+}
+.workspace-branding-editor .brand-asset-field__actions button,
+.workspace-branding-editor .logo-slot__actions button{
+  background:#fff!important;
+  color:var(--app-primary-action,#7457ff)!important;
+}
+.workspace-branding-editor .website-upload-button:hover,
+.workspace-branding-editor .brand-asset-field__actions button:hover,
+.workspace-branding-editor .logo-slot__actions button:hover{filter:brightness(.96)}
+.workspace-branding-editor .brand-advanced-toggle{color:var(--app-primary-action,#7457ff)!important;cursor:pointer!important}

@@ -349,13 +349,26 @@ export default function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse
       ),
     }))
     .filter((group) => group.items.length);
-  // The dashboard sidebar is always a dark surface, so it prefers the
-  // dark-backgrounds logo — the same single light/dark logo pair used
-  // everywhere else (public website, application page).
   const brand = socialConnectionOnly
     ? {}
     : displayedOrganization?.branding || site?.branding || {};
-  const appLogo = brand.publicSiteLogoDarkUrl || brand.publicSiteLogoUrl || "";
+  const sidebarColor =
+    displayedOrganization?.appBranding?.sidebarBackgroundColor ||
+    site?.appBranding?.sidebarBackgroundColor ||
+    "#10121f";
+  const normalizedColor = sidebarColor.replace("#", "");
+  const rgb =
+    normalizedColor.length === 3
+      ? normalizedColor.split("").map((value) => parseInt(value + value, 16))
+      : [0, 2, 4].map((offset) =>
+          parseInt(normalizedColor.slice(offset, offset + 2), 16),
+        );
+  const sidebarIsDark =
+    rgb.every(Number.isFinite) &&
+    (rgb[0] * 299 + rgb[1] * 587 + rgb[2] * 114) / 1000 < 150;
+  const appLogo = sidebarIsDark
+    ? brand.publicSiteLogoDarkUrl || brand.publicSiteLogoUrl || ""
+    : brand.publicSiteLogoUrl || brand.publicSiteLogoDarkUrl || "";
   return (
     <aside
       className={`${isOpen ? "sidebar sidebar--open" : "sidebar"} ${isCollapsed ? "sidebar--collapsed" : ""}`}
