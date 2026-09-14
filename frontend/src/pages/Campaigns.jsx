@@ -76,13 +76,16 @@ export default function Campaigns() {
   const activeCount = visibleCampaigns.filter((campaign) => campaign.status === "active").length;
   const totalGoal = visibleCampaigns.reduce((sum, campaign) => sum + Number(campaign.ticketGoal || 0), 0);
   const totalSold = visibleCampaigns.reduce((sum, campaign) => sum + Number(campaign.eventId?.eventbriteLogistics?.ticketsSold ?? campaign.ticketsSold ?? 0), 0);
+  const programOnly = visibleCampaigns.length > 0 && visibleCampaigns.every((campaign) => campaign.campaignKind === "program");
+  const totalEmailSent = visibleCampaigns.reduce((sum, campaign) => sum + Number(campaign.metrics?.sent || 0), 0);
+  const totalEmailOpened = visibleCampaigns.reduce((sum, campaign) => sum + Number(campaign.metrics?.opened || 0), 0);
 
   return <div className="page-dashboard campaigns-page">
     <div className="page-header"><div><p className="page-eyebrow">Campaign portfolio</p><h1 className="page-title">Campaigns</h1><p className="page-subtitle">See the objective, audience, progress, and next action for every campaign.</p></div><div className="campaign-create-actions"><Button variant="outline" onClick={() => { setError(""); setDefaultCampaignKind("event"); setIsOpen(true); }}>+ Event</Button><Button onClick={() => { setError(""); setDefaultCampaignKind("program"); setIsOpen(true); }}>+ Program</Button></div></div>
     <section className="campaign-summary">
       <div><FiTarget /><span><strong>{visibleCampaigns.length}</strong>{selectedId === "all" ? "Total campaigns" : "Selected workspace"}</span></div>
       <div><FiCalendar /><span><strong>{activeCount}</strong>Active now</span></div>
-      <div><FiUsers /><span><strong>{totalSold} / {totalGoal}</strong>Registrations vs goal</span></div>
+      <div><FiUsers /><span><strong>{programOnly ? `${totalEmailOpened} / ${totalEmailSent}` : `${totalSold} / ${totalGoal}`}</strong>{programOnly ? "Email opens vs sent" : "Registrations vs goal"}</span></div>
     </section>
     {loading ? <div className="table-state">Loading campaigns…</div> : visibleCampaigns.length ? <section className="campaign-card-grid">
       {visibleCampaigns.map((campaign) => {
@@ -92,17 +95,28 @@ export default function Campaigns() {
         const basePrice = Number(campaign.eventId?.ticketPrice ?? campaign.ticketPrice ?? 0);
         const checkoutPrice = Number(logistics.minimumCheckoutPrice || 0);
         const progress = goal ? Math.min(100, Math.round((sold / goal) * 100)) : 0;
+        const isProgram = campaign.campaignKind === "program";
+        const sent = Number(campaign.metrics?.sent || 0);
+        const delivered = Number(campaign.metrics?.delivered || 0);
+        const opened = Number(campaign.metrics?.opened || 0);
+        const emailProgress = sent ? Math.min(100, Math.round((opened / sent) * 100)) : 0;
         return <article className="campaign-card" key={campaign._id}>
-          <header><span className={`campaign-state campaign-state--${campaign.status}`}>{campaign.status || "draft"}</span><span>{campaign.campaignKind === "program" ? "Program" : "Event campaign"}</span></header>
+          <header><span className={`campaign-state campaign-state--${campaign.status}`}>{campaign.status || "draft"}</span><span>{isProgram ? "Email campaign" : "Event campaign"}</span></header>
           <h2>{campaign.name}</h2>
           <p className="campaign-card__audience">{campaign.audience?.join(" · ") || "Audience not approved yet"}</p>
           <div className="campaign-card__meta">
-            <span><small>Date</small><strong>{campaign.startDate ? new Date(campaign.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Evergreen"}</strong></span>
-            <span><small>Current buyer price</small><strong>{campaign.campaignKind === "program" ? "Program" : checkoutPrice ? `From $${checkoutPrice.toFixed(2)}` : `$${basePrice.toFixed(2)}`}</strong>{checkoutPrice > basePrice ? <small>${basePrice.toFixed(2)} base + fees</small> : null}</span>
-            <span><small>Progress</small><strong>{sold} / {goal || "—"}</strong></span>
+            {isProgram ? <>
+              <span><small>Matched recipients</small><strong>{campaign.audienceMatch?.matchedCount || 0}</strong></span>
+              <span><small>Sent</small><strong>{sent}</strong></span>
+              <span><small>Opened</small><strong>{opened}</strong>{delivered ? <small>{delivered} delivered</small> : null}</span>
+            </> : <>
+              <span><small>Date</small><strong>{campaign.startDate ? new Date(campaign.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Evergreen"}</strong></span>
+              <span><small>Current buyer price</small><strong>{checkoutPrice ? `From $${checkoutPrice.toFixed(2)}` : `$${basePrice.toFixed(2)}`}</strong>{checkoutPrice > basePrice ? <small>${basePrice.toFixed(2)} base + fees</small> : null}</span>
+              <span><small>Registrations</small><strong>{sold} / {goal || "—"}</strong></span>
+            </>}
           </div>
-          <div className="campaign-progress"><span style={{ width: `${progress}%` }} /></div>
-          <footer><span>{progress}% of registration goal</span><div><Button variant="ghost" size="sm" onClick={() => openDeleteModal(campaign)}>Delete</Button><Button variant="outline" size="sm" onClick={() => navigate(`/campaigns/${campaign._id}`)}>Open workspace <FiArrowRight /></Button></div></footer>
+          <div className="campaign-progress"><span style={{ width: `${isProgram ? emailProgress : progress}%` }} /></div>
+          <footer><span>{isProgram ? sent ? `${emailProgress}% open rate` : "No emails sent yet" : `${progress}% of registration goal`}</span><div><Button variant="ghost" size="sm" onClick={() => openDeleteModal(campaign)}>Delete</Button><Button variant="outline" size="sm" onClick={() => navigate(`/campaigns/${campaign._id}`)}>Open workspace <FiArrowRight /></Button></div></footer>
         </article>;
       })}
     </section> : <div className="table-state table-state--empty">No campaigns are active yet.</div>}

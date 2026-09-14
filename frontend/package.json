@@ -20,6 +20,7 @@
     "test:public-application-ui": "node test-public-application-ui.js",
     "test:contact-import-linkedin": "node test-contact-import-linkedin.js",
     "test:campaign-template-routing-ui": "node test-campaign-template-routing-ui.js",
+    "test:campaign-card-metrics-ui": "node test-campaign-card-metrics-ui.js",
     "test:campaign-email-studio-ui": "node test-campaign-email-studio-ui.js",
     "test:coaching-history-ui": "node test-coaching-history-ui.js",
     "test:referrals-commissions-ui": "node test-referrals-commissions-ui.js",

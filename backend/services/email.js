@@ -31,8 +31,8 @@ async function renderEmailContent(
   // so the two can never show a different logo than what's actually sent.
   const campaignLogoUrl = outreachItem.campaignId
     ? String(
-        (await Campaign.findById(outreachItem.campaignId).select("brand.logoUrl").lean())
-          ?.brand?.logoUrl || "",
+        (await Campaign.findById(outreachItem.campaignId).select("brand.emailLogoUrl").lean())
+          ?.brand?.emailLogoUrl || "",
       ).trim()
     : "";
   if (!workspaceConfig?.postalAddress?.trim() && !preview) {

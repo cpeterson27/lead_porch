@@ -448,19 +448,22 @@ router.post("/:id/email-template/approve", requireRole("owner", "admin"), async 
 
 router.patch("/:id/brand", async (req, res) => {
   try {
-    const accentColor = /^#[0-9a-f]{6}$/i.test(String(req.body?.accentColor || ""))
-      ? req.body.accentColor
-      : "#173f36";
+    // Merges only the fields the caller actually sent, rather than
+    // replacing the whole brand object — the email logo picker only ever
+    // sends `emailLogoUrl`, and shouldn't silently blank out anything else.
+    const set = {};
+    if (req.body?.emailLogoUrl !== undefined) set["brand.emailLogoUrl"] = String(req.body.emailLogoUrl || "").trim();
+    if (req.body?.logoUrl !== undefined) set["brand.logoUrl"] = String(req.body.logoUrl || "").trim();
+    if (req.body?.flyerUrl !== undefined) set["brand.flyerUrl"] = String(req.body.flyerUrl || "").trim();
+    if (req.body?.websiteUrl !== undefined) set["brand.websiteUrl"] = String(req.body.websiteUrl || "").trim();
+    if (req.body?.accentColor !== undefined) {
+      set["brand.accentColor"] = /^#[0-9a-f]{6}$/i.test(String(req.body.accentColor || ""))
+        ? req.body.accentColor
+        : "#173f36";
+    }
     const campaign = await Campaign.findByIdAndUpdate(
       req.params.id,
-      { $set: {
-        brand: {
-          logoUrl: String(req.body?.logoUrl || "").trim(),
-          flyerUrl: String(req.body?.flyerUrl || "").trim(),
-          websiteUrl: String(req.body?.websiteUrl || "").trim(),
-          accentColor,
-        },
-      } },
+      { $set: set },
       { new: true, runValidators: true },
     );
     if (!campaign) return res.status(404).json({ error: "Campaign not found." });

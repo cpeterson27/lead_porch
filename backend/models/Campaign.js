@@ -31,6 +31,13 @@ const campaignSchema = new mongoose.Schema(
     flyerUrl: { type: String, default: "" },
     websiteUrl: { type: String, default: "" },
     accentColor: { type: String, default: "#173f36" },
+    // The logo shown in this campaign's emails. Deliberately a separate
+    // field from logoUrl/flyerUrl above (the older program-logo/flyer
+    // fields, which frontend/src/pages/CampaignWorkspace.jsx's
+    // normalizeBrandAssets silently shuffles between each other) — an
+    // empty value here means "use the workspace's Knowledge Center logo",
+    // resolved in services/email.js's renderEmailContent.
+    emailLogoUrl: { type: String, default: "" },
   },
 
 

@@ -258,6 +258,62 @@
   grid-template-columns: 1fr 1fr;
 }
 
+.campaign-email-logo {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+}
+
+.campaign-email-logo img {
+  width: 44px;
+  height: 44px;
+  object-fit: contain;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+
+.campaign-email-logo > div {
+  display: grid;
+  gap: 0.1rem;
+  margin-right: auto;
+  min-width: 0;
+}
+
+.campaign-email-logo > div > span {
+  font-weight: 750;
+  font-size: 0.85rem;
+}
+
+.campaign-email-logo > div > small {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
+.campaign-email-logo__upload {
+  position: relative;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.campaign-email-logo__upload input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
 .campaign-template-editor__status {
   display: flex;
   align-items: center;
@@ -611,7 +667,8 @@
   .campaign-idea-generator {
     grid-template-columns: 1fr;
   }
-  .campaign-audience-source {
+  .campaign-audience-source,
+  .campaign-email-logo {
     align-items: flex-start;
     flex-direction: column;
   }

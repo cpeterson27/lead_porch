@@ -9,10 +9,12 @@ import {
   assignCampaignAudience,
   fetchCampaign,
   fetchCampaignEmailTemplate,
+  fetchWorkspaceConfig,
   generateCampaignEmailIdeas,
   previewCampaignAudience,
   previewCampaignEmailTemplate,
   saveCampaignEmailTemplate,
+  updateCampaignBrand,
   updateCampaignSchedule,
   uploadEventImage,
 } from "../services/api.js";
@@ -73,6 +75,8 @@ export default function CampaignWorkspace() {
   const [templateSaving, setTemplateSaving] = useState(false);
   const [ideaGenerating, setIdeaGenerating] = useState(false);
   const [ideaPrompt, setIdeaPrompt] = useState("");
+  const [workspaceDefaultLogoUrl, setWorkspaceDefaultLogoUrl] = useState("");
+  const [logoSaving, setLogoSaving] = useState(false);
   const [templateDirty, setTemplateDirty] = useState(false);
   const [templateNotice, setTemplateNotice] = useState("");
   const [emailPreview, setEmailPreview] = useState(null);
@@ -122,6 +126,12 @@ export default function CampaignWorkspace() {
       .catch(() => setAudienceMatch(null));
   }, [id]);
 
+  useEffect(() => {
+    fetchWorkspaceConfig()
+      .then((config) => setWorkspaceDefaultLogoUrl(config.organizationLogoUrl || ""))
+      .catch(() => {});
+  }, []);
+
   const refreshAudience = async () => {
     try {
       setMatchingAudience(true);
@@ -169,6 +179,31 @@ export default function CampaignWorkspace() {
     } catch (err) {
       setError(err.response?.data?.error || "Unable to upload that image.");
       return null;
+    }
+  };
+
+  const chooseEmailLogo = async (file) => {
+    if (!file) return;
+    setLogoSaving(true);
+    setError("");
+    try {
+      const url = await uploadInlineImage(file);
+      if (!url) return;
+      setCampaign(normalizeBrandAssets(await updateCampaignBrand(id, { emailLogoUrl: url })));
+    } finally {
+      setLogoSaving(false);
+    }
+  };
+
+  const resetEmailLogoToDefault = async () => {
+    setLogoSaving(true);
+    setError("");
+    try {
+      setCampaign(normalizeBrandAssets(await updateCampaignBrand(id, { emailLogoUrl: "" })));
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to reset the logo.");
+    } finally {
+      setLogoSaving(false);
     }
   };
 
@@ -612,6 +647,44 @@ export default function CampaignWorkspace() {
                         }
                       />
                     </label>
+                  </div>
+                  <div className="campaign-email-logo">
+                    <img
+                      src={campaign.brand?.emailLogoUrl || workspaceDefaultLogoUrl}
+                      alt="Email logo"
+                      onError={(event) => { event.currentTarget.style.visibility = "hidden"; }}
+                    />
+                    <div>
+                      <span>Email logo</span>
+                      <small>
+                        {campaign.brand?.emailLogoUrl
+                          ? "Using a logo chosen for this campaign."
+                          : "Using your Knowledge Center default logo."}
+                      </small>
+                    </div>
+                    <label className="campaign-email-logo__upload">
+                      {logoSaving ? "Saving…" : "Choose a different logo"}
+                      <input
+                        type="file"
+                        accept="image/*"
+                        disabled={logoSaving}
+                        onChange={(event) => {
+                          chooseEmailLogo(event.target.files?.[0]);
+                          event.target.value = "";
+                        }}
+                      />
+                    </label>
+                    {campaign.brand?.emailLogoUrl ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={logoSaving}
+                        onClick={resetEmailLogoToDefault}
+                      >
+                        Reset to default
+                      </Button>
+                    ) : null}
                   </div>
                 </div>
                 <div className="campaign-email-workspace">
