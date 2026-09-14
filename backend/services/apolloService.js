@@ -128,7 +128,14 @@ async function searchPeople({ workspaceId, userId = null, filters = {}, page = 1
   if (cached) { await logUsage({ workspaceId, userId, endpoint: "mixed_people/api_search", operation: "search_people", success: true, resultCount: cached.people.length, latencyMs: 0, cacheHit: true, correlationId }); return cached; }
   const started = Date.now();
   try {
-    const response = await withResilience(CIRCUIT_KEY, () => client().post("/mixed_people/api_search", { ...filters, page: Math.max(1, Number(page) || 1), per_page: safePerPage }));
+    // Apollo's People API Search accepts its filters as query parameters.
+    // Posting them as a JSON body can return HTTP 200 with an empty result
+    // set because the requested titles/locations were never applied.
+    const response = await withResilience(CIRCUIT_KEY, () => client().post(
+      "/mixed_people/api_search",
+      null,
+      { params: { ...filters, page: Math.max(1, Number(page) || 1), per_page: safePerPage } },
+    ));
     const people = dedupePeople((response.data?.people || []).map(normalizePerson));
     const result = { people, pagination: { page: response.data?.pagination?.page || page, totalEntries: response.data?.pagination?.total_entries ?? people.length, totalPages: response.data?.pagination?.total_pages ?? 1 } };
     writeCache(key, result);

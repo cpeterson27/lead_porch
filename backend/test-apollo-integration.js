@@ -55,7 +55,14 @@ async function testEnabledSearchNormalizesAndCaches(models) {
     pagination: { page: 1, total_entries: 2, total_pages: 1 },
   };
   let calls = 0;
-  axios.create = () => ({ post: async (path, body) => { calls += 1; assert.equal(path, "/mixed_people/api_search"); assert.equal(body.per_page, 25); return { data: officialFixture }; } });
+  axios.create = () => ({ post: async (path, body, config) => {
+    calls += 1;
+    assert.equal(path, "/mixed_people/api_search");
+    assert.equal(body, null);
+    assert.equal(config.params.per_page, 25);
+    assert.deepEqual(config.params.person_titles, ["VP of Sales"]);
+    return { data: officialFixture };
+  } });
   const result = await apollo.searchPeople({ workspaceId: models.workspaceId, userId: models.userId, filters: { person_titles: ["VP of Sales"] } });
   assert.equal(result.people.length, 2, "duplicate Apollo IDs must be deduplicated");
   const jane = result.people.find((p) => p.externalId === "p1");
