@@ -64,3 +64,14 @@
 .website-management-cards button{align-self:end;justify-self:start;width:auto;min-width:144px;min-height:42px;margin-top:auto;padding:10px 16px;border:1px solid var(--color-brand,#173f36)!important;border-radius:10px!important;background:var(--color-brand,#173f36)!important;color:#fff!important;text-align:center;white-space:nowrap}
 .website-management-cards button:hover{background:var(--color-brand-hover,#102f28)!important}
 @media(max-width:760px){.website-status-grid{grid-template-columns:repeat(5,190px);padding:16px 20px 20px}.website-management-cards{grid-template-columns:1fr}.website-management-cards article{min-height:190px}.website-management-cards button{width:auto;min-width:144px}}
+
+/* Brand-aware actions and neutral, unmistakably interactive website tabs. */
+.website-brand-header__actions a{border-color:var(--app-primary-action,#7457ff)!important;border-radius:999px!important;cursor:pointer}
+.website-brand-header__actions .website-live-action{background:var(--app-primary-action,#7457ff)!important;border-color:var(--app-primary-action,#7457ff)!important;box-shadow:none;color:#fff!important}
+.website-brand-header__actions .website-preview-action{background:#fff!important;color:var(--app-primary-action,#7457ff)!important}
+.website-brand-header__actions a:hover{filter:brightness(.96)}
+.public-admin>nav{background:#fff}
+.public-admin>nav button{background:transparent!important;border:1px solid transparent!important;color:#30333d!important;cursor:pointer!important;box-shadow:none!important;transition:background-color .16s ease,border-color .16s ease,color .16s ease}
+.public-admin>nav button:hover{background:#f3f2f8!important;border-color:#e7e4f0!important}
+.public-admin>nav button.is-active{background:color-mix(in srgb,var(--app-primary-action,#7457ff) 12%,#fff)!important;border-color:color-mix(in srgb,var(--app-primary-action,#7457ff) 26%,#fff)!important;color:var(--app-primary-action,#5a43dc)!important}
+.public-admin>.page-eyebrow,.public-admin>header .page-eyebrow{color:var(--website-editor-accent,var(--app-accent,#7457ff))!important}

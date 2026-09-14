@@ -443,7 +443,10 @@ export default function PublicSiteAdmin({ section = "website" }) {
       <div className="public-admin">{error || "Loading Website & Brand…"}</div>
     );
   return (
-    <div className="website-focused-panel public-admin">
+    <div
+      className="website-focused-panel public-admin"
+      style={{ "--website-editor-accent": config.branding?.accentColor || "#7457ff" }}
+    >
       {section === "website" ? (
         <header>
           <div>

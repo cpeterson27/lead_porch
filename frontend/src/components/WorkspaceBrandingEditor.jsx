@@ -243,7 +243,10 @@ export default function WorkspaceBrandingEditor({
     brand = config.branding || {};
   return (
     <div className="workspace-branding-editor">
-      <section>
+      <section
+        className="public-branding-section"
+        style={{ "--branding-accent": brand.accentColor || "#a8d65e" }}
+      >
         <header>
           <p className="page-eyebrow">Public website branding</p>
           <h4>Visitor-facing identity</h4>
@@ -428,16 +431,29 @@ export default function WorkspaceBrandingEditor({
           })}
         </div>
       </section>
-      <section>
+      <section
+        className="app-branding-section"
+        style={{ "--branding-accent": app.accentColor || "#7457ff" }}
+      >
         <header>
           <p className="page-eyebrow">Lead Porch app branding</p>
           <h4>Authenticated workspace identity</h4>
           <p>
             Used by Owner, Admin, Coach, Closer, Ambassador, Member, and Viewer
-            portals. The sidebar always shows the dark-backgrounds logo set
-            above — there's no separate logo to manage here.
+            portals. Replace the dashboard logo here; the dark-background
+            version is used in the sidebar.
           </p>
         </header>
+        <LogoField
+          lightValue={brand.publicSiteLogoUrl || ""}
+          darkValue={brand.publicSiteLogoDarkUrl || ""}
+          onChangeLight={(value) => patchPublic("publicSiteLogoUrl", value)}
+          onChangeDark={(value) => patchPublic("publicSiteLogoDarkUrl", value)}
+          onUploadLight={(file) => upload("branding", "publicSiteLogoUrl", file)}
+          onUploadDark={(file) => upload("branding", "publicSiteLogoDarkUrl", file)}
+          busyLight={uploading === "branding.publicSiteLogoUrl"}
+          busyDark={uploading === "branding.publicSiteLogoDarkUrl"}
+        />
         <div className="brand-assets-list">
           {APP_ASSETS.map(([key, label, help]) => (
             <AssetField
