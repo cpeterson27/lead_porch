@@ -15,7 +15,7 @@ const assert = require("node:assert/strict");
 const leadGenerationCoordinatorService = require("./services/leadGenerationCoordinatorService");
 const vertexGroundingDiscoveryService = require("./services/vertexGroundingDiscoveryService");
 
-const { detectExclusionFlags, buildQualifyResponseSchema, computeQualificationOutcome, qualifyAndRecommend, approveAndRunSearch } = leadGenerationCoordinatorService;
+const { detectExclusionFlags, buildQualifyResponseSchema, computeQualificationOutcome, qualifyAndRecommend, approveAndRunSearch, mapToApolloSeniority, buildApolloFilters, parseCompanySizeToApolloRange, broadenIcp } = leadGenerationCoordinatorService;
 const { computeIdentityConfidence } = vertexGroundingDiscoveryService;
 
 function leanQuery(result) {
@@ -263,6 +263,106 @@ async function testApproveAndRunSearchRequestsAndMergesRealApolloPagesBeyondPage
   assert.ok(rows.every((row) => row.name.startsWith("Apollo P3-")), "the persisted rows must be page 3's higher-fit candidates specifically — only possible if page 3 was both requested AND merged into the ranked pool, not fetched and discarded");
 }
 
+// Confirmed live against the real API: Apollo's person_seniorities 422s/
+// zeros the WHOLE search on a value outside its fixed vocabulary
+// (owner/founder/c_suite/partner/vp/head/director/manager/senior/entry/
+// intern). mapToApolloSeniority must map confident synonyms and drop
+// anything ambiguous — never pass an unmapped raw value through.
+function testMapToApolloSeniorityMapsConfidentlyAndDropsAmbiguousTerms() {
+  assert.equal(mapToApolloSeniority("Owner"), "owner");
+  assert.equal(mapToApolloSeniority("Founder"), "founder");
+  assert.equal(mapToApolloSeniority("Co-Founder"), "founder");
+  assert.equal(mapToApolloSeniority("Chief Executive Officer"), "c_suite");
+  assert.equal(mapToApolloSeniority("VP of Sales"), "vp");
+  assert.equal(mapToApolloSeniority("Director"), "director");
+  assert.equal(mapToApolloSeniority("Senior Manager"), "senior");
+  assert.equal(mapToApolloSeniority("Manager"), "manager");
+  assert.equal(mapToApolloSeniority("Individual Contributor"), null, "an ambiguous term (could be junior or senior) must never be guessed into a bucket");
+  assert.equal(mapToApolloSeniority("Some Random Title"), null);
+  assert.equal(mapToApolloSeniority(""), null);
+
+  const filters = buildApolloFilters({ titles: ["Real Estate Investor"], seniority: ["Individual Contributor", "Manager", "Owner", "Founder", "Partner"] });
+  assert.deepEqual(filters.person_seniorities, ["manager", "owner", "founder", "partner"], "only the confidently-mapped values reach Apollo — the ambiguous one is silently dropped, never passed through raw");
+  assert.equal(filters.q_keywords, undefined, "q_keywords must never be sent — confirmed live it requires near-impossible co-occurrence and has an undocumented length limit that 422s the whole search");
+
+  const allAmbiguous = buildApolloFilters({ titles: ["Owner"], seniority: ["Individual Contributor"] });
+  assert.equal(allAmbiguous.person_seniorities, undefined, "when nothing maps, the filter must be omitted entirely rather than sent as an empty/invalid value");
+}
+
+function testParseCompanySizeToApolloRange() {
+  assert.equal(parseCompanySizeToApolloRange("10-50"), "10,50");
+  assert.equal(parseCompanySizeToApolloRange("10-50 employees"), "10,50");
+  assert.equal(parseCompanySizeToApolloRange("500+"), "500,1000000");
+  assert.equal(parseCompanySizeToApolloRange("10 to 50"), "10,50");
+  assert.equal(parseCompanySizeToApolloRange(""), null);
+  assert.equal(parseCompanySizeToApolloRange("small business"), null, "unparseable text must never be guessed into a fabricated range");
+  assert.equal(parseCompanySizeToApolloRange("50-10"), null, "a backwards range (min > max) must never be sent as-is");
+
+  const filters = buildApolloFilters({ titles: ["Owner"], companySizeRange: "10-50" });
+  assert.deepEqual(filters.organization_num_employees_ranges, ["10,50"]);
+}
+
+function testBroadenIcpDropsCompanySizeInTheCascade() {
+  const icp = { industries: [], companySizeRange: "10-50", seniority: ["Owner"], locations: ["Austin"], keywords: ["foo"] };
+  const step1 = broadenIcp(icp);
+  assert.equal(step1.relaxed, "company size", "with no industries, company size is the next field to relax");
+  assert.equal(step1.icp.companySizeRange, "");
+  const step2 = broadenIcp(step1.icp);
+  assert.equal(step2.relaxed, "seniority");
+  const step3 = broadenIcp(step2.icp);
+  assert.equal(step3.relaxed, "locations");
+  const step4 = broadenIcp(step3.icp);
+  assert.equal(step4.relaxed, "keywords");
+  assert.equal(broadenIcp(step4.icp), null, "nothing left to relax once every optional field is emptied");
+}
+
+// The automatic enrichment waterfall: a persisted candidate with no email
+// must get an automatic Apollo enrichment attempt (the account's own
+// primary paid source) before anything is reported back — a lead nobody
+// can email is not a usable lead. Uses a real in-memory row store so
+// enrichWithApollo's own Model.findOne(resultId)/row.save() calls behave
+// like the real GroundingResearchResult model would.
+async function testApproveAndRunSearchAutomaticallyEnrichesCandidatesMissingAnEmail() {
+  const DiscoverySearchModel = {
+    doc: {
+      _id: "search-enrich", status: "proposed", sources: ["apollo_person_search"], requestedCount: 1,
+      icp: { titles: ["Real Estate Investor"], locations: [], industries: [], keywords: [], seniority: [] },
+      programName: "Test", save: async function save() { return this; },
+    },
+    findOne: async () => DiscoverySearchModel.doc,
+  };
+  const rowsById = new Map();
+  const GroundingResearchResult = {
+    findOne: async (filter) => {
+      if (filter._id) return rowsById.get(String(filter._id)) || null;
+      return null;
+    },
+    create: async (doc) => {
+      const id = `gr-${rowsById.size}`;
+      const row = {
+        _id: id, conflicts: [], providers: [], ...doc,
+        save: async function save() { rowsById.set(id, this); return this; },
+      };
+      rowsById.set(id, row);
+      return row;
+    },
+  };
+  const apolloService = {
+    searchPeople: async () => ({ people: [{ fullName: "No Email Person", title: "Real Estate Investor", company: "Acme", companyDomain: "", linkedinUrl: "apollo-1", email: "", emailState: "" }] }),
+    enrichPerson: async () => ({ email: "found@example.com", emailState: "verified" }),
+  };
+
+  const result = await approveAndRunSearch(
+    { workspaceId: "workspace-1", userId: "u1", auth: { workspaceId: "workspace-1" }, searchId: "search-enrich" },
+    { DiscoverySearch: DiscoverySearchModel, apolloService, GroundingResearchResult, getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }), isSelfMatch: () => ({ isSelf: false, reasons: [] }) },
+  );
+
+  const savedRow = [...rowsById.values()][0];
+  assert.equal(savedRow.apolloEnrichment?.matched, true, "the automatic waterfall must have run Apollo enrichment without any manual click");
+  assert.equal(savedRow.apolloEnrichment?.email, "found@example.com", "the enrichment's found email must be recorded — saveResult() already prioritizes this over row.email when saving to a real Contact");
+  assert.ok(result.runSummary.explanation.includes("Automatically found a verified email"), "the run explanation must surface that auto-enrichment happened");
+}
+
 async function run() {
   testComputeIdentityConfidenceFollowsTheFourRules();
   testDetectExclusionFlagsCatchesProfessionalsNotStudents();
@@ -277,6 +377,10 @@ async function run() {
   await testQualifyAndRecommendReportsAnAccurateCompletionSummary();
   await testApproveAndRunSearchGathersARankedPoolAndKeepsOnlyTheBestByFit();
   await testApproveAndRunSearchRequestsAndMergesRealApolloPagesBeyondPage1();
+  testMapToApolloSeniorityMapsConfidentlyAndDropsAmbiguousTerms();
+  testParseCompanySizeToApolloRange();
+  testBroadenIcpDropsCompanySizeInTheCascade();
+  await testApproveAndRunSearchAutomaticallyEnrichesCandidatesMissingAnEmail();
   console.log("Lead qualification: identityConfidence is computed deterministically from real provider/corroboration/conflict signals (never left at a stale 'low' for a strongly-corroborated identity — the Ellie Baxter fix), the qualify schema structurally cannot return a program outside the workspace's real approved list (the fabrication fix, plus a defensive discard if one ever slips through), qualification requires ALL THREE separate signals — identity, program fit, and buyer-intent evidence — before 'qualified'/outreach is ever recommended (never a title alone), ICP exclusions and identity conflicts are handled as distinct, sensible outcomes, the completion summary accurately counts processed/qualified/needsReview/notAFit/failed including a candidate the model silently omitted, every selected provider runs, and the overall new-candidate cap remains enforced — all passed.");
 }
 

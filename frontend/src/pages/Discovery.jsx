@@ -1780,6 +1780,19 @@ export default function Discovery() {
               : result.discoveryMode === "public_web_high_volume" ? "Public-web evidence (high-volume discovery)"
                 : "Public-web evidence";
             const corroborated = (result.providers || []).length >= 2;
+            // Same email priority saveResult() uses when actually saving to a
+            // Contact — an enrichment find (PDL, then Apollo) beats whatever
+            // the discovery source itself supplied. Without this, a card
+            // could show "no verified contact" even after enrichment found a
+            // real usable email, since that lives on a separate nested field.
+            const effectiveEmail = result.pdlEnrichment?.matched && result.pdlEnrichment?.email
+              ? { email: result.pdlEnrichment.email, state: result.pdlEnrichment.emailState || "provider_validated" }
+              : result.apolloEnrichment?.matched && result.apolloEnrichment?.email
+                ? { email: result.apolloEnrichment.email, state: result.apolloEnrichment.emailState || "unverified" }
+                : result.email
+                  ? { email: result.email, state: result.emailVerificationStatus || result.emailState || "unverified" }
+                  : null;
+            const enrichmentAttemptedNoEmail = !effectiveEmail && (result.pdlEnrichment?.attempted || result.apolloEnrichment?.attempted);
             return (
               <article key={result._id} className={`review-card is-${result.status} qualification-${result.qualificationLabel || "unscored"}`}>
                 <header className="review-card__header">
@@ -1803,7 +1816,7 @@ export default function Discovery() {
 
                 <small>{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
                 {result.linkedinUrl ? <small><a href={result.linkedinUrl} target="_blank" rel="noreferrer">Profile URL ↗</a></small> : null}
-                {result.email ? <small>Contact: {result.email} ({result.emailVerificationStatus || result.emailState || "unverified"})</small> : <small className="review-card__missing">Public lead found · verified contact not supplied</small>}
+                {effectiveEmail ? <small>Contact: {effectiveEmail.email} ({effectiveEmail.state})</small> : enrichmentAttemptedNoEmail ? <small className="review-card__missing">Identity matched, but no email is available from any provider tried</small> : <small className="review-card__missing">Public lead found · verified contact not supplied</small>}
                 {result.type === "person" && result.discoveryMode !== "icp_match" ? (
                   <small>{result.evidenceDate ? `Evidence date: ${new Date(result.evidenceDate).toLocaleDateString()} (${result.evidenceAgeDays} day${result.evidenceAgeDays === 1 ? "" : "s"} old)` : "No verifiable evidence date"}{result.freshnessTier ? ` · ${result.freshnessTier}` : ""}</small>
                 ) : result.discoveryMode === "icp_match" ? <small>Structured database match — not a dated public post, never described as recent intent.</small> : null}

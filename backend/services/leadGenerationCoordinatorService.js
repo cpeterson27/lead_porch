@@ -404,34 +404,114 @@ function buildPdlSql(icp) {
 }
 
 /**
- * Deliberately sends ONLY titles and locations as hard Apollo search
- * filters — confirmed live against the real API that person_seniorities
- * and q_keywords can each silently zero out an otherwise-good search:
- *
- * - person_seniorities only recognizes Apollo's own fixed vocabulary
- *   (owner/founder/c_suite/partner/vp/head/director/manager/senior/entry/
- *   intern). Jarvis's freeform ICP guesses ("Individual Contributor" etc.)
- *   aren't in that list, and Apollo doesn't ignore an unrecognized value —
- *   it returns ZERO people for the whole search, even when the titles
- *   alone match hundreds of real people. Confirmed: the exact same title
- *   list found 100+ people alone, and 0 with Jarvis's seniority values.
- * - q_keywords requires most/all of the joined phrases to co-occur on a
- *   profile — a natural-language keyword list (e.g. 12 phrases from a
- *   program description) is a bar almost nobody clears, and it also has
- *   an undocumented ~225-character length limit that 422s the whole
- *   request outright above it.
- *
- * Neither signal is wasted — both are still fully used by
- * computeIcpFitScore() to RANK the fetched pool afterward, where a
- * substring match is forgiving instead of a hard, closed-vocabulary
+ * Apollo's person_seniorities ONLY recognizes its own fixed vocabulary and
+ * returns ZERO people for the whole search on an unrecognized value —
+ * confirmed live (see buildApolloFilters below). Rather than dropping
+ * seniority entirely, map Jarvis's freeform ICP guesses to Apollo's real
+ * enum wherever there's a confident match, and simply omit anything that
+ * doesn't map — never invent or guess a bucket for an ambiguous term like
+ * "Individual Contributor" (which could mean anything from junior to a
+ * senior specialist). Confirmed live: real enum values actually narrow
+ * results correctly (e.g. "owner"/"founder" surfaced people whose titles
+ * literally say Founder/Owner).
+ */
+const APOLLO_SENIORITY_MAP = {
+  owner: "owner",
+  founder: "founder",
+  cofounder: "founder",
+  "co-founder": "founder",
+  "c-suite": "c_suite",
+  "c suite": "c_suite",
+  "c-level": "c_suite",
+  "c level": "c_suite",
+  ceo: "c_suite",
+  cfo: "c_suite",
+  coo: "c_suite",
+  cto: "c_suite",
+  cmo: "c_suite",
+  president: "c_suite",
+  partner: "partner",
+  vp: "vp",
+  "vice president": "vp",
+  head: "head",
+  director: "director",
+  manager: "manager",
+  senior: "senior",
+  "senior manager": "senior",
+  intern: "intern",
+  internship: "intern",
+  entry: "entry",
+  "entry level": "entry",
+  associate: "entry",
+  junior: "entry",
+};
+
+function mapToApolloSeniority(value) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return null;
+  if (APOLLO_SENIORITY_MAP[normalized]) return APOLLO_SENIORITY_MAP[normalized];
+  if (/\bchief\b.*\bofficer\b|\bc-suite\b|\bc suite\b/.test(normalized)) return "c_suite";
+  if (/\bvice president\b|\bvp\b/.test(normalized)) return "vp";
+  if (/\bco-?founder\b|\bfounder\b/.test(normalized)) return "founder";
+  if (/\bowner\b/.test(normalized)) return "owner";
+  if (/\bpartner\b/.test(normalized)) return "partner";
+  if (/\bdirector\b/.test(normalized)) return "director";
+  if (/\bhead of\b|\bhead\b/.test(normalized)) return "head";
+  if (/\bmanager\b/.test(normalized)) return "manager";
+  if (/\bsenior\b/.test(normalized)) return "senior";
+  if (/\bintern\b/.test(normalized)) return "intern";
+  if (/\bentry\b|\bassociate\b|\bjunior\b/.test(normalized)) return "entry";
+  return null;
+}
+
+function mapSeniorityToApollo(seniority) {
+  return [...new Set((seniority || []).map(mapToApolloSeniority).filter(Boolean))];
+}
+
+/**
+ * Parses a freeform company-size string ("10-50", "50-200 employees",
+ * "500+") into Apollo's documented `min,max` range format. Confirmed live
+ * that Apollo accepts both its own standard buckets and arbitrary ranges
+ * without erroring either way, so no attempt is made to snap to a
+ * specific predefined bucket — just a sane, safely-parsed range, or
+ * nothing at all if the text isn't confidently parseable (never guess).
+ */
+function parseCompanySizeToApolloRange(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const plusMatch = text.match(/(\d[\d,]*)\s*\+/);
+  if (plusMatch) return `${Number(plusMatch[1].replace(/,/g, ""))},1000000`;
+  const rangeMatch = text.match(/(\d[\d,]*)\s*(?:-|–|to)\s*(\d[\d,]*)/i);
+  if (rangeMatch) {
+    const min = Number(rangeMatch[1].replace(/,/g, ""));
+    const max = Number(rangeMatch[2].replace(/,/g, ""));
+    if (Number.isFinite(min) && Number.isFinite(max) && min <= max) return `${min},${max}`;
+  }
+  return null;
+}
+
+/**
+ * Sends titles, locations, a mapped (never guessed) seniority list, and a
+ * parsed company-size range as hard Apollo search filters. Deliberately
+ * does NOT send q_keywords — confirmed live that it requires most/all of
+ * a joined natural-language keyword list to co-occur on a profile, an
+ * unrealistic bar, and it also has an undocumented ~225-character length
+ * limit that 422s the whole request above it. Keywords (and industries,
+ * which Apollo's search API has no reliable free-text filter for) are
+ * still fully used by computeIcpFitScore() to RANK the fetched pool
+ * afterward, where a substring match is forgiving instead of a hard
  * filter that can return nothing. This is what makes an automated search
- * behave like a person searching apollo.com directly (broad title search,
+ * behave like a person searching apollo.com directly (broad filters,
  * then eyeball-prioritize) instead of silently over-constraining itself.
  */
 function buildApolloFilters(icp) {
   const filters = {};
   if (icp.titles?.length) filters.person_titles = icp.titles;
   if (icp.locations?.length) filters.person_locations = icp.locations;
+  const seniority = mapSeniorityToApollo(icp.seniority);
+  if (seniority.length) filters.person_seniorities = seniority;
+  const employeeRange = parseCompanySizeToApolloRange(icp.companySizeRange);
+  if (employeeRange) filters.organization_num_employees_ranges = [employeeRange];
   return filters;
 }
 
@@ -604,6 +684,7 @@ function computeIcpFitScore(person, icp) {
 /** Relaxes the single most specific optional ICP field, in priority order, so an auto-broadened retry stays as close as possible to the original request. Returns null once nothing optional is left to relax. */
 function broadenIcp(icp) {
   if (icp.industries?.length) return { icp: { ...icp, industries: [] }, relaxed: "industries" };
+  if (icp.companySizeRange) return { icp: { ...icp, companySizeRange: "" }, relaxed: "company size" };
   if (icp.seniority?.length) return { icp: { ...icp, seniority: [] }, relaxed: "seniority" };
   if (icp.locations?.length) return { icp: { ...icp, locations: [] }, relaxed: "locations" };
   // Confirmed live: Apollo's q_keywords appears to require most/all terms
@@ -742,13 +823,45 @@ async function gatherRankAndMergeIcpMatches({ workspaceId, userId, searchId, icp
   const overflow = combinedPool.slice(desired);
   for (const entry of overflow) stats[entry.providerKey].rejectedForRanking += 1;
 
-  let created = 0, merged = 0, withConflicts = 0;
+  let created = 0, merged = 0, withConflicts = 0, autoEnriched = 0;
   for (const entry of toPersist) {
     // eslint-disable-next-line no-await-in-loop
     const result = await mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlationId, candidate: entry.candidate, fitScore: entry.fitScore, fitReasons: entry.fitReasons, allowCreate: true }, dependencies);
     const bucket = stats[entry.providerKey];
     if (result.created) { created += 1; bucket.accepted += 1; } else { merged += 1; bucket.rejectedDedup += 1; }
     if (result.row?.conflicts?.length) withConflicts += 1;
+
+    // Automatic enrichment waterfall — a lead with no email is useless
+    // for outreach, so don't make the owner click "PDL"/"Apollo" by hand
+    // on every row. Runs ONLY on this final, ranked, shortlisted set
+    // (never the raw over-fetched pool), Apollo first since it's the
+    // account's own primary paid source, PDL second as a fallback. Both
+    // enrich functions are already idempotent and self-contained — they
+    // persist their own outcome (including failures) and never throw
+    // past their own pre-checks — so one provider being down (e.g. PDL's
+    // current billing issue) never breaks the search or the other's
+    // attempt; `.catch()` here is only a defensive backstop.
+    // "matched" only means Apollo/PDL recognized the person's identity —
+    // confirmed live that a real match commonly still comes back with no
+    // revealable email (emailState "unavailable"). Gate the PDL fallback
+    // and the success count on an actual EMAIL being found, not just a
+    // matched identity — otherwise a real, common non-result gets treated
+    // as success and the waterfall stops trying before it should.
+    let row = result.row;
+    if (row && !row.email && includeApollo && !row.apolloEnrichment?.attempted) {
+      // eslint-disable-next-line no-await-in-loop
+      row = await enrichWithApollo({ workspaceId, userId, resultId: row._id, correlationId }, dependencies).catch(() => row);
+    }
+    if (row && !row.email && !row.apolloEnrichment?.email && includePdl && !row.pdlEnrichment?.attempted) {
+      // eslint-disable-next-line no-await-in-loop
+      row = await vertexGroundingDiscoveryService.enrichWithPdl({ workspaceId, userId, resultId: row._id, correlationId }, dependencies).catch(() => row);
+    }
+    // Enrichment stores its find on {apollo,pdl}Enrichment.email, not the
+    // row's own top-level email field — saveResult() already prioritizes
+    // pdlEnrichment/apolloEnrichment over row.email when a candidate is
+    // saved to a real Contact (see vertexGroundingDiscoveryService.js), so
+    // there's nothing to promote here, just to count for the explanation.
+    if (row?.pdlEnrichment?.email || row?.apolloEnrichment?.email) autoEnriched += 1;
   }
 
   const rejectedSelf = (includePdl ? stats.pdl_person_search.rejectedSelf : 0) + (includeApollo ? stats.apollo_person_search.rejectedSelf : 0);
@@ -759,7 +872,7 @@ async function gatherRankAndMergeIcpMatches({ workspaceId, userId, searchId, icp
     .filter((s) => s.error && s.accepted === 0)
     .map((s) => ({ source: s.provider, code: s.provider === "pdl_person_search" ? "PDL_SEARCH_FAILED" : "APOLLO_SEARCH_FAILED", message: s.error }));
 
-  return { created, merged, withConflicts, excludedForSelfMatch: rejectedSelf, broadenedFields, providerStats, sourceErrors };
+  return { created, merged, withConflicts, excludedForSelfMatch: rejectedSelf, broadenedFields, providerStats, sourceErrors, autoEnriched };
 }
 
 /**
@@ -831,6 +944,7 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
   }
 
   let icpBroadenedFields = [];
+  let autoEnrichedCount = 0;
   const includePdl = effectiveSources.includes("pdl_person_search");
   const includeApollo = effectiveSources.includes("apollo_person_search");
   if ((includePdl || includeApollo) && requestRemaining() > 0) {
@@ -843,6 +957,7 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
     withConflicts += outcome.withConflicts;
     excludedForSelfMatch += outcome.excludedForSelfMatch;
     icpBroadenedFields = outcome.broadenedFields;
+    autoEnrichedCount = outcome.autoEnriched;
     providerBreakdown.push(...outcome.providerStats);
     sourceErrors.push(...outcome.sourceErrors);
   }
@@ -853,7 +968,8 @@ async function approveAndRunSearch({ workspaceId, userId, auth, searchId, icp, r
     created, merged, withConflicts, excludedForFreshness, excludedForSelfMatch, sourceErrors,
     providerBreakdown,
     explanation: buildRunExplanation({ requestedCount: search.requestedCount, created, merged, excludedForSelfMatch, excludedForFreshness, sourceErrors })
-      + (icpBroadenedFields.length ? ` Broadened the search by dropping the ${joinWithAnd(icpBroadenedFields)} filter${icpBroadenedFields.length === 1 ? "" : "s"} to find more candidates.` : ""),
+      + (icpBroadenedFields.length ? ` Broadened the search by dropping the ${joinWithAnd(icpBroadenedFields)} filter${icpBroadenedFields.length === 1 ? "" : "s"} to find more candidates.` : "")
+      + (autoEnrichedCount ? ` Automatically found a verified email for ${autoEnrichedCount} of ${created} new candidate${created === 1 ? "" : "s"}.` : ""),
   };
   await search.save();
 
@@ -1094,6 +1210,10 @@ module.exports = {
   buildPdlSql,
   buildApolloFilters,
   buildRunExplanation,
+  mapToApolloSeniority,
+  parseCompanySizeToApolloRange,
+  computeIcpFitScore,
+  broadenIcp,
   // Exported for reuse by services/publicWebDiscoveryEngineService.js's PDL
   // cross-reference pass — so a PDL candidate found there is normalized
   // (and email-shape-sanitized) by the exact same, already-tested logic
