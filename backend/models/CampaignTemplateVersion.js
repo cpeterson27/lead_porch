@@ -6,7 +6,8 @@ const campaignTemplateVersionSchema = new mongoose.Schema(
     campaignId: { type: mongoose.Schema.Types.ObjectId, ref: "Campaign", required: true, index: true },
     version: { type: Number, required: true },
     subject: { type: String, required: true, trim: true, maxlength: 300 },
-    body: { type: String, required: true, maxlength: 30000 },
+    body: { type: String, required: true, maxlength: 300000 },
+    designJson: { type: mongoose.Schema.Types.Mixed, default: null },
     callToAction: { type: String, default: "", trim: true, maxlength: 120 },
     callToActionUrl: { type: String, default: "", trim: true, maxlength: 1000 },
     additionalButtons: [{

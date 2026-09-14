@@ -73,7 +73,11 @@ const campaignSchema = new mongoose.Schema(
   },
   emailTemplate: {
     subject: { type: String, default: "", trim: true, maxlength: 300 },
-    body: { type: String, default: "", maxlength: 30000 },
+    body: { type: String, default: "", maxlength: 300000 },
+    // The Unlayer editor's design JSON for this body, so re-opening the
+    // template loads the same drag-and-drop layout instead of just its
+    // rendered HTML. Null for older campaigns saved before this editor.
+    designJson: { type: mongoose.Schema.Types.Mixed, default: null },
     callToAction: { type: String, default: "", trim: true, maxlength: 120 },
     callToActionUrl: { type: String, default: "", trim: true, maxlength: 1000 },
     additionalButtons: [{

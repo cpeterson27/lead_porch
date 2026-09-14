@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Button from "../components/Button.jsx";
 import DashboardCard from "../components/DashboardCard.jsx";
-import EmailBodyEditor from "../components/EmailBodyEditor.jsx";
+import UnlayerEmailEditor from "../components/UnlayerEmailEditor.jsx";
 import {
   approveCampaignEmailTemplate,
   assignCampaignAudience,
@@ -85,8 +85,6 @@ export default function CampaignWorkspace() {
   const [previewContactId, setPreviewContactId] = useState("");
   const [templateAudience, setTemplateAudience] = useState("general");
   const [activeSection, setActiveSection] = useState("email");
-  const [personalizationToken, setPersonalizationToken] = useState("{{firstName}}");
-  const [inlineImageUploading, setInlineImageUploading] = useState(false);
   const messageRef = useRef(null);
 
   useEffect(() => {
@@ -161,42 +159,13 @@ export default function CampaignWorkspace() {
       brand: { ...current.brand, [field]: value },
     }));
 
-  const insertPersonalization = () => {
-    messageRef.current?.insertText(personalizationToken);
-  };
-
-  const uploadBrandAsset = async (field, file) => {
-    if (!file) return;
-    try {
-      setBrandSaving(true);
-      setBrandNotice("");
-      const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const uploaded = await uploadEventImage({
-        file: dataUrl,
-        filename: file.name,
-      });
-      updateBrandField(field, uploaded.url);
-      setBrandNotice(
-        field === "flyerUrl"
-          ? "New flyer ready to save."
-          : "New logo ready to save.",
-      );
-    } catch (err) {
-      setError(
-        err.response?.data?.error || "Unable to upload the program logo.",
-      );
-    } finally {
-      setBrandSaving(false);
-    }
+  const handleDesignChange = ({ html, design }) => {
+    setEmailTemplate((current) => ({ ...current, body: html, designJson: design }));
+    setTemplateDirty(true);
+    setTemplateNotice("");
   };
 
   const uploadInlineImage = async (file) => {
-    setInlineImageUploading(true);
     try {
       const dataUrl = await new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -209,8 +178,6 @@ export default function CampaignWorkspace() {
     } catch (err) {
       setError(err.response?.data?.error || "Unable to upload that image.");
       return null;
-    } finally {
-      setInlineImageUploading(false);
     }
   };
 
@@ -303,10 +270,23 @@ export default function CampaignWorkspace() {
     setEmailPreview(null);
     setTemplateDirty(true);
   };
+  // The live editor debounces its own auto-sync into `emailTemplate` (see
+  // UnlayerEmailEditor's onDesignUpdated), so state is usually fresh — but
+  // "usually" isn't good enough right before a save. Force an immediate
+  // export first so a save/approve click right after typing never captures
+  // a stale body from before the debounce fired.
+  const exportCurrentTemplate = async () => {
+    const { html, design } = await messageRef.current.exportHtml();
+    const next = { ...emailTemplate, body: html, designJson: design };
+    setEmailTemplate(next);
+    return next;
+  };
+
   const saveTemplate = async () => {
     try {
       setTemplateSaving(true);
       setError("");
+      const current = await exportCurrentTemplate();
       const audienceLabel =
         templateAudience === "general"
           ? "All Deal to Close contacts"
@@ -319,7 +299,7 @@ export default function CampaignWorkspace() {
             "";
       setEmailTemplate(
         await saveCampaignEmailTemplate(id, {
-          ...emailTemplate,
+          ...current,
           audienceKey: templateAudience,
           audienceLabel,
         }),
@@ -338,6 +318,7 @@ export default function CampaignWorkspace() {
     try {
       setTemplateSaving(true);
       setError("");
+      const current = await exportCurrentTemplate();
       const audienceLabel =
         templateAudience === "general"
           ? "All Deal to Close contacts"
@@ -349,7 +330,7 @@ export default function CampaignWorkspace() {
             ] ||
             "";
       await saveCampaignEmailTemplate(id, {
-        ...emailTemplate,
+        ...current,
         audienceKey: templateAudience,
         audienceLabel,
       });
@@ -616,17 +597,17 @@ export default function CampaignWorkspace() {
                   </label>
                   <label>
                     <span>Message</span>
-                    <EmailBodyEditor
+                    <UnlayerEmailEditor
                       ref={messageRef}
-                      value={emailTemplate.body}
-                      onChange={(html) => updateTemplateField("body", html)}
+                      design={emailTemplate.designJson}
+                      onDesignChange={handleDesignChange}
                       onUploadImage={uploadInlineImage}
-                      uploading={inlineImageUploading}
                     />
                     <small>
-                      Use the toolbar to bold, align, change fonts, and place
-                      images or a button exactly where you want them in the
-                      message.
+                      Drag in blocks, images, and buttons; every element has
+                      its own size, alignment, and font controls when
+                      selected. Use the {"{ }"} icon in the text tool to
+                      insert personalization like the recipient's first name.
                     </small>
                   </label>
                   <details className="campaign-email-buttons">
@@ -722,20 +703,6 @@ export default function CampaignWorkspace() {
                         ),
                       )}
                     </div>
-                    </div>
-                  </details>
-                  <details className="campaign-email-options">
-                    <summary>Personalize the message</summary>
-                    <p className="campaign-template-help">Choose what to insert, place your cursor in the message, then click Insert.</p>
-                    <div className="campaign-personalization-picker">
-                      <select value={personalizationToken} onChange={(event) => setPersonalizationToken(event.target.value)} aria-label="Personalization field">
-                        <option value="{{firstName}}">Recipient first name</option>
-                        <option value="{{company}}">Company or community</option>
-                        <option value="{{campaignName}}">Campaign name</option>
-                        <option value="{{eventDate}}">Event date</option>
-                        <option value="{{eventLink}}">Event registration link</option>
-                      </select>
-                      <Button type="button" variant="outline" size="sm" onClick={insertPersonalization}>Insert into message</Button>
                     </div>
                   </details>
                   <label>
@@ -899,65 +866,11 @@ export default function CampaignWorkspace() {
                   </Button>
                 </section>
               ) : null}
-              <div className="campaign-brand-assets">
-                <section className="campaign-asset-card">
-                  <header>
-                    <span>Email flyer</span>
-                    <small>Full-size image inside the email</small>
-                  </header>
-                  {campaign.brand?.flyerUrl ? (
-                    <img
-                      src={campaign.brand.flyerUrl}
-                      alt={`${campaign.name} flyer`}
-                    />
-                  ) : (
-                    <div className="program-brand-placeholder">
-                      No flyer selected
-                    </div>
-                  )}
-                  {imageUpload.configured ? (
-                    <label className="campaign-file-button">
-                      Replace flyer
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(event) =>
-                          uploadBrandAsset("flyerUrl", event.target.files?.[0])
-                        }
-                      />
-                    </label>
-                  ) : null}
-                </section>
-                <section className="campaign-asset-card">
-                  <header>
-                    <span>{isProgram ? "Program" : "Event"} logo</span>
-                    <small>Compact brand mark above the email</small>
-                  </header>
-                  {campaign.brand?.logoUrl ? (
-                    <img
-                      className="is-logo"
-                      src={campaign.brand.logoUrl}
-                      alt={`${campaign.programName || campaign.name} logo`}
-                    />
-                  ) : (
-                    <div className="program-brand-placeholder">
-                      No logo selected
-                    </div>
-                  )}
-                  {imageUpload.configured ? (
-                    <label className="campaign-file-button">
-                      Choose logo
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={(event) =>
-                          uploadBrandAsset("logoUrl", event.target.files?.[0])
-                        }
-                      />
-                    </label>
-                  ) : null}
-                </section>
-              </div>
+              <p className="campaign-template-help">
+                Add your flyer or logo directly in the Message editor above
+                (Insert image) — that's the one place to place and size any
+                image in this email now.
+              </p>
               <div className="campaign-brand-fields">
                 <label>
                   <span>Website</span>

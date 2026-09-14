@@ -39,6 +39,10 @@ function effectiveTemplate(campaign) {
   return {
     subject,
     body,
+    // Only meaningful when `body` came from `saved` (Unlayer can't produce
+    // the design that matches a fallback/content-brief body) — null in
+    // every other case is correct, not a bug.
+    designJson: String(saved.body || "").trim() ? saved.designJson || null : null,
     callToAction: saved.callToAction || content.callToAction || "Learn more",
     callToActionUrl: saved.callToActionUrl || content.callToActionUrl || "",
     additionalButtons: Array.isArray(saved.additionalButtons) ? saved.additionalButtons : [],

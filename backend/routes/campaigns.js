@@ -293,6 +293,7 @@ router.put("/:id/email-template", requireRole("owner", "admin", "member"), async
     const nextTemplate = {
       subject,
       body,
+      designJson: req.body?.designJson ?? null,
       callToAction: String(req.body?.callToAction || "").trim(),
       callToActionUrl: String(req.body?.callToActionUrl || "").trim(),
       additionalButtons: Array.isArray(req.body?.additionalButtons)
@@ -334,6 +335,7 @@ router.post("/:id/email-template/approve", requireRole("owner", "admin"), async 
     version,
     subject: template.subject,
     body: template.body,
+    designJson: template.designJson || null,
     callToAction: template.callToAction,
     callToActionUrl: template.callToActionUrl,
     additionalButtons: template.additionalButtons || [],
