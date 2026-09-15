@@ -402,7 +402,7 @@ async function testApproveAndRunSearchAutomaticallyEnrichesCandidatesMissingAnEm
   assert.equal(enrichmentMatchInput?.id, "apollo-person-123", "paid enrichment must use Apollo's exact person ID instead of fuzzy name/company rematching");
   assert.equal(enrichmentMatchInput?.linkedin_url, "https://www.linkedin.com/in/no-email-person", "LinkedIn remains a secondary matching signal and a usable public contact route");
   assert.equal(savedRow.apolloEnrichment.profile.title, "Regional Asset Manager", "useful Apollo enrichment fields must be retained instead of collapsing the paid response to email only");
-  assert.equal(savedRow.phone, "+15125550100", "Apollo phone data must be promoted to the review card when returned");
+  assert.equal(savedRow.phone, undefined, "phone numbers are deliberately not pursued — only email is needed, and Apollo's phone reveal is a separate paid/webhook-based feature");
   assert.ok(savedRow.socialProfileUrls.includes("https://facebook.com/noemailperson"), "Apollo social URLs must remain available to the review UI");
   assert.ok(result.runSummary.explanation.includes("Automatically found a verified email"), "the run explanation must surface that auto-enrichment happened");
 }

@@ -1913,7 +1913,6 @@ export default function Discovery() {
                   {publicProfileUrls.map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{socialLinkLabel(url)} ↗</a>)}
                   {companyWebsiteUrl ? <a href={companyWebsiteUrl} target="_blank" rel="noreferrer">Company website ↗</a> : null}
                 </small> : null}
-                {result.phone ? <small>Phone: {result.phone} <span className="review-card__missing">(as reported by the provider — not independently verified as still active)</span></small> : null}
                 {effectiveEmail ? <small>Contact: {effectiveEmail.email} ({effectiveEmail.state})</small> : <small className="review-card__missing">{missingContactMessage}</small>}
                 {result.type === "person" && result.discoveryMode !== "icp_match" ? (
                   <small>{result.evidenceDate ? `Evidence date: ${new Date(result.evidenceDate).toLocaleDateString()} (${result.evidenceAgeDays} day${result.evidenceAgeDays === 1 ? "" : "s"} old)` : "No verifiable evidence date"}{result.freshnessTier ? ` · ${result.freshnessTier}` : ""}</small>
@@ -1963,11 +1962,9 @@ export default function Discovery() {
                             {apolloProfile.departments?.length ? <div><dt>Departments</dt><dd>{apolloProfile.departments.join(", ")}</dd></div> : null}
                             {apolloProfile.subdepartments?.length ? <div><dt>Subdepartments</dt><dd>{apolloProfile.subdepartments.join(", ")}</dd></div> : null}
                             {apolloProfile.functions?.length ? <div><dt>Functions</dt><dd>{apolloProfile.functions.join(", ")}</dd></div> : null}
-                            {apolloProfile.phoneNumbers?.length ? <div><dt>Phones</dt><dd>{apolloProfile.phoneNumbers.join(", ")}</dd></div> : null}
                             {apolloOrganization.industry ? <div><dt>Industry</dt><dd>{apolloOrganization.industry}</dd></div> : null}
                             {apolloOrganization.employeeCount != null ? <div><dt>Employees</dt><dd>{Number(apolloOrganization.employeeCount).toLocaleString()}</dd></div> : null}
                             {apolloOrganization.foundedYear ? <div><dt>Founded</dt><dd>{apolloOrganization.foundedYear}</dd></div> : null}
-                            {apolloOrganization.phone ? <div><dt>Company phone</dt><dd>{apolloOrganization.phone}</dd></div> : null}
                             {[apolloOrganization.city, apolloOrganization.state, apolloOrganization.country].filter(Boolean).length ? <div><dt>Company location</dt><dd>{[apolloOrganization.city, apolloOrganization.state, apolloOrganization.country].filter(Boolean).join(", ")}</dd></div> : null}
                             {apolloOrganization.annualRevenue != null ? <div><dt>Annual revenue</dt><dd>{Number(apolloOrganization.annualRevenue).toLocaleString()}</dd></div> : null}
                             {apolloOrganization.totalFunding != null ? <div><dt>Total funding</dt><dd>{Number(apolloOrganization.totalFunding).toLocaleString()}</dd></div> : null}

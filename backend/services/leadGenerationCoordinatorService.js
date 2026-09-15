@@ -580,11 +580,6 @@ function normalizeApolloCandidate(person) {
     linkedinUrl: isHttpUrl(person.linkedinUrl) ? person.linkedinUrl : "",
     email,
     emailState: email ? (person.emailState || "") : "",
-    // Apollo's own search response can include this directly (PDL's
-    // person/search response has no phone field to carry through here).
-    // Never independently verified as still in service — see the model's
-    // own comment on this field.
-    phone: clean(person.phoneNumbers?.[0] || "", 40),
     summary: [person.title, person.location].filter(Boolean).join(" · "),
     provider: "apollo_person_search",
   };
@@ -625,7 +620,7 @@ async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlati
       apolloPersonId: candidate.apolloPersonId || "",
       email: candidateEmail, emailState: candidateEmail ? candidate.emailState : "",
       emailVerificationStatus: candidateEmail ? (candidate.emailState || "") : "",
-      linkedinUrl: candidate.linkedinUrl, phone: candidate.phone || "", summary: candidate.summary,
+      linkedinUrl: candidate.linkedinUrl, summary: candidate.summary,
       evidenceUrls: [], evidenceDate: null, confidence: "single_source",
       discoveryMode: "icp_match", providers: [candidate.provider], discoverySearchId: searchId,
       identityConfidence: candidate.emailState === "verified" ? "medium" : "low",
@@ -655,7 +650,6 @@ async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlati
   existing.emailState = existing.emailState || (candidateEmail ? candidate.emailState : "");
   existing.emailVerificationStatus = existing.emailVerificationStatus || (candidateEmail ? candidate.emailState : "") || "";
   existing.linkedinUrl = existing.linkedinUrl || candidate.linkedinUrl;
-  existing.phone = existing.phone || candidate.phone || "";
   existing.organizationName = existing.organizationName || candidate.organizationName;
   existing.organizationDomain = existing.organizationDomain || candidate.organizationDomain;
   existing.conflicts = conflicts;
@@ -1068,7 +1062,6 @@ async function enrichWithApollo({ workspaceId, userId, resultId, correlationId =
       row.linkedinUrl = row.linkedinUrl || person.linkedinUrl || "";
       row.organizationName = row.organizationName || person.company || person.organization?.name || "";
       row.organizationDomain = row.organizationDomain || person.companyDomain || person.organization?.domain || "";
-      row.phone = row.phone || person.phoneNumbers?.[0] || person.organization?.phone || "";
       row.socialProfileUrls = [...new Set([...(row.socialProfileUrls || []), person.linkedinUrl, person.facebookUrl, person.twitterUrl, person.githubUrl].filter(Boolean))];
     }
     if (person && !row.providers.includes("apollo")) row.providers.push("apollo");
