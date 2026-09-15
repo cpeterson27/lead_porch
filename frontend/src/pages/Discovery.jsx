@@ -216,7 +216,8 @@ export default function Discovery() {
   const [marketPlan, setMarketPlan] = useState(null);
   const [planning, setPlanning] = useState(false);
   const [campaignId, setCampaignId] = useState("");
-  const [leadCampaignId, setLeadCampaignId] = useState(() => searchParams.get("campaignId") || "");
+  const campaignContextId = searchParams.get("campaignId") || "";
+  const [leadCampaignId, setLeadCampaignId] = useState(() => campaignContextId);
   const [query, setQuery] = useState("");
   const [emailFilter, setEmailFilter] = useState("verified");
   const [notice, setNotice] = useState("");
@@ -1742,14 +1743,14 @@ export default function Discovery() {
           Review why each person was found, research contact information for the promising people, then add the leads you want to your CRM. Nothing enters your CRM or outreach without your action.
         </p>
         <div className="review-campaign-context">
-          <label>
-            <span>Campaign for these leads</span>
-            <select value={leadCampaignId} onChange={(event) => setLeadCampaignId(event.target.value)}>
-              <option value="">CRM only—choose a campaign later</option>
-              {campaigns.map((campaign) => <option key={campaign._id} value={campaign._id}>{campaign.name}</option>)}
-            </select>
-          </label>
-          <small>{leadCampaignId ? "Qualified leads will be added to the CRM and this campaign in one step." : "Choose a campaign to connect new leads immediately."}</small>
+          {campaignContextId ? <div className="review-campaign-context__locked"><span>Finding leads for</span><strong>{campaigns.find((campaign) => String(campaign._id) === String(campaignContextId))?.name || "Current campaign"}</strong></div> : <label>
+              <span>Optional campaign</span>
+              <select value={leadCampaignId} onChange={(event) => setLeadCampaignId(event.target.value)}>
+                <option value="">CRM only—choose a campaign later</option>
+                {campaigns.map((campaign) => <option key={campaign._id} value={campaign._id}>{campaign.name}</option>)}
+              </select>
+            </label>}
+          <small>{leadCampaignId ? "Qualified leads will automatically be added to this campaign." : "Searching outside a campaign saves approved leads to the CRM."}</small>
         </div>
         <div className="discovery-review-filters">
           {["pending_review", "saved", "dismissed"].map((status) => (

@@ -1259,6 +1259,7 @@
    use four columns and collapse naturally as space narrows. */
 .review-campaign-context{align-items:end;background:#f7f7fc;border:1px solid rgba(116,87,255,.14);border-radius:14px;display:grid;gap:10px;grid-template-columns:minmax(240px,420px) 1fr;margin-bottom:12px;padding:12px 14px}
 .review-campaign-context label{display:grid;gap:5px}.review-campaign-context label>span{font-size:.72rem;font-weight:800}.review-campaign-context select{width:100%}.review-campaign-context small{color:#737788}
+.review-campaign-context__locked{display:grid;gap:3px}.review-campaign-context__locked span{color:#737788;font-size:.68rem;font-weight:800;text-transform:uppercase}.review-campaign-context__locked strong{font-size:.95rem}
 .review-queue-grid{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
 @media(min-width:1380px){.review-queue-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 .review-card__why p{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}

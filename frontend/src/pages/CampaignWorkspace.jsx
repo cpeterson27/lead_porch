@@ -5,8 +5,10 @@ import DashboardCard from "../components/DashboardCard.jsx";
 import UnlayerEmailEditor from "../components/UnlayerEmailEditor.jsx";
 import {
   approveCampaignEmailTemplate,
+  assignCampaignAudience,
   fetchCampaign,
   fetchCampaignEmailTemplate,
+  previewCampaignAudience,
   fetchWorkspaceConfig,
   generateCampaignEmailIdeas,
   previewCampaignEmailTemplate,
@@ -79,6 +81,8 @@ export default function CampaignWorkspace() {
   const [workspaceDefaultLogoUrl, setWorkspaceDefaultLogoUrl] = useState("");
   const [logoSaving, setLogoSaving] = useState(false);
   const [audienceTagsSaving, setAudienceTagsSaving] = useState(false);
+  const [audienceMatch, setAudienceMatch] = useState(null);
+  const [audienceMatchBusy, setAudienceMatchBusy] = useState(false);
   const [newAudienceTag, setNewAudienceTag] = useState("");
   const [templateDirty, setTemplateDirty] = useState(false);
   const [templateNotice, setTemplateNotice] = useState("");
@@ -111,6 +115,25 @@ export default function CampaignWorkspace() {
       )
       .finally(() => setLoading(false));
   }, [id]);
+
+  useEffect(() => {
+    if (!id) return;
+    previewCampaignAudience(id).then(setAudienceMatch).catch(() => {});
+  }, [id]);
+
+  const refreshExistingAudience = async () => {
+    setAudienceMatchBusy(true);
+    setError("");
+    try {
+      const result = await assignCampaignAudience(id);
+      setAudienceMatch(result);
+      setScheduleNotice(`${result.assigned || 0} matching CRM contact${result.assigned === 1 ? "" : "s"} connected to this campaign. No emails were sent.`);
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to match existing contacts.");
+    } finally {
+      setAudienceMatchBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!id) return;
@@ -785,7 +808,7 @@ export default function CampaignWorkspace() {
               Keep these groups broad — Lead Porch matches contacts to this
               campaign by comparing their title, industry, and company
               against the groups below. Find and add contacts from the{" "}
-              <button type="button" className="campaign-inline-link" onClick={() => navigate("/discovery")}>
+              <button type="button" className="campaign-inline-link" onClick={() => navigate(`/discovery?tab=people&campaignId=${campaign._id}`)}>
                 Discovery
               </button>{" "}
               page.
@@ -830,6 +853,11 @@ export default function CampaignWorkspace() {
                   >
                     Add group
                   </Button>
+                </div>
+                <div className="campaign-audience-database-actions">
+                  <div><strong>{audienceMatch?.matched || 0} matching CRM contacts</strong><small>{audienceMatch?.alreadyAssigned || 0} already connected · only eligible contacts matching these groups are included</small></div>
+                  <Button variant="outline" size="sm" loading={audienceMatchBusy} onClick={refreshExistingAudience}>Connect matching CRM contacts</Button>
+                  <Button variant="outline" size="sm" onClick={() => navigate("/crm/contacts")}>Choose contacts manually</Button>
                 </div>
           </DashboardCard>
         </details>
