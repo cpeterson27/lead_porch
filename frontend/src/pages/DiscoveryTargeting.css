@@ -1270,6 +1270,58 @@
 .leadgen-row-actions__group.is-next-step .btn{border-radius:999px!important;min-height:40px!important;padding:9px 18px!important;white-space:nowrap!important;width:100%!important}
 @media(max-width:700px){.review-campaign-context{grid-template-columns:1fr}.review-queue-grid{grid-template-columns:1fr}.review-pagination{justify-content:space-between}}
 
+/* Keep lead cards aligned with the dashboard theme. Qualification states use
+   the workspace brand and neutral surfaces; warning/red remain reserved for
+   genuinely incomplete or rejected records. */
+.review-card{
+  background:var(--color-surface);
+  border-color:var(--color-border);
+  box-shadow:0 10px 28px rgba(36,29,93,.06);
+}
+.review-card:hover{
+  border-color:color-mix(in srgb,var(--color-brand) 34%,var(--color-border));
+  box-shadow:0 14px 34px color-mix(in srgb,var(--color-brand) 10%,transparent);
+}
+.review-card.qualification-qualified,
+.review-card.qualification-needs_review{
+  border-left-color:var(--color-brand);
+}
+.review-card.is-saved{border-color:var(--color-brand)}
+.review-card__avatar{
+  background:var(--color-brand-soft);
+  border-color:color-mix(in srgb,var(--color-brand) 22%,var(--color-border));
+  color:var(--color-brand);
+}
+.leadgen-badge-new,
+.review-card__check.is-checked{
+  background:var(--color-brand);
+  border-color:var(--color-brand);
+}
+.review-card__qual-badge.qual-qualified,
+.review-card__qual-badge.qual-needs_review,
+.review-card__identity-badge.identity-high,
+.review-card__identity-badge.identity-medium{
+  background:var(--color-brand-soft);
+  color:var(--color-brand-hover);
+}
+.review-card__identity-badge.identity-low{
+  background:var(--color-surface-muted);
+  color:var(--color-text-muted);
+}
+.review-card__why,
+.review-card__why.is-incomplete{
+  background:var(--color-brand-soft);
+  border-left-color:var(--color-brand);
+}
+.review-card__why small,
+.review-card__details-toggle,
+.review-card a{
+  color:var(--color-brand-hover);
+}
+.leadgen-row-actions{
+  border-top-color:var(--color-border);
+}
+
 .discovery-run-details { background: #f7f8f8; border: 1px solid #e0e5e2; border-radius: 16px; padding: 0; }
 .discovery-run-details > summary { align-items: center; cursor: pointer; display: flex; justify-content: space-between; list-style: none; padding: 1rem 1.1rem; }
 .discovery-run-details > summary::-webkit-details-marker { display: none; }
