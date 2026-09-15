@@ -674,9 +674,6 @@ export default function Discovery() {
     setExpandedResultIds((current) => current.includes(id) ? current.filter((row) => row !== id) : [...current, id]);
   };
 
-  const selectAllNewFromRun = () => {
-    setSelectedGroundingIds(visibleGroundingResults.filter((r) => r.isNew).map((r) => r._id));
-  };
   const clearGroundingSelection = () => setSelectedGroundingIds([]);
 
   const researchSelectedWithApollo = async () => {
@@ -1806,7 +1803,6 @@ export default function Discovery() {
             </details>
 
             <div className="review-queue-selection-row">
-              <Button size="sm" variant="outline" onClick={selectAllNewFromRun}>Select all new from this run</Button>
               <Button size="sm" variant="outline" onClick={selectAllVisible}>Select this page ({pagedGroundingResults.length})</Button>
               <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} onClick={clearGroundingSelection}>Clear selection</Button>
               <span className="review-queue-selected-count"><strong>{selectedGroundingIds.length}</strong> selected · {pagedGroundingResults.length} on this page · {visibleGroundingResults.length} matching filters</span>
@@ -1819,6 +1815,7 @@ export default function Discovery() {
               <div className="review-queue-summary" role="status">
                 <strong>Qualification complete</strong>
                 <span>{qualifySummary.processed} processed · {qualifySummary.qualified} qualified · {qualifySummary.needsReview} needs review · {qualifySummary.notAFit} not a fit{qualifySummary.failed ? ` · ${qualifySummary.failed} failed` : ""}</span>
+                <small>{qualifySummary.qualified ? "Next: view qualified leads, then add the ones with contact information to your CRM and campaign." : qualifySummary.needsReview ? "Next: view needs-review leads and use Apollo to confirm their identity and contact information, then qualify them again." : "No usable leads were produced in this batch. Review the rejection reasons before spending anything on enrichment."}</small>
               </div>
             ) : null}
             <div className="review-queue-bulk-actions">
@@ -1829,7 +1826,7 @@ export default function Discovery() {
                 const result = visibleGroundingResults.find((row) => row._id === id);
                 return result?.type === "person" && ["qualified", "needs_review"].includes(result.qualificationLabel) && !result.apolloEnrichment?.attempted;
               })} onClick={researchSelectedWithApollo}>Research selected with Apollo</Button>
-              <Button size="sm" variant="outline" disabled={!selectedGroundingIds.some((id) => visibleGroundingResults.find((r) => r._id === id)?.qualificationLabel === "qualified")} onClick={saveSelectedQualified}>Add selected qualified leads to CRM</Button>
+              <Button size="sm" variant="outline" disabled={!selectedGroundingIds.some((id) => visibleGroundingResults.find((r) => r._id === id)?.qualificationLabel === "qualified")} onClick={saveSelectedQualified}>{leadCampaignId ? "Add selected leads to CRM + campaign" : "Add selected qualified leads to CRM"}</Button>
               <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} onClick={dismissSelected}>Mark selected as not leads</Button>
             </div>
           </div>
@@ -1857,6 +1854,7 @@ export default function Discovery() {
                   ? { email: result.email, state: result.emailVerificationStatus || result.emailState || "unverified" }
                   : null;
             const enrichmentAttemptedNoEmail = !effectiveEmail && (result.pdlEnrichment?.attempted || result.apolloEnrichment?.attempted);
+            const isStructuredAudienceMatch = result.discoveryMode === "icp_match";
             return (
               <article key={result._id} className={`review-card is-${result.status} qualification-${result.qualificationLabel || "unscored"}`}>
                 <header className="review-card__header">
@@ -1881,7 +1879,7 @@ export default function Discovery() {
                 <small>{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
                 {result.linkedinUrl ? <small><a href={result.linkedinUrl} target="_blank" rel="noreferrer">Profile URL ↗</a></small> : null}
                 {result.phone ? <small>Phone: {result.phone} <span className="review-card__missing">(as reported by the provider — not independently verified as still active)</span></small> : null}
-                {effectiveEmail ? <small>Contact: {effectiveEmail.email} ({effectiveEmail.state})</small> : enrichmentAttemptedNoEmail ? <small className="review-card__missing">Identity matched, but no email is available from any provider tried</small> : <small className="review-card__missing">Public lead found · verified contact not supplied</small>}
+                {effectiveEmail ? <small>Contact: {effectiveEmail.email} ({effectiveEmail.state})</small> : enrichmentAttemptedNoEmail ? <small className="review-card__missing">Identity matched, but no email is available from any provider tried</small> : <small className="review-card__missing">{isStructuredAudienceMatch ? "Audience match found · contact information still needed" : "Public lead found · verified contact not supplied"}</small>}
                 {result.type === "person" && result.discoveryMode !== "icp_match" ? (
                   <small>{result.evidenceDate ? `Evidence date: ${new Date(result.evidenceDate).toLocaleDateString()} (${result.evidenceAgeDays} day${result.evidenceAgeDays === 1 ? "" : "s"} old)` : "No verifiable evidence date"}{result.freshnessTier ? ` · ${result.freshnessTier}` : ""}</small>
                 ) : result.discoveryMode === "icp_match" ? <small>Matched from your audience criteria. Current interest still needs confirmation.</small> : null}

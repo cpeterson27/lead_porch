@@ -1028,12 +1028,13 @@
   flex-wrap: wrap;
   align-items: baseline;
   gap: 0.5rem;
-  background: #dcecd8;
+  background: var(--color-brand-soft);
   border-radius: 8px;
-  color: #1f5c33;
+  color: var(--color-brand-hover);
   font-size: 0.85rem;
   padding: 0.5rem 0.7rem;
 }
+.review-queue-summary small{flex-basis:100%;color:var(--color-text-muted);line-height:1.4}
 
 .review-queue-bulk-actions {
   display: flex;

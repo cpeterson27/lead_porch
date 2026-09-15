@@ -193,9 +193,9 @@ function buildQualifyResponseSchema(programIds) {
             buyerIntentLevel: { type: "string", enum: ["strong", "weak", "none"], description: "Evidence-based ONLY. 'strong' requires explicit, current evidence the person wants/needs help (e.g. asking for recommendations, describing a specific current problem this program solves). A job title, role, or being 'in the industry' is NEVER by itself buyer intent — that alone is 'none'." },
             buyerIntentEvidence: { type: "string", description: "The specific evidence for the buyerIntentLevel given, or state plainly that none was found." },
             exclusionFlags: { type: "array", items: { type: "string" }, description: "Any ICP exclusion this candidate appears to match: coach, course_seller, broker, lender, attorney, vendor, established_syndicator, capital_raising_service, wrong_country, unrelated_corporate_employee, no_personal_investing_evidence. Empty array if none apply." },
-            qualificationLabel: { type: "string", enum: ["qualified", "needs_review", "not_a_fit"], description: "'qualified' requires reliable identity AND genuine program fit AND real buyer-intent evidence. 'not_a_fit' if any ICP exclusion clearly applies, the country/location is wrong, or there is no evidence of personal investing interest. Otherwise 'needs_review'." },
+            qualificationLabel: { type: "string", enum: ["qualified", "needs_review", "not_a_fit"], description: "For public-web leads, 'qualified' requires reliable identity, genuine program fit, and real buyer-intent evidence. For Apollo/PDL structured ICP matches, reliable identity plus genuine fit for the selected program can qualify without pretending a public-intent post exists. 'not_a_fit' is reserved for concrete exclusions or poor fit; missing evidence alone is 'needs_review'." },
             recommendedNextAction: { type: "string", description: "One concrete next step. If evidence is thin, say so explicitly, e.g. 'Needs manual validation — no buyer-intent evidence found yet.'" },
-            outreachRecommended: { type: "boolean", description: "True ONLY if identity is reliable AND program fit is genuine AND there is real buyer-intent evidence (not just a matching title). Otherwise false." },
+            outreachRecommended: { type: "boolean", description: "For public-web leads, true only with reliable identity, genuine fit, and current intent. For structured Apollo/PDL matches, it may be true with reliable identity and genuine selected-program fit even when no public-intent post exists. Otherwise false." },
             outreachDraft: { type: "string", description: "A short, personalized draft outreach message based strictly on the evidence given — never invent facts not present. Empty string if outreachRecommended is false." },
           },
           required: ["resultId", "identityNotes", "programFitScore", "programFitReasons", "recommendedProgramId", "buyerIntentLevel", "buyerIntentEvidence", "exclusionFlags", "qualificationLabel", "recommendedNextAction", "outreachRecommended", "outreachDraft"],
@@ -1065,22 +1065,29 @@ async function enrichWithApollo({ workspaceId, userId, resultId, correlationId =
  * Combines every axis into ONE deterministic, server-enforced verdict —
  * never trusted purely from the model's own qualificationLabel/
  * outreachRecommended output. This is what makes item 9's rule real: an
- * outreach recommendation is only ever true when identity is reliable AND
- * program fit is genuine AND there's real buyer-intent evidence — a
- * matching job title alone can never produce "qualified" or
- * outreachRecommended on its own.
+ * public-web outreach requires reliable identity, program fit, and current
+ * intent. Structured Apollo/PDL audience matches instead require reliable
+ * identity and genuine fit for the owner's selected program; they are never
+ * rejected simply because a database profile has no public-intent post.
  */
-function computeQualificationOutcome({ identityConfidence, programFitScore, recommendedProgramId, buyerIntentLevel, exclusionFlags }) {
-  const hasExclusion = (exclusionFlags || []).length > 0;
+function computeQualificationOutcome({ identityConfidence, programFitScore, recommendedProgramId, buyerIntentLevel, exclusionFlags, discoveryMode = "" }) {
+  // Missing public intent is absence of evidence, not evidence that an ICP
+  // database match is bad. Keep it visible for review, but reserve rejection
+  // for concrete disqualifiers. This distinction is essential because Apollo
+  // and PDL Person Search return structured profiles, not recent public posts.
+  const informationalFlags = new Set(["no_personal_investing_evidence"]);
+  const hasExclusion = (exclusionFlags || []).some((flag) => !informationalFlags.has(flag));
   const hasRealProgram = Boolean(recommendedProgramId) && recommendedProgramId !== "none";
-  const poorFit = !hasRealProgram || programFitScore < 40;
+  const poorFit = programFitScore < 40;
   const genuineFit = hasRealProgram && programFitScore >= 65;
   const identityReliable = identityConfidence === "high" || identityConfidence === "medium";
   const hasIntentEvidence = buyerIntentLevel === "strong";
+  const isStructuredAudienceMatch = discoveryMode === "icp_match";
 
   let qualificationLabel;
   if (hasExclusion || poorFit) qualificationLabel = "not_a_fit";
   else if (identityConfidence === "conflict") qualificationLabel = "needs_review";
+  else if (isStructuredAudienceMatch && identityReliable && genuineFit) qualificationLabel = "qualified";
   else if (identityReliable && genuineFit && hasIntentEvidence) qualificationLabel = "qualified";
   else qualificationLabel = "needs_review";
 
@@ -1091,8 +1098,8 @@ function computeQualificationOutcome({ identityConfidence, programFitScore, reco
  * Jarvis qualifies each of up to 20 selected still-pending results against
  * THIS workspace's real approved Offers & Programs — never a program it
  * invents — scoring identity confidence, program fit, and buyer intent as
- * three SEPARATE signals (see computeQualificationOutcome above for how
- * they combine into one label), flags ICP exclusions, and drafts outreach
+ * source-appropriate signals (see computeQualificationOutcome above for
+ * how they combine into one label), flags ICP exclusions, and drafts outreach
  * only when actually recommended. Supersedes the older, narrower
  * rankForProgramFit() (services/vertexGroundingDiscoveryService.js, kept
  * unchanged and still callable) as the one action the review-queue UI
@@ -1101,6 +1108,7 @@ function computeQualificationOutcome({ identityConfidence, programFitScore, reco
  */
 async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, correlationId = "" }, dependencies = {}) {
   const Model = dependencies.GroundingResearchResult || GroundingResearchResult;
+  const SearchModel = dependencies.DiscoverySearch || DiscoverySearch;
   const runAgent = dependencies.runAgent || agentExecutionService.runAgent;
   const listPrograms = dependencies.listApprovedPrograms || listApprovedPrograms;
   const ids = (Array.isArray(resultIds) ? resultIds : []).slice(0, 20);
@@ -1111,6 +1119,11 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
   const programs = await listPrograms({ workspaceId }, dependencies);
   const programById = new Map(programs.map((p) => [p.noteId, p]));
   const programIds = programs.map((p) => p.noteId);
+  const searchIds = [...new Set(rows.map((row) => row.discoverySearchId).filter(Boolean).map(String))];
+  const searches = searchIds.length
+    ? await SearchModel.find({ _id: { $in: searchIds }, workspaceId }).select("programNoteId programName").lean()
+    : [];
+  const searchById = new Map(searches.map((search) => [String(search._id), search]));
 
   const candidates = rows.map((row) => {
     const deterministicFlags = detectExclusionFlags(row);
@@ -1124,16 +1137,21 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
       linkedinUrl: row.linkedinUrl, organizationName: row.organizationName,
       verifiedIdentifier: row.pdlEnrichment?.matched || row.apolloEnrichment?.matched || row.emailVerificationStatus === "verified",
     });
+    const sourceSearch = row.discoverySearchId ? searchById.get(String(row.discoverySearchId)) : null;
+    const targetProgramId = sourceSearch?.programNoteId && programById.has(String(sourceSearch.programNoteId))
+      ? String(sourceSearch.programNoteId)
+      : "";
     return {
       resultId: String(row._id), name: row.name, organizationName: row.organizationName, organizationDomain: row.organizationDomain,
       summary: row.summary, evidenceUrls: row.evidenceUrls, conflicts: row.conflicts || [],
       discoveryMode: row.discoveryMode, identityConfidence, preScreenedExclusionFlags: deterministicFlags,
+      targetProgramId, targetProgramName: targetProgramId ? programById.get(targetProgramId)?.title || sourceSearch?.programName || "" : "",
     };
   });
 
   const result = await runAgent({
     workspaceId, userId, auth, agent: "lead", task: "qualify_and_recommend_leads", correlationId,
-    operationalContext: `Qualify each candidate below against ONLY this workspace's real approved programs listed here — never invent or generalize a program name:\n${programIds.length ? programIds.map((id) => `- ${id}: "${programById.get(id).title}"`).join("\n") : "(No approved programs are currently available — recommendedProgramId must be 'none' for every candidate.)"}\n\nEach candidate already carries a computed "identityConfidence" (low/medium/high/conflict) — this is fixed, real data; do not second-guess it, just note in identityNotes whether the given evidence is consistent with it. Score programFitScore on whether this person resembles the recommended program's real intended buyer — 0-100, never a 0-10 scale. Assess buyerIntentLevel STRICTLY from evidence of a CURRENT need or want (asking for recommendations, describing a specific problem this program solves) — a job title, real-estate role, or being "in the industry" is NEVER by itself buyer intent. Each candidate also carries "preScreenedExclusionFlags" from a keyword pre-screen (coach/broker/lender/etc.) — verify against the real evidence and include in your own exclusionFlags if still applicable, or omit if the pre-screen was a false positive; also add wrong_country, unrelated_corporate_employee, or no_personal_investing_evidence yourself when the evidence supports it. A candidate with listed conflicts should be treated cautiously. Draft a short, personalized outreach message strictly grounded in the evidence given only when you believe outreach is genuinely warranted — never invent facts not present.\n\nCandidates:\n${JSON.stringify(candidates, null, 2)}`,
+    operationalContext: `Qualify each candidate below against ONLY this workspace's real approved programs listed here — never invent or generalize a program name:\n${programIds.length ? programIds.map((id) => `- ${id}: "${programById.get(id).title}"`).join("\n") : "(No approved programs are currently available — recommendedProgramId must be 'none' for every candidate.)"}\n\nEach candidate already carries a computed "identityConfidence" (low/medium/high/conflict) — this is fixed, real data; do not second-guess it, just note in identityNotes whether the given evidence is consistent with it. A candidate with discoveryMode "icp_match" came from an Apollo/PDL structured audience search, not a public intent post. For that mode, evaluate whether the profile matches its targetProgramId and intended buyer; do NOT mark it not_a_fit merely because no current public buying-intent evidence was supplied. Missing intent should remain buyerIntentLevel "none" and may require review, while an actual mismatch or exclusion can be not_a_fit. Score programFitScore on whether this person resembles the recommended program's real intended buyer — 0-100, never a 0-10 scale. When a structured match has a valid targetProgramId and its profile genuinely fits, use that exact target program rather than returning "none" merely because public intent is absent. For public-web candidates, assess buyerIntentLevel STRICTLY from evidence of a CURRENT need or want (asking for recommendations, describing a specific problem this program solves) — a job title, real-estate role, or being "in the industry" is NEVER by itself buyer intent. Each candidate also carries "preScreenedExclusionFlags" from a keyword pre-screen (coach/broker/lender/etc.) — verify against the real evidence and include in your own exclusionFlags if still applicable, or omit if the pre-screen was a false positive; also add wrong_country, unrelated_corporate_employee, or no_personal_investing_evidence yourself when the evidence supports it. A candidate with listed conflicts should be treated cautiously. Draft a short, personalized outreach message strictly grounded in the evidence given only when you believe outreach is genuinely warranted — never invent facts not present.\n\nCandidates:\n${JSON.stringify(candidates, null, 2)}`,
     input: { candidateCount: candidates.length, approvedProgramCount: programIds.length },
     options: { responseSchema: buildQualifyResponseSchema(programIds), schemaName: "lead_qualification" },
   });
@@ -1155,13 +1173,26 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
       // Defensive re-check even though the schema's enum already constrains
       // this — a program that's since been un-approved between listing and
       // now must still never be persisted.
-      const recommendedProgramId = q.recommendedProgramId !== "none" && programById.has(q.recommendedProgramId) ? q.recommendedProgramId : null;
+      const modelProgramId = q.recommendedProgramId !== "none" && programById.has(q.recommendedProgramId) ? q.recommendedProgramId : null;
+      // The owner selected this real approved program before the structured
+      // search ran. Preserve that trustworthy context when Jarvis finds the
+      // profile a genuine fit but omits a recommendation only because the
+      // provider supplied no public-intent narrative.
+      const recommendedProgramId = modelProgramId || (
+        candidate.discoveryMode === "icp_match" && candidate.targetProgramId && Number(q.programFitScore) >= 65
+          ? candidate.targetProgramId
+          : null
+      );
       const program = recommendedProgramId ? programById.get(recommendedProgramId) : null;
       const programFitScore = Math.max(0, Math.min(100, Number(q.programFitScore) || 0));
       const buyerIntentLevel = ["strong", "weak", "none"].includes(q.buyerIntentLevel) ? q.buyerIntentLevel : "none";
-      const exclusionFlags = [...new Set([...(candidate.preScreenedExclusionFlags || []), ...(q.exclusionFlags || [])])].slice(0, 15);
+      // Pre-screen flags are hints for Jarvis, not verdicts. The model is
+      // explicitly asked to verify them against context; re-adding every
+      // omitted hint here made false-positive keywords unavoidable.
+      const exclusionFlags = [...new Set(q.exclusionFlags || [])].slice(0, 15);
       const { qualificationLabel, outreachRecommended } = computeQualificationOutcome({
         identityConfidence: candidate.identityConfidence, programFitScore, recommendedProgramId, buyerIntentLevel, exclusionFlags,
+        discoveryMode: candidate.discoveryMode,
       });
 
       // eslint-disable-next-line no-await-in-loop

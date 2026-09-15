@@ -83,11 +83,22 @@ function testComputeQualificationOutcomeTreatsConflictAsNeedsReviewNotAutoReject
   assert.equal(conflicted.qualificationLabel, "needs_review", "a real identity conflict needs a human decision — it isn't automatically 'not a fit' the way an ICP exclusion is");
 }
 
-function testComputeQualificationOutcomeRejectsNoProgramOrPoorFit() {
+function testComputeQualificationOutcomeKeepsMissingEvidenceReviewable() {
   const noProgram = computeQualificationOutcome({ identityConfidence: "high", programFitScore: 80, recommendedProgramId: "none", buyerIntentLevel: "strong", exclusionFlags: [] });
-  assert.equal(noProgram.qualificationLabel, "not_a_fit", "no genuinely-approved program match must be 'not a fit', never silently dropped or left ambiguous");
+  assert.equal(noProgram.qualificationLabel, "needs_review", "missing a program recommendation is incomplete evidence, not proof that the lead is bad");
+  const missingIntent = computeQualificationOutcome({ identityConfidence: "high", programFitScore: 80, recommendedProgramId: "note-1", buyerIntentLevel: "none", exclusionFlags: ["no_personal_investing_evidence"] });
+  assert.equal(missingIntent.qualificationLabel, "needs_review", "missing public intent must stay reviewable rather than becoming an automatic rejection");
   const poorFit = computeQualificationOutcome({ identityConfidence: "high", programFitScore: 20, recommendedProgramId: "note-1", buyerIntentLevel: "strong", exclusionFlags: [] });
   assert.equal(poorFit.qualificationLabel, "not_a_fit");
+}
+
+function testStructuredAudienceMatchCanQualifyWithoutPublicIntent() {
+  const structured = computeQualificationOutcome({ identityConfidence: "high", programFitScore: 82, recommendedProgramId: "note-1", buyerIntentLevel: "none", exclusionFlags: ["no_personal_investing_evidence"], discoveryMode: "icp_match" });
+  assert.equal(structured.qualificationLabel, "qualified", "a verified Apollo/PDL audience match should qualify on identity + genuine program fit without pretending it came from a current public-intent post");
+  const uncertainIdentity = computeQualificationOutcome({ identityConfidence: "low", programFitScore: 82, recommendedProgramId: "note-1", buyerIntentLevel: "none", exclusionFlags: [], discoveryMode: "icp_match" });
+  assert.equal(uncertainIdentity.qualificationLabel, "needs_review", "structured matches with weak identity should be researched, not rejected");
+  const trulyExcluded = computeQualificationOutcome({ identityConfidence: "high", programFitScore: 82, recommendedProgramId: "note-1", buyerIntentLevel: "none", exclusionFlags: ["wrong_country"], discoveryMode: "icp_match" });
+  assert.equal(trulyExcluded.qualificationLabel, "not_a_fit", "real disqualifiers must still be enforced");
 }
 
 // ==================== qualifyAndRecommend: end-to-end, mocked ====================
@@ -139,6 +150,20 @@ async function testQualifyAndRecommendDiscardsAFabricatedProgramIdIfOneEverSlips
 
   assert.equal(rows[0].recommendedProgram.programNoteId, null, "a program ID that doesn't match a real approved program must never be persisted");
   assert.equal(rows[0].recommendedProgram.name, "", "a fabricated program name must never reach the row, even if it somehow slipped past the schema");
+}
+
+async function testStructuredSearchKeepsItsRealTargetProgramAndQualifiesAfterIdentityMatch() {
+  const rows = [{ _id: "gr-structured", name: "Alex Buyer", organizationName: "Alex Investments", organizationDomain: "", summary: "Real Estate Investor", evidenceUrls: [], conflicts: [], providers: ["apollo_person_search"], confidence: "single_source", discoveryMode: "icp_match", discoverySearchId: "search-1", linkedinUrl: "", pdlEnrichment: {}, apolloEnrichment: { matched: true, email: "alex@example.com" } }];
+  const GroundingResearchResult = fakeGroundingResultModel(rows);
+  const DiscoverySearch = { find: () => leanQuery([{ _id: "search-1", programNoteId: "note-real-1", programName: "Multifamily Foundations" }]) };
+  const listApprovedPrograms = async () => [{ noteId: "note-real-1", title: "Multifamily Foundations" }];
+  const runAgent = async () => ({ output: { qualifications: [{ resultId: "gr-structured", identityNotes: "Apollo identity matched", programFitScore: 82, programFitReasons: ["Matches the selected audience profile"], recommendedProgramId: "none", buyerIntentLevel: "none", buyerIntentEvidence: "No public intent post was supplied", exclusionFlags: ["no_personal_investing_evidence"], qualificationLabel: "needs_review", recommendedNextAction: "Use profile-based cold outreach", outreachRecommended: false, outreachDraft: "" }] } });
+
+  const result = await qualifyAndRecommend({ workspaceId: "workspace-1", userId: "u1", resultIds: ["gr-structured"] }, { GroundingResearchResult, DiscoverySearch, listApprovedPrograms, runAgent });
+
+  assert.equal(result.summary.qualified, 1, "a verified structured audience match with strong fit should be usable as a cold-outreach lead");
+  assert.equal(rows[0].recommendedProgram.programNoteId, "note-real-1", "the selected approved search program should survive when missing public intent is the only reason the model omitted it");
+  assert.equal(rows[0].qualificationLabel, "qualified");
 }
 
 async function testQualifyAndRecommendReportsAnAccurateCompletionSummary() {
@@ -379,9 +404,11 @@ async function run() {
   testComputeQualificationOutcomeRequiresAllThreePillarsForQualified();
   testComputeQualificationOutcomeExcludesRegardlessOfOtherScores();
   testComputeQualificationOutcomeTreatsConflictAsNeedsReviewNotAutoRejected();
-  testComputeQualificationOutcomeRejectsNoProgramOrPoorFit();
+  testComputeQualificationOutcomeKeepsMissingEvidenceReviewable();
+  testStructuredAudienceMatchCanQualifyWithoutPublicIntent();
   await testQualifyAndRecommendPersistsOnlyARealApprovedProgramId();
   await testQualifyAndRecommendDiscardsAFabricatedProgramIdIfOneEverSlipsThrough();
+  await testStructuredSearchKeepsItsRealTargetProgramAndQualifiesAfterIdentityMatch();
   await testQualifyAndRecommendReportsAnAccurateCompletionSummary();
   await testApproveAndRunSearchGathersARankedPoolAndKeepsOnlyTheBestByFit();
   await testApproveAndRunSearchRequestsAndMergesRealApolloPagesBeyondPage1();
@@ -389,7 +416,7 @@ async function run() {
   testParseCompanySizeToApolloRange();
   testBroadenIcpDropsCompanySizeInTheCascade();
   await testApproveAndRunSearchAutomaticallyEnrichesCandidatesMissingAnEmail();
-  console.log("Lead qualification: identityConfidence is computed deterministically from real provider/corroboration/conflict signals (never left at a stale 'low' for a strongly-corroborated identity — the Ellie Baxter fix), the qualify schema structurally cannot return a program outside the workspace's real approved list (the fabrication fix, plus a defensive discard if one ever slips through), qualification requires ALL THREE separate signals — identity, program fit, and buyer-intent evidence — before 'qualified'/outreach is ever recommended (never a title alone), ICP exclusions and identity conflicts are handled as distinct, sensible outcomes, the completion summary accurately counts processed/qualified/needsReview/notAFit/failed including a candidate the model silently omitted, every selected provider runs, and the overall new-candidate cap remains enforced — all passed.");
+  console.log("Lead qualification: identity confidence is deterministic, program IDs are constrained to real approved programs, public-web leads require current intent, structured Apollo/PDL matches can qualify from verified identity plus genuine selected-program fit, missing evidence remains reviewable, real exclusions and poor fits are rejected, completion counts are accurate, provider pagination runs, and candidate caps remain enforced — all passed.");
 }
 
 run().catch((error) => {

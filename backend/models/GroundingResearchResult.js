@@ -206,19 +206,19 @@ const groundingResearchResultSchema = new mongoose.Schema({
   // wants/needs help, never inferred from a title/role alone.
   buyerIntentLevel: { type: String, enum: ["", "strong", "weak", "none"], default: "" },
   buyerIntentEvidence: { type: String, default: "", trim: true, maxlength: 1000 },
-  // The combined, human-facing qualification verdict — computed from all
-  // three axes together (see qualifyAndRecommend()), never just the
-  // program-fit score alone.
+  // The combined, human-facing qualification verdict. Public-web evidence
+  // uses identity + program fit + current intent; structured Apollo/PDL ICP
+  // matches use reliable identity + genuine selected-program fit without
+  // fabricating public intent that those providers do not supply.
   qualificationLabel: { type: String, enum: ["", "qualified", "needs_review", "not_a_fit"], default: "" },
   // ICP exclusions this candidate appears to match (coach, broker, lender,
   // vendor, wrong_country, established_syndicator, no_personal_investing_evidence,
   // etc.) — surfaced for review, never silently used to auto-dismiss.
   exclusionFlags: { type: [String], default: [] },
   recommendedNextAction: { type: String, default: "", trim: true, maxlength: 300 },
-  // True ONLY when identity is sufficiently reliable AND program fit is
-  // genuine AND there is real buyer-intent evidence — never based on a
-  // title/role alone. Still just a recommendation surfaced for the human
-  // reviewer; nothing here ever sends outreach automatically.
+  // True only after the source-appropriate qualification gate passes. Still
+  // just a recommendation surfaced for human review; nothing here sends
+  // outreach automatically.
   outreachRecommended: { type: Boolean, default: false },
   outreachDraft: { type: String, default: "", trim: true, maxlength: 2000 },
   createdByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
