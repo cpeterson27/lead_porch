@@ -15,7 +15,7 @@ const assert = require("node:assert/strict");
 const leadGenerationCoordinatorService = require("./services/leadGenerationCoordinatorService");
 const vertexGroundingDiscoveryService = require("./services/vertexGroundingDiscoveryService");
 
-const { detectExclusionFlags, buildQualifyResponseSchema, computeQualificationOutcome, qualifyAndRecommend, approveAndRunSearch, mapToApolloSeniority, buildApolloFilters, parseCompanySizeToApolloRange, broadenIcp } = leadGenerationCoordinatorService;
+const { detectExclusionFlags, buildQualifyResponseSchema, computeQualificationOutcome, qualifyAndRecommend, approveAndRunSearch, mapToApolloSeniority, buildApolloFilters, parseCompanySizeToApolloRange, broadenIcp, enrichWithApollo } = leadGenerationCoordinatorService;
 const { computeIdentityConfidence } = vertexGroundingDiscoveryService;
 
 function leanQuery(result) {
@@ -356,6 +356,47 @@ function testBroadenIcpDropsCompanySizeInTheCascade() {
 // can email is not a usable lead. Uses a real in-memory row store so
 // enrichWithApollo's own Model.findOne(resultId)/row.save() calls behave
 // like the real GroundingResearchResult model would.
+// Regression coverage for a real bug found via live testing: Apollo's
+// /people/match ALWAYS returns a `person` object, even with no real match —
+// it echoes back a placeholder built from our own input, with every real
+// field empty/null and a match_confidence that's sometimes the literal
+// string "none", sometimes just blank (no single documented enum value).
+// enrichWithApollo() used to treat any returned object as a genuine match,
+// which marked leads "Enriched with Apollo" with an empty profile and
+// stored the placeholder's throwaway id as a real, reusable Apollo person
+// id. It must now require real, substantive data before calling it matched.
+function mockRow(overrides = {}) {
+  return { name: "Test Person", organizationName: "", organizationDomain: "", linkedinUrl: "", apolloPersonId: "", providers: [], type: "person", status: "pending_review", apolloEnrichment: {}, save: async function save() { return this; }, ...overrides };
+}
+
+async function testEnrichWithApolloRejectsANoMatchPlaceholderEvenWithoutTheLiteralNoneLabel() {
+  const row = mockRow();
+  const GroundingResearchResult = { findOne: async () => row };
+  const apolloService = { enrichPerson: async () => ({ externalId: "placeholder-id", fullName: "Test Person", title: "", headline: "", linkedinUrl: "", email: "", organization: {}, matchConfidence: "" }) };
+  const result = await enrichWithApollo({ workspaceId: "workspace-1", userId: "u1", resultId: "r1" }, { GroundingResearchResult, apolloService });
+  assert.equal(result.apolloEnrichment.matched, false, "a placeholder with no substantive data must never be recorded as matched, even when match_confidence is blank rather than the literal string 'none'");
+  assert.deepEqual(result.apolloEnrichment.profile, {}, "no placeholder data should be persisted as if it were a real profile");
+}
+
+async function testEnrichWithApolloAcceptsARealMatchWithBlankConfidenceIfItHasRealData() {
+  const row = mockRow();
+  const GroundingResearchResult = { findOne: async () => row };
+  const apolloService = { enrichPerson: async () => ({ externalId: "real-id", fullName: "Test Person", title: "VP of Sales", linkedinUrl: "https://linkedin.com/in/test", email: "test@example.com", organization: {}, matchConfidence: "" }) };
+  const result = await enrichWithApollo({ workspaceId: "workspace-1", userId: "u1", resultId: "r1" }, { GroundingResearchResult, apolloService });
+  assert.equal(result.apolloEnrichment.matched, true, "a real match with genuine substantive data must be accepted even when Apollo's own confidence label is blank");
+  assert.equal(result.apolloEnrichment.email, "test@example.com");
+}
+
+async function testEnrichWithApolloNeverSendsFalseEmptyDomainOrLinkedinToApollo() {
+  const row = mockRow();
+  const GroundingResearchResult = { findOne: async () => row };
+  let capturedMatchInput = null;
+  const apolloService = { enrichPerson: async ({ matchInput }) => { capturedMatchInput = matchInput; return { externalId: "x", title: "", email: "", organization: {}, matchConfidence: "none" }; } };
+  await enrichWithApollo({ workspaceId: "workspace-1", userId: "u1", resultId: "r1" }, { GroundingResearchResult, apolloService });
+  assert.ok(!("domain" in capturedMatchInput), "an unknown domain must never be sent as an empty string — Apollo treats that as conflicting identity evidence and degrades its own match confidence, confirmed live");
+  assert.ok(!("linkedin_url" in capturedMatchInput), "an unknown LinkedIn URL must never be sent as an empty string, for the same reason");
+}
+
 async function testApproveAndRunSearchAutomaticallyEnrichesCandidatesMissingAnEmail() {
   const DiscoverySearchModel = {
     doc: {
@@ -427,6 +468,9 @@ async function run() {
   testParseCompanySizeToApolloRange();
   testBroadenIcpDropsCompanySizeInTheCascade();
   await testApproveAndRunSearchAutomaticallyEnrichesCandidatesMissingAnEmail();
+  await testEnrichWithApolloRejectsANoMatchPlaceholderEvenWithoutTheLiteralNoneLabel();
+  await testEnrichWithApolloAcceptsARealMatchWithBlankConfidenceIfItHasRealData();
+  await testEnrichWithApolloNeverSendsFalseEmptyDomainOrLinkedinToApollo();
   console.log("Lead qualification: identity confidence is deterministic, program IDs are constrained to real approved programs, public-web leads require current intent, structured Apollo/PDL matches can qualify from verified identity plus genuine selected-program fit, missing evidence remains reviewable, real exclusions and poor fits are rejected, completion counts are accurate, provider pagination runs, and candidate caps remain enforced — all passed.");
 }
 

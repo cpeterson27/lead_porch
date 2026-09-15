@@ -1088,14 +1088,37 @@ async function enrichWithApollo({ workspaceId, userId, resultId, correlationId =
 
   try {
     const [firstName, ...rest] = String(row.name).trim().split(/\s+/);
-    const person = await apollo.enrichPerson({ workspaceId, userId, matchInput: {
+    // Only send fields we actually have a real value for. Confirmed live:
+    // sending an empty-string domain/linkedin_url (our schema's default,
+    // not "we know they have none") makes Apollo treat it as conflicting
+    // identity evidence and degrade its own match_confidence — even on an
+    // otherwise perfect id-based match with a fully rich profile behind it.
+    const rawPerson = await apollo.enrichPerson({ workspaceId, userId, matchInput: {
       ...(row.apolloPersonId ? { id: row.apolloPersonId } : {}),
       first_name: firstName,
       last_name: rest.join(" "),
       organization_name: row.organizationName,
-      domain: row.organizationDomain,
-      linkedin_url: row.linkedinUrl,
+      ...(row.organizationDomain ? { domain: row.organizationDomain } : {}),
+      ...(row.linkedinUrl ? { linkedin_url: row.linkedinUrl } : {}),
     }, correlationId });
+    // Apollo's /people/match ALWAYS returns a `person` object, even when it
+    // has no real match — in that case it echoes back a placeholder built
+    // from our own input, with every real field null/empty and a
+    // `match_confidence` that's sometimes the literal string "none",
+    // sometimes just blank (no single documented enum value to rely on,
+    // confirmed live). Treating that placeholder as a genuine match was a
+    // real bug: it marked leads "Enriched with Apollo" with an empty
+    // profile, and stored the placeholder's throwaway id as if it were a
+    // real, reusable Apollo person id. Rely on ground truth instead of the
+    // confidence label alone: only "none" explicitly disqualifies, and a
+    // real match must have supplied at least one substantive fact beyond
+    // what we already sent in — a blank confidence value alone (which a
+    // genuine rich match can also return) must not disqualify it.
+    const hasSubstantiveData = Boolean(
+      rawPerson?.title || rawPerson?.headline || rawPerson?.linkedinUrl || rawPerson?.email
+      || rawPerson?.organization?.industry || rawPerson?.organization?.employeeCount != null,
+    );
+    const person = rawPerson && rawPerson.matchConfidence !== "none" && hasSubstantiveData ? rawPerson : null;
     row.apolloEnrichment = { attempted: true, matched: Boolean(person), email: person?.email || "", emailState: person?.emailState || "", profile: person || {}, enrichedAt: new Date(), error: false, errorMessage: "" };
     if (person) {
       row.apolloPersonId = row.apolloPersonId || person.externalId || "";

@@ -43,7 +43,9 @@ function resetApolloCache() { cache.clear(); }
 
 function cleanText(value, max = 1000) { return String(value ?? "").trim().slice(0, max); }
 function cleanList(value, maxItems = 100, maxLength = 300) {
-  return (Array.isArray(value) ? value : []).map((item) => cleanText(item, maxLength)).filter(Boolean).slice(0, maxItems);
+  // Apollo's own technology_names list commonly repeats entries (confirmed
+  // live) — dedupe so the UI doesn't show the same technology 2-3 times.
+  return [...new Set((Array.isArray(value) ? value : []).map((item) => cleanText(item, maxLength)).filter(Boolean))].slice(0, maxItems);
 }
 function cleanNumber(value) { const number = Number(value); return Number.isFinite(number) ? number : null; }
 
@@ -121,8 +123,13 @@ function normalizePerson(raw = {}) {
       country: cleanText(organization.country, 150),
       shortDescription: cleanText(organization.short_description, 2000),
       keywords: cleanList(organization.keywords),
-      technologies: cleanList(organization.technologies),
-      annualRevenue: cleanNumber(organization.annual_revenue),
+      // Apollo's real field names (confirmed live against a raw enrichment
+      // response) are `technology_names` and `organization_revenue` — a
+      // plain `technologies`/`annual_revenue` key does not exist on the
+      // response, so reading those silently produced an empty result every
+      // time regardless of what Apollo actually had on file.
+      technologies: cleanList(organization.technology_names),
+      annualRevenue: cleanNumber(organization.organization_revenue),
       totalFunding: cleanNumber(organization.total_funding),
       foundedYear: cleanNumber(organization.founded_year),
     },
