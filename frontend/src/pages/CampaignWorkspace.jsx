@@ -5,7 +5,6 @@ import DashboardCard from "../components/DashboardCard.jsx";
 import UnlayerEmailEditor from "../components/UnlayerEmailEditor.jsx";
 import {
   approveCampaignEmailTemplate,
-  assignCampaignAudience,
   fetchCampaign,
   fetchCampaignEmailTemplate,
   previewCampaignAudience,
@@ -82,7 +81,6 @@ export default function CampaignWorkspace() {
   const [logoSaving, setLogoSaving] = useState(false);
   const [audienceTagsSaving, setAudienceTagsSaving] = useState(false);
   const [audienceMatch, setAudienceMatch] = useState(null);
-  const [audienceMatchBusy, setAudienceMatchBusy] = useState(false);
   const [newAudienceTag, setNewAudienceTag] = useState("");
   const [templateDirty, setTemplateDirty] = useState(false);
   const [templateNotice, setTemplateNotice] = useState("");
@@ -120,20 +118,6 @@ export default function CampaignWorkspace() {
     if (!id) return;
     previewCampaignAudience(id).then(setAudienceMatch).catch(() => {});
   }, [id]);
-
-  const refreshExistingAudience = async () => {
-    setAudienceMatchBusy(true);
-    setError("");
-    try {
-      const result = await assignCampaignAudience(id);
-      setAudienceMatch(result);
-      setScheduleNotice(`${result.assigned || 0} matching CRM contact${result.assigned === 1 ? "" : "s"} connected to this campaign. No emails were sent.`);
-    } catch (err) {
-      setError(err.response?.data?.error || "Unable to match existing contacts.");
-    } finally {
-      setAudienceMatchBusy(false);
-    }
-  };
 
   useEffect(() => {
     if (!id) return;
@@ -856,7 +840,6 @@ export default function CampaignWorkspace() {
                 </div>
                 <div className="campaign-audience-database-actions">
                   <div><strong>{audienceMatch?.matched || 0} matching CRM contacts</strong><small>{audienceMatch?.alreadyAssigned || 0} already connected · only eligible contacts matching these groups are included</small></div>
-                  <Button variant="outline" size="sm" loading={audienceMatchBusy} onClick={refreshExistingAudience}>Connect matching CRM contacts</Button>
                   <Button variant="outline" size="sm" onClick={() => navigate("/crm/contacts")}>Choose contacts manually</Button>
                 </div>
           </DashboardCard>
