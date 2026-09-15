@@ -386,6 +386,28 @@ async function saveResult({ workspaceId, userId, resultId, campaignId = null }, 
           : null;
     const summary = await ingest({
       contacts: [{
+        ...(() => {
+          const profile = row.apolloEnrichment?.profile || {};
+          const organization = profile.organization || {};
+          return {
+            ...(profile.title ? { Title: profile.title } : {}),
+            ...(profile.seniority ? { Seniority: profile.seniority } : {}),
+            ...(profile.departments?.length ? { Departments: profile.departments } : {}),
+            ...(profile.city ? { City: profile.city } : {}),
+            ...(profile.state ? { State: profile.state } : {}),
+            ...(profile.country ? { Country: profile.country } : {}),
+            ...(organization.industry ? { Industry: organization.industry } : {}),
+            ...(organization.employeeCount != null ? { "# Employees": organization.employeeCount } : {}),
+            ...(organization.linkedinUrl ? { "Company LinkedIn URL": organization.linkedinUrl } : {}),
+            ...(profile.facebookUrl || organization.facebookUrl ? { "Facebook URL": profile.facebookUrl || organization.facebookUrl } : {}),
+            ...(profile.twitterUrl || organization.twitterUrl ? { "Twitter URL": profile.twitterUrl || organization.twitterUrl } : {}),
+            ...(organization.phone ? { "Company Phone": organization.phone } : {}),
+            ...(organization.technologies?.length ? { Technologies: organization.technologies } : {}),
+            ...(organization.keywords?.length ? { Keywords: organization.keywords } : {}),
+            ...(organization.annualRevenue != null ? { "Annual Revenue": organization.annualRevenue } : {}),
+            ...(organization.totalFunding != null ? { "Total Funding": organization.totalFunding } : {}),
+          };
+        })(),
         "First Name": firstName || row.name, "Last Name": rest.join(" "), "Company Name": row.organizationName,
         "Website": row.organizationDomain,
         ...(row.linkedinUrl ? { LinkedIn: row.linkedinUrl } : {}),

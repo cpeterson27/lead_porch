@@ -48,7 +48,7 @@ async function testEnabledSearchNormalizesAndCaches(models) {
   apollo.resetApolloCache();
   const officialFixture = {
     people: [
-      { id: "p1", first_name: "Jane", last_name: "Doe", name: "Jane Doe", title: "VP of Sales", organization: { id: "o1", name: "Acme Corp", primary_domain: "acme.com" }, email: "jane.doe@acme.com", email_status: "verified", linkedin_url: "https://linkedin.com/in/janedoe", city: "Austin", state: "TX", country: "US", phone_numbers: [{ sanitized_number: "+15125550100" }] },
+      { id: "p1", first_name: "Jane", last_name: "Doe", name: "Jane Doe", title: "VP of Sales", seniority: "vp", departments: ["sales"], photo_url: "https://images.example/jane.jpg", organization: { id: "o1", name: "Acme Corp", primary_domain: "acme.com", website_url: "https://acme.com", linkedin_url: "https://linkedin.com/company/acme", industry: "Software", estimated_num_employees: 42, technologies: ["React"] }, email: "jane.doe@acme.com", email_status: "verified", linkedin_url: "https://linkedin.com/in/janedoe", city: "Austin", state: "TX", country: "US", phone_numbers: [{ sanitized_number: "+15125550100" }] },
       { id: "p2", first_name: "Locked", last_name: "Person", name: "Locked Person", title: "Director", organization: { id: "o2", name: "Beta LLC", primary_domain: "beta.com" }, email: "email_not_unlocked@domain.com", email_status: "verified" },
       { id: "p1", first_name: "Jane", last_name: "Doe", name: "Jane Doe", title: "VP of Sales", organization: { id: "o1", name: "Acme Corp" }, email: "jane.doe@acme.com", email_status: "verified" },
     ],
@@ -69,6 +69,10 @@ async function testEnabledSearchNormalizesAndCaches(models) {
   assert.equal(jane.email, "jane.doe@acme.com");
   assert.equal(jane.emailProviderVerified, true);
   assert.equal(jane.companyDomain, "acme.com");
+  assert.equal(jane.seniority, "vp");
+  assert.deepEqual(jane.departments, ["sales"]);
+  assert.equal(jane.organization.linkedinUrl, "https://linkedin.com/company/acme");
+  assert.deepEqual(jane.organization.technologies, ["React"]);
   const locked = result.people.find((p) => p.externalId === "p2");
   assert.equal(locked.email, "", "a locked placeholder email must never be exposed as a real address");
   assert.equal(locked.emailState, "unavailable");

@@ -41,6 +41,12 @@ function readCache(key) { const hit = cache.get(key); return hit && hit.expiresA
 function writeCache(key, value) { cache.set(key, { value, expiresAt: Date.now() + CACHE_TTL_MS }); }
 function resetApolloCache() { cache.clear(); }
 
+function cleanText(value, max = 1000) { return String(value ?? "").trim().slice(0, max); }
+function cleanList(value, maxItems = 100, maxLength = 300) {
+  return (Array.isArray(value) ? value : []).map((item) => cleanText(item, maxLength)).filter(Boolean).slice(0, maxItems);
+}
+function cleanNumber(value) { const number = Number(value); return Number.isFinite(number) ? number : null; }
+
 // Apollo returns a locked placeholder instead of a real address when the
 // email requires unlocking with credits. Never treat this as a real email.
 function isPlaceholderEmail(email) {
@@ -64,6 +70,7 @@ function classifyEmail({ email, emailStatus }) {
 
 function normalizePerson(raw = {}) {
   const emailInfo = classifyEmail({ email: raw.email, emailStatus: raw.email_status });
+  const organization = raw.organization || {};
   return {
     provider: "apollo",
     externalId: raw.id || "",
@@ -71,14 +78,54 @@ function normalizePerson(raw = {}) {
     firstName: raw.first_name || "",
     lastName: raw.last_name || "",
     title: raw.title || "",
+    headline: cleanText(raw.headline, 500),
+    photoUrl: cleanText(raw.photo_url, 1000),
+    seniority: cleanText(raw.seniority, 100),
+    departments: cleanList(raw.departments),
+    subdepartments: cleanList(raw.subdepartments),
+    functions: cleanList(raw.functions),
     company: raw.organization?.name || raw.organization_name || "",
     companyDomain: raw.organization?.primary_domain || raw.organization?.website_url?.replace(/^https?:\/\/(www\.)?/i, "").replace(/\/$/, "") || "",
     linkedinUrl: raw.linkedin_url || "",
+    facebookUrl: cleanText(raw.facebook_url, 1000),
+    twitterUrl: cleanText(raw.twitter_url, 1000),
+    githubUrl: cleanText(raw.github_url, 1000),
+    city: cleanText(raw.city, 150),
+    state: cleanText(raw.state, 150),
+    country: cleanText(raw.country, 150),
     location: [raw.city, raw.state, raw.country].filter(Boolean).join(", "),
     email: emailInfo.revealed ? raw.email : "",
     emailState: emailInfo.state,
     emailProviderVerified: emailInfo.providerVerified,
     phoneNumbers: (raw.phone_numbers || []).map((item) => item.sanitized_number || item.raw_number).filter(Boolean),
+    employmentHistory: (raw.employment_history || []).slice(0, 30).map((job) => ({
+      title: cleanText(job.title, 200),
+      organizationName: cleanText(job.organization_name || job.organization?.name, 200),
+      startDate: cleanText(job.start_date, 30),
+      endDate: cleanText(job.end_date, 30),
+      current: Boolean(job.current),
+    })),
+    organization: {
+      id: cleanText(organization.id, 100),
+      name: cleanText(organization.name, 200),
+      domain: cleanText(organization.primary_domain, 300),
+      websiteUrl: cleanText(organization.website_url, 1000),
+      linkedinUrl: cleanText(organization.linkedin_url, 1000),
+      facebookUrl: cleanText(organization.facebook_url, 1000),
+      twitterUrl: cleanText(organization.twitter_url, 1000),
+      industry: cleanText(organization.industry, 200),
+      employeeCount: cleanNumber(organization.estimated_num_employees),
+      phone: cleanText(organization.phone, 100),
+      city: cleanText(organization.city, 150),
+      state: cleanText(organization.state, 150),
+      country: cleanText(organization.country, 150),
+      shortDescription: cleanText(organization.short_description, 2000),
+      keywords: cleanList(organization.keywords),
+      technologies: cleanList(organization.technologies),
+      annualRevenue: cleanNumber(organization.annual_revenue),
+      totalFunding: cleanNumber(organization.total_funding),
+      foundedYear: cleanNumber(organization.founded_year),
+    },
     retrievedAt: new Date().toISOString(),
     raw: { id: raw.id, organizationId: raw.organization?.id },
   };
@@ -169,6 +216,7 @@ async function enrichPerson({ workspaceId, userId = null, matchInput = {}, revea
   try {
     const response = await withResilience(CIRCUIT_KEY, () => client().post("/people/match", { ...matchInput, reveal_personal_emails: Boolean(revealEmail) }));
     const person = response.data?.person ? normalizePerson(response.data.person) : null;
+    if (person) person.matchConfidence = cleanText(response.data?.match_confidence, 30);
     await logUsage({ workspaceId, userId, endpoint: "people/match", operation: "enrich_person", success: true, resultCount: person ? 1 : 0, latencyMs: Date.now() - started, correlationId });
     return person;
   } catch (error) {

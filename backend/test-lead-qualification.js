@@ -386,7 +386,7 @@ async function testApproveAndRunSearchAutomaticallyEnrichesCandidatesMissingAnEm
     searchPeople: async () => ({ people: [{ externalId: "apollo-person-123", fullName: "No Email Person", title: "Real Estate Investor", company: "Acme", companyDomain: "acme.example", linkedinUrl: "https://www.linkedin.com/in/no-email-person", email: "", emailState: "" }] }),
     enrichPerson: async ({ matchInput }) => {
       enrichmentMatchInput = matchInput;
-      return { email: "found@example.com", emailState: "verified" };
+      return { externalId: "apollo-person-123", email: "found@example.com", emailState: "verified", title: "Regional Asset Manager", linkedinUrl: "https://www.linkedin.com/in/no-email-person", facebookUrl: "https://facebook.com/noemailperson", phoneNumbers: ["+15125550100"], organization: { name: "Acme", domain: "acme.example", industry: "Real Estate", employeeCount: 42 } };
     },
   };
 
@@ -401,6 +401,9 @@ async function testApproveAndRunSearchAutomaticallyEnrichesCandidatesMissingAnEm
   assert.equal(savedRow.apolloPersonId, "apollo-person-123", "the exact Apollo person ID from free search must survive persistence");
   assert.equal(enrichmentMatchInput?.id, "apollo-person-123", "paid enrichment must use Apollo's exact person ID instead of fuzzy name/company rematching");
   assert.equal(enrichmentMatchInput?.linkedin_url, "https://www.linkedin.com/in/no-email-person", "LinkedIn remains a secondary matching signal and a usable public contact route");
+  assert.equal(savedRow.apolloEnrichment.profile.title, "Regional Asset Manager", "useful Apollo enrichment fields must be retained instead of collapsing the paid response to email only");
+  assert.equal(savedRow.phone, "+15125550100", "Apollo phone data must be promoted to the review card when returned");
+  assert.ok(savedRow.socialProfileUrls.includes("https://facebook.com/noemailperson"), "Apollo social URLs must remain available to the review UI");
   assert.ok(result.runSummary.explanation.includes("Automatically found a verified email"), "the run explanation must surface that auto-enrichment happened");
 }
 

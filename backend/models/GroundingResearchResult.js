@@ -158,6 +158,10 @@ const groundingResearchResultSchema = new mongoose.Schema({
     matched: { type: Boolean, default: false },
     email: { type: String, default: "", trim: true, lowercase: true },
     emailState: { type: String, default: "" },
+    // Sanitized, allow-listed demographic and firmographic fields returned
+    // by Apollo. This prevents the UI from losing useful paid-enrichment
+    // data while avoiding storage of Apollo's unbounded raw response.
+    profile: { type: mongoose.Schema.Types.Mixed, default: {} },
     enrichedAt: { type: Date, default: null },
     error: { type: Boolean, default: false },
     errorMessage: { type: String, default: "", trim: true, maxlength: 300 },

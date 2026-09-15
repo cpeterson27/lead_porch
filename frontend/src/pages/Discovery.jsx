@@ -124,7 +124,14 @@ const discoveryLaneOf = (result) => {
   return result.type === "person" ? "prospective_students" : "content";
 };
 
-const resultImageOf = (result) => result.profileImageUrl || result.profilePictureUrl || result.avatarUrl || result.photoUrl || result.logoUrl || "";
+const resultImageOf = (result) => result.apolloEnrichment?.profile?.photoUrl || result.profileImageUrl || result.profilePictureUrl || result.avatarUrl || result.photoUrl || result.logoUrl || "";
+const socialLinkLabel = (url = "") => {
+  if (/linkedin\.com/i.test(url)) return "LinkedIn";
+  if (/facebook\.com/i.test(url)) return "Facebook";
+  if (/(twitter\.com|x\.com)/i.test(url)) return "X / Twitter";
+  if (/github\.com/i.test(url)) return "GitHub";
+  return "Public profile";
+};
 const initialsOf = (name) => String(name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 
 const publicAccount = (signal) => {
@@ -1857,6 +1864,20 @@ export default function Discovery() {
                   ? { email: result.email, state: result.emailVerificationStatus || result.emailState || "unverified" }
                   : null;
             const isStructuredAudienceMatch = result.discoveryMode === "icp_match";
+            const apolloProfile = result.apolloEnrichment?.profile || {};
+            const apolloOrganization = apolloProfile.organization || {};
+            const publicProfileUrls = [...new Set([
+              result.linkedinUrl,
+              ...(result.socialProfileUrls || []),
+              apolloProfile.linkedinUrl,
+              apolloProfile.facebookUrl,
+              apolloProfile.twitterUrl,
+              apolloProfile.githubUrl,
+              apolloOrganization.linkedinUrl,
+              apolloOrganization.facebookUrl,
+              apolloOrganization.twitterUrl,
+            ].filter(Boolean))];
+            const companyWebsiteUrl = apolloOrganization.websiteUrl || (result.organizationDomain ? `https://${result.organizationDomain}` : "");
             const missingContactMessage = result.apolloEnrichment?.attempted && result.pdlEnrichment?.attempted
               ? "Apollo and PDL checked · no email was returned"
               : result.apolloEnrichment?.attempted
@@ -1888,9 +1909,9 @@ export default function Discovery() {
                 </div>
 
                 <small>{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
-                {(result.linkedinUrl || result.organizationDomain) ? <small className="review-card__contact-routes">
-                  {result.linkedinUrl ? <a href={result.linkedinUrl} target="_blank" rel="noreferrer">LinkedIn profile ↗</a> : null}
-                  {result.organizationDomain ? <a href={`https://${result.organizationDomain}`} target="_blank" rel="noreferrer">Company website ↗</a> : null}
+                {(publicProfileUrls.length || companyWebsiteUrl) ? <small className="review-card__contact-routes">
+                  {publicProfileUrls.map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{socialLinkLabel(url)} ↗</a>)}
+                  {companyWebsiteUrl ? <a href={companyWebsiteUrl} target="_blank" rel="noreferrer">Company website ↗</a> : null}
                 </small> : null}
                 {result.phone ? <small>Phone: {result.phone} <span className="review-card__missing">(as reported by the provider — not independently verified as still active)</span></small> : null}
                 {effectiveEmail ? <small>Contact: {effectiveEmail.email} ({effectiveEmail.state})</small> : <small className="review-card__missing">{missingContactMessage}</small>}
@@ -1929,7 +1950,34 @@ export default function Discovery() {
                       <small>{result.pdlEnrichment.error ? `PDL error: ${result.pdlEnrichment.errorMessage || "unknown error"}` : result.pdlEnrichment.matched ? `PDL verified: ${result.pdlEnrichment.email || "match found, no email"}` : "PDL: no confident match"}</small>
                     ) : null}
                     {result.apolloEnrichment?.attempted ? (
-                      <small>{result.apolloEnrichment.error ? `Apollo error: ${result.apolloEnrichment.errorMessage || "unknown error"}` : result.apolloEnrichment.matched ? `Apollo verified: ${result.apolloEnrichment.email || "match found, no email"}` : "Apollo: no confident match"}</small>
+                      <>
+                        <small>{result.apolloEnrichment.error ? `Apollo error: ${result.apolloEnrichment.errorMessage || "unknown error"}` : result.apolloEnrichment.email ? `Apollo email: ${result.apolloEnrichment.email} (${result.apolloEnrichment.emailState || "status not supplied"})` : result.apolloEnrichment.matched ? "Apollo matched the identity but returned no email" : "Apollo: no confident match"}</small>
+                        {result.apolloEnrichment.matched && Object.keys(apolloProfile).length ? <section className="apollo-profile-details">
+                          <strong>Apollo details</strong>
+                          <dl>
+                            {apolloProfile.matchConfidence ? <div><dt>Match confidence</dt><dd>{apolloProfile.matchConfidence}</dd></div> : null}
+                            {apolloProfile.title ? <div><dt>Title</dt><dd>{apolloProfile.title}</dd></div> : null}
+                            {apolloProfile.headline ? <div><dt>Headline</dt><dd>{apolloProfile.headline}</dd></div> : null}
+                            {apolloProfile.seniority ? <div><dt>Seniority</dt><dd>{apolloProfile.seniority}</dd></div> : null}
+                            {apolloProfile.location ? <div><dt>Location</dt><dd>{apolloProfile.location}</dd></div> : null}
+                            {apolloProfile.departments?.length ? <div><dt>Departments</dt><dd>{apolloProfile.departments.join(", ")}</dd></div> : null}
+                            {apolloProfile.subdepartments?.length ? <div><dt>Subdepartments</dt><dd>{apolloProfile.subdepartments.join(", ")}</dd></div> : null}
+                            {apolloProfile.functions?.length ? <div><dt>Functions</dt><dd>{apolloProfile.functions.join(", ")}</dd></div> : null}
+                            {apolloProfile.phoneNumbers?.length ? <div><dt>Phones</dt><dd>{apolloProfile.phoneNumbers.join(", ")}</dd></div> : null}
+                            {apolloOrganization.industry ? <div><dt>Industry</dt><dd>{apolloOrganization.industry}</dd></div> : null}
+                            {apolloOrganization.employeeCount != null ? <div><dt>Employees</dt><dd>{Number(apolloOrganization.employeeCount).toLocaleString()}</dd></div> : null}
+                            {apolloOrganization.foundedYear ? <div><dt>Founded</dt><dd>{apolloOrganization.foundedYear}</dd></div> : null}
+                            {apolloOrganization.phone ? <div><dt>Company phone</dt><dd>{apolloOrganization.phone}</dd></div> : null}
+                            {[apolloOrganization.city, apolloOrganization.state, apolloOrganization.country].filter(Boolean).length ? <div><dt>Company location</dt><dd>{[apolloOrganization.city, apolloOrganization.state, apolloOrganization.country].filter(Boolean).join(", ")}</dd></div> : null}
+                            {apolloOrganization.annualRevenue != null ? <div><dt>Annual revenue</dt><dd>{Number(apolloOrganization.annualRevenue).toLocaleString()}</dd></div> : null}
+                            {apolloOrganization.totalFunding != null ? <div><dt>Total funding</dt><dd>{Number(apolloOrganization.totalFunding).toLocaleString()}</dd></div> : null}
+                            {apolloOrganization.shortDescription ? <div className="is-wide"><dt>Company</dt><dd>{apolloOrganization.shortDescription}</dd></div> : null}
+                            {apolloOrganization.keywords?.length ? <div className="is-wide"><dt>Keywords</dt><dd>{apolloOrganization.keywords.join(", ")}</dd></div> : null}
+                            {apolloOrganization.technologies?.length ? <div className="is-wide"><dt>Technologies</dt><dd>{apolloOrganization.technologies.join(", ")}</dd></div> : null}
+                          </dl>
+                          {apolloProfile.employmentHistory?.length ? <details><summary>Employment history ({apolloProfile.employmentHistory.length})</summary><ul>{apolloProfile.employmentHistory.map((job, index) => <li key={`${job.organizationName}-${job.title}-${index}`}>{[job.title, job.organizationName, [job.startDate, job.endDate || (job.current ? "Present" : "")].filter(Boolean).join(" – ")].filter(Boolean).join(" · ")}</li>)}</ul></details> : null}
+                        </section> : null}
+                      </>
                     ) : null}
                   </div>
                 ) : null}

@@ -1062,13 +1062,21 @@ async function enrichWithApollo({ workspaceId, userId, resultId, correlationId =
       domain: row.organizationDomain,
       linkedin_url: row.linkedinUrl,
     }, correlationId });
-    row.apolloEnrichment = { attempted: true, matched: Boolean(person), email: person?.email || "", emailState: person?.emailState || "", enrichedAt: new Date(), error: false, errorMessage: "" };
+    row.apolloEnrichment = { attempted: true, matched: Boolean(person), email: person?.email || "", emailState: person?.emailState || "", profile: person || {}, enrichedAt: new Date(), error: false, errorMessage: "" };
+    if (person) {
+      row.apolloPersonId = row.apolloPersonId || person.externalId || "";
+      row.linkedinUrl = row.linkedinUrl || person.linkedinUrl || "";
+      row.organizationName = row.organizationName || person.company || person.organization?.name || "";
+      row.organizationDomain = row.organizationDomain || person.companyDomain || person.organization?.domain || "";
+      row.phone = row.phone || person.phoneNumbers?.[0] || person.organization?.phone || "";
+      row.socialProfileUrls = [...new Set([...(row.socialProfileUrls || []), person.linkedinUrl, person.facebookUrl, person.twitterUrl, person.githubUrl].filter(Boolean))];
+    }
     if (person && !row.providers.includes("apollo")) row.providers.push("apollo");
     await row.save();
     await auditService.record({ workspaceId, actorUserId: userId, action: "provider.request", targetType: "GroundingResearchResult", targetId: row._id, after: { apolloMatched: Boolean(person) }, provider: "apollo", success: true });
     return row;
   } catch (error) {
-    row.apolloEnrichment = { attempted: true, matched: false, email: "", emailState: "", enrichedAt: new Date(), error: true, errorMessage: clean(error.message || "Apollo enrichment failed", 300) };
+    row.apolloEnrichment = { attempted: true, matched: false, email: "", emailState: "", profile: {}, enrichedAt: new Date(), error: true, errorMessage: clean(error.message || "Apollo enrichment failed", 300) };
     await row.save();
     await auditService.record({ workspaceId, actorUserId: userId, action: "provider.request", targetType: "GroundingResearchResult", targetId: row._id, after: { apolloMatched: false, apolloErrorCode: error.code || "APOLLO_ENRICHMENT_FAILED" }, provider: "apollo", success: false });
     return row;
