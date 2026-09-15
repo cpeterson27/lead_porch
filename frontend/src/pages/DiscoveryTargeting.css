@@ -1230,7 +1230,7 @@
    instead of the old fixed 3/2/1 breakpoints that could disagree with the
    space actually available and clip a card at the edge. */
 .review-queue-grid { display: grid; gap: .75rem; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); width: 100%; }
-.review-card { border-color: #e1e5e3; border-radius: 14px; box-shadow: 0 2px 9px rgba(16,27,43,.045); min-width: 0; padding: .8rem; }
+.review-card { background:rgba(255,255,255,.92);border-color:rgba(47,42,102,.1);border-radius:20px;box-shadow:0 12px 32px rgba(36,29,93,.07);min-width:0;padding:1rem; }
 .review-card__avatar { align-items: center; background: linear-gradient(145deg, #dfe9e5, #edf2f5); border: 1px solid #d8e1dd; border-radius: 50%; color: #28584b; display: flex; flex: 0 0 34px; font-size: .7rem; font-weight: 850; height: 34px; justify-content: center; overflow: hidden; }
 .review-card__avatar img { height: 100%; object-fit: cover; width: 100%; }
 .review-card__header { align-items: center; }
@@ -1264,6 +1264,9 @@
 .review-card__why p{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
 .review-card__why small{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .review-pagination{align-items:center;display:flex;gap:12px;justify-content:center;padding:16px 0 2px}.review-pagination span{color:#696d7a;font-size:.75rem;font-weight:700}
+.leadgen-row-actions__group.is-next-step{display:grid;grid-template-columns:1fr;gap:7px}
+.leadgen-row-actions__group.is-next-step>span{font-size:.7rem;font-weight:800}
+.leadgen-row-actions__group.is-next-step .btn{border-radius:999px!important;min-height:40px!important;padding:9px 18px!important;white-space:nowrap!important;width:100%!important}
 @media(max-width:700px){.review-campaign-context{grid-template-columns:1fr}.review-queue-grid{grid-template-columns:1fr}.review-pagination{justify-content:space-between}}
 
 .discovery-run-details { background: #f7f8f8; border: 1px solid #e0e5e2; border-radius: 16px; padding: 0; }

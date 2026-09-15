@@ -1839,7 +1839,7 @@ export default function Discovery() {
             <header className="discovery-lane__header"><div><span>{laneLabel}</span><small>{laneDescription}</small></div><strong>{groundingResultsByLane[laneKey].length}</strong></header>
             <div className="review-queue-grid">{groundingResultsByLane[laneKey].map((result) => {
             const expanded = expandedResultIds.includes(result._id);
-            const sourceLabel = result.discoveryMode === "icp_match" ? `${(result.providers || []).includes("apollo_person_search") ? "Apollo" : "PDL"} structured ICP match`
+            const sourceLabel = result.discoveryMode === "icp_match" ? `${(result.providers || []).includes("apollo_person_search") ? "Apollo" : "PDL"} audience match`
               : result.discoveryMode === "public_web_high_volume" ? "Public-web evidence (high-volume discovery)"
                 : "Public-web evidence";
             const corroborated = (result.providers || []).length >= 2;
@@ -1883,7 +1883,7 @@ export default function Discovery() {
                 {effectiveEmail ? <small>Contact: {effectiveEmail.email} ({effectiveEmail.state})</small> : enrichmentAttemptedNoEmail ? <small className="review-card__missing">Identity matched, but no email is available from any provider tried</small> : <small className="review-card__missing">Public lead found · verified contact not supplied</small>}
                 {result.type === "person" && result.discoveryMode !== "icp_match" ? (
                   <small>{result.evidenceDate ? `Evidence date: ${new Date(result.evidenceDate).toLocaleDateString()} (${result.evidenceAgeDays} day${result.evidenceAgeDays === 1 ? "" : "s"} old)` : "No verifiable evidence date"}{result.freshnessTier ? ` · ${result.freshnessTier}` : ""}</small>
-                ) : result.discoveryMode === "icp_match" ? <small>Structured database match — not a dated public post, never described as recent intent.</small> : null}
+                ) : result.discoveryMode === "icp_match" ? <small>Matched from your audience criteria. Current interest still needs confirmation.</small> : null}
                 {result.conflicts?.length ? <small className="form-error">Conflicts: {result.conflicts.join(" ")}</small> : null}
                 {result.exclusionFlags?.length ? <small className="form-error">ICP exclusion flags: {result.exclusionFlags.join(", ")}</small> : null}
 
@@ -1910,7 +1910,7 @@ export default function Discovery() {
                     <small>Citations</small>
                     <div className="grounding-citations">
                       {(result.evidenceUrls || []).map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}
-                      {!result.evidenceUrls?.length && result.discoveryMode === "icp_match" ? <span className="people-preview-footnote">No public-web citation — this is a structured ICP match, not a public-web find.</span> : null}
+                      {!result.evidenceUrls?.length && result.discoveryMode === "icp_match" ? <span className="people-preview-footnote">Apollo or PDL matched this person to your audience. No public activity was attached.</span> : null}
                     </div>
                     {result.pdlEnrichment?.attempted ? (
                       <small>{result.pdlEnrichment.error ? `PDL error: ${result.pdlEnrichment.errorMessage || "unknown error"}` : result.pdlEnrichment.matched ? `PDL verified: ${result.pdlEnrichment.email || "match found, no email"}` : "PDL: no confident match"}</small>
@@ -1924,7 +1924,7 @@ export default function Discovery() {
                 {result.status === "pending_review" ? (
                   <div className="leadgen-row-actions">
                     {!result.qualificationLabel ? (
-                      <div className="leadgen-row-actions__group">
+                      <div className="leadgen-row-actions__group is-next-step">
                         <span>Next step:</span>
                         <Button size="sm" loading={qualifyBusy} onClick={() => qualifyGroundingResults([result._id])}>Qualify with Jarvis</Button>
                       </div>
