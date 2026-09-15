@@ -217,7 +217,7 @@ export default function Discovery() {
   const [planning, setPlanning] = useState(false);
   const [campaignId, setCampaignId] = useState("");
   const campaignContextId = searchParams.get("campaignId") || "";
-  const [leadCampaignId, setLeadCampaignId] = useState(() => campaignContextId);
+  const leadCampaignId = campaignContextId;
   const [query, setQuery] = useState("");
   const [emailFilter, setEmailFilter] = useState("verified");
   const [notice, setNotice] = useState("");
@@ -1739,16 +1739,10 @@ export default function Discovery() {
         <p className="people-preview-intro">
           Review why each person was found, research contact information for the promising people, then add the leads you want to your CRM. Nothing enters your CRM or outreach without your action.
         </p>
-        <div className="review-campaign-context">
-          {campaignContextId ? <div className="review-campaign-context__locked"><span>Finding leads for</span><strong>{campaigns.find((campaign) => String(campaign._id) === String(campaignContextId))?.name || "Current campaign"}</strong></div> : <label>
-              <span>Optional campaign</span>
-              <select value={leadCampaignId} onChange={(event) => setLeadCampaignId(event.target.value)}>
-                <option value="">CRM only—choose a campaign later</option>
-                {campaigns.map((campaign) => <option key={campaign._id} value={campaign._id}>{campaign.name}</option>)}
-              </select>
-            </label>}
-          <small>{leadCampaignId ? "Qualified leads will automatically be added to this campaign." : "Searching outside a campaign saves approved leads to the CRM."}</small>
-        </div>
+        {campaignContextId ? <div className="review-campaign-context">
+          <div className="review-campaign-context__locked"><span>Finding leads for</span><strong>{campaigns.find((campaign) => String(campaign._id) === String(campaignContextId))?.name || "Current campaign"}</strong></div>
+          <small>Leads you approve will be added to your CRM and this campaign.</small>
+        </div> : null}
         <div className="discovery-review-filters">
           {["pending_review", "saved", "dismissed"].map((status) => (
             <Button key={status} size="sm" variant={groundingResultsStatus === status ? "primary" : "outline"} onClick={() => { setGroundingResultsStatus(status); setSelectedGroundingIds([]); setQualifySummary(null); loadGroundingResults(status); }}>
@@ -1803,7 +1797,7 @@ export default function Discovery() {
             </details>
 
             <div className="review-queue-selection-row">
-              <Button size="sm" variant="outline" onClick={selectAllVisible}>Select this page ({pagedGroundingResults.length})</Button>
+              <Button size="sm" variant="outline" onClick={selectAllVisible}>Select this page</Button>
               <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} onClick={clearGroundingSelection}>Clear selection</Button>
               <span className="review-queue-selected-count"><strong>{selectedGroundingIds.length}</strong> selected · {pagedGroundingResults.length} on this page · {visibleGroundingResults.length} matching filters</span>
               <Button size="sm" disabled={!selectedGroundingIds.length} loading={qualifyBusy} onClick={qualifySelectedGroundingResults}>
