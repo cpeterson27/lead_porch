@@ -144,6 +144,69 @@ const reviewActionabilityOf = (result) => {
   if (!result.qualificationLabel || result.qualificationLabel === "needs_review") return "needs_review";
   return effectiveEmailOf(result) ? "ready" : "needs_contact";
 };
+
+// The explicit search-vs-enrichment status vocabulary a real lead generator
+// needs: a person found by Apollo Search is not the same thing as a person
+// Apollo (or PDL) has actually enriched, and "no email returned" is not the
+// same thing as "never checked." Each state below corresponds to exactly
+// one real, distinguishable pipeline outcome — never a guess.
+const CONTACT_STATUS = {
+  SEARCH_ONLY: "Found with Apollo Search — no enrichment action performed",
+  EMAIL_AVAILABLE: "Email available",
+  ENRICHMENT_NEEDED: "Enrichment needed",
+  ENRICHED_APOLLO: "Enriched with Apollo",
+  ENRICHED_PDL: "Enriched with PDL",
+  NO_EMAIL_RETURNED: "No email returned",
+};
+const contactStatusOf = (result) => {
+  if (result.type !== "person") return null;
+  const apolloAttempted = Boolean(result.apolloEnrichment?.attempted);
+  const pdlAttempted = Boolean(result.pdlEnrichment?.attempted);
+  const apolloGotEmail = Boolean(result.apolloEnrichment?.matched && result.apolloEnrichment?.email);
+  const pdlGotEmail = Boolean(result.pdlEnrichment?.matched && result.pdlEnrichment?.email);
+  if (pdlGotEmail) return CONTACT_STATUS.ENRICHED_PDL;
+  if (apolloGotEmail) return CONTACT_STATUS.ENRICHED_APOLLO;
+  if (apolloAttempted || pdlAttempted) return CONTACT_STATUS.NO_EMAIL_RETURNED;
+  if (result.email) return CONTACT_STATUS.EMAIL_AVAILABLE;
+  if (result.qualificationLabel === "qualified" || result.qualificationLabel === "needs_review") return CONTACT_STATUS.ENRICHMENT_NEEDED;
+  return CONTACT_STATUS.SEARCH_ONLY;
+};
+// A single source of truth for everything a lead's row/drawer needs to
+// display, computed once from the raw result so the compact row and the
+// detail drawer never compute (or drift from) these fields differently.
+const computeResultDisplay = (result) => {
+  const sourceLabel = result.discoveryMode === "icp_match" ? `${(result.providers || []).includes("apollo_person_search") ? "Apollo" : "PDL"} audience match`
+    : result.discoveryMode === "public_web_high_volume" ? "Public-web evidence (high-volume discovery)"
+      : "Public-web evidence";
+  const corroborated = (result.providers || []).length >= 2;
+  const effectiveEmail = effectiveEmailOf(result);
+  const isStructuredAudienceMatch = result.discoveryMode === "icp_match";
+  const enrichedApolloProfile = result.apolloEnrichment?.profile || {};
+  const apolloProfile = Object.keys(enrichedApolloProfile).length ? enrichedApolloProfile : (result.apolloSearchProfile || {});
+  const apolloOrganization = apolloProfile.organization || {};
+  const publicProfileUrls = [...new Set([
+    result.linkedinUrl,
+    ...(result.socialProfileUrls || []),
+    apolloProfile.linkedinUrl,
+    apolloProfile.facebookUrl,
+    apolloProfile.twitterUrl,
+    apolloProfile.githubUrl,
+    apolloOrganization.linkedinUrl,
+    apolloOrganization.facebookUrl,
+    apolloOrganization.twitterUrl,
+  ].filter(Boolean))];
+  const companyWebsiteUrl = apolloOrganization.websiteUrl || (result.organizationDomain ? `https://${result.organizationDomain}` : "");
+  const missingContactMessage = result.apolloEnrichment?.attempted && result.pdlEnrichment?.attempted
+    ? "Apollo and PDL checked · no email was returned"
+    : result.apolloEnrichment?.attempted
+      ? "Apollo checked · no email returned; PDL is the remaining option"
+      : result.pdlEnrichment?.attempted
+        ? "PDL checked · no email returned; Apollo is the remaining option"
+        : isStructuredAudienceMatch
+          ? "Audience match found · contact information still needed"
+          : "Public lead found · verified contact not supplied";
+  return { sourceLabel, corroborated, effectiveEmail, isStructuredAudienceMatch, enrichedApolloProfile, apolloProfile, apolloOrganization, publicProfileUrls, companyWebsiteUrl, missingContactMessage, contactStatus: contactStatusOf(result) };
+};
 const initialsOf = (name) => String(name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 
 const publicAccount = (signal) => {
@@ -358,7 +421,7 @@ export default function Discovery() {
   const [pdlEnrichBusyId, setPdlEnrichBusyId] = useState("");
   const [selectedGroundingIds, setSelectedGroundingIds] = useState([]);
   const [reviewFilters, setReviewFilters] = useState({ run: "all", newOnly: false, provider: "all", qualification: "all", location: "", freshness: "all", identityConfidence: "all" });
-  const [expandedResultIds, setExpandedResultIds] = useState([]);
+  const [drawerResultId, setDrawerResultId] = useState("");
   const [qualifySummary, setQualifySummary] = useState(null);
   const [qualifyOutcomeFilter, setQualifyOutcomeFilter] = useState("all");
   const [reviewPage, setReviewPage] = useState(1);
@@ -691,9 +754,8 @@ export default function Discovery() {
 
   const runKeyOf = (result) => result.discoverySearchId || result.discoveryRunId || "manual";
 
-  const toggleDetails = (id) => {
-    setExpandedResultIds((current) => current.includes(id) ? current.filter((row) => row !== id) : [...current, id]);
-  };
+  const openDetailDrawer = (id) => setDrawerResultId(id);
+  const closeDetailDrawer = () => setDrawerResultId("");
 
   const clearGroundingSelection = () => setSelectedGroundingIds([]);
 
@@ -812,6 +874,7 @@ export default function Discovery() {
     pagedGroundingResults.forEach((result) => lanes[discoveryLaneOf(result)].push(result));
     return lanes;
   }, [pagedGroundingResults]);
+  const drawerResult = useMemo(() => drawerResultId ? groundingResults.find((r) => r._id === drawerResultId) || null : null, [drawerResultId, groundingResults]);
 
   useEffect(() => {
     if (activeTab !== "people") return undefined;
@@ -1857,43 +1920,18 @@ export default function Discovery() {
         {visibleGroundingResults.length ? <><div className="discovery-lanes">
           {DISCOVERY_LANES.map(([laneKey, laneLabel, laneDescription]) => groundingResultsByLane[laneKey].length ? <section className={`discovery-lane lane-${laneKey}`} key={laneKey}>
             <header className="discovery-lane__header"><div><span>{laneLabel}</span><small>{laneDescription}</small></div><strong>{groundingResultsByLane[laneKey].length}</strong></header>
-            <div className="review-queue-grid"><div className="lead-review-table__header" aria-hidden="true"><span>Person</span><span>Company</span><span>Program fit</span><span>Contact</span><span>Actions</span></div>{groundingResultsByLane[laneKey].map((result) => {
-            const expanded = expandedResultIds.includes(result._id);
-            const sourceLabel = result.discoveryMode === "icp_match" ? `${(result.providers || []).includes("apollo_person_search") ? "Apollo" : "PDL"} audience match`
-              : result.discoveryMode === "public_web_high_volume" ? "Public-web evidence (high-volume discovery)"
-                : "Public-web evidence";
-            const corroborated = (result.providers || []).length >= 2;
-            // Same email priority saveResult() uses when actually saving to a
-            // Contact — an enrichment find (PDL, then Apollo) beats whatever
-            // the discovery source itself supplied. Without this, a card
-            // could show "no verified contact" even after enrichment found a
-            // real usable email, since that lives on a separate nested field.
-            const effectiveEmail = effectiveEmailOf(result);
-            const isStructuredAudienceMatch = result.discoveryMode === "icp_match";
-            const enrichedApolloProfile = result.apolloEnrichment?.profile || {};
-            const apolloProfile = Object.keys(enrichedApolloProfile).length ? enrichedApolloProfile : (result.apolloSearchProfile || {});
-            const apolloOrganization = apolloProfile.organization || {};
-            const publicProfileUrls = [...new Set([
-              result.linkedinUrl,
-              ...(result.socialProfileUrls || []),
-              apolloProfile.linkedinUrl,
-              apolloProfile.facebookUrl,
-              apolloProfile.twitterUrl,
-              apolloProfile.githubUrl,
-              apolloOrganization.linkedinUrl,
-              apolloOrganization.facebookUrl,
-              apolloOrganization.twitterUrl,
-            ].filter(Boolean))];
-            const companyWebsiteUrl = apolloOrganization.websiteUrl || (result.organizationDomain ? `https://${result.organizationDomain}` : "");
-            const missingContactMessage = result.apolloEnrichment?.attempted && result.pdlEnrichment?.attempted
-              ? "Apollo and PDL checked · no email was returned"
-              : result.apolloEnrichment?.attempted
-                ? "Apollo checked · no email returned; PDL is the remaining option"
-                : result.pdlEnrichment?.attempted
-                  ? "PDL checked · no email returned; Apollo is the remaining option"
-                  : isStructuredAudienceMatch
-                    ? "Audience match found · contact information still needed"
-                    : "Public lead found · verified contact not supplied";
+            <div className="review-queue-grid"><div className="lead-review-table__header" aria-hidden="true"><span>Person</span><span>Title</span><span>Company</span><span>Fit</span><span>Email</span><span>Social</span><span>Status</span><span>Next action</span></div>{groundingResultsByLane[laneKey].map((result) => {
+            const { effectiveEmail, apolloProfile, publicProfileUrls, companyWebsiteUrl, missingContactMessage, contactStatus } = computeResultDisplay(result);
+            // Apollo is always the first, primary contact-finding action.
+            // PDL only ever appears once Apollo has genuinely been tried and
+            // failed (or is structurally unavailable for this workspace) —
+            // it is a fallback, never a second equal-weight button.
+            const apolloAvailable = leadGenProviderAvailability?.apollo_person_search?.available !== false;
+            const apolloAttempted = Boolean(result.apolloEnrichment?.attempted);
+            const apolloFailed = apolloAttempted && !(result.apolloEnrichment?.matched && result.apolloEnrichment?.email);
+            const pdlAttempted = Boolean(result.pdlEnrichment?.attempted);
+            const showApolloButton = apolloAvailable && !apolloAttempted;
+            const showPdlButton = !pdlAttempted && (!apolloAvailable || apolloFailed);
             return (
               <article key={result._id} className={`review-card is-${result.status} qualification-${result.qualificationLabel || "unscored"}`}>
                 <header className="review-card__header">
@@ -1907,86 +1945,22 @@ export default function Discovery() {
                     <strong>{result.name}</strong>
                     {result.isNew ? <span className="leadgen-badge-new">New</span> : null}
                   </div>
-                  {result.qualificationLabel ? <span className={`review-card__qual-badge qual-${result.qualificationLabel}`}>{result.qualificationLabel.replace("_", " ")}</span> : null}
                 </header>
 
-                <div className="review-card__source-line">
-                  <span>{sourceLabel}{corroborated ? " · cross-provider corroboration" : ""}</span>
-                  <span className={`review-card__identity-badge identity-${result.identityConfidence || "low"}`}>Identity: {(result.identityConfidence || "low").replace("_", " ")}</span>
-                </div>
-
+                <small className="lead-review-table__title">{apolloProfile.title || "—"}</small>
                 <small className="lead-review-table__company">{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
+                {result.recommendedProgram?.name ? <small className="grounding-fit-score"><strong>{result.fitScore}/100</strong><span>{result.recommendedProgram.name}</span></small> : result.fitScore != null ? <small className="grounding-fit-score"><strong>{result.fitScore}/100</strong><span>No program selected</span></small> : <small className="grounding-fit-score"><span>Not scored</span></small>}
+                {effectiveEmail ? <small className="lead-review-table__contact"><strong>{effectiveEmail.email}</strong><span>{effectiveEmail.state}</span></small> : <small className="review-card__missing lead-review-table__contact">{missingContactMessage}</small>}
                 {(publicProfileUrls.length || companyWebsiteUrl) ? <small className="review-card__contact-routes">
                   {publicProfileUrls.map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{socialLinkLabel(url)} ↗</a>)}
                   {companyWebsiteUrl ? <a href={companyWebsiteUrl} target="_blank" rel="noreferrer">Company website ↗</a> : null}
-                </small> : null}
-                {effectiveEmail ? <small className="lead-review-table__contact"><strong>{effectiveEmail.email}</strong><span>{effectiveEmail.state}</span></small> : <small className="review-card__missing lead-review-table__contact">{missingContactMessage}</small>}
-                {result.type === "person" && result.discoveryMode !== "icp_match" ? (
-                  <small className="lead-review-table__secondary">{result.evidenceDate ? `Evidence date: ${new Date(result.evidenceDate).toLocaleDateString()} (${result.evidenceAgeDays} day${result.evidenceAgeDays === 1 ? "" : "s"} old)` : "No verifiable evidence date"}{result.freshnessTier ? ` · ${result.freshnessTier}` : ""}</small>
-                ) : result.discoveryMode === "icp_match" ? <small className="lead-review-table__secondary">Matched from your audience criteria. Current interest still needs confirmation.</small> : null}
-                {result.conflicts?.length ? <small className="form-error lead-review-table__secondary">Conflicts: {result.conflicts.join(" ")}</small> : null}
-                {result.exclusionFlags?.length ? <small className="form-error lead-review-table__secondary">ICP exclusion flags: {result.exclusionFlags.join(", ")}</small> : null}
+                </small> : <small className="lead-review-table__contact-routes-empty">—</small>}
+                <div className="lead-review-table__status">
+                  {result.qualificationLabel ? <span className={`review-card__qual-badge qual-${result.qualificationLabel}`}>{result.qualificationLabel.replace("_", " ")}</span> : null}
+                  {contactStatus ? <small>{contactStatus}</small> : null}
+                </div>
 
-                {result.recommendedProgram?.name ? <small className="grounding-fit-score"><strong>{result.fitScore}/100</strong><span>{result.recommendedProgram.name}</span></small> : result.fitScore != null ? <small className="grounding-fit-score"><strong>{result.fitScore}/100</strong><span>No program selected</span></small> : <small className="grounding-fit-score"><span>Not scored</span></small>}
-                {result.buyerIntentLevel ? <small className="lead-review-table__secondary">Buyer intent: {result.buyerIntentLevel}{result.buyerIntentEvidence ? ` — ${result.buyerIntentEvidence}` : ""}</small> : null}
-
-                <section className={`review-card__why ${result.discoveryMode === "icp_match" && !result.evidenceUrls?.length ? "is-incomplete" : ""}`}>
-                  <strong>{result.discoveryMode === "icp_match" && !result.evidenceUrls?.length ? "Why this is only a possible match" : "Why Lead Porch found this"}</strong>
-                  <p>{result.fitReasons?.length ? result.fitReasons.join(" · ") : result.summary || "The provider returned this person for your selected audience rules."}</p>
-                  {result.discoveryMode === "icp_match" && !result.evidenceUrls?.length ? <small>This is a database profile match, not proof that the person currently wants coaching. Research their public activity before outreach.</small> : null}
-                </section>
-
-                <button type="button" className="review-card__details-toggle" onClick={() => toggleDetails(result._id)} aria-expanded={expanded}>
-                  {expanded ? "Hide details" : "View details"}
-                </button>
-                {expanded ? (
-                  <div className="review-card__details">
-                    <small>Summary</small>
-                    <p>{result.summary || "No additional summary was provided by the source."}</p>
-                    {result.buyerIntentLevel ? <><small>Buyer intent</small><p>{result.buyerIntentLevel}{result.buyerIntentEvidence ? ` — ${result.buyerIntentEvidence}` : ""}</p></> : null}
-                    {result.fitReasons?.length ? <><small>Program fit reasons</small><p>{result.fitReasons.join("; ")}</p></> : null}
-                    {result.recommendedNextAction ? <><small>Recommended next action</small><p>{result.recommendedNextAction}</p></> : null}
-                    {result.outreachRecommended && result.outreachDraft ? <><small>Draft outreach (not sent)</small><p>{result.outreachDraft}</p></> : null}
-                    <small>Discovered {new Date(result.createdAt).toLocaleDateString()} · via {(result.providers || []).join(", ") || "vertex_grounding"}</small>
-                    <small>Citations</small>
-                    <div className="grounding-citations">
-                      {(result.evidenceUrls || []).map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}
-                      {!result.evidenceUrls?.length && result.discoveryMode === "icp_match" ? <span className="people-preview-footnote">Apollo or PDL matched this person to your audience. No public activity was attached.</span> : null}
-                    </div>
-                    {result.pdlEnrichment?.attempted ? (
-                      <small>{result.pdlEnrichment.error ? `PDL error: ${result.pdlEnrichment.errorMessage || "unknown error"}` : result.pdlEnrichment.matched ? `PDL verified: ${result.pdlEnrichment.email || "match found, no email"}` : "PDL: no confident match"}</small>
-                    ) : null}
-                    {(result.apolloEnrichment?.attempted || Object.keys(apolloProfile).length) ? (
-                      <>
-                        {result.apolloEnrichment?.attempted ? <small>{result.apolloEnrichment.error ? `Apollo error: ${result.apolloEnrichment.errorMessage || "unknown error"}` : result.apolloEnrichment.email ? `Apollo email: ${result.apolloEnrichment.email} (${result.apolloEnrichment.emailState || "status not supplied"})` : result.apolloEnrichment.matched ? "Apollo matched the identity but returned no email" : "Apollo: no confident match"}</small> : null}
-                        {Object.keys(apolloProfile).length ? <section className="apollo-profile-details">
-                          <strong>{Object.keys(enrichedApolloProfile).length ? "Apollo enrichment details" : "Apollo search details"}</strong>
-                          <dl>
-                            {apolloProfile.matchConfidence ? <div><dt>Match confidence</dt><dd>{apolloProfile.matchConfidence}</dd></div> : null}
-                            {apolloProfile.title ? <div><dt>Title</dt><dd>{apolloProfile.title}</dd></div> : null}
-                            {apolloProfile.headline ? <div><dt>Headline</dt><dd>{apolloProfile.headline}</dd></div> : null}
-                            {apolloProfile.seniority ? <div><dt>Seniority</dt><dd>{apolloProfile.seniority}</dd></div> : null}
-                            {apolloProfile.location ? <div><dt>Location</dt><dd>{apolloProfile.location}</dd></div> : null}
-                            {apolloProfile.departments?.length ? <div><dt>Departments</dt><dd>{apolloProfile.departments.join(", ")}</dd></div> : null}
-                            {apolloProfile.subdepartments?.length ? <div><dt>Subdepartments</dt><dd>{apolloProfile.subdepartments.join(", ")}</dd></div> : null}
-                            {apolloProfile.functions?.length ? <div><dt>Functions</dt><dd>{apolloProfile.functions.join(", ")}</dd></div> : null}
-                            {apolloOrganization.industry ? <div><dt>Industry</dt><dd>{apolloOrganization.industry}</dd></div> : null}
-                            {apolloOrganization.employeeCount != null ? <div><dt>Employees</dt><dd>{Number(apolloOrganization.employeeCount).toLocaleString()}</dd></div> : null}
-                            {apolloOrganization.foundedYear ? <div><dt>Founded</dt><dd>{apolloOrganization.foundedYear}</dd></div> : null}
-                            {[apolloOrganization.city, apolloOrganization.state, apolloOrganization.country].filter(Boolean).length ? <div><dt>Company location</dt><dd>{[apolloOrganization.city, apolloOrganization.state, apolloOrganization.country].filter(Boolean).join(", ")}</dd></div> : null}
-                            {apolloOrganization.annualRevenue != null ? <div><dt>Annual revenue</dt><dd>{Number(apolloOrganization.annualRevenue).toLocaleString()}</dd></div> : null}
-                            {apolloOrganization.totalFunding != null ? <div><dt>Total funding</dt><dd>{Number(apolloOrganization.totalFunding).toLocaleString()}</dd></div> : null}
-                            {apolloOrganization.shortDescription ? <div className="is-wide"><dt>Company</dt><dd>{apolloOrganization.shortDescription}</dd></div> : null}
-                            {apolloOrganization.keywords?.length ? <div className="is-wide"><dt>Keywords</dt><dd>{apolloOrganization.keywords.join(", ")}</dd></div> : null}
-                            {apolloOrganization.technologies?.length ? <div className="is-wide"><dt>Technologies</dt><dd>{apolloOrganization.technologies.join(", ")}</dd></div> : null}
-                          </dl>
-                          {apolloProfile.employmentHistory?.length ? <details><summary>Employment history ({apolloProfile.employmentHistory.length})</summary><ul>{apolloProfile.employmentHistory.map((job, index) => <li key={`${job.organizationName}-${job.title}-${index}`}>{[job.title, job.organizationName, [job.startDate, job.endDate || (job.current ? "Present" : "")].filter(Boolean).join(" – ")].filter(Boolean).join(" · ")}</li>)}</ul></details> : null}
-                        </section> : null}
-                      </>
-                    ) : null}
-                  </div>
-                ) : null}
-
+                <button type="button" className="review-card__details-toggle" onClick={() => openDetailDrawer(result._id)}>View full record</button>
                 {result.status === "pending_review" ? (
                   <div className="leadgen-row-actions">
                     {!result.qualificationLabel ? (
@@ -1998,14 +1972,14 @@ export default function Discovery() {
                     {result.qualificationLabel === "needs_review" ? (
                       <small className="review-card__missing">Jarvis needs stronger identity or intent evidence. Review the details, then research the contact and qualify them again.</small>
                     ) : null}
-                    {(result.type === "person" && ["qualified", "needs_review"].includes(result.qualificationLabel) && (!result.pdlEnrichment?.attempted || !result.apolloEnrichment?.attempted)) ? (
+                    {(result.type === "person" && ["qualified", "needs_review"].includes(result.qualificationLabel) && (showApolloButton || showPdlButton)) ? (
                       <div className="leadgen-row-actions__group">
                         <span>Find contact information:</span>
-                        {!result.pdlEnrichment?.attempted ? (
-                          <Button size="sm" variant="outline" loading={pdlEnrichBusyId === result._id} disabled={Boolean(pdlEnrichBusyId) && pdlEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithPdl(result._id)}>Research with PDL</Button>
-                        ) : null}
-                        {!result.apolloEnrichment?.attempted ? (
+                        {showApolloButton ? (
                           <Button size="sm" variant="outline" loading={apolloEnrichBusyId === result._id} disabled={Boolean(apolloEnrichBusyId) && apolloEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithApollo(result._id)}>Research with Apollo</Button>
+                        ) : null}
+                        {showPdlButton ? (
+                          <Button size="sm" variant="outline" loading={pdlEnrichBusyId === result._id} disabled={Boolean(pdlEnrichBusyId) && pdlEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithPdl(result._id)}>{apolloAttempted ? "Try PDL (Apollo found no email)" : "Research with PDL"}</Button>
                         ) : null}
                       </div>
                     ) : null}
@@ -2031,6 +2005,80 @@ export default function Discovery() {
         </nav> : null}</> : <div className="table-state table-state--empty">No {groundingResultsStatus.replace("_", " ")} results match the current filters.</div>}
       </DashboardCard>
       </section>
+      {drawerResult ? (() => {
+        const { sourceLabel, corroborated, effectiveEmail, isStructuredAudienceMatch, enrichedApolloProfile, apolloProfile, apolloOrganization, missingContactMessage, contactStatus } = computeResultDisplay(drawerResult);
+        return (
+          <div className="lead-detail-drawer-overlay" onClick={closeDetailDrawer}>
+            <aside className="lead-detail-drawer" onClick={(event) => event.stopPropagation()} role="dialog" aria-label={`Full record for ${drawerResult.name}`}>
+              <header>
+                <div>
+                  <strong>{drawerResult.name}</strong>
+                  <small>{[drawerResult.organizationName, drawerResult.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
+                </div>
+                <button type="button" onClick={closeDetailDrawer} aria-label="Close">×</button>
+              </header>
+              <div className="lead-detail-drawer__body">
+                <div>
+                  {drawerResult.qualificationLabel ? <span className={`review-card__qual-badge qual-${drawerResult.qualificationLabel}`}>{drawerResult.qualificationLabel.replace("_", " ")}</span> : null}
+                  <span className={`review-card__identity-badge identity-${drawerResult.identityConfidence || "low"}`}>Identity: {(drawerResult.identityConfidence || "low").replace("_", " ")}</span>
+                </div>
+                <small>Source</small>
+                <p>{sourceLabel}{corroborated ? " · cross-provider corroboration" : ""}</p>
+                <small>Contact status</small>
+                <p>{contactStatus}{!effectiveEmail ? ` — ${missingContactMessage}` : ""}</p>
+                {effectiveEmail ? <><small>Email</small><p><strong>{effectiveEmail.email}</strong> ({effectiveEmail.state})</p></> : null}
+                <small>{isStructuredAudienceMatch && !drawerResult.evidenceUrls?.length ? "Why this is only a possible match" : "Why Lead Porch found this"}</small>
+                <p>{drawerResult.fitReasons?.length ? drawerResult.fitReasons.join(" · ") : drawerResult.summary || "The provider returned this person for your selected audience rules."}</p>
+                {isStructuredAudienceMatch && !drawerResult.evidenceUrls?.length ? <p>This is a database profile match, not proof that the person currently wants coaching. Research their public activity before outreach.</p> : null}
+                {drawerResult.type === "person" && drawerResult.discoveryMode !== "icp_match" ? (
+                  <p>{drawerResult.evidenceDate ? `Evidence date: ${new Date(drawerResult.evidenceDate).toLocaleDateString()} (${drawerResult.evidenceAgeDays} day${drawerResult.evidenceAgeDays === 1 ? "" : "s"} old)` : "No verifiable evidence date"}{drawerResult.freshnessTier ? ` · ${drawerResult.freshnessTier}` : ""}</p>
+                ) : null}
+                {drawerResult.conflicts?.length ? <><small>Conflicts</small><p className="form-error">{drawerResult.conflicts.join(" ")}</p></> : null}
+                {drawerResult.exclusionFlags?.length ? <><small>ICP exclusion flags</small><p className="form-error">{drawerResult.exclusionFlags.join(", ")}</p></> : null}
+                {drawerResult.buyerIntentLevel ? <><small>Buyer intent</small><p>{drawerResult.buyerIntentLevel}{drawerResult.buyerIntentEvidence ? ` — ${drawerResult.buyerIntentEvidence}` : ""}</p></> : null}
+                {drawerResult.recommendedNextAction ? <><small>Recommended next action</small><p>{drawerResult.recommendedNextAction}</p></> : null}
+                {drawerResult.outreachRecommended && drawerResult.outreachDraft ? <><small>Draft outreach (not sent)</small><p>{drawerResult.outreachDraft}</p></> : null}
+                <small>Discovered</small>
+                <p>{new Date(drawerResult.createdAt).toLocaleDateString()} · via {(drawerResult.providers || []).join(", ") || "vertex_grounding"}</p>
+                <small>Citations</small>
+                <div className="grounding-citations">
+                  {(drawerResult.evidenceUrls || []).map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}
+                  {!drawerResult.evidenceUrls?.length && isStructuredAudienceMatch ? <span className="people-preview-footnote">Apollo or PDL matched this person to your audience. No public activity was attached.</span> : null}
+                </div>
+                {drawerResult.pdlEnrichment?.attempted ? (
+                  <><small>PDL enrichment</small><p>{drawerResult.pdlEnrichment.error ? `PDL error: ${drawerResult.pdlEnrichment.errorMessage || "unknown error"}` : drawerResult.pdlEnrichment.matched ? `PDL verified: ${drawerResult.pdlEnrichment.email || "match found, no email"}` : "PDL: no confident match"}</p></>
+                ) : null}
+                {drawerResult.apolloEnrichment?.attempted ? (
+                  <><small>Apollo enrichment</small><p>{drawerResult.apolloEnrichment.error ? `Apollo error: ${drawerResult.apolloEnrichment.errorMessage || "unknown error"}` : drawerResult.apolloEnrichment.email ? `Apollo email: ${drawerResult.apolloEnrichment.email} (${drawerResult.apolloEnrichment.emailState || "status not supplied"})` : drawerResult.apolloEnrichment.matched ? "Apollo matched the identity but returned no email" : "Apollo: no confident match"}</p></>
+                ) : null}
+                {Object.keys(apolloProfile).length ? <section className="apollo-profile-details">
+                  <strong>{Object.keys(enrichedApolloProfile).length ? "Apollo enrichment details" : "Apollo search details"}</strong>
+                  <dl>
+                    {apolloProfile.matchConfidence ? <div><dt>Match confidence</dt><dd>{apolloProfile.matchConfidence}</dd></div> : null}
+                    {apolloProfile.title ? <div><dt>Title</dt><dd>{apolloProfile.title}</dd></div> : null}
+                    {apolloProfile.headline ? <div><dt>Headline</dt><dd>{apolloProfile.headline}</dd></div> : null}
+                    {apolloProfile.seniority ? <div><dt>Seniority</dt><dd>{apolloProfile.seniority}</dd></div> : null}
+                    {apolloProfile.location ? <div><dt>Location</dt><dd>{apolloProfile.location}</dd></div> : null}
+                    {apolloProfile.departments?.length ? <div><dt>Departments</dt><dd>{apolloProfile.departments.join(", ")}</dd></div> : null}
+                    {apolloProfile.subdepartments?.length ? <div><dt>Subdepartments</dt><dd>{apolloProfile.subdepartments.join(", ")}</dd></div> : null}
+                    {apolloProfile.functions?.length ? <div><dt>Functions</dt><dd>{apolloProfile.functions.join(", ")}</dd></div> : null}
+                    {apolloOrganization.industry ? <div><dt>Industry</dt><dd>{apolloOrganization.industry}</dd></div> : null}
+                    {apolloOrganization.employeeCount != null ? <div><dt>Employees</dt><dd>{Number(apolloOrganization.employeeCount).toLocaleString()}</dd></div> : null}
+                    {apolloOrganization.foundedYear ? <div><dt>Founded</dt><dd>{apolloOrganization.foundedYear}</dd></div> : null}
+                    {[apolloOrganization.city, apolloOrganization.state, apolloOrganization.country].filter(Boolean).length ? <div><dt>Company location</dt><dd>{[apolloOrganization.city, apolloOrganization.state, apolloOrganization.country].filter(Boolean).join(", ")}</dd></div> : null}
+                    {apolloOrganization.annualRevenue != null ? <div><dt>Annual revenue</dt><dd>{Number(apolloOrganization.annualRevenue).toLocaleString()}</dd></div> : null}
+                    {apolloOrganization.totalFunding != null ? <div><dt>Total funding</dt><dd>{Number(apolloOrganization.totalFunding).toLocaleString()}</dd></div> : null}
+                    {apolloOrganization.shortDescription ? <div className="is-wide"><dt>Company</dt><dd>{apolloOrganization.shortDescription}</dd></div> : null}
+                    {apolloOrganization.keywords?.length ? <div className="is-wide"><dt>Keywords</dt><dd>{apolloOrganization.keywords.join(", ")}</dd></div> : null}
+                    {apolloOrganization.technologies?.length ? <div className="is-wide"><dt>Technologies</dt><dd>{apolloOrganization.technologies.join(", ")}</dd></div> : null}
+                  </dl>
+                  {apolloProfile.employmentHistory?.length ? <details><summary>Employment history ({apolloProfile.employmentHistory.length})</summary><ul>{apolloProfile.employmentHistory.map((job, index) => <li key={`${job.organizationName}-${job.title}-${index}`}>{[job.title, job.organizationName, [job.startDate, job.endDate || (job.current ? "Present" : "")].filter(Boolean).join(" – ")].filter(Boolean).join(" · ")}</li>)}</ul></details> : null}
+                </section> : null}
+              </div>
+            </aside>
+          </div>
+        );
+      })() : null}
     </div> : null}
 
     {activeTab === "company" ? <><DashboardCard title="External research source">

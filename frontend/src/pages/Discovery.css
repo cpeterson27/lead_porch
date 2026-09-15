@@ -159,4 +159,43 @@
   display:grid!important;
   gap:.35rem!important;
 }
+
+/* Compact lead table columns: Select/Person, Title, Company, Fit, Email,
+   Social, Status, Next action — extends the 5-column layout above to the
+   full spec without touching its base rules (later rules win by source
+   order at equal specificity). */
+.lead-review-table__header,
+.review-queue-grid>.review-card{
+  grid-template-columns:minmax(200px,1.3fr) minmax(110px,.85fr) minmax(150px,1fr) minmax(90px,.7fr) minmax(150px,1fr) minmax(120px,.85fr) minmax(150px,1fr) minmax(190px,1.15fr)!important;
+  min-width:1320px!important;
+}
+.review-queue-grid>.review-card>.review-card__header{grid-column:1!important;grid-row:1!important}
+.review-queue-grid>.review-card>.lead-review-table__title{grid-column:2!important;grid-row:1!important;color:#3a3646;font-size:.74rem}
+.review-queue-grid>.review-card>.lead-review-table__company{grid-column:3!important;grid-row:1!important}
+.review-queue-grid>.review-card>.grounding-fit-score{grid-column:4!important;grid-row:1!important}
+.review-queue-grid>.review-card>.lead-review-table__contact{grid-column:5!important;grid-row:1!important;margin:0!important}
+.review-queue-grid>.review-card>.review-card__contact-routes{grid-column:6!important;grid-row:1!important;align-self:center!important;margin-top:0!important;flex-direction:column!important;align-items:flex-start!important;gap:.25rem!important;padding:0 .55rem!important}
+.review-queue-grid>.review-card>.review-card__contact-routes a{padding:.15rem 0!important;background:transparent!important;border:0!important}
+.review-queue-grid>.review-card>.lead-review-table__contact-routes-empty{grid-column:6!important;grid-row:1!important;color:#a09cae}
+.review-queue-grid>.review-card>.lead-review-table__status{grid-column:7!important;grid-row:1!important;display:grid!important;gap:.3rem;align-self:center}
+.review-queue-grid>.review-card>.lead-review-table__status small{color:#6e6a7c;font-size:.66rem;line-height:1.3}
+.review-queue-grid>.review-card>.review-card__details-toggle{grid-column:8!important;grid-row:1!important}
+.review-queue-grid>.review-card>.leadgen-row-actions{grid-column:8!important;grid-row:1!important;margin-top:2.5rem!important}
+.review-queue-grid>.review-card>.people-preview-footnote{grid-column:8!important}
+
+/* Expandable detail drawer for the full Apollo/PDL record — replaces the
+   old inline "View details" expand so the compact table stays compact even
+   when a lead has a large enriched profile attached. */
+.lead-detail-drawer-overlay{position:fixed;inset:0;background:rgba(20,18,32,.4);z-index:60;display:flex;justify-content:flex-end}
+.lead-detail-drawer{background:#fff;width:min(520px,100vw);height:100%;overflow-y:auto;box-shadow:-16px 0 40px rgba(20,18,32,.2)}
+.lead-detail-drawer>header{position:sticky;top:0;background:#fff;border-bottom:1px solid #ece9f2;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 20px;z-index:1}
+.lead-detail-drawer>header strong{display:block;font-size:1rem}
+.lead-detail-drawer>header small{color:#74707e;font-size:.74rem}
+.lead-detail-drawer>header button{background:transparent;border:0;cursor:pointer;font-size:1.5rem;line-height:1;color:#6e6a7c;padding:0 .25rem}
+.lead-detail-drawer__body{padding:18px 20px;display:grid;gap:4px}
+.lead-detail-drawer__body>small{color:#6e6a7c;font-weight:800;text-transform:uppercase;font-size:.64rem;letter-spacing:.05em;margin-top:12px}
+.lead-detail-drawer__body>small:first-child{margin-top:0}
+.lead-detail-drawer__body>p{margin:2px 0 0;line-height:1.5;overflow-wrap:anywhere}
+.lead-detail-drawer__body>div:first-child{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:4px}
+@media(max-width:640px){.lead-detail-drawer{width:100vw}}
 .leadgen-signal-chips span button:hover{color:#a34d37}
