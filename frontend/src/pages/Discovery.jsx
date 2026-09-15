@@ -677,9 +677,6 @@ export default function Discovery() {
   const selectAllNewFromRun = () => {
     setSelectedGroundingIds(visibleGroundingResults.filter((r) => r.isNew).map((r) => r._id));
   };
-  const selectAllVisible = () => {
-    setSelectedGroundingIds(visibleGroundingResults.map((r) => r._id));
-  };
   const clearGroundingSelection = () => setSelectedGroundingIds([]);
 
   const researchSelectedWithApollo = async () => {
@@ -787,6 +784,9 @@ export default function Discovery() {
   const reviewPageCount = Math.max(1, Math.ceil(visibleGroundingResults.length / reviewPageSize));
   const safeReviewPage = Math.min(reviewPage, reviewPageCount);
   const pagedGroundingResults = useMemo(() => visibleGroundingResults.slice((safeReviewPage - 1) * reviewPageSize, safeReviewPage * reviewPageSize), [visibleGroundingResults, safeReviewPage]);
+  const selectAllVisible = () => {
+    setSelectedGroundingIds(pagedGroundingResults.map((r) => r._id));
+  };
   const groundingResultsByLane = useMemo(() => {
     const lanes = Object.fromEntries(DISCOVERY_LANES.map(([key]) => [key, []]));
     pagedGroundingResults.forEach((result) => lanes[discoveryLaneOf(result)].push(result));
@@ -1807,9 +1807,9 @@ export default function Discovery() {
 
             <div className="review-queue-selection-row">
               <Button size="sm" variant="outline" onClick={selectAllNewFromRun}>Select all new from this run</Button>
-              <Button size="sm" variant="outline" onClick={selectAllVisible}>Select all visible</Button>
+              <Button size="sm" variant="outline" onClick={selectAllVisible}>Select this page ({pagedGroundingResults.length})</Button>
               <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} onClick={clearGroundingSelection}>Clear selection</Button>
-              <span className="review-queue-selected-count"><strong>{selectedGroundingIds.length}</strong> selected · <strong>{visibleGroundingResults.length}</strong> matching filters · {groundingResults.length} total pending</span>
+              <span className="review-queue-selected-count"><strong>{selectedGroundingIds.length}</strong> selected · {pagedGroundingResults.length} on this page · {visibleGroundingResults.length} matching filters</span>
               <Button size="sm" disabled={!selectedGroundingIds.length} loading={qualifyBusy} onClick={qualifySelectedGroundingResults}>
                 Have Jarvis qualify {selectedGroundingIds.length || ""} selected leads
               </Button>
