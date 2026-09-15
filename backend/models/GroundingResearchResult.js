@@ -163,6 +163,21 @@ const groundingResearchResultSchema = new mongoose.Schema({
     error: { type: Boolean, default: false },
     errorMessage: { type: String, default: "", trim: true, maxlength: 300 },
   },
+  // The "waterfall enrichment" last resort: an explicit, per-row targeted
+  // public-web search (Vertex/OpenAI) for this specific person, offered
+  // only once Apollo AND PDL have both genuinely come up empty. Unlike the
+  // broad discovery search() above, this never originates a new row — it
+  // only ever attaches findings (a real LinkedIn URL, fresh evidence) back
+  // onto the same lead, or records an honest "nothing found."
+  publicWebLookup: {
+    attempted: { type: Boolean, default: false },
+    matched: { type: Boolean, default: false },
+    evidenceUrls: { type: [String], default: [] },
+    summary: { type: String, default: "", trim: true, maxlength: 1000 },
+    searchedAt: { type: Date, default: null },
+    error: { type: Boolean, default: false },
+    errorMessage: { type: String, default: "", trim: true, maxlength: 300 },
+  },
   // A short, display-only rollup of the best email-verification signal any
   // provider actually reported — never a value stronger than what was
   // reported (e.g. "provider_validated" from PDL is never shown as

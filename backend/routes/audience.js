@@ -724,6 +724,15 @@ router.post("/research/vertex-grounding/results/:id/enrich-pdl", async (req, res
     return res.status(error.code === "GROUNDING_RESULT_NOT_FOUND" ? 404 : 400).json({ success: false, error: error.message, code: error.code });
   }
 });
+/** Explicit, per-row public-web search — the "waterfall enrichment" last resort, offered only once Apollo AND PDL have both genuinely come up empty for this exact person. */
+router.post("/research/vertex-grounding/results/:id/search-web", async (req, res) => {
+  try {
+    const data = await vertexGroundingDiscoveryService.searchPublicWebForResult({ workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, resultId: req.params.id, correlationId: req.headers["x-request-id"] || "" });
+    return res.json({ success: true, data });
+  } catch (error) {
+    return res.status(error.code === "GROUNDING_RESULT_NOT_FOUND" ? 404 : 400).json({ success: false, error: error.message, code: error.code });
+  }
+});
 /** Explicit, batch OpenAI/Jarvis program-fit ranking — planning/qualification only, never a web-search source (see the service module header for why). */
 router.post("/research/vertex-grounding/results/rank", async (req, res) => {
   try {

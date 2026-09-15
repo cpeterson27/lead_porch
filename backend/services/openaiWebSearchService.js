@@ -139,7 +139,7 @@ async function groundedSearch({ workspaceId, userId = null, agent = "research", 
   const freshnessClause = includesPerson
     ? `\n- Today's date is ${todayIso}. For any "person" result, you must include an "evidenceDate" field (ISO date, YYYY-MM-DD) — the date the underlying post, profile update, or article was actually published or last active. Only include a "person" result if that evidence is verifiably dated within the last ${PERSON_FRESHNESS_DAYS} days. If you cannot find or verify a real date for a person result, omit that result entirely — never guess a date or leave one out to include an otherwise-stale result.`
     : "";
-  const prompt = `Search the public web for at most ${cappedMax} real, currently-findable ${requestedTypes.join("/")} results relevant to: ${query}\n\nRules:\n- Only report something you can point to a real, currently retrievable public source for.\n- Never claim access to private Facebook or LinkedIn content, private groups, or login-only data — public pages only.\n- Never invent a person, organization, email, or fact you did not actually find.\n- Return at most ${cappedMax} results.${freshnessClause}\n- After your findings, output a fenced \`\`\`json array where each item is {"type": one of ${JSON.stringify(requestedTypes)}, "name": string, "organizationName": string, "organizationDomain": string, "summary": string, "evidenceUrls": [string]${includesPerson ? `, "evidenceDate": string` : ""}}. Omit anything you are not confident is real.`;
+  const prompt = `Search the public web for at most ${cappedMax} real, currently-findable ${requestedTypes.join("/")} results relevant to: ${query}\n\nRules:\n- Only report something you can point to a real, currently retrievable public source for.\n- Never claim access to private Facebook or LinkedIn content, private groups, or login-only data — public pages only.\n- Never invent a person, organization, email, or fact you did not actually find.\n- Return at most ${cappedMax} results.${freshnessClause}\n- After your findings, output a fenced \`\`\`json array where each item is {"type": one of ${JSON.stringify(requestedTypes)}, "name": string, "organizationName": string, "organizationDomain": string, "summary": string, "evidenceUrls": [string]${includesPerson ? `, "evidenceDate": string, "linkedinUrl": string (their real public LinkedIn profile URL, only if you actually found one — omit the field entirely otherwise, never guess one)` : ""}}. Omit anything you are not confident is real.`;
   const started = Date.now();
   try {
     const client = dependencies.clientFactory ? dependencies.clientFactory() : new OpenAI({ apiKey: process.env.OPENAI_API_KEY.trim() });
@@ -162,6 +162,7 @@ async function groundedSearch({ workspaceId, userId = null, agent = "research", 
         summary: clean(row.summary, 1000),
         evidenceUrls: [...new Set((Array.isArray(row.evidenceUrls) ? row.evidenceUrls : []).filter(isHttpUrl))].slice(0, 10),
         evidenceDate: parseEvidenceDate(row.evidenceDate),
+        linkedinUrl: isHttpUrl(row.linkedinUrl) && /linkedin\.com/i.test(row.linkedinUrl) ? row.linkedinUrl : "",
       }))
       .filter((row) => row.evidenceUrls.length > 0)
       .slice(0, cappedMax);

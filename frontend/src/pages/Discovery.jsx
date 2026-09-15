@@ -48,6 +48,7 @@ import {
   saveVertexGroundingResult,
   dismissVertexGroundingResult,
   enrichVertexGroundingResultWithPdl,
+  searchPublicWebForVertexGroundingResult,
   fetchLeadGenerationProviderAvailability,
   fetchLeadGenerationPrograms,
   proposeLeadGenerationSearch,
@@ -196,15 +197,20 @@ const computeResultDisplay = (result) => {
     apolloOrganization.twitterUrl,
   ].filter(Boolean))];
   const companyWebsiteUrl = apolloOrganization.websiteUrl || (result.organizationDomain ? `https://${result.organizationDomain}` : "");
-  const missingContactMessage = result.apolloEnrichment?.attempted && result.pdlEnrichment?.attempted
-    ? "Apollo and PDL checked · no email was returned"
-    : result.apolloEnrichment?.attempted
-      ? "Apollo checked · no email returned; PDL is the remaining option"
-      : result.pdlEnrichment?.attempted
-        ? "PDL checked · no email returned; Apollo is the remaining option"
-        : isStructuredAudienceMatch
-          ? "Audience match found · contact information still needed"
-          : "Public lead found · verified contact not supplied";
+  const bothStructuredExhausted = result.apolloEnrichment?.attempted && result.pdlEnrichment?.attempted;
+  const missingContactMessage = bothStructuredExhausted && result.publicWebLookup?.attempted
+    ? (result.publicWebLookup.error ? "Apollo, PDL, and a public web search all checked · no email was returned"
+      : result.publicWebLookup.matched ? "Apollo and PDL found no email · a public profile was found — check the details"
+        : "Apollo, PDL, and a public web search all checked · no email was returned")
+    : bothStructuredExhausted
+      ? "Apollo and PDL checked · no email was returned"
+      : result.apolloEnrichment?.attempted
+        ? "Apollo checked · no email returned; PDL is the remaining option"
+        : result.pdlEnrichment?.attempted
+          ? "PDL checked · no email returned; Apollo is the remaining option"
+          : isStructuredAudienceMatch
+            ? "Audience match found · contact information still needed"
+            : "Public lead found · verified contact not supplied";
   return { sourceLabel, corroborated, effectiveEmail, isStructuredAudienceMatch, enrichedApolloProfile, apolloProfile, apolloOrganization, publicProfileUrls, companyWebsiteUrl, missingContactMessage, contactStatus: contactStatusOf(result) };
 };
 const initialsOf = (name) => String(name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
@@ -419,6 +425,7 @@ export default function Discovery() {
   const [groundingResultsLoading, setGroundingResultsLoading] = useState(false);
   const [groundingResultsStatus, setGroundingResultsStatus] = useState("pending_review");
   const [pdlEnrichBusyId, setPdlEnrichBusyId] = useState("");
+  const [webSearchBusyId, setWebSearchBusyId] = useState("");
   const [selectedGroundingIds, setSelectedGroundingIds] = useState([]);
   const [reviewFilters, setReviewFilters] = useState({ run: "all", newOnly: false, provider: "all", qualification: "all", location: "", freshness: "all", identityConfidence: "all" });
   const [drawerResultId, setDrawerResultId] = useState("");
@@ -745,6 +752,28 @@ export default function Discovery() {
       setNotice(err.response?.data?.error || "PDL enrichment failed.");
     } finally {
       setPdlEnrichBusyId("");
+    }
+  };
+
+  // The waterfall's last resort — only offered once Apollo and PDL have
+  // both genuinely come up empty (enforced server-side too). Slower than a
+  // structured-provider call since it runs two live grounded web searches.
+  const searchPublicWebForResult = async (id) => {
+    if (webSearchBusyId) return;
+    setWebSearchBusyId(id);
+    try {
+      const res = await searchPublicWebForVertexGroundingResult(id);
+      const outcome = res.data.publicWebLookup;
+      setNotice(
+        outcome?.error ? `Public web search error: ${outcome.errorMessage || "unknown error"}`
+          : outcome?.matched ? "Found a public profile for this person — check the details."
+            : "Searched the public web — no public profile or evidence was found for this person.",
+      );
+      await loadGroundingResults();
+    } catch (err) {
+      setNotice(err.response?.data?.error || "Public web search failed.");
+    } finally {
+      setWebSearchBusyId("");
     }
   };
 
@@ -1932,6 +1961,12 @@ export default function Discovery() {
             const pdlAttempted = Boolean(result.pdlEnrichment?.attempted);
             const showApolloButton = apolloAvailable && !apolloAttempted;
             const showPdlButton = !pdlAttempted && (!apolloAvailable || apolloFailed);
+            // The waterfall's last resort: once BOTH structured providers
+            // have genuinely been tried (server-side enforced too), offer a
+            // targeted public-web search instead of accepting "not found"
+            // from Apollo/PDL alone — the same pattern modern enrichment
+            // tools use.
+            const showWebSearchButton = apolloAttempted && pdlAttempted && !effectiveEmail && !result.publicWebLookup?.attempted;
             return (
               <article key={result._id} className={`review-card is-${result.status} qualification-${result.qualificationLabel || "unscored"}`}>
                 <header className="review-card__header">
@@ -1972,7 +2007,7 @@ export default function Discovery() {
                     {result.qualificationLabel === "needs_review" ? (
                       <small className="review-card__missing">Jarvis needs stronger identity or intent evidence. Review the details, then research the contact and qualify them again.</small>
                     ) : null}
-                    {(result.type === "person" && ["qualified", "needs_review"].includes(result.qualificationLabel) && (showApolloButton || showPdlButton)) ? (
+                    {(result.type === "person" && ["qualified", "needs_review"].includes(result.qualificationLabel) && (showApolloButton || showPdlButton || showWebSearchButton)) ? (
                       <div className="leadgen-row-actions__group">
                         <span>Find contact information:</span>
                         {showApolloButton ? (
@@ -1980,6 +2015,9 @@ export default function Discovery() {
                         ) : null}
                         {showPdlButton ? (
                           <Button size="sm" variant="outline" loading={pdlEnrichBusyId === result._id} disabled={Boolean(pdlEnrichBusyId) && pdlEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithPdl(result._id)}>{apolloAttempted ? "Try PDL (Apollo found no email)" : "Research with PDL"}</Button>
+                        ) : null}
+                        {showWebSearchButton ? (
+                          <Button size="sm" variant="outline" loading={webSearchBusyId === result._id} disabled={Boolean(webSearchBusyId) && webSearchBusyId !== result._id} onClick={() => searchPublicWebForResult(result._id)} title="Apollo and PDL both came up empty — search the public web for this specific person">Search the public web</Button>
                         ) : null}
                       </div>
                     ) : null}
@@ -2050,6 +2088,10 @@ export default function Discovery() {
                 ) : null}
                 {drawerResult.apolloEnrichment?.attempted ? (
                   <><small>Apollo enrichment</small><p>{drawerResult.apolloEnrichment.error ? `Apollo error: ${drawerResult.apolloEnrichment.errorMessage || "unknown error"}` : drawerResult.apolloEnrichment.email ? `Apollo email: ${drawerResult.apolloEnrichment.email} (${drawerResult.apolloEnrichment.emailState || "status not supplied"})` : drawerResult.apolloEnrichment.matched ? "Apollo matched the identity but returned no email" : "Apollo: no confident match"}</p></>
+                ) : null}
+                {drawerResult.publicWebLookup?.attempted ? (
+                  <><small>Public web search (last resort)</small><p>{drawerResult.publicWebLookup.error ? `Search error: ${drawerResult.publicWebLookup.errorMessage || "unknown error"}` : drawerResult.publicWebLookup.matched ? `Found: ${drawerResult.publicWebLookup.summary || "a real public profile"}` : "No public profile or evidence was found for this person."}</p>
+                  {drawerResult.publicWebLookup.evidenceUrls?.length ? <div className="grounding-citations">{drawerResult.publicWebLookup.evidenceUrls.map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}</div> : null}</>
                 ) : null}
                 {Object.keys(apolloProfile).length ? <section className="apollo-profile-details">
                   <strong>{Object.keys(enrichedApolloProfile).length ? "Apollo enrichment details" : "Apollo search details"}</strong>

@@ -284,7 +284,11 @@ async function search({ workspaceId, userId, auth, query, resultTypes, source = 
       const mergedEvidenceDate = result.evidenceDate && (!matchEvidenceDate || result.evidenceDate > matchEvidenceDate) ? result.evidenceDate : matchEvidenceDate;
       const mergedConfidence = result.confidence === "corroborated" || match.confidence === "corroborated" ? "corroborated" : "single_source";
       // eslint-disable-next-line no-await-in-loop
-      await Model.updateOne({ _id: match._id }, { $set: { evidenceUrls: mergedUrls, evidenceDate: mergedEvidenceDate, confidence: mergedConfidence, summary: result.summary || match.summary, providers: mergedProviders, identityConfidence: computeIdentityConfidence({ providers: mergedProviders, confidence: mergedConfidence, conflicts: match.conflicts, linkedinUrl: result.linkedinUrl || match.linkedinUrl, organizationName: result.organizationName || match.organizationName }) } });
+      // linkedinUrl was already read here to compute identityConfidence but
+      // never actually written to the row — a repeat public-web find of the
+      // same person that finally turned up their LinkedIn was silently lost.
+      const mergedLinkedinUrl = result.linkedinUrl || match.linkedinUrl || "";
+      await Model.updateOne({ _id: match._id }, { $set: { evidenceUrls: mergedUrls, evidenceDate: mergedEvidenceDate, confidence: mergedConfidence, summary: result.summary || match.summary, providers: mergedProviders, linkedinUrl: mergedLinkedinUrl, identityConfidence: computeIdentityConfidence({ providers: mergedProviders, confidence: mergedConfidence, conflicts: match.conflicts, linkedinUrl: mergedLinkedinUrl, organizationName: result.organizationName || match.organizationName }) } });
       mergedCount += 1;
       attribute(result, "rejectedDedup");
       continue;
@@ -294,6 +298,11 @@ async function search({ workspaceId, userId, auth, query, resultTypes, source = 
       workspaceId, query: String(query || "").slice(0, 2000), type: result.type, name: result.name,
       organizationName: result.organizationName, organizationDomain: result.organizationDomain,
       summary: result.summary, evidenceUrls: result.evidenceUrls, evidenceDate: result.evidenceDate || null, confidence: result.confidence,
+      // A brand-new row must persist a supplied linkedinUrl too — this was
+      // previously read on the merge-into-existing-row branch below but
+      // silently dropped here, so a first-time public-web find never kept
+      // the one social link the model is actually asked to report.
+      linkedinUrl: result.linkedinUrl || "",
       identityConfidence: computeIdentityConfidence({ providers: result.providers, confidence: result.confidence, linkedinUrl: result.linkedinUrl, organizationName: result.organizationName }),
       status: "pending_review", createdByUserId: userId, correlationId, providers: result.providers,
     });
@@ -554,6 +563,75 @@ async function enrichWithPdl({ workspaceId, userId, resultId, correlationId = ""
 }
 
 /**
+ * The "waterfall enrichment" last resort — the same pattern modern
+ * enrichment tools (e.g. Clay) use: chain provider after provider before
+ * giving up, rather than accepting "not found" from a single source. Only
+ * offered once BOTH Apollo and PDL have genuinely come up empty for this
+ * exact person (enforced below, not just a UI suggestion), this runs a
+ * targeted public-web search (Vertex/OpenAI) for exactly them.
+ *
+ * Unlike search() above, this never originates a new GroundingResearchResult
+ * row and never uses the fuzzy type+name+domain fingerprint merge — a wrong
+ * match here would silently attach a stranger's LinkedIn/evidence to this
+ * lead. It only ever accepts a result whose reported name exactly matches
+ * this row's name, and always leaves a persisted, honest outcome (matched,
+ * genuinely searched but not found, or a real provider error) — never
+ * silence.
+ */
+async function searchPublicWebForResult({ workspaceId, userId, resultId, correlationId = "" }, dependencies = {}) {
+  const Model = dependencies.GroundingResearchResult || GroundingResearchResult;
+  const vertex = dependencies.vertexGroundingService || vertexGroundingService;
+  const openaiWebSearch = dependencies.openaiWebSearchService || openaiWebSearchService;
+  const row = await Model.findOne({ _id: resultId, workspaceId });
+  if (!row) { const error = new Error("Grounding result not found"); error.code = "GROUNDING_RESULT_NOT_FOUND"; throw error; }
+  if (row.type !== "person") { const error = new Error("Public web search only applies to person results"); error.code = "GROUNDING_RESULT_NOT_A_PERSON"; throw error; }
+  if (row.status !== "pending_review") { const error = new Error("This result has already been reviewed"); error.code = "GROUNDING_RESULT_ALREADY_REVIEWED"; throw error; }
+  if (row.publicWebLookup?.attempted) { const error = new Error("A public-web search has already been attempted for this result"); error.code = "GROUNDING_RESULT_ALREADY_ENRICHED"; throw error; }
+  if (!row.apolloEnrichment?.attempted || !row.pdlEnrichment?.attempted) {
+    const error = new Error("Try Apollo and PDL first — the public-web search is a last resort once both structured providers have genuinely come up empty.");
+    error.code = "GROUNDING_RESULT_STRUCTURED_PROVIDERS_NOT_EXHAUSTED";
+    throw error;
+  }
+
+  const query = `the specific real person named "${row.name}"${row.organizationName ? ` who works at "${row.organizationName}"` : ""} — find their real public LinkedIn profile or other current public professional profile. Only report this exact person, never someone else with a similar name.`;
+  const normalizedRowName = String(row.name || "").trim().toLowerCase();
+
+  const attempts = [];
+  const providerErrors = [];
+  let anySourceSucceeded = false;
+  try {
+    const outcome = await vertex.groundedSearch({ workspaceId, userId, query, resultTypes: ["person"], correlationId }, dependencies);
+    anySourceSucceeded = true;
+    for (const result of outcome.results) attempts.push({ ...result, provider: "vertex_grounding" });
+  } catch (error) { providerErrors.push(error.message || "Vertex search failed"); }
+  try {
+    const outcome = await openaiWebSearch.groundedSearch({ workspaceId, userId, query, resultTypes: ["person"], maxResults: 3, correlationId }, dependencies);
+    anySourceSucceeded = true;
+    for (const result of outcome.results) attempts.push({ ...result, provider: "openai_web_search" });
+  } catch (error) { providerErrors.push(error.message || "OpenAI web search failed"); }
+
+  if (!anySourceSucceeded) {
+    row.publicWebLookup = { attempted: true, matched: false, evidenceUrls: [], summary: "", searchedAt: new Date(), error: true, errorMessage: clean(providerErrors.join("; ") || "Public web search failed", 300) };
+    await row.save();
+    await auditService.record({ workspaceId, actorUserId: userId, action: "provider.request", targetType: "GroundingResearchResult", targetId: row._id, after: { publicWebMatched: false, publicWebError: true }, provider: "vertex_grounding", success: false });
+    return row;
+  }
+
+  const hit = attempts.find((result) => String(result.name || "").trim().toLowerCase() === normalizedRowName);
+  if (hit) {
+    row.publicWebLookup = { attempted: true, matched: true, evidenceUrls: hit.evidenceUrls || [], summary: hit.summary || "", searchedAt: new Date(), error: false, errorMessage: "" };
+    row.linkedinUrl = row.linkedinUrl || hit.linkedinUrl || "";
+    row.evidenceUrls = [...new Set([...(row.evidenceUrls || []), ...(hit.evidenceUrls || [])])];
+    if (!row.providers.includes(hit.provider)) row.providers.push(hit.provider);
+  } else {
+    row.publicWebLookup = { attempted: true, matched: false, evidenceUrls: [], summary: "", searchedAt: new Date(), error: false, errorMessage: "" };
+  }
+  await row.save();
+  await auditService.record({ workspaceId, actorUserId: userId, action: "provider.request", targetType: "GroundingResearchResult", targetId: row._id, after: { publicWebMatched: Boolean(hit) }, provider: "vertex_grounding", success: true });
+  return row;
+}
+
+/**
  * Explicit, batch program-fit evaluation via the SAME agent system
  * (agentExecutionService.js) every other AI feature in this app already
  * uses — the "lead" agent (evidence-based prospect qualification), which
@@ -605,4 +683,4 @@ async function dismissResult({ workspaceId, userId, resultId }, dependencies = {
   return row;
 }
 
-module.exports = { search, listResults, saveResult, dismissResult, enrichWithPdl, rankForProgramFit, getSuggestedSearches, computeIdentityConfidence };
+module.exports = { search, listResults, saveResult, dismissResult, enrichWithPdl, searchPublicWebForResult, rankForProgramFit, getSuggestedSearches, computeIdentityConfidence };

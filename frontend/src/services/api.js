@@ -1213,6 +1213,11 @@ export const dismissVertexGroundingResult = (id) =>
   api.post(`/audience/research/vertex-grounding/results/${id}/dismiss`).then((res) => res.data);
 export const enrichVertexGroundingResultWithPdl = (id) =>
   api.post(`/audience/research/vertex-grounding/results/${id}/enrich-pdl`).then((res) => res.data);
+// The waterfall's last resort — runs a targeted Vertex + OpenAI web search
+// for this one person. Slower than a structured-provider call (two
+// sequential live grounded searches), so it gets a longer timeout.
+export const searchPublicWebForVertexGroundingResult = (id) =>
+  api.post(`/audience/research/vertex-grounding/results/${id}/search-web`, {}, { timeout: 90000 }).then((res) => res.data);
 export const rankVertexGroundingResultsForProgramFit = (resultIds) =>
   api.post("/audience/research/vertex-grounding/results/rank", { resultIds }, { timeout: 60000 }).then((res) => res.data);
 

@@ -383,6 +383,101 @@ async function testPdlEnrichmentRejectsNonPersonAndReviewedRows() {
   await GroundingResearchResult.deleteMany({ workspaceId });
 }
 
+// Regression coverage for the "waterfall enrichment" last resort added in
+// response to the user's explicit request ("is that how other lead
+// generators work?" / "yes [build it]"): a targeted, per-row public-web
+// search offered only once Apollo AND PDL have genuinely come up empty,
+// which must never originate a duplicate row and must never accept a
+// same-search-batch result for the WRONG person.
+async function testSearchPublicWebRequiresBothStructuredProvidersExhaustedFirst() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const row = await GroundingResearchResult.create({ workspaceId, query: "q", type: "person", name: "Not Yet Enriched", evidenceUrls: ["https://example.com"], status: "pending_review", apolloEnrichment: { attempted: true }, pdlEnrichment: { attempted: false } });
+  await assert.rejects(
+    () => vertexGroundingDiscoveryService.searchPublicWebForResult({ workspaceId, userId, resultId: row._id }, { vertexGroundingService: { groundedSearch: async () => ({ results: [] }) }, openaiWebSearchService: { groundedSearch: async () => ({ results: [] }) } }),
+    (error) => error.code === "GROUNDING_RESULT_STRUCTURED_PROVIDERS_NOT_EXHAUSTED",
+    "the public-web search must be refused as long as either Apollo or PDL has not genuinely been tried yet — it is a last resort, not a parallel option",
+  );
+  await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
+async function testSearchPublicWebFindsAndAttachesARealMatchToTheSameRow() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const row = await GroundingResearchResult.create({
+    workspaceId, query: "q", type: "person", name: "Jordan Real", organizationName: "Acme Realty", evidenceUrls: ["https://example.com"], status: "pending_review", providers: ["apollo_person_search"],
+    apolloEnrichment: { attempted: true, matched: false }, pdlEnrichment: { attempted: true, matched: false },
+  });
+  const vertexGroundingService = { groundedSearch: async () => ({ results: [{ type: "person", name: "Jordan Real", organizationName: "Acme Realty", organizationDomain: "acme.example", summary: "Active real estate broker profile.", evidenceUrls: ["https://linkedin.com/in/jordan-real"], evidenceDate: new Date(), linkedinUrl: "https://linkedin.com/in/jordan-real" }] }) };
+  const openaiWebSearchService = { groundedSearch: async () => ({ results: [] }) };
+
+  const updated = await vertexGroundingDiscoveryService.searchPublicWebForResult({ workspaceId, userId, resultId: row._id }, { vertexGroundingService, openaiWebSearchService });
+  assert.equal(updated.publicWebLookup.attempted, true);
+  assert.equal(updated.publicWebLookup.matched, true);
+  assert.equal(updated.linkedinUrl, "https://linkedin.com/in/jordan-real", "a genuine public-web find must attach the real LinkedIn URL to this exact existing row");
+  assert.ok(updated.providers.includes("vertex_grounding"), "the source that actually found this person must be recorded");
+
+  const reloaded = await GroundingResearchResult.findById(row._id).lean();
+  const totalMatchingRows = await GroundingResearchResult.countDocuments({ workspaceId, name: "Jordan Real" });
+  assert.equal(totalMatchingRows, 1, "a public-web find must attach to the existing row, never create a duplicate second row for the same person");
+  assert.equal(reloaded.linkedinUrl, "https://linkedin.com/in/jordan-real");
+
+  await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
+async function testSearchPublicWebNeverAcceptsAResultForADifferentPerson() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const row = await GroundingResearchResult.create({
+    workspaceId, query: "q", type: "person", name: "Jordan Real", organizationName: "Acme Realty", evidenceUrls: ["https://example.com"], status: "pending_review",
+    apolloEnrichment: { attempted: true, matched: false }, pdlEnrichment: { attempted: true, matched: false },
+  });
+  // A same-named-search returning a DIFFERENT, unrelated person must never
+  // be accepted — a wrong match here would silently attach a stranger's
+  // LinkedIn to this lead.
+  const vertexGroundingService = { groundedSearch: async () => ({ results: [{ type: "person", name: "Someone Else Entirely", organizationName: "Other Co", organizationDomain: "other.example", summary: "Unrelated.", evidenceUrls: ["https://linkedin.com/in/someone-else"], evidenceDate: new Date(), linkedinUrl: "https://linkedin.com/in/someone-else" }] }) };
+  const openaiWebSearchService = { groundedSearch: async () => ({ results: [] }) };
+
+  const updated = await vertexGroundingDiscoveryService.searchPublicWebForResult({ workspaceId, userId, resultId: row._id }, { vertexGroundingService, openaiWebSearchService });
+  assert.equal(updated.publicWebLookup.matched, false, "a result for a clearly different person must never be accepted as a match");
+  assert.equal(updated.linkedinUrl, "", "no unrelated LinkedIn URL may be attached to this row");
+
+  await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
+async function testSearchPublicWebRecordsAnHonestErrorWhenBothSourcesFail() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const row = await GroundingResearchResult.create({
+    workspaceId, query: "q", type: "person", name: "Jordan Real", evidenceUrls: ["https://example.com"], status: "pending_review",
+    apolloEnrichment: { attempted: true, matched: false }, pdlEnrichment: { attempted: true, matched: false },
+  });
+  const failing = { groundedSearch: async () => { throw new Error("provider unavailable"); } };
+
+  const updated = await vertexGroundingDiscoveryService.searchPublicWebForResult({ workspaceId, userId, resultId: row._id }, { vertexGroundingService: failing, openaiWebSearchService: failing });
+  assert.equal(updated.publicWebLookup.attempted, true);
+  assert.equal(updated.publicWebLookup.error, true, "if both public-web sources genuinely fail, that must be a persisted, honest error — never a silent 'not found'");
+  assert.equal(updated.publicWebLookup.matched, false);
+
+  await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
+async function testSearchPublicWebRefusesADuplicateAttempt() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const row = await GroundingResearchResult.create({
+    workspaceId, query: "q", type: "person", name: "Already Tried", evidenceUrls: ["https://example.com"], status: "pending_review",
+    apolloEnrichment: { attempted: true, matched: false }, pdlEnrichment: { attempted: true, matched: false }, publicWebLookup: { attempted: true, matched: false },
+  });
+  let called = false;
+  await assert.rejects(
+    () => vertexGroundingDiscoveryService.searchPublicWebForResult({ workspaceId, userId, resultId: row._id }, { vertexGroundingService: { groundedSearch: async () => { called = true; return { results: [] }; } } }),
+    (error) => error.code === "GROUNDING_RESULT_ALREADY_ENRICHED",
+  );
+  assert.equal(called, false);
+  await GroundingResearchResult.deleteMany({ workspaceId });
+}
+
 async function testSavingAPersonUsesThePdlVerifiedEmailWhenPresent() {
   const workspaceId = new mongoose.Types.ObjectId();
   const userId = new mongoose.Types.ObjectId();
@@ -473,6 +568,11 @@ async function run() {
     await testPdlEnrichmentRecordsRealProvenanceOnAMatch();
     await testPdlNoMatchRecordsAttemptWithoutFabricatingAnEmail();
     await testPdlEnrichmentRejectsNonPersonAndReviewedRows();
+    await testSearchPublicWebRequiresBothStructuredProvidersExhaustedFirst();
+    await testSearchPublicWebFindsAndAttachesARealMatchToTheSameRow();
+    await testSearchPublicWebNeverAcceptsAResultForADifferentPerson();
+    await testSearchPublicWebRecordsAnHonestErrorWhenBothSourcesFail();
+    await testSearchPublicWebRefusesADuplicateAttempt();
     await testSavingAPersonUsesThePdlVerifiedEmailWhenPresent();
     await testRankForProgramFitScoresOnlyValidPendingRowsAndRecordsProvenance();
     await testRankForProgramFitRequiresAtLeastOneSelection();
