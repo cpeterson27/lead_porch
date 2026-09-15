@@ -329,6 +329,7 @@ export default function Discovery() {
   const [leadGenError, setLeadGenError] = useState("");
   const [apolloEnrichBusyId, setApolloEnrichBusyId] = useState("");
   const [apolloBulkEnrichBusy, setApolloBulkEnrichBusy] = useState(false);
+  const [apolloBulkOutcome, setApolloBulkOutcome] = useState(null);
   const [qualifyBusy, setQualifyBusy] = useState(false);
   const [monitorSuggestion, setMonitorSuggestion] = useState(null);
   const [monitorProposeBusy, setMonitorProposeBusy] = useState(false);
@@ -690,6 +691,7 @@ export default function Discovery() {
     );
     if (!approved) return;
     setApolloBulkEnrichBusy(true);
+    setApolloBulkOutcome({ state: "running", requested: eligible.length, matched: 0, failed: 0 });
     let matched = 0;
     let failed = 0;
     try {
@@ -698,13 +700,14 @@ export default function Discovery() {
           // Deliberately sequential: this is a user-approved, credit-bearing
           // action and should not burst duplicate requests into Apollo.
           const response = await enrichVertexGroundingResultWithApollo(result._id);
-          if (response.data.apolloEnrichment?.matched) matched += 1;
+          if (response.data.apolloEnrichment?.email) matched += 1;
           if (response.data.apolloEnrichment?.error) failed += 1;
         } catch {
           failed += 1;
         }
       }
-      setNotice(`Apollo researched ${eligible.length} selected contact${eligible.length === 1 ? "" : "s"}: ${matched} matched${failed ? `, ${failed} failed` : ""}. Review the contact details, then add the people you want to your CRM.`);
+      setApolloBulkOutcome({ state: "complete", requested: eligible.length, matched, failed });
+      setNotice(`Apollo researched ${eligible.length} selected contact${eligible.length === 1 ? "" : "s"}: ${matched} email${matched === 1 ? "" : "s"} found${failed ? `, ${failed} failed` : ""}. Review the contact details, then add the people you want to your CRM.`);
       await loadGroundingResults();
     } finally {
       setApolloBulkEnrichBusy(false);
@@ -1812,6 +1815,11 @@ export default function Discovery() {
                 <small>{qualifySummary.qualified ? "Next: view qualified leads, then add the ones with contact information to your CRM and campaign." : qualifySummary.needsReview ? "Next: view needs-review leads and use Apollo to confirm their identity and contact information, then qualify them again." : "No usable leads were produced in this batch. Review the rejection reasons before spending anything on enrichment."}</small>
               </div>
             ) : null}
+            {apolloBulkOutcome ? <div className={`review-queue-provider-result is-${apolloBulkOutcome.state}`} role="status">
+              <strong>{apolloBulkOutcome.state === "running" ? "Apollo is researching contact information…" : "Apollo research complete"}</strong>
+              <span>{apolloBulkOutcome.state === "running" ? `${apolloBulkOutcome.requested} selected leads are being checked. Keep this page open.` : `${apolloBulkOutcome.requested} checked · ${apolloBulkOutcome.matched} emails found${apolloBulkOutcome.failed ? ` · ${apolloBulkOutcome.failed} errors` : ""}`}</span>
+              {apolloBulkOutcome.state === "complete" && apolloBulkOutcome.matched === 0 ? <small>Apollo completed successfully but did not return an email for this selection. No additional Apollo action is available for those people; try PDL only if you want to spend credits on a second source.</small> : null}
+            </div> : null}
             <div className="review-queue-bulk-actions">
               {[["all", "All"], ["qualified", "View Qualified"], ["needs_review", "View Needs review"], ["not_a_fit", "View Not a fit"]].map(([value, label]) => (
                 <Button key={value} size="sm" variant={qualifyOutcomeFilter === value ? "primary" : "outline"} onClick={() => setQualifyOutcomeFilter(value)}>{label}</Button>
@@ -1847,8 +1855,16 @@ export default function Discovery() {
                 : result.email
                   ? { email: result.email, state: result.emailVerificationStatus || result.emailState || "unverified" }
                   : null;
-            const enrichmentAttemptedNoEmail = !effectiveEmail && (result.pdlEnrichment?.attempted || result.apolloEnrichment?.attempted);
             const isStructuredAudienceMatch = result.discoveryMode === "icp_match";
+            const missingContactMessage = result.apolloEnrichment?.attempted && result.pdlEnrichment?.attempted
+              ? "Apollo and PDL checked · no email was returned"
+              : result.apolloEnrichment?.attempted
+                ? "Apollo checked · no email returned; PDL is the remaining option"
+                : result.pdlEnrichment?.attempted
+                  ? "PDL checked · no email returned; Apollo is the remaining option"
+                  : isStructuredAudienceMatch
+                    ? "Audience match found · contact information still needed"
+                    : "Public lead found · verified contact not supplied";
             return (
               <article key={result._id} className={`review-card is-${result.status} qualification-${result.qualificationLabel || "unscored"}`}>
                 <header className="review-card__header">
@@ -1873,7 +1889,7 @@ export default function Discovery() {
                 <small>{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
                 {result.linkedinUrl ? <small><a href={result.linkedinUrl} target="_blank" rel="noreferrer">Profile URL ↗</a></small> : null}
                 {result.phone ? <small>Phone: {result.phone} <span className="review-card__missing">(as reported by the provider — not independently verified as still active)</span></small> : null}
-                {effectiveEmail ? <small>Contact: {effectiveEmail.email} ({effectiveEmail.state})</small> : enrichmentAttemptedNoEmail ? <small className="review-card__missing">Identity matched, but no email is available from any provider tried</small> : <small className="review-card__missing">{isStructuredAudienceMatch ? "Audience match found · contact information still needed" : "Public lead found · verified contact not supplied"}</small>}
+                {effectiveEmail ? <small>Contact: {effectiveEmail.email} ({effectiveEmail.state})</small> : <small className="review-card__missing">{missingContactMessage}</small>}
                 {result.type === "person" && result.discoveryMode !== "icp_match" ? (
                   <small>{result.evidenceDate ? `Evidence date: ${new Date(result.evidenceDate).toLocaleDateString()} (${result.evidenceAgeDays} day${result.evidenceAgeDays === 1 ? "" : "s"} old)` : "No verifiable evidence date"}{result.freshnessTier ? ` · ${result.freshnessTier}` : ""}</small>
                 ) : result.discoveryMode === "icp_match" ? <small>Matched from your audience criteria. Current interest still needs confirmation.</small> : null}
