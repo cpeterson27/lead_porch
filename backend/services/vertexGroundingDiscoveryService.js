@@ -60,6 +60,8 @@
  */
 const GroundingResearchResult = require("../models/GroundingResearchResult");
 const Organization = require("../models/Organization");
+const Campaign = require("../models/Campaign");
+const Contact = require("../models/Contact");
 const JarvisMemoryNote = require("../models/JarvisMemoryNote");
 const vertexGroundingService = require("./vertexGroundingService");
 const openaiWebSearchService = require("./openaiWebSearchService");
@@ -349,13 +351,21 @@ async function getSuggestedSearches({ workspaceId }, dependencies = {}) {
  * today — "saved" honestly means kept in this review queue's own record
  * (with all its evidence) rather than inventing a new CRM entity type.
  */
-async function saveResult({ workspaceId, userId, resultId }, dependencies = {}) {
+async function saveResult({ workspaceId, userId, resultId, campaignId = null }, dependencies = {}) {
   const Model = dependencies.GroundingResearchResult || GroundingResearchResult;
   const OrganizationModel = dependencies.Organization || Organization;
   const ingest = dependencies.ingestContacts || ingestContacts;
+  const CampaignModel = dependencies.Campaign || Campaign;
+  const ContactModel = dependencies.Contact || Contact;
   const row = await Model.findOne({ _id: resultId, workspaceId });
   if (!row) { const error = new Error("Grounding result not found"); error.code = "GROUNDING_RESULT_NOT_FOUND"; throw error; }
   if (row.status !== "pending_review") { const error = new Error("This result has already been reviewed"); error.code = "GROUNDING_RESULT_ALREADY_REVIEWED"; throw error; }
+  let selectedCampaign = null;
+  if (campaignId) {
+    if (row.type !== "person" || row.qualificationLabel !== "qualified") { const error = new Error("Qualify this person before adding them to a campaign"); error.code = "GROUNDING_RESULT_NOT_QUALIFIED"; throw error; }
+    selectedCampaign = await CampaignModel.findOne({ _id: campaignId, workspaceId }).select("_id").lean();
+    if (!selectedCampaign) { const error = new Error("Campaign not found"); error.code = "CAMPAIGN_NOT_FOUND"; throw error; }
+  }
 
   let savedContactId = null, savedOrganizationId = null;
   if (row.type === "person") {
@@ -387,6 +397,9 @@ async function saveResult({ workspaceId, userId, resultId }, dependencies = {}) 
     });
     savedContactId = summary.createdContacts?.[0]?.id || summary.updatedContacts?.[0]?.id || null;
     if (!savedContactId) { const error = new Error(summary.errors?.[0]?.message || "Unable to save this person to Contacts"); error.code = "GROUNDING_RESULT_SAVE_FAILED"; throw error; }
+    if (selectedCampaign) {
+      await ContactModel.updateOne({ _id: savedContactId, workspaceId }, { $addToSet: { campaignIds: selectedCampaign._id }, $set: { qualifyContact: true, researchStatus: "qualified" } });
+    }
   } else if (row.type === "organization") {
     const organization = row.organizationDomain
       ? await OrganizationModel.findOneAndUpdate(
@@ -407,7 +420,7 @@ async function saveResult({ workspaceId, userId, resultId }, dependencies = {}) 
   row.savedOrganizationId = savedOrganizationId;
   await row.save();
 
-  await auditService.record({ workspaceId, actorUserId: userId, action: "provider.request", targetType: "GroundingResearchResult", targetId: row._id, after: { status: "saved", type: row.type, savedContactId, savedOrganizationId }, provider: "vertex", success: true });
+  await auditService.record({ workspaceId, actorUserId: userId, action: "provider.request", targetType: "GroundingResearchResult", targetId: row._id, after: { status: "saved", type: row.type, savedContactId, savedOrganizationId, campaignId }, provider: "vertex", success: true });
   return row;
 }
 

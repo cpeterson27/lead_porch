@@ -701,7 +701,7 @@ router.get("/research/vertex-grounding/results", async (req, res) => {
 });
 router.post("/research/vertex-grounding/results/:id/save", async (req, res) => {
   try {
-    const data = await vertexGroundingDiscoveryService.saveResult({ workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, resultId: req.params.id });
+    const data = await vertexGroundingDiscoveryService.saveResult({ workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, resultId: req.params.id, campaignId: req.body?.campaignId || null });
     return res.json({ success: true, data });
   } catch (error) {
     return res.status(error.code === "GROUNDING_RESULT_NOT_FOUND" ? 404 : 400).json({ success: false, error: error.message, code: error.code });

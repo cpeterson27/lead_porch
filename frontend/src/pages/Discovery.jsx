@@ -216,6 +216,7 @@ export default function Discovery() {
   const [marketPlan, setMarketPlan] = useState(null);
   const [planning, setPlanning] = useState(false);
   const [campaignId, setCampaignId] = useState("");
+  const [leadCampaignId, setLeadCampaignId] = useState(() => searchParams.get("campaignId") || "");
   const [query, setQuery] = useState("");
   const [emailFilter, setEmailFilter] = useState("verified");
   const [notice, setNotice] = useState("");
@@ -339,6 +340,7 @@ export default function Discovery() {
   const [expandedResultIds, setExpandedResultIds] = useState([]);
   const [qualifySummary, setQualifySummary] = useState(null);
   const [qualifyOutcomeFilter, setQualifyOutcomeFilter] = useState("all");
+  const [reviewPage, setReviewPage] = useState(1);
   const [draftSignal, setDraftSignal] = useState(null);
   const [draftCampaignId, setDraftCampaignId] = useState("");
   const [draftEditor, setDraftEditor] = useState(null);
@@ -565,12 +567,13 @@ export default function Discovery() {
   // into one qualificationLabel — see leadGenerationCoordinatorService.js's
   // qualifyAndRecommend()/computeQualificationOutcome(). Shows an accurate
   // completion summary and refreshes the cards so the change is visible.
-  const qualifySelectedGroundingResults = async () => {
-    if (!selectedGroundingIds.length || qualifyBusy) return;
+  const qualifyGroundingResults = async (resultIds) => {
+    const ids = Array.isArray(resultIds) ? resultIds : selectedGroundingIds;
+    if (!ids.length || qualifyBusy) return;
     setQualifyBusy(true);
     setQualifySummary(null);
     try {
-      const res = await qualifyLeadGenerationResults(selectedGroundingIds);
+      const res = await qualifyLeadGenerationResults(ids);
       const s = res.data.summary || { processed: res.data.qualified || 0, qualified: res.data.qualified || 0, needsReview: 0, notAFit: 0, failed: 0 };
       setQualifySummary(s);
       setNotice(`Jarvis processed ${s.processed} of ${res.data.requested} selected: ${s.qualified} qualified, ${s.needsReview} needs review, ${s.notAFit} not a fit${s.failed ? `, ${s.failed} failed` : ""}.`);
@@ -582,6 +585,8 @@ export default function Discovery() {
       setQualifyBusy(false);
     }
   };
+
+  const qualifySelectedGroundingResults = () => qualifyGroundingResults(selectedGroundingIds);
 
   const proposeMonitorForLeadGenSearch = async () => {
     if (!leadGenProposal?._id || monitorProposeBusy) return;
@@ -621,8 +626,9 @@ export default function Discovery() {
 
   const saveGroundingResult = async (id) => {
     try {
-      await saveVertexGroundingResult(id);
-      setNotice("Saved with source attribution.");
+      await saveVertexGroundingResult(id, leadCampaignId);
+      const selectedCampaign = campaigns.find((campaign) => String(campaign._id) === String(leadCampaignId));
+      setNotice(selectedCampaign ? `Added to CRM and assigned to ${selectedCampaign.name}. No email was sent.` : "Added to CRM. No email was sent.");
       loadGroundingResults();
     } catch (err) {
       setNotice(err.response?.data?.error || "Unable to save that result.");
@@ -679,6 +685,7 @@ export default function Discovery() {
     const eligible = visibleGroundingResults.filter((result) =>
       selectedGroundingIds.includes(result._id)
       && result.type === "person"
+      && ["qualified", "needs_review"].includes(result.qualificationLabel)
       && !result.apolloEnrichment?.attempted,
     );
     if (!eligible.length || apolloBulkEnrichBusy) return;
@@ -775,11 +782,15 @@ export default function Discovery() {
     return new Date(b.createdAt) - new Date(a.createdAt);
   }), [groundingResults, reviewFilters, qualifyOutcomeFilter]);
 
+  const reviewPageSize = 12;
+  const reviewPageCount = Math.max(1, Math.ceil(visibleGroundingResults.length / reviewPageSize));
+  const safeReviewPage = Math.min(reviewPage, reviewPageCount);
+  const pagedGroundingResults = useMemo(() => visibleGroundingResults.slice((safeReviewPage - 1) * reviewPageSize, safeReviewPage * reviewPageSize), [visibleGroundingResults, safeReviewPage]);
   const groundingResultsByLane = useMemo(() => {
     const lanes = Object.fromEntries(DISCOVERY_LANES.map(([key]) => [key, []]));
-    visibleGroundingResults.forEach((result) => lanes[discoveryLaneOf(result)].push(result));
+    pagedGroundingResults.forEach((result) => lanes[discoveryLaneOf(result)].push(result));
     return lanes;
-  }, [visibleGroundingResults]);
+  }, [pagedGroundingResults]);
 
   useEffect(() => {
     if (activeTab !== "people") return undefined;
@@ -1730,6 +1741,16 @@ export default function Discovery() {
         <p className="people-preview-intro">
           Review why each person was found, research contact information for the promising people, then add the leads you want to your CRM. Nothing enters your CRM or outreach without your action.
         </p>
+        <div className="review-campaign-context">
+          <label>
+            <span>Campaign for these leads</span>
+            <select value={leadCampaignId} onChange={(event) => setLeadCampaignId(event.target.value)}>
+              <option value="">CRM only—choose a campaign later</option>
+              {campaigns.map((campaign) => <option key={campaign._id} value={campaign._id}>{campaign.name}</option>)}
+            </select>
+          </label>
+          <small>{leadCampaignId ? "Qualified leads will be added to the CRM and this campaign in one step." : "Choose a campaign to connect new leads immediately."}</small>
+        </div>
         <div className="discovery-review-filters">
           {["pending_review", "saved", "dismissed"].map((status) => (
             <Button key={status} size="sm" variant={groundingResultsStatus === status ? "primary" : "outline"} onClick={() => { setGroundingResultsStatus(status); setSelectedGroundingIds([]); setQualifySummary(null); loadGroundingResults(status); }}>
@@ -1805,7 +1826,7 @@ export default function Discovery() {
               ))}
               <Button size="sm" variant="outline" loading={apolloBulkEnrichBusy} disabled={!selectedGroundingIds.some((id) => {
                 const result = visibleGroundingResults.find((row) => row._id === id);
-                return result?.type === "person" && !result.apolloEnrichment?.attempted;
+                return result?.type === "person" && ["qualified", "needs_review"].includes(result.qualificationLabel) && !result.apolloEnrichment?.attempted;
               })} onClick={researchSelectedWithApollo}>Research selected with Apollo</Button>
               <Button size="sm" variant="outline" disabled={!selectedGroundingIds.some((id) => visibleGroundingResults.find((r) => r._id === id)?.qualificationLabel === "qualified")} onClick={saveSelectedQualified}>Add selected qualified leads to CRM</Button>
               <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} onClick={dismissSelected}>Mark selected as not leads</Button>
@@ -1813,7 +1834,7 @@ export default function Discovery() {
           </div>
         ) : null}
 
-        {visibleGroundingResults.length ? <div className="discovery-lanes">
+        {visibleGroundingResults.length ? <><div className="discovery-lanes">
           {DISCOVERY_LANES.map(([laneKey, laneLabel, laneDescription]) => groundingResultsByLane[laneKey].length ? <section className={`discovery-lane lane-${laneKey}`} key={laneKey}>
             <header className="discovery-lane__header"><div><span>{laneLabel}</span><small>{laneDescription}</small></div><strong>{groundingResultsByLane[laneKey].length}</strong></header>
             <div className="review-queue-grid">{groundingResultsByLane[laneKey].map((result) => {
@@ -1902,7 +1923,16 @@ export default function Discovery() {
 
                 {result.status === "pending_review" ? (
                   <div className="leadgen-row-actions">
-                    {(result.type === "person" && (!result.pdlEnrichment?.attempted || !result.apolloEnrichment?.attempted)) ? (
+                    {!result.qualificationLabel ? (
+                      <div className="leadgen-row-actions__group">
+                        <span>Next step:</span>
+                        <Button size="sm" loading={qualifyBusy} onClick={() => qualifyGroundingResults([result._id])}>Qualify with Jarvis</Button>
+                      </div>
+                    ) : null}
+                    {result.qualificationLabel === "needs_review" ? (
+                      <small className="review-card__missing">Jarvis needs stronger identity or intent evidence. Review the details, then research the contact and qualify them again.</small>
+                    ) : null}
+                    {(result.type === "person" && ["qualified", "needs_review"].includes(result.qualificationLabel) && (!result.pdlEnrichment?.attempted || !result.apolloEnrichment?.attempted)) ? (
                       <div className="leadgen-row-actions__group">
                         <span>Find contact information:</span>
                         {!result.pdlEnrichment?.attempted ? (
@@ -1913,7 +1943,11 @@ export default function Discovery() {
                         ) : null}
                       </div>
                     ) : null}
-                    <Button size="sm" onClick={() => saveGroundingResult(result._id)}>Add to CRM</Button>
+                    {result.qualificationLabel === "needs_review" && (result.pdlEnrichment?.attempted || result.apolloEnrichment?.attempted) ? (
+                      <Button size="sm" variant="outline" loading={qualifyBusy} onClick={() => qualifyGroundingResults([result._id])}>Qualify again with Jarvis</Button>
+                    ) : null}
+                    {result.qualificationLabel === "qualified" && effectiveEmail ? <Button size="sm" onClick={() => saveGroundingResult(result._id)}>{leadCampaignId ? "Add to CRM + campaign" : "Add to CRM"}</Button> : null}
+                    {result.qualificationLabel === "qualified" && !effectiveEmail ? <small className="review-card__missing">Qualified—find an email before adding this lead to your campaign-ready CRM list.</small> : null}
                     <Button size="sm" variant="outline" onClick={() => dismissGroundingResult(result._id)}>Not a lead</Button>
                   </div>
                 ) : <span className="people-preview-footnote">{result.status === "saved" ? "Saved" : "Dismissed"}</span>}
@@ -1921,7 +1955,11 @@ export default function Discovery() {
             );
             })}</div>
           </section> : null)}
-        </div> : <div className="table-state table-state--empty">No {groundingResultsStatus.replace("_", " ")} results match the current filters.</div>}
+        </div>{reviewPageCount > 1 ? <nav className="review-pagination" aria-label="Review results pages">
+          <Button size="sm" variant="outline" disabled={safeReviewPage === 1} onClick={() => setReviewPage((page) => Math.max(1, page - 1))}>Previous</Button>
+          <span>Page {safeReviewPage} of {reviewPageCount} · {visibleGroundingResults.length} people</span>
+          <Button size="sm" variant="outline" disabled={safeReviewPage === reviewPageCount} onClick={() => setReviewPage((page) => Math.min(reviewPageCount, page + 1))}>Next</Button>
+        </nav> : null}</> : <div className="table-state table-state--empty">No {groundingResultsStatus.replace("_", " ")} results match the current filters.</div>}
       </DashboardCard>
       </section>
     </div> : null}

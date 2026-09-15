@@ -658,6 +658,12 @@ export default function CampaignWorkspace() {
         </div>
         <div className="campaign-workspace__actions">
           <Button
+            variant="outline"
+            onClick={() => navigate(`/discovery?tab=people&campaignId=${campaign._id}`)}
+          >
+            Find people
+          </Button>
+          <Button
             onClick={() => navigate(`/outreach?campaignId=${campaign._id}`)}
           >
             Open outreach

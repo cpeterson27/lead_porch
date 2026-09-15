@@ -1207,8 +1207,8 @@ export const fetchVertexGroundingResults = (params = {}) =>
   api.get("/audience/research/vertex-grounding/results", { params }).then((res) => res.data);
 export const fetchSuggestedGroundingSearches = () =>
   api.get("/audience/research/vertex-grounding/suggested-searches").then((res) => res.data);
-export const saveVertexGroundingResult = (id) =>
-  api.post(`/audience/research/vertex-grounding/results/${id}/save`).then((res) => res.data);
+export const saveVertexGroundingResult = (id, campaignId = "") =>
+  api.post(`/audience/research/vertex-grounding/results/${id}/save`, { campaignId: campaignId || undefined }).then((res) => res.data);
 export const dismissVertexGroundingResult = (id) =>
   api.post(`/audience/research/vertex-grounding/results/${id}/dismiss`).then((res) => res.data);
 export const enrichVertexGroundingResultWithPdl = (id) =>

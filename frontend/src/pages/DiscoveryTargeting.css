@@ -1254,6 +1254,18 @@
 .review-queue-selection-row .btn,
 .review-queue-bulk-actions .btn { min-width: 0; padding: .55rem .75rem; white-space: normal; }
 
+/* Campaign-first review: dense enough to scan without turning every lead
+   into a full-page article. Twelve cards are paged at a time; wide screens
+   use four columns and collapse naturally as space narrows. */
+.review-campaign-context{align-items:end;background:#f7f7fc;border:1px solid rgba(116,87,255,.14);border-radius:14px;display:grid;gap:10px;grid-template-columns:minmax(240px,420px) 1fr;margin-bottom:12px;padding:12px 14px}
+.review-campaign-context label{display:grid;gap:5px}.review-campaign-context label>span{font-size:.72rem;font-weight:800}.review-campaign-context select{width:100%}.review-campaign-context small{color:#737788}
+.review-queue-grid{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
+@media(min-width:1380px){.review-queue-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+.review-card__why p{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
+.review-card__why small{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.review-pagination{align-items:center;display:flex;gap:12px;justify-content:center;padding:16px 0 2px}.review-pagination span{color:#696d7a;font-size:.75rem;font-weight:700}
+@media(max-width:700px){.review-campaign-context{grid-template-columns:1fr}.review-queue-grid{grid-template-columns:1fr}.review-pagination{justify-content:space-between}}
+
 .discovery-run-details { background: #f7f8f8; border: 1px solid #e0e5e2; border-radius: 16px; padding: 0; }
 .discovery-run-details > summary { align-items: center; cursor: pointer; display: flex; justify-content: space-between; list-style: none; padding: 1rem 1.1rem; }
 .discovery-run-details > summary::-webkit-details-marker { display: none; }
