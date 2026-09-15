@@ -148,4 +148,15 @@
    but had no way to actually remove one. */
 .leadgen-signal-chips span{display:inline-flex;align-items:center;gap:6px}
 .leadgen-signal-chips span button{all:unset;cursor:pointer;color:#8b8f89;font-weight:800;line-height:1}
+
+/* Keep row actions below the details control in the compact lead table. */
+.review-queue-grid>.review-card>.leadgen-row-actions{
+  align-self:start!important;
+  margin-top:2.5rem!important;
+  padding-top:.35rem!important;
+}
+.review-queue-grid>.review-card>.leadgen-row-actions__group{
+  display:grid!important;
+  gap:.35rem!important;
+}
 .leadgen-signal-chips span button:hover{color:#a34d37}
