@@ -522,7 +522,11 @@ function parseCompanySizeToApolloRange(value) {
  * then eyeball-prioritize) instead of silently over-constraining itself.
  */
 function buildApolloFilters(icp) {
-  const filters = {};
+  // People Search itself returns no address, but this filter guarantees
+  // Apollo says a verified address is available to reveal during the later
+  // enrichment step. Without it we were ranking profiles that Apollo had no
+  // email for, creating a dead-end queue.
+  const filters = { contact_email_status: ["verified"] };
   if (icp.titles?.length) filters.person_titles = icp.titles;
   if (icp.locations?.length) filters.person_locations = icp.locations;
   const seniority = mapSeniorityToApollo(icp.seniority);
@@ -569,6 +573,7 @@ function normalizeApolloCandidate(person) {
   const email = sanitizeEmailValue(person.email);
   return {
     type: "person",
+    apolloPersonId: clean(person.externalId, 100),
     name: clean(person.fullName, 200),
     organizationName: clean(person.company, 200),
     organizationDomain: clean((person.companyDomain || "").replace(/^https?:\/\/(www\.)?/i, "").replace(/\/$/, ""), 200),
@@ -617,6 +622,7 @@ async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlati
     const created = await Model.create({
       workspaceId, query: `icp_match:${key}`, type: "person",
       name: candidate.name, organizationName: candidate.organizationName, organizationDomain: candidate.organizationDomain,
+      apolloPersonId: candidate.apolloPersonId || "",
       email: candidateEmail, emailState: candidateEmail ? candidate.emailState : "",
       emailVerificationStatus: candidateEmail ? (candidate.emailState || "") : "",
       linkedinUrl: candidate.linkedinUrl, phone: candidate.phone || "", summary: candidate.summary,
@@ -644,6 +650,7 @@ async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlati
   const providers = [...new Set([...(existing.providers || []), candidate.provider])];
   const bothVerified = candidate.emailState === "verified" || existing.email === candidateEmail;
   existing.providers = providers;
+  existing.apolloPersonId = existing.apolloPersonId || candidate.apolloPersonId || "";
   existing.email = existing.email || candidateEmail;
   existing.emailState = existing.emailState || (candidateEmail ? candidate.emailState : "");
   existing.emailVerificationStatus = existing.emailVerificationStatus || (candidateEmail ? candidate.emailState : "") || "";
@@ -1047,7 +1054,14 @@ async function enrichWithApollo({ workspaceId, userId, resultId, correlationId =
 
   try {
     const [firstName, ...rest] = String(row.name).trim().split(/\s+/);
-    const person = await apollo.enrichPerson({ workspaceId, userId, matchInput: { first_name: firstName, last_name: rest.join(" "), organization_name: row.organizationName, domain: row.organizationDomain }, correlationId });
+    const person = await apollo.enrichPerson({ workspaceId, userId, matchInput: {
+      ...(row.apolloPersonId ? { id: row.apolloPersonId } : {}),
+      first_name: firstName,
+      last_name: rest.join(" "),
+      organization_name: row.organizationName,
+      domain: row.organizationDomain,
+      linkedin_url: row.linkedinUrl,
+    }, correlationId });
     row.apolloEnrichment = { attempted: true, matched: Boolean(person), email: person?.email || "", emailState: person?.emailState || "", enrichedAt: new Date(), error: false, errorMessage: "" };
     if (person && !row.providers.includes("apollo")) row.providers.push("apollo");
     await row.save();

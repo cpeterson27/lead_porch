@@ -67,6 +67,10 @@ const groundingResearchResultSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true, maxlength: 200 },
   organizationName: { type: String, default: "", trim: true, maxlength: 200 },
   organizationDomain: { type: String, default: "", trim: true, lowercase: true, maxlength: 200 },
+  // Apollo's stable person identifier from People Search. Keeping it makes
+  // the later credit-bearing enrichment an exact lookup instead of a fuzzy
+  // name/company rematch that can return no person or the wrong person.
+  apolloPersonId: { type: String, default: "", trim: true, maxlength: 100 },
   // The email a DISCOVERY source (PDL/Apollo Person Search) supplied
   // directly, if any — distinct from pdlEnrichment.email/apolloEnrichment.email,
   // which represent a deliberate, separate later verification/cross-check

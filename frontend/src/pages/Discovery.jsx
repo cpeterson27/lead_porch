@@ -550,7 +550,8 @@ export default function Discovery() {
       const outcome = res.data.apolloEnrichment;
       setNotice(
         outcome?.error ? `Apollo enrichment error: ${outcome.errorMessage || "unknown error"}`
-          : outcome?.matched ? "Apollo found a verified match."
+          : outcome?.email ? "Apollo found an email. Review it below before adding the lead."
+            : outcome?.matched ? "Apollo matched the person, but did not return an email. Use the profile or company website shown on the card, or try PDL."
             : "Apollo did not find a confident match — no email added.",
       );
       await loadGroundingResults();
@@ -1887,7 +1888,10 @@ export default function Discovery() {
                 </div>
 
                 <small>{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
-                {result.linkedinUrl ? <small><a href={result.linkedinUrl} target="_blank" rel="noreferrer">Profile URL ↗</a></small> : null}
+                {(result.linkedinUrl || result.organizationDomain) ? <small className="review-card__contact-routes">
+                  {result.linkedinUrl ? <a href={result.linkedinUrl} target="_blank" rel="noreferrer">LinkedIn profile ↗</a> : null}
+                  {result.organizationDomain ? <a href={`https://${result.organizationDomain}`} target="_blank" rel="noreferrer">Company website ↗</a> : null}
+                </small> : null}
                 {result.phone ? <small>Phone: {result.phone} <span className="review-card__missing">(as reported by the provider — not independently verified as still active)</span></small> : null}
                 {effectiveEmail ? <small>Contact: {effectiveEmail.email} ({effectiveEmail.state})</small> : <small className="review-card__missing">{missingContactMessage}</small>}
                 {result.type === "person" && result.discoveryMode !== "icp_match" ? (

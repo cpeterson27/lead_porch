@@ -315,6 +315,7 @@ function testMapToApolloSeniorityMapsConfidentlyAndDropsAmbiguousTerms() {
   assert.equal(mapToApolloSeniority(""), null);
 
   const filters = buildApolloFilters({ titles: ["Real Estate Investor"], seniority: ["Individual Contributor", "Manager", "Owner", "Founder", "Partner"] });
+  assert.deepEqual(filters.contact_email_status, ["verified"], "every Apollo discovery search must only return profiles for which Apollo says a verified email is available");
   assert.deepEqual(filters.person_seniorities, ["manager", "owner", "founder", "partner"], "only the confidently-mapped values reach Apollo — the ambiguous one is silently dropped, never passed through raw");
   assert.equal(filters.q_keywords, undefined, "q_keywords must never be sent — confirmed live it requires near-impossible co-occurrence and has an undocumented length limit that 422s the whole search");
 
@@ -380,9 +381,13 @@ async function testApproveAndRunSearchAutomaticallyEnrichesCandidatesMissingAnEm
       return row;
     },
   };
+  let enrichmentMatchInput = null;
   const apolloService = {
-    searchPeople: async () => ({ people: [{ fullName: "No Email Person", title: "Real Estate Investor", company: "Acme", companyDomain: "", linkedinUrl: "apollo-1", email: "", emailState: "" }] }),
-    enrichPerson: async () => ({ email: "found@example.com", emailState: "verified" }),
+    searchPeople: async () => ({ people: [{ externalId: "apollo-person-123", fullName: "No Email Person", title: "Real Estate Investor", company: "Acme", companyDomain: "acme.example", linkedinUrl: "https://www.linkedin.com/in/no-email-person", email: "", emailState: "" }] }),
+    enrichPerson: async ({ matchInput }) => {
+      enrichmentMatchInput = matchInput;
+      return { email: "found@example.com", emailState: "verified" };
+    },
   };
 
   const result = await approveAndRunSearch(
@@ -393,6 +398,9 @@ async function testApproveAndRunSearchAutomaticallyEnrichesCandidatesMissingAnEm
   const savedRow = [...rowsById.values()][0];
   assert.equal(savedRow.apolloEnrichment?.matched, true, "the automatic waterfall must have run Apollo enrichment without any manual click");
   assert.equal(savedRow.apolloEnrichment?.email, "found@example.com", "the enrichment's found email must be recorded — saveResult() already prioritizes this over row.email when saving to a real Contact");
+  assert.equal(savedRow.apolloPersonId, "apollo-person-123", "the exact Apollo person ID from free search must survive persistence");
+  assert.equal(enrichmentMatchInput?.id, "apollo-person-123", "paid enrichment must use Apollo's exact person ID instead of fuzzy name/company rematching");
+  assert.equal(enrichmentMatchInput?.linkedin_url, "https://www.linkedin.com/in/no-email-person", "LinkedIn remains a secondary matching signal and a usable public contact route");
   assert.ok(result.runSummary.explanation.includes("Automatically found a verified email"), "the run explanation must surface that auto-enrichment happened");
 }
 
