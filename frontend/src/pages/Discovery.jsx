@@ -2004,6 +2004,9 @@ export default function Discovery() {
                     {result.qualificationLabel === "needs_review" && (result.pdlEnrichment?.attempted || result.apolloEnrichment?.attempted) ? (
                       <Button size="sm" variant="outline" loading={qualifyBusy} onClick={() => qualifyGroundingResults([result._id])}>Qualify again with Jarvis</Button>
                     ) : null}
+                    {result.qualificationLabel === "needs_review" && effectiveEmail ? (
+                      <Button size="sm" variant="outline" onClick={() => saveGroundingResult(result._id)} title="Jarvis didn't find enough evidence to auto-qualify this one, but you have a real email and can judge it yourself">Save anyway</Button>
+                    ) : null}
                     {result.qualificationLabel === "qualified" && effectiveEmail ? <Button size="sm" onClick={() => saveGroundingResult(result._id)}>{leadCampaignId ? "Add to CRM + campaign" : "Add to CRM"}</Button> : null}
                     {result.qualificationLabel === "qualified" && !effectiveEmail ? <small className="review-card__missing">Qualified—find an email before adding this lead to your campaign-ready CRM list.</small> : null}
                     <Button size="sm" variant="outline" onClick={() => dismissGroundingResult(result._id)}>Not a lead</Button>
