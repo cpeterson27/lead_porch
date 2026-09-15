@@ -379,6 +379,7 @@ async function saveResult({ workspaceId, userId, resultId }, dependencies = {}) 
         "First Name": firstName || row.name, "Last Name": rest.join(" "), "Company Name": row.organizationName,
         "Website": row.organizationDomain,
         ...(row.linkedinUrl ? { LinkedIn: row.linkedinUrl } : {}),
+        ...(row.phone ? { Phone: row.phone } : {}),
         ...(emailSource ? { Email: emailSource.email, "Email Status": emailSource.state } : {}),
         "Primary Email Source": emailSource?.provider || (row.evidenceUrls?.[0] || ""),
       }],

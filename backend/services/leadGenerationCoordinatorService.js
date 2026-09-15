@@ -575,6 +575,11 @@ function normalizeApolloCandidate(person) {
     linkedinUrl: isHttpUrl(person.linkedinUrl) ? person.linkedinUrl : "",
     email,
     emailState: email ? (person.emailState || "") : "",
+    // Apollo's own search response can include this directly (PDL's
+    // person/search response has no phone field to carry through here).
+    // Never independently verified as still in service — see the model's
+    // own comment on this field.
+    phone: clean(person.phoneNumbers?.[0] || "", 40),
     summary: [person.title, person.location].filter(Boolean).join(" · "),
     provider: "apollo_person_search",
   };
@@ -614,7 +619,7 @@ async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlati
       name: candidate.name, organizationName: candidate.organizationName, organizationDomain: candidate.organizationDomain,
       email: candidateEmail, emailState: candidateEmail ? candidate.emailState : "",
       emailVerificationStatus: candidateEmail ? (candidate.emailState || "") : "",
-      linkedinUrl: candidate.linkedinUrl, summary: candidate.summary,
+      linkedinUrl: candidate.linkedinUrl, phone: candidate.phone || "", summary: candidate.summary,
       evidenceUrls: [], evidenceDate: null, confidence: "single_source",
       discoveryMode: "icp_match", providers: [candidate.provider], discoverySearchId: searchId,
       identityConfidence: candidate.emailState === "verified" ? "medium" : "low",
@@ -643,6 +648,7 @@ async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlati
   existing.emailState = existing.emailState || (candidateEmail ? candidate.emailState : "");
   existing.emailVerificationStatus = existing.emailVerificationStatus || (candidateEmail ? candidate.emailState : "") || "";
   existing.linkedinUrl = existing.linkedinUrl || candidate.linkedinUrl;
+  existing.phone = existing.phone || candidate.phone || "";
   existing.organizationName = existing.organizationName || candidate.organizationName;
   existing.organizationDomain = existing.organizationDomain || candidate.organizationDomain;
   existing.conflicts = conflicts;

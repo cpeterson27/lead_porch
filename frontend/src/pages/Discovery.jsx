@@ -1858,6 +1858,7 @@ export default function Discovery() {
 
                 <small>{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
                 {result.linkedinUrl ? <small><a href={result.linkedinUrl} target="_blank" rel="noreferrer">Profile URL ↗</a></small> : null}
+                {result.phone ? <small>Phone: {result.phone} <span className="review-card__missing">(as reported by the provider — not independently verified as still active)</span></small> : null}
                 {effectiveEmail ? <small>Contact: {effectiveEmail.email} ({effectiveEmail.state})</small> : enrichmentAttemptedNoEmail ? <small className="review-card__missing">Identity matched, but no email is available from any provider tried</small> : <small className="review-card__missing">Public lead found · verified contact not supplied</small>}
                 {result.type === "person" && result.discoveryMode !== "icp_match" ? (
                   <small>{result.evidenceDate ? `Evidence date: ${new Date(result.evidenceDate).toLocaleDateString()} (${result.evidenceAgeDays} day${result.evidenceAgeDays === 1 ? "" : "s"} old)` : "No verifiable evidence date"}{result.freshnessTier ? ` · ${result.freshnessTier}` : ""}</small>

@@ -122,6 +122,13 @@ const groundingResearchResultSchema = new mongoose.Schema({
   discoveryRunId: { type: mongoose.Schema.Types.ObjectId, ref: "PublicWebDiscoveryRun", default: null },
   linkedinUrl: { type: String, default: "", trim: true, maxlength: 500 },
   socialProfileUrls: { type: [String], default: [] },
+  // A provider-supplied phone number (currently Apollo only — PDL's
+  // person/search response doesn't include one). Never independently
+  // verified as still in service; that would require a dedicated phone-
+  // validation API (e.g. Twilio Lookup), which isn't integrated. Stored
+  // purely so a real, provider-sourced number isn't silently discarded —
+  // same caveat as an unverified email.
+  phone: { type: String, default: "", trim: true, maxlength: 40 },
   // Which discovery search (services/leadGenerationCoordinatorService.js)
   // produced/merged into this row, if any — nullable, purely for
   // traceability back to the approved search plan and its ICP.
