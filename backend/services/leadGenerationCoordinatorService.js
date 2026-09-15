@@ -571,6 +571,40 @@ function normalizePdlCandidate(person) {
 
 function normalizeApolloCandidate(person) {
   const email = sanitizeEmailValue(person.email);
+  // Apollo People Search already supplies useful profile and company data.
+  // Preserve an explicit allow-list here instead of discarding it and later
+  // requiring another provider call just to recover fields we already had.
+  // Phone fields are intentionally excluded from this email-only workflow.
+  const apolloSearchProfile = {
+    provider: "apollo",
+    externalId: clean(person.externalId, 100),
+    fullName: clean(person.fullName, 200),
+    firstName: clean(person.firstName, 100),
+    lastName: clean(person.lastName, 100),
+    title: clean(person.title, 200),
+    headline: clean(person.headline, 500),
+    photoUrl: isHttpUrl(person.photoUrl) ? person.photoUrl : "",
+    seniority: clean(person.seniority, 100),
+    departments: Array.isArray(person.departments) ? person.departments : [],
+    subdepartments: Array.isArray(person.subdepartments) ? person.subdepartments : [],
+    functions: Array.isArray(person.functions) ? person.functions : [],
+    company: clean(person.company, 200),
+    companyDomain: clean(person.companyDomain, 300),
+    linkedinUrl: isHttpUrl(person.linkedinUrl) ? person.linkedinUrl : "",
+    facebookUrl: isHttpUrl(person.facebookUrl) ? person.facebookUrl : "",
+    twitterUrl: isHttpUrl(person.twitterUrl) ? person.twitterUrl : "",
+    githubUrl: isHttpUrl(person.githubUrl) ? person.githubUrl : "",
+    city: clean(person.city, 150),
+    state: clean(person.state, 150),
+    country: clean(person.country, 150),
+    location: clean(person.location, 500),
+    email,
+    emailState: email ? clean(person.emailState, 50) : "",
+    emailProviderVerified: Boolean(person.emailProviderVerified && email),
+    employmentHistory: Array.isArray(person.employmentHistory) ? person.employmentHistory : [],
+    organization: person.organization && typeof person.organization === "object" ? person.organization : {},
+    retrievedAt: clean(person.retrievedAt, 100),
+  };
   return {
     type: "person",
     apolloPersonId: clean(person.externalId, 100),
@@ -581,6 +615,7 @@ function normalizeApolloCandidate(person) {
     email,
     emailState: email ? (person.emailState || "") : "",
     summary: [person.title, person.location].filter(Boolean).join(" · "),
+    apolloSearchProfile,
     provider: "apollo_person_search",
   };
 }
@@ -618,6 +653,7 @@ async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlati
       workspaceId, query: `icp_match:${key}`, type: "person",
       name: candidate.name, organizationName: candidate.organizationName, organizationDomain: candidate.organizationDomain,
       apolloPersonId: candidate.apolloPersonId || "",
+      apolloSearchProfile: candidate.apolloSearchProfile || {},
       email: candidateEmail, emailState: candidateEmail ? candidate.emailState : "",
       emailVerificationStatus: candidateEmail ? (candidate.emailState || "") : "",
       linkedinUrl: candidate.linkedinUrl, summary: candidate.summary,
@@ -646,6 +682,10 @@ async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlati
   const bothVerified = candidate.emailState === "verified" || existing.email === candidateEmail;
   existing.providers = providers;
   existing.apolloPersonId = existing.apolloPersonId || candidate.apolloPersonId || "";
+  if (candidate.apolloSearchProfile && Object.keys(candidate.apolloSearchProfile).length) {
+    existing.apolloSearchProfile = { ...(existing.apolloSearchProfile || {}), ...candidate.apolloSearchProfile };
+    existing.markModified("apolloSearchProfile");
+  }
   existing.email = existing.email || candidateEmail;
   existing.emailState = existing.emailState || (candidateEmail ? candidate.emailState : "");
   existing.emailVerificationStatus = existing.emailVerificationStatus || (candidateEmail ? candidate.emailState : "") || "";

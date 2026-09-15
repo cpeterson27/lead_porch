@@ -124,7 +124,7 @@ const discoveryLaneOf = (result) => {
   return result.type === "person" ? "prospective_students" : "content";
 };
 
-const resultImageOf = (result) => result.apolloEnrichment?.profile?.photoUrl || result.profileImageUrl || result.profilePictureUrl || result.avatarUrl || result.photoUrl || result.logoUrl || "";
+const resultImageOf = (result) => result.apolloEnrichment?.profile?.photoUrl || result.apolloSearchProfile?.photoUrl || result.profileImageUrl || result.profilePictureUrl || result.avatarUrl || result.photoUrl || result.logoUrl || "";
 const socialLinkLabel = (url = "") => {
   if (/linkedin\.com/i.test(url)) return "LinkedIn";
   if (/facebook\.com/i.test(url)) return "Facebook";
@@ -1870,7 +1870,8 @@ export default function Discovery() {
             // real usable email, since that lives on a separate nested field.
             const effectiveEmail = effectiveEmailOf(result);
             const isStructuredAudienceMatch = result.discoveryMode === "icp_match";
-            const apolloProfile = result.apolloEnrichment?.profile || {};
+            const enrichedApolloProfile = result.apolloEnrichment?.profile || {};
+            const apolloProfile = Object.keys(enrichedApolloProfile).length ? enrichedApolloProfile : (result.apolloSearchProfile || {});
             const apolloOrganization = apolloProfile.organization || {};
             const publicProfileUrls = [...new Set([
               result.linkedinUrl,
@@ -1955,11 +1956,11 @@ export default function Discovery() {
                     {result.pdlEnrichment?.attempted ? (
                       <small>{result.pdlEnrichment.error ? `PDL error: ${result.pdlEnrichment.errorMessage || "unknown error"}` : result.pdlEnrichment.matched ? `PDL verified: ${result.pdlEnrichment.email || "match found, no email"}` : "PDL: no confident match"}</small>
                     ) : null}
-                    {result.apolloEnrichment?.attempted ? (
+                    {(result.apolloEnrichment?.attempted || Object.keys(apolloProfile).length) ? (
                       <>
-                        <small>{result.apolloEnrichment.error ? `Apollo error: ${result.apolloEnrichment.errorMessage || "unknown error"}` : result.apolloEnrichment.email ? `Apollo email: ${result.apolloEnrichment.email} (${result.apolloEnrichment.emailState || "status not supplied"})` : result.apolloEnrichment.matched ? "Apollo matched the identity but returned no email" : "Apollo: no confident match"}</small>
-                        {result.apolloEnrichment.matched && Object.keys(apolloProfile).length ? <section className="apollo-profile-details">
-                          <strong>Apollo details</strong>
+                        {result.apolloEnrichment?.attempted ? <small>{result.apolloEnrichment.error ? `Apollo error: ${result.apolloEnrichment.errorMessage || "unknown error"}` : result.apolloEnrichment.email ? `Apollo email: ${result.apolloEnrichment.email} (${result.apolloEnrichment.emailState || "status not supplied"})` : result.apolloEnrichment.matched ? "Apollo matched the identity but returned no email" : "Apollo: no confident match"}</small> : null}
+                        {Object.keys(apolloProfile).length ? <section className="apollo-profile-details">
+                          <strong>{Object.keys(enrichedApolloProfile).length ? "Apollo enrichment details" : "Apollo search details"}</strong>
                           <dl>
                             {apolloProfile.matchConfidence ? <div><dt>Match confidence</dt><dd>{apolloProfile.matchConfidence}</dd></div> : null}
                             {apolloProfile.title ? <div><dt>Title</dt><dd>{apolloProfile.title}</dd></div> : null}

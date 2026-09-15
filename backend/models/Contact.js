@@ -126,6 +126,11 @@ const contactSchema = new mongoose.Schema(
       index: true,
     },
 
+    providerAccountId: {
+      type: String,
+      index: true,
+    },
+
     providerRecordId: {
       type: String,
     },

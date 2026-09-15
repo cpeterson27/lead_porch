@@ -67,7 +67,7 @@ const vertexGroundingService = require("./vertexGroundingService");
 const openaiWebSearchService = require("./openaiWebSearchService");
 const peopleDataLabsService = require("./peopleDataLabsService");
 const agentExecutionService = require("./agentExecutionService");
-const { ingestContacts } = require("./contactIngestionService");
+const { ingestContacts, canonicalFieldMap } = require("./contactIngestionService");
 const auditService = require("./auditService");
 const workspaceSelfExclusionService = require("./workspaceSelfExclusionService");
 const clean = (value, length) => String(value || "").trim().slice(0, length);
@@ -384,36 +384,92 @@ async function saveResult({ workspaceId, userId, resultId, campaignId = null }, 
         : row.email
           ? { email: row.email, state: row.emailState || "unverified", provider: row.providers?.find((p) => p === "pdl_person_search" || p === "apollo_person_search") || "" }
           : null;
+    // ingestContacts() itself always takes the newest non-empty value for
+    // most fields — the right behavior for its other callers (a CSV
+    // re-import or Monday sync, where a fresher value SHOULD win). Apollo
+    // data specifically must never win over something already better, so
+    // that protection belongs here at this call site: look up any contact
+    // this save would actually match, and drop any field it already has a
+    // real value for from the payload before it ever reaches ingest().
+    const existingMatch = emailSource?.email
+      ? await ContactModel.findOne({ workspaceId, email: emailSource.email }).lean()
+      : row.linkedinUrl
+        ? await ContactModel.findOne({ workspaceId, linkedin: row.linkedinUrl }).lean()
+        : null;
+    // Identity/match-key fields must always reach ingestContacts() even when
+    // the existing contact already has a value there — ingestContacts()
+    // matches rows by exactly these fields (see contactMatchKeys()), so
+    // stripping them wouldn't "protect" existing data, it would just break
+    // the match and create a duplicate contact instead of updating the real
+    // one (confirmed live).
+    const MATCH_KEY_LABELS = new Set(["Email", "First Name", "Last Name", "Company Name", "LinkedIn", "Provider Contact Id", "Phone"]);
+    const keepExisting = (label) => {
+      const schemaField = canonicalFieldMap[label];
+      return Boolean(schemaField && existingMatch && existingMatch[schemaField] != null && existingMatch[schemaField] !== "" && !Array.isArray(existingMatch[schemaField]));
+    };
+    const withoutStrongerExisting = (fields) => Object.fromEntries(Object.entries(fields).filter(([label]) => MATCH_KEY_LABELS.has(label) || !keepExisting(label)));
     const summary = await ingest({
-      contacts: [{
+      contacts: [withoutStrongerExisting({
         ...(() => {
-          const profile = row.apolloEnrichment?.profile || {};
+          // Paid enrichment is the strongest/current Apollo snapshot. When
+          // it is absent, retain the useful non-phone fields Apollo already
+          // returned during People Search instead of throwing them away.
+          const profile = Object.keys(row.apolloEnrichment?.profile || {}).length
+            ? row.apolloEnrichment.profile
+            : (row.apolloSearchProfile || {});
           const organization = profile.organization || {};
           return {
             ...(profile.title ? { Title: profile.title } : {}),
+            ...(profile.headline ? { "Apollo Headline": profile.headline } : {}),
+            ...(profile.photoUrl ? { "Apollo Photo URL": profile.photoUrl } : {}),
             ...(profile.seniority ? { Seniority: profile.seniority } : {}),
             ...(profile.departments?.length ? { Departments: profile.departments } : {}),
+            ...(profile.subdepartments?.length ? { "Sub Departments": profile.subdepartments } : {}),
+            ...(profile.functions?.length ? { "Apollo Functions": profile.functions } : {}),
             ...(profile.city ? { City: profile.city } : {}),
             ...(profile.state ? { State: profile.state } : {}),
             ...(profile.country ? { Country: profile.country } : {}),
             ...(organization.industry ? { Industry: organization.industry } : {}),
             ...(organization.employeeCount != null ? { "# Employees": organization.employeeCount } : {}),
+            ...(organization.websiteUrl ? { Website: organization.websiteUrl } : {}),
             ...(organization.linkedinUrl ? { "Company LinkedIn URL": organization.linkedinUrl } : {}),
             ...(profile.facebookUrl || organization.facebookUrl ? { "Facebook URL": profile.facebookUrl || organization.facebookUrl } : {}),
             ...(profile.twitterUrl || organization.twitterUrl ? { "Twitter URL": profile.twitterUrl || organization.twitterUrl } : {}),
+            ...(profile.githubUrl ? { "GitHub URL": profile.githubUrl } : {}),
+            ...(organization.city ? { "Company City": organization.city } : {}),
+            ...(organization.state ? { "Company State": organization.state } : {}),
+            ...(organization.country ? { "Company Country": organization.country } : {}),
             ...(organization.technologies?.length ? { Technologies: organization.technologies } : {}),
             ...(organization.keywords?.length ? { Keywords: organization.keywords } : {}),
             ...(organization.annualRevenue != null ? { "Annual Revenue": organization.annualRevenue } : {}),
             ...(organization.totalFunding != null ? { "Total Funding": organization.totalFunding } : {}),
+            ...(organization.foundedYear != null ? { "Apollo Founded Year": organization.foundedYear } : {}),
+            ...(organization.shortDescription ? { "Apollo Company Description": organization.shortDescription } : {}),
+            ...(profile.employmentHistory?.length ? { "Apollo Employment History": profile.employmentHistory } : {}),
+            ...(profile.matchConfidence ? { "Apollo Match Confidence": profile.matchConfidence } : {}),
+            ...(profile.externalId || row.apolloPersonId ? { "Provider Contact Id": profile.externalId || row.apolloPersonId } : {}),
+            ...(organization.id ? { "Provider Account Id": organization.id } : {}),
+            ...(profile.retrievedAt ? { "Apollo Retrieved At": profile.retrievedAt } : {}),
           };
         })(),
         "First Name": firstName || row.name, "Last Name": rest.join(" "), "Company Name": row.organizationName,
-        "Website": row.organizationDomain,
-        ...(row.linkedinUrl ? { LinkedIn: row.linkedinUrl } : {}),
+        "Website": row.apolloEnrichment?.profile?.organization?.websiteUrl || row.apolloSearchProfile?.organization?.websiteUrl || row.organizationDomain,
+        ...((row.linkedinUrl || row.apolloEnrichment?.profile?.linkedinUrl || row.apolloSearchProfile?.linkedinUrl) ? { LinkedIn: row.linkedinUrl || row.apolloEnrichment?.profile?.linkedinUrl || row.apolloSearchProfile?.linkedinUrl } : {}),
         ...(emailSource ? { Email: emailSource.email, "Email Status": emailSource.state } : {}),
         "Primary Email Source": emailSource?.provider || (row.evidenceUrls?.[0] || ""),
-      }],
-      source: "vertex_grounding",
+        ...(emailSource?.provider ? { "Primary Email Verification Source": emailSource.provider } : {}),
+        // Confidence/catch-all/last-verified are derived from the exact
+        // emailState the provider itself reported — never upgraded past it.
+        // "verified" is Apollo/PDL's own highest-confidence state; anything
+        // else (extrapolated/provider_validated/catch_all/unverified) is
+        // real but weaker, and catch_all specifically means the domain
+        // accepts any address, not that this exact one is confirmed.
+        ...(emailSource ? { "Email Confidence": emailSource.state === "verified" ? "high" : ["extrapolated", "provider_validated"].includes(emailSource.state) ? "medium" : "low" } : {}),
+        ...(emailSource?.state === "catch_all" ? { "Primary Email Catch-all Status": "catch_all" } : {}),
+        ...(emailSource ? { "Primary Email Last Verified At": new Date() } : {}),
+        ...(row.organizationName ? { "Company Name for Emails": row.organizationName } : {}),
+      })],
+      source: row.providers?.includes("apollo") || row.providers?.includes("apollo_person_search") ? "apollo" : "vertex_grounding",
     });
     savedContactId = summary.createdContacts?.[0]?.id || summary.updatedContacts?.[0]?.id || null;
     if (!savedContactId) { const error = new Error(summary.errors?.[0]?.message || "Unable to save this person to Contacts"); error.code = "GROUNDING_RESULT_SAVE_FAILED"; throw error; }

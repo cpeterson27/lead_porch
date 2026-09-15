@@ -71,6 +71,10 @@ const groundingResearchResultSchema = new mongoose.Schema({
   // the later credit-bearing enrichment an exact lookup instead of a fuzzy
   // name/company rematch that can return no person or the wrong person.
   apolloPersonId: { type: String, default: "", trim: true, maxlength: 100 },
+  // Useful, non-phone fields Apollo already returned during People Search.
+  // Keeping this separate from `apolloEnrichment.profile` makes provenance
+  // and credit-bearing enrichment status unambiguous.
+  apolloSearchProfile: { type: mongoose.Schema.Types.Mixed, default: {} },
   // The email a DISCOVERY source (PDL/Apollo Person Search) supplied
   // directly, if any — distinct from pdlEnrichment.email/apolloEnrichment.email,
   // which represent a deliberate, separate later verification/cross-check
