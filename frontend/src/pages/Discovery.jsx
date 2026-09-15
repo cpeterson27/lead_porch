@@ -132,6 +132,18 @@ const socialLinkLabel = (url = "") => {
   if (/github\.com/i.test(url)) return "GitHub";
   return "Public profile";
 };
+const effectiveEmailOf = (result) => result.pdlEnrichment?.matched && result.pdlEnrichment?.email
+  ? { email: result.pdlEnrichment.email, state: result.pdlEnrichment.emailState || "provider_validated" }
+  : result.apolloEnrichment?.matched && result.apolloEnrichment?.email
+    ? { email: result.apolloEnrichment.email, state: result.apolloEnrichment.emailState || "unverified" }
+    : result.email
+      ? { email: result.email, state: result.emailVerificationStatus || result.emailState || "unverified" }
+      : null;
+const reviewActionabilityOf = (result) => {
+  if (result.qualificationLabel === "not_a_fit" || result.status === "dismissed") return "not_a_fit";
+  if (!result.qualificationLabel || result.qualificationLabel === "needs_review") return "needs_review";
+  return effectiveEmailOf(result) ? "ready" : "needs_contact";
+};
 const initialsOf = (name) => String(name || "?").split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
 
 const publicAccount = (signal) => {
@@ -774,7 +786,7 @@ export default function Discovery() {
     if (reviewFilters.location.trim() && !`${r.summary || ""} ${r.organizationName || ""}`.toLowerCase().includes(reviewFilters.location.trim().toLowerCase())) return false;
     if (reviewFilters.freshness !== "all" && (r.freshnessTier || "n/a") !== reviewFilters.freshness) return false;
     if (reviewFilters.identityConfidence !== "all" && (r.identityConfidence || "low") !== reviewFilters.identityConfidence) return false;
-    if (qualifyOutcomeFilter !== "all" && (r.qualificationLabel || "") !== qualifyOutcomeFilter) return false;
+    if (qualifyOutcomeFilter !== "all" && reviewActionabilityOf(r) !== qualifyOutcomeFilter) return false;
     return true;
     // Best-fit first — a scored candidate (ICP keyword/title match, or the
     // opt-in Jarvis qualify step) always sorts above an unscored one,
@@ -1829,7 +1841,7 @@ export default function Discovery() {
               {apolloBulkOutcome.state === "complete" && apolloBulkOutcome.matched === 0 ? <small>Apollo completed successfully but did not return an email for this selection. No additional Apollo action is available for those people; try PDL only if you want to spend credits on a second source.</small> : null}
             </div> : null}
             <div className="review-queue-bulk-actions">
-              {[["all", "All"], ["qualified", "View Qualified"], ["needs_review", "View Needs review"], ["not_a_fit", "View Not a fit"]].map(([value, label]) => (
+              {[["all", "All"], ["ready", "Ready to contact"], ["needs_contact", "Needs contact information"], ["needs_review", "Needs review"], ["not_a_fit", "Not a fit"]].map(([value, label]) => (
                 <Button key={value} size="sm" variant={qualifyOutcomeFilter === value ? "primary" : "outline"} onClick={() => setQualifyOutcomeFilter(value)}>{label}</Button>
               ))}
               <Button size="sm" variant="outline" loading={apolloBulkEnrichBusy} disabled={!selectedGroundingIds.some((id) => {
@@ -1845,7 +1857,7 @@ export default function Discovery() {
         {visibleGroundingResults.length ? <><div className="discovery-lanes">
           {DISCOVERY_LANES.map(([laneKey, laneLabel, laneDescription]) => groundingResultsByLane[laneKey].length ? <section className={`discovery-lane lane-${laneKey}`} key={laneKey}>
             <header className="discovery-lane__header"><div><span>{laneLabel}</span><small>{laneDescription}</small></div><strong>{groundingResultsByLane[laneKey].length}</strong></header>
-            <div className="review-queue-grid">{groundingResultsByLane[laneKey].map((result) => {
+            <div className="review-queue-grid"><div className="lead-review-table__header" aria-hidden="true"><span>Person</span><span>Company</span><span>Program fit</span><span>Contact</span><span>Actions</span></div>{groundingResultsByLane[laneKey].map((result) => {
             const expanded = expandedResultIds.includes(result._id);
             const sourceLabel = result.discoveryMode === "icp_match" ? `${(result.providers || []).includes("apollo_person_search") ? "Apollo" : "PDL"} audience match`
               : result.discoveryMode === "public_web_high_volume" ? "Public-web evidence (high-volume discovery)"
@@ -1856,13 +1868,7 @@ export default function Discovery() {
             // the discovery source itself supplied. Without this, a card
             // could show "no verified contact" even after enrichment found a
             // real usable email, since that lives on a separate nested field.
-            const effectiveEmail = result.pdlEnrichment?.matched && result.pdlEnrichment?.email
-              ? { email: result.pdlEnrichment.email, state: result.pdlEnrichment.emailState || "provider_validated" }
-              : result.apolloEnrichment?.matched && result.apolloEnrichment?.email
-                ? { email: result.apolloEnrichment.email, state: result.apolloEnrichment.emailState || "unverified" }
-                : result.email
-                  ? { email: result.email, state: result.emailVerificationStatus || result.emailState || "unverified" }
-                  : null;
+            const effectiveEmail = effectiveEmailOf(result);
             const isStructuredAudienceMatch = result.discoveryMode === "icp_match";
             const apolloProfile = result.apolloEnrichment?.profile || {};
             const apolloOrganization = apolloProfile.organization || {};
@@ -1908,20 +1914,20 @@ export default function Discovery() {
                   <span className={`review-card__identity-badge identity-${result.identityConfidence || "low"}`}>Identity: {(result.identityConfidence || "low").replace("_", " ")}</span>
                 </div>
 
-                <small>{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
+                <small className="lead-review-table__company">{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
                 {(publicProfileUrls.length || companyWebsiteUrl) ? <small className="review-card__contact-routes">
                   {publicProfileUrls.map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{socialLinkLabel(url)} ↗</a>)}
                   {companyWebsiteUrl ? <a href={companyWebsiteUrl} target="_blank" rel="noreferrer">Company website ↗</a> : null}
                 </small> : null}
-                {effectiveEmail ? <small>Contact: {effectiveEmail.email} ({effectiveEmail.state})</small> : <small className="review-card__missing">{missingContactMessage}</small>}
+                {effectiveEmail ? <small className="lead-review-table__contact"><strong>{effectiveEmail.email}</strong><span>{effectiveEmail.state}</span></small> : <small className="review-card__missing lead-review-table__contact">{missingContactMessage}</small>}
                 {result.type === "person" && result.discoveryMode !== "icp_match" ? (
-                  <small>{result.evidenceDate ? `Evidence date: ${new Date(result.evidenceDate).toLocaleDateString()} (${result.evidenceAgeDays} day${result.evidenceAgeDays === 1 ? "" : "s"} old)` : "No verifiable evidence date"}{result.freshnessTier ? ` · ${result.freshnessTier}` : ""}</small>
-                ) : result.discoveryMode === "icp_match" ? <small>Matched from your audience criteria. Current interest still needs confirmation.</small> : null}
-                {result.conflicts?.length ? <small className="form-error">Conflicts: {result.conflicts.join(" ")}</small> : null}
-                {result.exclusionFlags?.length ? <small className="form-error">ICP exclusion flags: {result.exclusionFlags.join(", ")}</small> : null}
+                  <small className="lead-review-table__secondary">{result.evidenceDate ? `Evidence date: ${new Date(result.evidenceDate).toLocaleDateString()} (${result.evidenceAgeDays} day${result.evidenceAgeDays === 1 ? "" : "s"} old)` : "No verifiable evidence date"}{result.freshnessTier ? ` · ${result.freshnessTier}` : ""}</small>
+                ) : result.discoveryMode === "icp_match" ? <small className="lead-review-table__secondary">Matched from your audience criteria. Current interest still needs confirmation.</small> : null}
+                {result.conflicts?.length ? <small className="form-error lead-review-table__secondary">Conflicts: {result.conflicts.join(" ")}</small> : null}
+                {result.exclusionFlags?.length ? <small className="form-error lead-review-table__secondary">ICP exclusion flags: {result.exclusionFlags.join(", ")}</small> : null}
 
-                {result.recommendedProgram?.name ? <small className="grounding-fit-score">Program: {result.recommendedProgram.name} — fit {result.fitScore}/100</small> : result.fitScore != null ? <small className="grounding-fit-score">Program fit: {result.fitScore}/100 (no approved program judged a genuine fit)</small> : null}
-                {result.buyerIntentLevel ? <small>Buyer intent: {result.buyerIntentLevel}{result.buyerIntentEvidence ? ` — ${result.buyerIntentEvidence}` : ""}</small> : null}
+                {result.recommendedProgram?.name ? <small className="grounding-fit-score"><strong>{result.fitScore}/100</strong><span>{result.recommendedProgram.name}</span></small> : result.fitScore != null ? <small className="grounding-fit-score"><strong>{result.fitScore}/100</strong><span>No program selected</span></small> : <small className="grounding-fit-score"><span>Not scored</span></small>}
+                {result.buyerIntentLevel ? <small className="lead-review-table__secondary">Buyer intent: {result.buyerIntentLevel}{result.buyerIntentEvidence ? ` — ${result.buyerIntentEvidence}` : ""}</small> : null}
 
                 <section className={`review-card__why ${result.discoveryMode === "icp_match" && !result.evidenceUrls?.length ? "is-incomplete" : ""}`}>
                   <strong>{result.discoveryMode === "icp_match" && !result.evidenceUrls?.length ? "Why this is only a possible match" : "Why Lead Porch found this"}</strong>
@@ -1936,6 +1942,7 @@ export default function Discovery() {
                   <div className="review-card__details">
                     <small>Summary</small>
                     <p>{result.summary || "No additional summary was provided by the source."}</p>
+                    {result.buyerIntentLevel ? <><small>Buyer intent</small><p>{result.buyerIntentLevel}{result.buyerIntentEvidence ? ` — ${result.buyerIntentEvidence}` : ""}</p></> : null}
                     {result.fitReasons?.length ? <><small>Program fit reasons</small><p>{result.fitReasons.join("; ")}</p></> : null}
                     {result.recommendedNextAction ? <><small>Recommended next action</small><p>{result.recommendedNextAction}</p></> : null}
                     {result.outreachRecommended && result.outreachDraft ? <><small>Draft outreach (not sent)</small><p>{result.outreachDraft}</p></> : null}
