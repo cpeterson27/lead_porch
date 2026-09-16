@@ -299,7 +299,7 @@ export default function AiAcquisitionControls() {
           <p>Tracked in Lead Porch this month across {usage.requestCount} request{usage.requestCount === 1 ? "" : "s"}.</p>
         </div>
         <div className="ai-usage-command__metrics">
-          <article><span>Total tokens</span><strong>{usage.tokens?.total?.toLocaleString?.() || 0}</strong><small>{usage.tokens?.input?.toLocaleString?.() || 0} input · {usage.tokens?.output?.toLocaleString?.() || 0} output</small></article>
+          <article><span>Total tokens</span><strong>{usage.tokens?.total?.toLocaleString?.() || 0}</strong><small>{usage.tokens?.input?.toLocaleString?.() || 0} input · {usage.tokens?.output?.toLocaleString?.() || 0} output{usage.tokens?.reasoning ? ` · ${usage.tokens.reasoning.toLocaleString()} reasoning` : ""}</small></article>
           <article><span>Successful requests</span><strong>{usage.successCount || 0}</strong><small>{usage.failureCount || 0} failed</small></article>
           <article><span>Tracked agents</span><strong>{usage.byAgent?.length || 0}</strong><small>Usage is attributed below</small></article>
         </div>
@@ -381,7 +381,7 @@ export default function AiAcquisitionControls() {
           {usage ? (
             <div className="ai-controls-usage">
               <StatCard title="This month's tracked AI spend" value={money(usage.estimatedTotalCostUsd)} subtitle={`${usage.requestCount} request(s) across OpenAI, Gemini, and Vertex`} />
-              <StatCard title="Tokens used" value={usage.tokens?.total?.toLocaleString?.() || 0} subtitle={`${usage.tokens?.input || 0} in / ${usage.tokens?.output || 0} out`} />
+              <StatCard title="Tokens used" value={usage.tokens?.total?.toLocaleString?.() || 0} subtitle={`${usage.tokens?.input || 0} in / ${usage.tokens?.output || 0} out${usage.tokens?.reasoning ? ` / ${usage.tokens.reasoning} reasoning` : ""}`} />
               <StatCard title="Success rate" value={usage.requestCount ? `${Math.round((usage.successCount / usage.requestCount) * 100)}%` : "—"} subtitle={`${usage.failureCount} failed`} />
             </div>
           ) : null}
