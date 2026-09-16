@@ -119,20 +119,15 @@ function ApplicationButton({
           onKeyDown={(event) => event.key === "Escape" && setOpen(false)}
         >
           <div>
-            <header>
-              <div>
-                <p className="public-kicker">Program application</p>
-                <h2>Start your application</h2>
-              </div>
-              <button
-                ref={closeRef}
-                type="button"
-                onClick={() => setOpen(false)}
-                aria-label="Close application"
-              >
-                <FiX />
-              </button>
-            </header>
+            <button
+              ref={closeRef}
+              type="button"
+              className="program-application-modal__close"
+              onClick={() => setOpen(false)}
+              aria-label="Close application"
+            >
+              <FiX />
+            </button>
             <iframe title="Program application" src={`/apply?${query}`} />
           </div>
         </div>
@@ -613,26 +608,19 @@ function ProgramCards({ programs = [] }) {
           className="program-application-modal"
           role="dialog"
           aria-modal="true"
-          aria-labelledby="program-application-title"
+          aria-label={`Apply for ${applying.title}`}
           onKeyDown={(event) => event.key === "Escape" && setApplying(null)}
         >
           <div>
-            <header>
-              <div>
-                <p className="public-kicker">Program application</p>
-                <h2 id="program-application-title">
-                  Apply for {applying.title}
-                </h2>
-              </div>
-              <button
-                ref={closeRef}
-                type="button"
-                onClick={() => setApplying(null)}
-                aria-label="Close application"
-              >
-                <FiX />
-              </button>
-            </header>
+            <button
+              ref={closeRef}
+              type="button"
+              className="program-application-modal__close"
+              onClick={() => setApplying(null)}
+              aria-label="Close application"
+            >
+              <FiX />
+            </button>
             <iframe
               title={`Application for ${applying.title}`}
               src={`/apply?program=${encodeURIComponent(applying.slug || applying.id)}&embed=1`}

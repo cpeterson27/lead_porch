@@ -1813,11 +1813,11 @@ button.public-text-link {
 .public-site[data-public-theme="light"] .public-apply-btn:active { border-color: color-mix(in srgb, var(--public-accent) 62%, #071006); background: color-mix(in srgb, var(--public-accent) 62%, #071006); color: #fff !important; transform: translateY(1px); }
 
 .program-application-modal > div {
+  position: relative;
   display: grid;
   width: min(1080px, 100%);
   height: min(900px, 90dvh);
   min-height: 0;
-  grid-template-rows: auto minmax(0, 1fr);
   overflow: hidden;
   border: 1px solid var(--public-border);
   background: var(--public-surface);
@@ -1825,19 +1825,15 @@ button.public-text-link {
   box-shadow: 0 28px 90px rgb(0 0 0 / 35%);
 }
 
-.program-application-modal header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--public-border);
-}
-
-.program-application-modal header h2,
-.program-application-modal header p { margin: 0; }
-.program-application-modal header h2 { color: var(--public-text); font-size: clamp(22px, 3vw, 34px); }
-.program-application-modal header > button {
+/* The embedded /apply page already renders its own full "Program
+   application" kicker + program title + logo — a second header here just
+   duplicated it, so the close button floats directly over the iframe
+   instead of occupying its own header row. */
+.program-application-modal__close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  z-index: 5;
   display: grid;
   width: 44px;
   height: 44px;
@@ -1847,13 +1843,14 @@ button.public-text-link {
   background: var(--public-surface);
   color: var(--public-text);
   cursor: pointer;
+  box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
 }
 .program-application-modal iframe { width: 100%; height: 100%; min-height: 0; overflow: auto; border: 0; background: var(--public-surface); overscroll-behavior: contain; }
 
 @media (max-width: 560px) {
   .program-application-modal { padding: 0; }
   .program-application-modal > div { width: 100%; height: 100dvh; border: 0; }
-  .program-application-modal header { padding: 14px 16px; }
+  .program-application-modal__close { top: 10px; right: 10px; }
   .public-final-action,
   .public-final-action .public-button { width: 100%; }
   .public-why-section { margin: 56px 16px; padding: 48px 24px 24px; }
