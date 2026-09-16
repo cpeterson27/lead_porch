@@ -1668,13 +1668,13 @@ button.public-text-link {
   inset: 0;
   z-index: 10000;
   display: grid;
-  overflow: auto;
+  overflow: hidden;
   justify-items: center;
-  align-items: start;
-  padding: clamp(16px, 4vh, 48px) clamp(12px, 3vw, 36px);
-  background: rgb(5 7 6 / 78%);
-  backdrop-filter: blur(6px);
-  overscroll-behavior: contain;
+  align-items: center;
+  padding: clamp(16px, 3vh, 32px) clamp(12px, 3vw, 32px);
+  background: rgb(5 7 6 / 74%);
+  backdrop-filter: blur(9px);
+  overscroll-behavior: none;
 }
 .program-application-open .public-footer { visibility: hidden; }
 
@@ -1815,12 +1815,12 @@ button.public-text-link {
 
 .program-application-modal > div {
   position: relative;
-  width: min(1080px, 100%);
-  height: min(820px, 88dvh);
+  width: min(760px, 100%);
+  height: min(680px, 84dvh);
   min-height: 0;
   overflow: hidden;
   border: 1px solid var(--public-border);
-  border-radius: 28px;
+  border-radius: 22px;
   background: var(--public-surface);
   color: var(--public-text);
   box-shadow: 0 28px 90px rgb(0 0 0 / 35%);

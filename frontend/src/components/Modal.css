@@ -1,7 +1,7 @@
 .modal-root {
   position: fixed;
   inset: 0;
-  z-index: 60;
+  z-index: 10000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -21,7 +21,7 @@
   display: flex;
   flex-direction: column;
   width: min(100%, 720px);
-  max-height: min(88vh, 860px);
+  max-height: min(82dvh, 760px);
   background: var(--surface);
   border: 1px solid rgba(255, 255, 255, 0.68);
   border-radius: 18px;
@@ -32,8 +32,8 @@
 }
 
 .modal-panel--workspace {
-  width: min(96vw, 1180px);
-  max-height: 94vh;
+  width: min(calc(100vw - 2.5rem), 960px);
+  max-height: min(88dvh, 820px);
 }
 
 .modal-header {

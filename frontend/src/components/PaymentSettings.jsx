@@ -5,6 +5,7 @@ import { hasPermission } from "../utils/roleAccess.js";
 import useAuth from "../context/useAuth.js";
 import "./PaymentSettings.css";
 import PaymentPlanPanel from "./PaymentPlanPanel.jsx";
+import { useModalLayer } from "./ModalLayer.jsx";
 
 const money = (amount, currency = "USD") => new Intl.NumberFormat(undefined, { style: "currency", currency }).format((amount || 0) / 100);
 const message = (error, fallback) => error?.response?.data?.error || fallback;
@@ -16,6 +17,7 @@ export default function PaymentSettings() {
   const [transactions, setTransactions] = useState([]), [applications, setApplications] = useState([]), [paymentLink, setPaymentLink] = useState("");
   const [form, setForm] = useState({ applicationId: "", kind: "full", amount: "" });
   const [notice, setNotice] = useState(null), [busy, setBusy] = useState(false), [refund, setRefund] = useState(null), [confirmDisconnect, setConfirmDisconnect] = useState(false);
+  useModalLayer(Boolean(confirmDisconnect || refund));
   const fetchData = async () => { const [status, activity] = await Promise.all([fetchPaymentConnection(), fetchPaymentTransactions()]); const applicationItems = canManage ? await fetchManagedApplications() : []; return { status, activity, applicationItems }; };
   const applyData = ({ status, activity, applicationItems }) => { setConnection(status.connection); setSettings(status.settings); setTransactions(activity); setApplications(applicationItems.filter((item) => ["submitted", "reviewing", "qualified"].includes(item.status) && item.coachingProgramId)); };
   const load = async () => applyData(await fetchData());

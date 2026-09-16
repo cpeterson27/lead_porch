@@ -1,7 +1,10 @@
 import { useEffect } from 'react'
 import './Modal.css'
+import { ModalPortal, useModalLayer } from './ModalLayer.jsx'
 
 export default function Modal({ isOpen, onClose, title, children, footer, size = "default", className = "" }) {
+  useModalLayer(isOpen)
+
   useEffect(() => {
     if (!isOpen) {
       return undefined
@@ -13,11 +16,9 @@ export default function Modal({ isOpen, onClose, title, children, footer, size =
       }
     }
 
-    document.body.style.overflow = 'hidden'
     document.addEventListener('keydown', handleKeyDown)
 
     return () => {
-      document.body.style.overflow = ''
       document.removeEventListener('keydown', handleKeyDown)
     }
   }, [isOpen, onClose])
@@ -26,7 +27,7 @@ export default function Modal({ isOpen, onClose, title, children, footer, size =
     return null
   }
 
-  return (
+  return <ModalPortal>
     <div className="modal-root" aria-modal="true" role="dialog">
       <button className="modal-backdrop" onClick={onClose} aria-label="Close modal" />
       <div
@@ -45,5 +46,5 @@ export default function Modal({ isOpen, onClose, title, children, footer, size =
         {footer ? <div className="modal-footer">{footer}</div> : null}
       </div>
     </div>
-  )
+  </ModalPortal>
 }

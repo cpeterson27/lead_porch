@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
-import { Link, MemoryRouter, Routes, Route, useParams } from "react-router-dom";
+import { Link, useParams } from "react-router-dom";
 import {
   FiArrowRight,
   FiCheck,
@@ -20,26 +20,21 @@ import {
 } from "../services/api.js";
 import { cloudinaryImage } from "../utils/cloudinaryImage.js";
 import TestimonialVideoPlayer from "../components/TestimonialVideoPlayer.jsx";
+import { ModalPortal, useModalLayer } from "../components/ModalLayer.jsx";
 import "./PublicSite.css";
 import "./PublicEnhancements.css";
 
-// Lazy + a MemoryRouter (rather than an <iframe src="/apply?...">) renders
-// the application form as a real in-page React component: one document, one
-// scroll region, no cross-document sizing/scroll fights. lazy() (the same
-// pattern App.jsx already uses for this exact component) defers the import
-// until first render, which is what avoids a circular module-eval problem —
-// PublicApplication.jsx itself imports { PublicLayout } from this file.
+// Render the application as a real in-page component so the modal has one
+// document and one scroll region. The current app already owns the router;
+// explicit props provide the modal query state without nesting another Router.
 const PublicApplication = lazy(() => import("./PublicApplication.jsx"));
 
 function EmbeddedApplication({ path }) {
+  const search = new URL(path, window.location.origin).search;
   return (
     <div className="program-application-modal__scroll">
       <Suspense fallback={null}>
-        <MemoryRouter initialEntries={[path]}>
-          <Routes>
-            <Route path="/apply" element={<PublicApplication />} />
-          </Routes>
-        </MemoryRouter>
+        <PublicApplication embedded search={search} />
       </Suspense>
     </div>
   );
@@ -111,14 +106,12 @@ function ApplicationButton({
 }) {
   const [open, setOpen] = useState(false),
     closeRef = useRef(null);
+  useModalLayer(open);
   useEffect(() => {
     if (!open) return undefined;
     closeRef.current?.focus();
-    const prior = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     document.body.classList.add("program-application-open");
     return () => {
-      document.body.style.overflow = prior;
       document.body.classList.remove("program-application-open");
     };
   }, [open]);
@@ -132,7 +125,7 @@ function ApplicationButton({
       <button type="button" className={className} onClick={() => setOpen(true)}>
         {children}
       </button>
-      {open ? (
+      {open ? <ModalPortal>
         <div
           className="program-application-modal"
           role="dialog"
@@ -153,7 +146,7 @@ function ApplicationButton({
             <EmbeddedApplication path={`/apply?${query}`} />
           </div>
         </div>
-      ) : null}
+      </ModalPortal> : null}
     </>
   );
 }
@@ -324,14 +317,12 @@ function ProgramCards({ programs = [] }) {
   const [expanded, setExpanded] = useState(""),
     [applying, setApplying] = useState(null),
     closeRef = useRef(null);
+  useModalLayer(Boolean(applying));
   useEffect(() => {
     if (!applying) return undefined;
     closeRef.current?.focus();
-    const prior = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
     document.body.classList.add("program-application-open");
     return () => {
-      document.body.style.overflow = prior;
       document.body.classList.remove("program-application-open");
     };
   }, [applying]);
@@ -625,7 +616,7 @@ function ProgramCards({ programs = [] }) {
           </div>
         </div>
       )}
-      {applying ? (
+      {applying ? <ModalPortal>
         <div
           className="program-application-modal"
           role="dialog"
@@ -646,7 +637,7 @@ function ProgramCards({ programs = [] }) {
             <EmbeddedApplication path={`/apply?program=${encodeURIComponent(applying.slug || applying.id)}&embed=1`} />
           </div>
         </div>
-      ) : null}
+      </ModalPortal> : null}
     </>
   );
 }
@@ -716,6 +707,7 @@ function HeroVideoTile({ site }) {
   const [playing, setPlaying] = useState(false),
     closeRef = useRef(null),
     embed = embedUrl(p.introVideoUrl);
+  useModalLayer(playing);
   useEffect(() => {
     if (playing) closeRef.current?.focus();
   }, [playing]);
@@ -748,7 +740,7 @@ function HeroVideoTile({ site }) {
           {p.introVideoTitle || `Welcome to ${workspaceName || "the program"}`}
         </small>
       </button>
-      {playing ? (
+      {playing ? <ModalPortal>
         <div
           className="video-modal"
           role="dialog"
@@ -786,7 +778,7 @@ function HeroVideoTile({ site }) {
             )}
           </div>
         </div>
-      ) : null}
+      </ModalPortal> : null}
     </>
   );
 }

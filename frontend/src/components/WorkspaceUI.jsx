@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from "react";
 import Button from "./Button.jsx";
+import { ModalPortal, useModalLayer } from "./ModalLayer.jsx";
 import "./WorkspaceUI.css";
 
 export function PageHeader({ eyebrow, title, description, actions, children, className = "" }) {
@@ -79,6 +80,7 @@ export function EmptyState({ icon, title, description, action, secondaryAction }
 export function Drawer({ isOpen, onClose, title, description, children, footer, size = "default" }) {
   const titleId = useId();
   const panelRef = useRef(null);
+  useModalLayer(isOpen);
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -86,11 +88,9 @@ export function Drawer({ isOpen, onClose, title, description, children, footer, 
     const handleKeyDown = (event) => {
       if (event.key === "Escape") onClose?.();
     };
-    document.body.style.overflow = "hidden";
     document.addEventListener("keydown", handleKeyDown);
     window.requestAnimationFrame(() => panelRef.current?.focus());
     return () => {
-      document.body.style.overflow = "";
       document.removeEventListener("keydown", handleKeyDown);
       previousFocus?.focus?.();
     };
@@ -98,7 +98,7 @@ export function Drawer({ isOpen, onClose, title, description, children, footer, 
 
   if (!isOpen) return null;
 
-  return (
+  return <ModalPortal>
     <div className="drawer-root">
       <button className="drawer-backdrop" type="button" onClick={onClose} aria-label="Close details" />
       <aside
@@ -117,5 +117,5 @@ export function Drawer({ isOpen, onClose, title, description, children, footer, 
         {footer ? <footer className="drawer-footer">{footer}</footer> : null}
       </aside>
     </div>
-  );
+  </ModalPortal>;
 }

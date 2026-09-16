@@ -29,13 +29,14 @@ const initial = {
 const legacyHeading = "Apply for coaching";
 const legacyIntro = "Tell us where you are and where you want to go.";
 
-export default function PublicApplication() {
+export default function PublicApplication({ embedded: embeddedOverride, search: searchOverride }) {
   const location = useLocation();
   const { code } = useParams();
+  const search = searchOverride ?? location.search;
   const { site } = useWorkspaceTheme();
   const [config, setConfig] = useState(null);
   const [form, setForm] = useState(() => {
-    const query = new URLSearchParams(location.search);
+    const query = new URLSearchParams(search);
     return {
       ...initial,
       referralCode: query.get("ref") || query.get("referral") || code || "",
@@ -45,7 +46,7 @@ export default function PublicApplication() {
   const [done, setDone] = useState("");
   const [saving, setSaving] = useState(false);
   const attribution = useMemo(() => {
-    const query = new URLSearchParams(location.search);
+    const query = new URLSearchParams(search);
     return {
       referralCode: query.get("ref") || query.get("referral") || code || "",
       trackedLinkToken: query.get("go_link") || "",
@@ -57,7 +58,7 @@ export default function PublicApplication() {
         term: query.get("utm_term") || "",
       },
     };
-  }, [location.search, code]);
+  }, [search, code]);
 
   useEffect(() => {
     const timer = window.setTimeout(
@@ -65,7 +66,7 @@ export default function PublicApplication() {
         fetchPublicApplication()
           .then((data) => {
             setConfig(data);
-            const selected = new URLSearchParams(location.search).get(
+            const selected = new URLSearchParams(search).get(
               "program",
             );
             const matched = data.programs?.find(
@@ -82,7 +83,7 @@ export default function PublicApplication() {
       0,
     );
     return () => window.clearTimeout(timer);
-  }, [location.search]);
+  }, [search]);
 
   const set = (key, value) =>
     setForm((current) => ({ ...current, [key]: value }));
@@ -123,7 +124,7 @@ export default function PublicApplication() {
   // everywhere else (public website header, dashboard sidebar).
   const heroLogo =
     site?.branding?.publicSiteLogoDarkUrl || site?.branding?.publicSiteLogoUrl || "";
-  const embedded = new URLSearchParams(location.search).get("embed") === "1";
+  const embedded = embeddedOverride ?? new URLSearchParams(search).get("embed") === "1";
 
   const content = (
       <main className={`application-page ${embedded ? "application-page--embedded" : ""}`}>
