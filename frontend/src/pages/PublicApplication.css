@@ -5,7 +5,7 @@
   padding: 96px clamp(24px, 7vw, 80px) 120px;
 }
 
-.application-page--embedded{max-width:100%;min-height:0;padding:30px}.application-page--embedded .application-hero{grid-template-columns:minmax(0,1.15fr) minmax(220px,.55fr)}.application-page--embedded .application-hero h1{font-size:clamp(2.2rem,5vw,4.3rem)}.application-page--embedded .application-hero__logo{min-height:260px}.application-page--embedded form{margin-top:32px}
+.application-page--embedded{max-width:100%;min-height:0;padding:22px}.application-page--embedded .application-hero{grid-template-columns:minmax(0,1.15fr) minmax(220px,.55fr);gap:24px}.application-page--embedded .application-hero h1{font-size:clamp(2.2rem,5vw,4.3rem);margin:10px 0 14px}.application-page--embedded .application-hero__logo{min-height:190px;padding:22px}.application-page--embedded form{margin-top:20px;padding:22px}.application-page--embedded .application-section+.application-section{margin-top:26px;padding-top:22px}.application-page--embedded .application-grid{gap:14px}.application-page--embedded form button.public-button,.application-page--embedded .public-button{margin-top:22px}
 .application-hero {
   align-items: center;
   display: grid;

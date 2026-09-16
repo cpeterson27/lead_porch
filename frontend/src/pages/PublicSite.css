@@ -1669,8 +1669,9 @@ button.public-text-link {
   z-index: 10000;
   display: grid;
   overflow: auto;
-  place-items: center;
-  padding: clamp(12px, 3vw, 36px);
+  justify-items: center;
+  align-items: start;
+  padding: clamp(16px, 4vh, 48px) clamp(12px, 3vw, 36px);
   background: rgb(5 7 6 / 78%);
   backdrop-filter: blur(6px);
   overscroll-behavior: contain;
@@ -1816,10 +1817,11 @@ button.public-text-link {
   position: relative;
   display: grid;
   width: min(1080px, 100%);
-  height: min(900px, 90dvh);
+  height: min(820px, 88dvh);
   min-height: 0;
   overflow: hidden;
   border: 1px solid var(--public-border);
+  border-radius: 28px;
   background: var(--public-surface);
   color: var(--public-text);
   box-shadow: 0 28px 90px rgb(0 0 0 / 35%);
@@ -1849,7 +1851,7 @@ button.public-text-link {
 
 @media (max-width: 560px) {
   .program-application-modal { padding: 0; }
-  .program-application-modal > div { width: 100%; height: 100dvh; border: 0; }
+  .program-application-modal > div { width: 100%; height: 100dvh; border: 0; border-radius: 0; }
   .program-application-modal__close { top: 10px; right: 10px; }
   .public-final-action,
   .public-final-action .public-button { width: 100%; }
