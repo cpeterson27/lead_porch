@@ -37,6 +37,16 @@ const AGENT_LABELS = {
   system: "System",
 };
 
+const PROVIDER_LABELS = { openai: "OpenAI", gemini: "Gemini", vertex: "Vertex AI" };
+const ENDPOINT_LABELS = {
+  "chat.completions": "Chat Completions",
+  responses: "Responses (incl. web search)",
+  "images.generate": "Images",
+  generateContent: "Generate Content",
+  search: "Search",
+};
+function endpointLabel(endpoint) { return ENDPOINT_LABELS[endpoint] || endpoint; }
+
 function money(value) {
   if (value == null) return "—";
   return `$${Number(value).toFixed(2)}`;
@@ -302,6 +312,15 @@ export default function AiAcquisitionControls() {
           <article><span>Total tokens</span><strong>{usage.tokens?.total?.toLocaleString?.() || 0}</strong><small>{usage.tokens?.input?.toLocaleString?.() || 0} input · {usage.tokens?.output?.toLocaleString?.() || 0} output{usage.tokens?.reasoning ? ` · ${usage.tokens.reasoning.toLocaleString()} reasoning` : ""}</small></article>
           <article><span>Successful requests</span><strong>{usage.successCount || 0}</strong><small>{usage.failureCount || 0} failed</small></article>
           <article><span>Tracked agents</span><strong>{usage.byAgent?.length || 0}</strong><small>Usage is attributed below</small></article>
+        </div>
+        <div className="ai-usage-provider-grid" aria-label="Usage by provider and capability, grouped like OpenAI's own usage dashboard">
+          {usage.byProviderEndpoint?.length ? [...usage.byProviderEndpoint].sort((a, b) => b.estimatedTotalCostUsd - a.estimatedTotalCostUsd).map((row) => <article key={row.key}>
+            <span className="ai-usage-provider-grid__provider">{PROVIDER_LABELS[row.provider] || row.provider}</span>
+            <strong>{endpointLabel(row.endpoint)}</strong>
+            <span>{row.requestCount} request{row.requestCount === 1 ? "" : "s"}</span>
+            <span>{row.totalTokens.toLocaleString()} tokens</span>
+            <b>{money(row.estimatedTotalCostUsd)}</b>
+          </article>) : <p>No AI usage has been recorded this month.</p>}
         </div>
         <div className="ai-agent-ledger">
           <header><strong>Usage by agent</strong><span>Requests · tokens · estimated cost</span></header>

@@ -110,13 +110,33 @@ async function run() {
   assert.deepEqual(safeError({ status: 401, message: "secret", code: "bad key!" }), { errorCategory: "authentication", errorCode: "bad_key_", providerRequestId: "" });
 
   let usageFilter;
-  const rows = [{ agent: "jarvis", model: "gpt-4.1-mini", inputTokens: 10, outputTokens: 5, cachedTokens: 2, reasoningTokens: 1, totalTokens: 15, estimatedTotalCostUsd: 0.25, success: true }];
-  const Model = { find(filter) { usageFilter = filter; return { select() { return this; }, lean: async () => rows }; } };
+  let selectedFields;
+  const rows = [
+    { agent: "jarvis", model: "gpt-4.1-mini", provider: "openai", endpoint: "chat.completions", inputTokens: 10, outputTokens: 5, cachedTokens: 2, reasoningTokens: 1, totalTokens: 15, estimatedTotalCostUsd: 0.25, success: true },
+    { agent: "research", model: "gemini-2.5-flash", provider: "vertex", endpoint: "generateContent", inputTokens: 100, outputTokens: 40, cachedTokens: 0, reasoningTokens: 0, totalTokens: 140, estimatedTotalCostUsd: 0.03, success: true },
+  ];
+  const Model = { find(filter) { usageFilter = filter; return { select(fields) { selectedFields = fields; return this; }, lean: async () => rows }; } };
   const summary = await aiUsageService.summary("workspace-a", { now: new Date("2026-08-27T12:00:00Z"), Model });
   assert.equal(usageFilter.workspaceId, "workspace-a");
-  assert.equal(summary.requestCount, 1);
-  assert.equal(summary.estimatedTotalCostUsd, 0.25);
+  assert.equal(summary.requestCount, 2);
+  assert.equal(summary.estimatedTotalCostUsd, 0.28);
   assert.equal(summary.byAgent[0].key, "jarvis");
+  // The Mongo projection must actually include provider/endpoint, or every
+  // row silently falls into "unknown" in production even though a mocked
+  // Model.find() (which ignores the field list) would never catch that.
+  assert.ok(/\bprovider\b/.test(selectedFields) && /\bendpoint\b/.test(selectedFields), "the usage query must select provider and endpoint, or every grouping below is silently empty in production");
+  // The usage page groups by provider (OpenAI/Gemini/Vertex), by endpoint
+  // (chat.completions/generateContent/...), and by the real (provider,
+  // endpoint) combination for an OpenAI-dashboard-style card grid that
+  // reflects every provider this workspace actually uses.
+  assert.equal(summary.byProvider.find((row) => row.key === "openai").estimatedTotalCostUsd, 0.25);
+  assert.equal(summary.byProvider.find((row) => row.key === "vertex").estimatedTotalCostUsd, 0.03);
+  assert.equal(summary.byEndpoint.find((row) => row.key === "chat.completions").requestCount, 1);
+  const openaiChat = summary.byProviderEndpoint.find((row) => row.provider === "openai" && row.endpoint === "chat.completions");
+  assert.equal(openaiChat.requestCount, 1);
+  assert.equal(openaiChat.estimatedTotalCostUsd, 0.25);
+  const vertexGenerate = summary.byProviderEndpoint.find((row) => row.provider === "vertex" && row.endpoint === "generateContent");
+  assert.equal(vertexGenerate.totalTokens, 140);
 
   const configDefaults = aiConfigService.defaults();
   assert.equal(configDefaults.enabled, true);
