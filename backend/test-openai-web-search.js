@@ -72,6 +72,7 @@ async function testSuccessfulSearchExtractsCitationsAndCapsAtFive() {
   const text = `Here is what I found.\n\`\`\`json\n${JSON.stringify(candidates)}\n\`\`\``;
   const mockResponse = {
     model: "gpt-5.6-terra",
+    status: "completed",
     usage: { input_tokens: 500, output_tokens: 300, total_tokens: 800 },
     output: [{ type: "message", content: [{ type: "output_text", text, annotations: [{ type: "url_citation", url: "https://metroreia.org/person-0", title: "Person 0" }] }] }],
   };
@@ -81,6 +82,8 @@ async function testSuccessfulSearchExtractsCitationsAndCapsAtFive() {
 
   assert.equal(capturedRequest.model, service.model(), "the configured research model must be the one actually requested, never silently substituted");
   assert.deepEqual(capturedRequest.tools, [{ type: "web_search" }]);
+  assert.equal(capturedRequest.reasoning?.effort, "low", "reasoning effort must be capped so the model has real budget left to write a final answer after the web_search tool call");
+  assert.equal(capturedRequest.max_output_tokens, 12000, "an explicit output-token budget must be set — the same fix already proven out in publicPeopleResearchService.js for this reasoning-model + web_search combination");
   assert.equal(result.results.length, 5, "results must be capped at the documented default max (5)");
   assert.ok(result.results.every((row) => row.evidenceUrls.every((url) => url.startsWith("http"))), "a non-http(s) evidence URL must never survive extraction");
   assert.equal(result.groundingCitations.length, 1);
@@ -102,7 +105,7 @@ async function testPersonRequestsAskForAndParseAnEvidenceDate() {
     { type: "person", name: "Future Dated", evidenceUrls: ["https://forum.example.com/future"], evidenceDate: "2099-01-01" },
   ];
   const text = `\`\`\`json\n${JSON.stringify(candidates)}\n\`\`\``;
-  const mockResponse = { output: [{ type: "message", content: [{ type: "output_text", text, annotations: [] }] }] };
+  const mockResponse = { status: "completed", output: [{ type: "message", content: [{ type: "output_text", text, annotations: [] }] }] };
   let capturedRequest = null;
   const client = { responses: { create: async (request) => { capturedRequest = request; return mockResponse; } } };
   const result = await service.groundedSearch({ workspaceId: "w1", query: "q", resultTypes: ["person"] }, { assertEnabled: async () => {}, clientFactory: () => client });
@@ -129,6 +132,33 @@ async function testUnsupportedToolErrorBecomesAClearConfigErrorNotASilentFallbac
   assert.equal(callCount, 1, "an unsupported-tool error must surface directly — never retried with a different model, which would be a silent fallback");
 }
 
+/**
+ * Regression for the real production bug this fix addresses: OpenAI's own
+ * dashboard showed repeated real, billed calls to this exact prompt that
+ * all came back "<no output>" — the reasoning model spending its entire
+ * output-token budget on internal reasoning + the web_search tool call
+ * itself and never reaching a final text response. Before this fix, that
+ * was silently read as "zero results found" (a real cost with no signal
+ * anything was wrong); it must now surface as a distinct, honest error.
+ */
+async function testIncompleteResponseSurfacesAsAnHonestErrorNotSilentZeroResults() {
+  process.env.OPENAI_WEB_SEARCH_ENABLED = "true";
+  process.env.OPENAI_API_KEY = "test-key";
+  const service = freshService();
+  const mockResponse = {
+    status: "incomplete",
+    incomplete_details: { reason: "max_output_tokens" },
+    usage: { input_tokens: 8200, output_tokens: 12000, total_tokens: 20200 },
+    output: [{ type: "reasoning" }, { type: "web_search_call" }],
+  };
+  const client = { responses: { create: async () => mockResponse } };
+  await assert.rejects(
+    () => service.groundedSearch({ workspaceId: "w1", query: "q" }, { assertEnabled: async () => {}, clientFactory: () => client }),
+    (error) => error.code === "OPENAI_WEB_SEARCH_INCOMPLETE",
+    "a response that never reached a final message must be a clear, distinct error — never silently treated as a genuine zero-result search",
+  );
+}
+
 async function run() {
   try {
     await testDisabledMakesZeroCalls();
@@ -137,6 +167,7 @@ async function run() {
     await testSuccessfulSearchExtractsCitationsAndCapsAtFive();
     await testPersonRequestsAskForAndParseAnEvidenceDate();
     await testUnsupportedToolErrorBecomesAClearConfigErrorNotASilentFallback();
+    await testIncompleteResponseSurfacesAsAnHonestErrorNotSilentZeroResults();
   } finally {
     if (originalEnabled === undefined) delete process.env.OPENAI_WEB_SEARCH_ENABLED; else process.env.OPENAI_WEB_SEARCH_ENABLED = originalEnabled;
     if (originalKey === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = originalKey;
@@ -146,7 +177,7 @@ async function run() {
 }
 
 run()
-  .then(() => console.log("OpenAI Web Search integration: disabled-by-default zero-calls, workspace AI budget enforcement runs before any call, missing-query validation, successful extraction (citations + 5-result cap + non-http URL rejection), a person request asks for and correctly parses a verifiable evidenceDate (rejecting a future-dated claim), and an unsupported-tool error surfaces as a clear config error with no silent retry — all passed."))
+  .then(() => console.log("OpenAI Web Search integration: disabled-by-default zero-calls, workspace AI budget enforcement runs before any call, missing-query validation, successful extraction (citations + 5-result cap + non-http URL rejection) with an explicit reasoning-effort + output-token budget on every request, a person request asks for and correctly parses a verifiable evidenceDate (rejecting a future-dated claim), an unsupported-tool error surfaces as a clear config error with no silent retry, and a response that never reaches a final message surfaces as a distinct honest error instead of silent zero results — all passed."))
   .catch((error) => {
     console.error(error);
     process.exitCode = 1;

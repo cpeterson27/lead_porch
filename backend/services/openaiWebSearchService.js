@@ -146,7 +146,22 @@ async function groundedSearch({ workspaceId, userId = null, agent = "research", 
     // maxRetries: 0 — same reasoning as vertexGroundingService.js: a slow or
     // failed grounded web-search call is not a flaky failure worth silently
     // retrying (and re-retrying would silently multiply real OpenAI spend).
-    const response = await withResilience(CIRCUIT, () => client.responses.create({ model: selectedModel, input: prompt, tools: [{ type: "web_search" }] }, { timeout: WEB_SEARCH_TIMEOUT_MS }), { maxRetries: 0 });
+    // reasoning effort + max_output_tokens mirror the fix already proven out
+    // in publicPeopleResearchService.js for this same reasoning-model +
+    // web_search combination: without an explicit budget, the model can
+    // spend its entire output-token allowance on internal reasoning and the
+    // tool call itself, finish with no final text response at all, and
+    // still bill real tokens for a request that returns nothing.
+    const response = await withResilience(CIRCUIT, () => client.responses.create({ model: selectedModel, input: prompt, tools: [{ type: "web_search" }], reasoning: { effort: "low" }, max_output_tokens: 12000 }, { timeout: WEB_SEARCH_TIMEOUT_MS }), { maxRetries: 0 });
+    if (response.status !== "completed") {
+      // Still a real, billed call — carry the response through to logUsage
+      // in the catch block below rather than silently treating this as
+      // "zero results found."
+      throw Object.assign(
+        new Error(`OpenAI web search did not finish (status: "${response.status}"). The model may have run out of output budget before producing results — try a narrower request.`),
+        { code: "OPENAI_WEB_SEARCH_INCOMPLETE", httpStatus: 502, rawResponse: response },
+      );
+    }
     const text = extractOutputText(response);
     const groundingCitations = extractCitations(response);
     const parsed = extractJsonBlock(text);
@@ -169,7 +184,8 @@ async function groundedSearch({ workspaceId, userId = null, agent = "research", 
     await logUsage({ workspaceId, userId, agent, feature, response, latencyMs: Date.now() - started, correlationId });
     return { results: deduplicateAndCorroborate(results), groundingCitations, rawText: parsed ? "" : clean(text, 4000) };
   } catch (error) {
-    await logUsage({ workspaceId, userId, agent, feature, error, latencyMs: Date.now() - started, correlationId });
+    await logUsage({ workspaceId, userId, agent, feature, response: error.rawResponse, error, latencyMs: Date.now() - started, correlationId });
+    if (error.code === "OPENAI_WEB_SEARCH_INCOMPLETE") throw error;
     if (isUnsupportedToolError(error)) {
       throw Object.assign(
         new Error(`The configured OpenAI research model ("${selectedModel}") does not support the Responses API web_search tool. Set JARVIS_RESEARCH_OPENAI_MODEL to a model that supports web_search, or turn off OPENAI_WEB_SEARCH_ENABLED.`),
