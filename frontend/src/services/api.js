@@ -1126,6 +1126,13 @@ export const runResearchMonitor = (monitorId) =>
     .post(`/audience/research/monitors/${monitorId}/run`)
     .then((res) => res.data);
 
+// "Trash it and start over" for one monitor's signal backlog — only flips
+// status to "dismissed", never deletes, never touches already-qualified rows.
+export const resetResearchMonitorSignals = (monitorId) =>
+  api
+    .post(`/audience/research/monitors/${monitorId}/reset-signals`)
+    .then((res) => res.data);
+
 export const fetchIntentSignals = (params = {}) =>
   api.get("/audience/research/signals", { params }).then((res) => res.data);
 

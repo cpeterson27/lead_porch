@@ -175,6 +175,12 @@
   border-collapse: collapse;
 }
 
+.ai-controls-monitor-table__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .ai-controls-monitor-table th,
 .ai-controls-monitor-table td {
   text-align: left;

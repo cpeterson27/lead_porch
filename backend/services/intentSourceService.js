@@ -733,7 +733,15 @@ const ADAPTERS = {
 
 async function collectMonitorSignals(monitor) {
   const limit = Math.min(100, Math.max(5, Number(monitor.maxResultsPerSource) || 25));
-  const selected = monitor.sources?.length ? [...monitor.sources] : isCommunityPartnerMonitor(monitor) ? ["linkedin_public", "facebook_public", "meetup_public", "community_directories", "bing_web"] : ["bing_web", "reddit_rss"];
+  // bing_web is a raw, unrestricted https://www.bing.com/search?q=... query —
+  // it surfaces whatever web pages rank for the keywords (property listing
+  // sites, forum landing pages, unrelated Q&A), not personal posts with real
+  // buyer intent. Measured live in this workspace: 105,145 bing_web signals
+  // collected, only 4 ever became a real live_lead (0.004%) versus
+  // reddit_rss's 60 live_leads out of 179 (33.5%). No longer a default
+  // buyer_intent source; still available for community_partner monitors,
+  // where finding a named community's own page is the actual goal.
+  const selected = monitor.sources?.length ? [...monitor.sources] : isCommunityPartnerMonitor(monitor) ? ["linkedin_public", "facebook_public", "meetup_public", "community_directories", "bing_web"] : ["reddit_rss"];
   if (!isCommunityPartnerMonitor(monitor)) {
     for (const source of ["linkedin_public", "facebook_public", "meetup_public", "community_directories"]) {
       const index = selected.indexOf(source); if (index >= 0) selected.splice(index, 1);

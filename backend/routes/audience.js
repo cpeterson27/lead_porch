@@ -24,7 +24,7 @@ const { previewOrganizationImport, importOrganizations } = require("../services/
 const { compileMarketQuestion } = require("../services/marketResearchService");
 const { sourceStatus } = require("../services/businessDataSourceService");
 const { runMarketResearchJob } = require("../services/externalMarketResearchService");
-const { applyManualBucketOverride, classifySignalBucket, deduplicateSignals, requestResearchMonitorRun, runResearchMonitor, scoreSignal, signalEligibility } = require("../services/researchMonitorService");
+const { applyManualBucketOverride, classifySignalBucket, deduplicateSignals, requestResearchMonitorRun, resetMonitorSignals, runResearchMonitor, scoreSignal, signalEligibility } = require("../services/researchMonitorService");
 const { ensureLinks, generateIntentEmailDraft } = require("../services/intentEmailDraftService");
 const { researchAudienceForSignal } = require("../services/researchAudienceTemplates");
 const { researchPublicWebsite } = require("../services/publicWebsiteResearchService");
@@ -145,6 +145,17 @@ router.patch("/research/monitors/:monitorId", async (req, res) => {
   return res.json({ success: true, monitor });
 });
 
+/** "Trash it and start over" — bulk-clears this monitor's signal backlog. Only ever flips status to "dismissed"; nothing is deleted, nothing already qualified/converted is touched. */
+router.post("/research/monitors/:monitorId/reset-signals", async (req, res) => {
+  const monitor = await ResearchMonitor.findOne({ _id: req.params.monitorId, workspaceId: req.auth.workspaceId }).select("_id").lean();
+  if (!monitor) return res.status(404).json({ success: false, error: "Monitor not found." });
+  try {
+    const data = await resetMonitorSignals({ workspaceId: req.auth.workspaceId, monitorId: monitor._id });
+    return res.json({ success: true, data });
+  } catch (_error) {
+    return res.status(500).json({ success: false, error: "Unable to reset this monitor's signals." });
+  }
+});
 router.delete("/research/monitors/:monitorId", async (req, res) => {
   const monitor = await ResearchMonitor.findOneAndDelete({ _id: req.params.monitorId, workspaceId: req.auth.workspaceId });
   if (!monitor) return res.status(404).json({ success: false, error: "Monitor not found." });

@@ -188,10 +188,42 @@ async function sourceAutoDisable() {
   }
 }
 
+// "Trash it and start over" for one monitor's backlog — non-destructive
+// (status flip, not delete) and must never touch a row a human already
+// qualified/converted, only "new"/"reviewing" rows nobody has acted on yet.
+async function resetSignals() {
+  await mongoose.connect(process.env.MONGO_URI);
+  const workspaceId = new mongoose.Types.ObjectId();
+  const monitor = await ResearchMonitor.create({ workspaceId, name: "Reset-test monitor", monitorType: "buyer_intent", query: "multifamily investing help", keywords: ["multifamily"], enabled: true, intervalMinutes: 60 });
+  const otherMonitor = await ResearchMonitor.create({ workspaceId, name: "Other monitor", monitorType: "buyer_intent", query: "other query", keywords: ["other"], enabled: true, intervalMinutes: 60 });
+  try {
+    const [newRow, reviewingRow, qualifiedRow, otherMonitorRow] = await Promise.all([
+      IntentSignal.create({ workspaceId, monitorId: monitor._id, source: "reddit_rss", sourceId: "s1", sourceUrl: "https://reddit.com/s1", title: "a", status: "new" }),
+      IntentSignal.create({ workspaceId, monitorId: monitor._id, source: "reddit_rss", sourceId: "s2", sourceUrl: "https://reddit.com/s2", title: "b", status: "reviewing" }),
+      IntentSignal.create({ workspaceId, monitorId: monitor._id, source: "reddit_rss", sourceId: "s3", sourceUrl: "https://reddit.com/s3", title: "c", status: "qualified" }),
+      IntentSignal.create({ workspaceId, monitorId: otherMonitor._id, source: "reddit_rss", sourceId: "s4", sourceUrl: "https://reddit.com/s4", title: "d", status: "new" }),
+    ]);
+    const result = await researchMonitorService.resetMonitorSignals({ workspaceId, monitorId: monitor._id });
+    assert.equal(result.dismissed, 2, "only the new/reviewing rows for this monitor must be dismissed");
+
+    assert.equal((await IntentSignal.findById(newRow._id).lean()).status, "dismissed");
+    assert.equal((await IntentSignal.findById(reviewingRow._id).lean()).status, "dismissed");
+    assert.equal((await IntentSignal.findById(qualifiedRow._id).lean()).status, "qualified", "a row a human already qualified must never be reset out from under them");
+    assert.equal((await IntentSignal.findById(otherMonitorRow._id).lean()).status, "new", "another monitor's backlog must be untouched");
+
+    console.log("Monitor signal reset ('trash it and start over') checks passed.");
+  } finally {
+    await IntentSignal.deleteMany({ workspaceId });
+    await ResearchMonitor.deleteMany({ workspaceId });
+    await mongoose.disconnect();
+  }
+}
+
 unit();
 integration()
   .then(sourceAutoDisable)
-  .then(() => console.log("Lead discovery bucket system: taxonomy, gating, real persistence of rejected/watchlisted signals, and blocked-source auto-disable all passed."))
+  .then(resetSignals)
+  .then(() => console.log("Lead discovery bucket system: taxonomy, gating, real persistence of rejected/watchlisted signals, blocked-source auto-disable, and monitor signal reset all passed."))
   .catch((error) => {
     console.error(error);
     process.exitCode = 1;

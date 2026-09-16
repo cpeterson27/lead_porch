@@ -23,6 +23,8 @@ import {
   fetchResearchMonitors,
   updateResearchMonitor,
   runResearchMonitor,
+  resetResearchMonitorSignals,
+  fetchMonitorPerformance,
 } from "../services/api.js";
 import "./AiAcquisitionControls.css";
 
@@ -79,6 +81,8 @@ export default function AiAcquisitionControls() {
   const [health, setHealth] = useState(null);
   const [platformAvailability, setPlatformAvailability] = useState(null);
   const [monitors, setMonitors] = useState([]);
+  const [monitorPerformance, setMonitorPerformance] = useState([]);
+  const [monitorBusyId, setMonitorBusyId] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -101,6 +105,7 @@ export default function AiAcquisitionControls() {
       fetchVertexConfig().then((res) => setVertexConfig(res.data)),
       fetchProvidersHealth().then((res) => setHealth(res.data)),
       fetchResearchMonitors().then((res) => setMonitors(res.monitors || res.data || [])),
+      fetchMonitorPerformance().then((res) => setMonitorPerformance(res.performance || res.data?.performance || [])).catch(() => {}),
     ];
     if (session?.isPlatformOwner) {
       requests.push(
@@ -253,12 +258,37 @@ export default function AiAcquisitionControls() {
   };
 
   const toggleMonitor = async (monitor) => {
+    if (monitorBusyId) return;
     setError("");
+    setMonitorBusyId(monitor._id);
     try {
-      await updateResearchMonitor(monitor._id, { enabled: !monitor.enabled });
-      setMonitors((rows) => rows.map((row) => (row._id === monitor._id ? { ...row, enabled: !row.enabled } : row)));
+      const res = await updateResearchMonitor(monitor._id, { enabled: !monitor.enabled });
+      // Re-sync from what the server actually saved, not just an optimistic
+      // flip of the checkbox — and say so out loud, since this previously
+      // gave no confirmation at all that the click did anything.
+      const nowEnabled = res.monitor?.enabled ?? !monitor.enabled;
+      setMonitors((rows) => rows.map((row) => (row._id === monitor._id ? { ...row, enabled: nowEnabled } : row)));
+      setNotice(`${monitor.name} ${nowEnabled ? "enabled" : "paused"}.`);
     } catch (err) {
       setError(err.response?.data?.error || "Unable to update that monitor.");
+    } finally {
+      setMonitorBusyId("");
+    }
+  };
+
+  const resetMonitorLeads = async (monitor) => {
+    if (monitorBusyId) return;
+    if (!window.confirm(`Trash "${monitor.name}"'s current signal backlog and start over? Nothing is deleted — dismissed signals just leave the active queue — and anything already qualified or converted is left untouched.`)) return;
+    setError("");
+    setMonitorBusyId(monitor._id);
+    try {
+      const res = await resetResearchMonitorSignals(monitor._id);
+      setNotice(`Cleared ${res.data?.dismissed ?? 0} signal(s) for ${monitor.name}. New runs will start fresh.`);
+      load();
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to reset that monitor's signals.");
+    } finally {
+      setMonitorBusyId("");
     }
   };
 
@@ -593,27 +623,36 @@ export default function AiAcquisitionControls() {
                 <th>Name</th>
                 <th>Type</th>
                 <th>Status</th>
+                <th>Created</th>
+                <th>Leads found</th>
                 <th>Last run</th>
                 <th />
               </tr>
             </thead>
             <tbody>
-              {monitors.map((monitor) => (
+              {monitors.map((monitor) => {
+                const performance = monitorPerformance.find((row) => String(row.monitorId) === String(monitor._id));
+                const busy = monitorBusyId === monitor._id;
+                return (
                 <tr key={monitor._id}>
                   <td>{monitor.name}</td>
                   <td>{monitor.monitorType?.replaceAll("_", " ")}</td>
                   <td>
                     <label className="ai-controls-toggle ai-controls-toggle--inline">
-                      <input type="checkbox" checked={monitor.enabled} onChange={() => toggleMonitor(monitor)} />
+                      <input type="checkbox" checked={monitor.enabled} disabled={busy} onChange={() => toggleMonitor(monitor)} />
                       {monitor.enabled ? "Enabled" : "Disabled"}
                     </label>
                   </td>
+                  <td>{monitor.createdAt ? new Date(monitor.createdAt).toLocaleDateString() : "—"}</td>
+                  <td>{performance ? performance.buckets.live_lead : "—"}</td>
                   <td>{monitor.lastRunStatus || "never run"}</td>
-                  <td>
-                    <Button size="sm" variant="outline" onClick={() => runNow(monitor)}>Run now</Button>
+                  <td className="ai-controls-monitor-table__actions">
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => runNow(monitor)}>Run now</Button>
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => resetMonitorLeads(monitor)}>Trash &amp; reset</Button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         ) : (

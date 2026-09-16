@@ -32,8 +32,16 @@ function scoreSignal(signal, monitor, programProfiles = []) {
       [/scale|business systems?/, /\b(?:scale|systems?|operations|process|growth|overwhelmed|stuck)\b/],
     ];
     if (concepts.some(([keywordPattern, contentPattern]) => keywordPattern.test(keyword) && contentPattern.test(content))) return true;
+    // Every significant word of a multi-word phrase must appear somewhere in
+    // the content (still tolerant of word order and light phrasing drift,
+    // e.g. "business owner" vs "owner of the business") — requiring only
+    // HALF the words let a single common word anywhere in a long post count
+    // as a match (e.g. "founder" alone satisfying "tech founder" or
+    // "business owner" in an unrelated post that just happened to mention a
+    // co-founder search), which was the single biggest source of obviously
+    // irrelevant "live lead" false positives.
     const words = keyword.split(/\s+/).filter((word) => word.length > 3);
-    return words.length > 1 && words.filter((word) => content.includes(word)).length >= Math.ceil(words.length / 2);
+    return words.length > 1 && words.every((word) => content.includes(word));
   });
   const excluded = negative.filter((keyword) => content.includes(keyword));
   const buyer = signalEligibility(signal, monitor, programProfiles);
@@ -421,4 +429,22 @@ function startResearchMonitorRunner() {
   return timer;
 }
 
-module.exports = { applyManualBucketOverride, audienceEligibility, buildCommunityProfile, buyerIntentAssessment, classifySignal, classifySignalBucket, communityPartnerAssessment, deduplicateSignals, investorProfileAssessment, mapAiRejection, requestResearchMonitorRun, runResearchMonitor, runDueResearchMonitors, signalEligibility, startResearchMonitorRunner, scoreSignal };
+/**
+ * "Trash it and start over" for one monitor's signal backlog — the same
+ * non-destructive pattern as Discovery's dismissAllPendingReview: only ever
+ * flips status to "dismissed" on rows still in "new"/"reviewing", never
+ * deletes anything, and never touches rows already qualified/converted (a
+ * human already acted on those, a bulk reset must not erase that). Once
+ * dismissed, a signal drops out of the active queue but stays queryable
+ * under the "dismissed" status if it's ever needed again.
+ */
+async function resetMonitorSignals({ workspaceId, monitorId }, dependencies = {}) {
+  const Model = dependencies.IntentSignal || IntentSignal;
+  const result = await Model.updateMany(
+    { workspaceId, monitorId, status: { $in: ["new", "reviewing"] } },
+    { $set: { status: "dismissed" } },
+  );
+  return { dismissed: result.modifiedCount || 0 };
+}
+
+module.exports = { applyManualBucketOverride, audienceEligibility, buildCommunityProfile, buyerIntentAssessment, classifySignal, classifySignalBucket, communityPartnerAssessment, deduplicateSignals, investorProfileAssessment, mapAiRejection, requestResearchMonitorRun, resetMonitorSignals, runResearchMonitor, runDueResearchMonitors, signalEligibility, startResearchMonitorRunner, scoreSignal };
