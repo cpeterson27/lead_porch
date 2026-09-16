@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { Link, MemoryRouter, Routes, Route, useParams } from "react-router-dom";
 import {
   FiArrowRight,
   FiCheck,
@@ -22,6 +22,28 @@ import { cloudinaryImage } from "../utils/cloudinaryImage.js";
 import TestimonialVideoPlayer from "../components/TestimonialVideoPlayer.jsx";
 import "./PublicSite.css";
 import "./PublicEnhancements.css";
+
+// Lazy + a MemoryRouter (rather than an <iframe src="/apply?...">) renders
+// the application form as a real in-page React component: one document, one
+// scroll region, no cross-document sizing/scroll fights. lazy() (the same
+// pattern App.jsx already uses for this exact component) defers the import
+// until first render, which is what avoids a circular module-eval problem —
+// PublicApplication.jsx itself imports { PublicLayout } from this file.
+const PublicApplication = lazy(() => import("./PublicApplication.jsx"));
+
+function EmbeddedApplication({ path }) {
+  return (
+    <div className="program-application-modal__scroll">
+      <Suspense fallback={null}>
+        <MemoryRouter initialEntries={[path]}>
+          <Routes>
+            <Route path="/apply" element={<PublicApplication />} />
+          </Routes>
+        </MemoryRouter>
+      </Suspense>
+    </div>
+  );
+}
 
 const applyPath = "/apply";
 function EditorialHeading({ text, accent }) {
@@ -128,7 +150,7 @@ function ApplicationButton({
             >
               <FiX />
             </button>
-            <iframe title="Program application" src={`/apply?${query}`} />
+            <EmbeddedApplication path={`/apply?${query}`} />
           </div>
         </div>
       ) : null}
@@ -621,10 +643,7 @@ function ProgramCards({ programs = [] }) {
             >
               <FiX />
             </button>
-            <iframe
-              title={`Application for ${applying.title}`}
-              src={`/apply?program=${encodeURIComponent(applying.slug || applying.id)}&embed=1`}
-            />
+            <EmbeddedApplication path={`/apply?program=${encodeURIComponent(applying.slug || applying.id)}&embed=1`} />
           </div>
         </div>
       ) : null}

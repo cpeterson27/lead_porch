@@ -1815,7 +1815,6 @@ button.public-text-link {
 
 .program-application-modal > div {
   position: relative;
-  display: grid;
   width: min(1080px, 100%);
   height: min(820px, 88dvh);
   min-height: 0;
@@ -1827,10 +1826,18 @@ button.public-text-link {
   box-shadow: 0 28px 90px rgb(0 0 0 / 35%);
 }
 
-/* The embedded /apply page already renders its own full "Program
-   application" kicker + program title + logo — a second header here just
-   duplicated it, so the close button floats directly over the iframe
-   instead of occupying its own header row. */
+/* The application form renders as a real in-page component now (no
+   <iframe>), so there is exactly one scrollable region — this wrapper —
+   instead of the page/modal backdrop AND a separately-scrolling embedded
+   document both scrolling independently. The close button is a sibling,
+   not a child, of this wrapper, so it stays fixed in the corner as the
+   content scrolls beneath it, and the embedded /apply page's own "Program
+   application" kicker + program title + logo is the only header shown. */
+.program-application-modal__scroll {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
 .program-application-modal__close {
   position: absolute;
   top: 16px;
@@ -1847,7 +1854,6 @@ button.public-text-link {
   cursor: pointer;
   box-shadow: 0 4px 16px rgb(0 0 0 / 18%);
 }
-.program-application-modal iframe { width: 100%; height: 100%; min-height: 0; overflow: auto; border: 0; background: var(--public-surface); overscroll-behavior: contain; }
 
 @media (max-width: 560px) {
   .program-application-modal { padding: 0; }
