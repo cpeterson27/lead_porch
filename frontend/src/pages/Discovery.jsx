@@ -47,6 +47,7 @@ import {
   fetchSuggestedGroundingSearches,
   saveVertexGroundingResult,
   dismissVertexGroundingResult,
+  dismissAllVertexGroundingResults,
   enrichVertexGroundingResultWithPdl,
   searchPublicWebForVertexGroundingResult,
   fetchLeadGenerationProviderAvailability,
@@ -426,6 +427,7 @@ export default function Discovery() {
   const [groundingResultsStatus, setGroundingResultsStatus] = useState("pending_review");
   const [pdlEnrichBusyId, setPdlEnrichBusyId] = useState("");
   const [webSearchBusyId, setWebSearchBusyId] = useState("");
+  const [dismissAllBusy, setDismissAllBusy] = useState(false);
   const [selectedGroundingIds, setSelectedGroundingIds] = useState([]);
   const [reviewFilters, setReviewFilters] = useState({ run: "all", newOnly: false, provider: "all", qualification: "all", location: "", freshness: "all", identityConfidence: "all" });
   const [drawerResultId, setDrawerResultId] = useState("");
@@ -733,6 +735,27 @@ export default function Discovery() {
       loadGroundingResults();
     } catch (err) {
       setNotice(err.response?.data?.error || "Unable to dismiss that result.");
+    }
+  };
+
+  // "Trash what I had and pull a new batch" — clears every pending-review
+  // lead in one action so a fresh Apollo/PDL/public-web pull creates clean
+  // new rows instead of merging into (and being blocked by) old ones.
+  // Nothing is deleted and no provider is called — dismissed leads stay
+  // visible under the "dismissed" filter.
+  const dismissAllPendingReview = async () => {
+    if (dismissAllBusy) return;
+    if (!window.confirm("Clear every pending-review lead? Nothing is deleted — you can still see them under \"dismissed\" — but this removes them from the review queue so a fresh pull creates brand-new leads instead of reusing these.")) return;
+    setDismissAllBusy(true);
+    try {
+      const res = await dismissAllVertexGroundingResults();
+      setNotice(`Cleared ${res.data?.dismissed ?? 0} pending lead(s). Pull a new batch from Apollo when you're ready.`);
+      setSelectedGroundingIds([]);
+      await loadGroundingResults();
+    } catch (err) {
+      setNotice(err.response?.data?.error || "Unable to clear the pending review queue.");
+    } finally {
+      setDismissAllBusy(false);
     }
   };
 
@@ -1865,6 +1888,9 @@ export default function Discovery() {
             </Button>
           ))}
           <Button size="sm" variant="outline" loading={groundingResultsLoading} onClick={() => loadGroundingResults()}>Refresh</Button>
+          {groundingResultsStatus === "pending_review" && groundingResults.length ? (
+            <Button size="sm" variant="outline" loading={dismissAllBusy} onClick={dismissAllPendingReview}>Trash all pending leads</Button>
+          ) : null}
         </div>
 
         {groundingResultsStatus === "pending_review" ? (
@@ -1983,7 +2009,7 @@ export default function Discovery() {
                 </header>
 
                 <small className="lead-review-table__title">{apolloProfile.title || "—"}</small>
-                <small className="lead-review-table__company">{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
+                <small className="lead-review-table__company">{companyWebsiteUrl ? <a href={companyWebsiteUrl} target="_blank" rel="noreferrer">{[result.organizationName, result.organizationDomain].filter(Boolean).join(" · ")} ↗</a> : ([result.organizationName, result.organizationDomain].filter(Boolean).join(" · ") || "No organization listed")}</small>
                 {result.recommendedProgram?.name ? <small className="grounding-fit-score"><strong>{result.fitScore}/100</strong><span>{result.recommendedProgram.name}</span></small> : result.fitScore != null ? <small className="grounding-fit-score"><strong>{result.fitScore}/100</strong><span>No program selected</span></small> : <small className="grounding-fit-score"><span>Not scored</span></small>}
                 {effectiveEmail ? <small className="lead-review-table__contact"><strong>{effectiveEmail.email}</strong><span>{effectiveEmail.state}</span></small> : <small className="review-card__missing lead-review-table__contact">{missingContactMessage}</small>}
                 {(publicProfileUrls.length || companyWebsiteUrl) ? <small className="review-card__contact-routes">
@@ -2044,14 +2070,14 @@ export default function Discovery() {
       </DashboardCard>
       </section>
       {drawerResult ? (() => {
-        const { sourceLabel, corroborated, effectiveEmail, isStructuredAudienceMatch, enrichedApolloProfile, apolloProfile, apolloOrganization, missingContactMessage, contactStatus } = computeResultDisplay(drawerResult);
+        const { sourceLabel, corroborated, effectiveEmail, isStructuredAudienceMatch, enrichedApolloProfile, apolloProfile, apolloOrganization, companyWebsiteUrl, missingContactMessage, contactStatus } = computeResultDisplay(drawerResult);
         return (
           <div className="lead-detail-drawer-overlay" onClick={closeDetailDrawer}>
             <aside className="lead-detail-drawer" onClick={(event) => event.stopPropagation()} role="dialog" aria-label={`Full record for ${drawerResult.name}`}>
               <header>
                 <div>
                   <strong>{drawerResult.name}</strong>
-                  <small>{[drawerResult.organizationName, drawerResult.organizationDomain].filter(Boolean).join(" · ") || "No organization listed"}</small>
+                  <small>{companyWebsiteUrl ? <a href={companyWebsiteUrl} target="_blank" rel="noreferrer">{[drawerResult.organizationName, drawerResult.organizationDomain].filter(Boolean).join(" · ")} ↗</a> : ([drawerResult.organizationName, drawerResult.organizationDomain].filter(Boolean).join(" · ") || "No organization listed")}</small>
                 </div>
                 <button type="button" onClick={closeDetailDrawer} aria-label="Close">×</button>
               </header>

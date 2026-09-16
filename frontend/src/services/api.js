@@ -1211,6 +1211,11 @@ export const saveVertexGroundingResult = (id, campaignId = "") =>
   api.post(`/audience/research/vertex-grounding/results/${id}/save`, { campaignId: campaignId || undefined }).then((res) => res.data);
 export const dismissVertexGroundingResult = (id) =>
   api.post(`/audience/research/vertex-grounding/results/${id}/dismiss`).then((res) => res.data);
+// Bulk-clears the whole pending-review queue in one action ("trash what I
+// had and pull a new batch") — only flips status to "dismissed", never
+// deletes, never calls a provider.
+export const dismissAllVertexGroundingResults = () =>
+  api.post("/audience/research/vertex-grounding/results/dismiss-all").then((res) => res.data);
 export const enrichVertexGroundingResultWithPdl = (id) =>
   api.post(`/audience/research/vertex-grounding/results/${id}/enrich-pdl`).then((res) => res.data);
 // The waterfall's last resort — runs a targeted Vertex + OpenAI web search

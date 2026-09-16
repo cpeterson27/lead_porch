@@ -593,7 +593,16 @@ async function searchPublicWebForResult({ workspaceId, userId, resultId, correla
     throw error;
   }
 
-  const query = `the specific real person named "${row.name}"${row.organizationName ? ` who works at "${row.organizationName}"` : ""} — find their real public LinkedIn profile or other current public professional profile. Only report this exact person, never someone else with a similar name.`;
+  // Check the company's own site first — its team/about/staff page is
+  // usually the highest-confidence, first-party place to confirm this is a
+  // real person at this real company, before falling back to LinkedIn/other
+  // public profiles. (This search only ever reports identity evidence — a
+  // LinkedIn URL, a bio page, a title — never an email; Vertex/OpenAI public-
+  // web grounding deliberately never populates the email field at all, since
+  // an address scraped off a page can't carry the same verification weight
+  // as a real Apollo/PDL match. Apollo and PDL remain the only email
+  // sources.)
+  const query = `the specific real person named "${row.name}"${row.organizationName ? ` who works at "${row.organizationName}"` : ""}${row.organizationDomain ? ` (company website: ${row.organizationDomain} — check that company's own team/about/staff page first)` : ""} — find their real public LinkedIn profile or other current public professional profile. Only report this exact person, never someone else with a similar name.`;
   const normalizedRowName = String(row.name || "").trim().toLowerCase();
 
   const attempts = [];
@@ -683,4 +692,25 @@ async function dismissResult({ workspaceId, userId, resultId }, dependencies = {
   return row;
 }
 
-module.exports = { search, listResults, saveResult, dismissResult, enrichWithPdl, searchPublicWebForResult, rankForProgramFit, getSuggestedSearches, computeIdentityConfidence };
+/**
+ * Bulk-clears the whole pending-review queue in one action ("trash what I
+ * had and pull a new batch" — the user's own words). This only ever flips
+ * `status` to "dismissed" on rows already in `pending_review` — nothing is
+ * deleted, dismissed leads stay visible under the "dismissed" filter, and no
+ * provider is ever called. This is the deliberate, low-risk way to unstick a
+ * batch: search()/mergeIcpMatchCandidate() above both only ever fingerprint-
+ * match against rows still in `pending_review`, so once these rows are
+ * dismissed a fresh Apollo/PDL/public-web pull naturally creates brand-new
+ * rows (with their own fresh, un-attempted enrichment state) instead of
+ * merging into — and being blocked by — the old ones.
+ */
+async function dismissAllPendingReview({ workspaceId, userId }, dependencies = {}) {
+  const Model = dependencies.GroundingResearchResult || GroundingResearchResult;
+  const result = await Model.updateMany(
+    { workspaceId, status: "pending_review" },
+    { $set: { status: "dismissed", reviewedByUserId: userId, reviewedAt: new Date() } },
+  );
+  return { dismissed: result.modifiedCount || 0 };
+}
+
+module.exports = { search, listResults, saveResult, dismissResult, dismissAllPendingReview, enrichWithPdl, searchPublicWebForResult, rankForProgramFit, getSuggestedSearches, computeIdentityConfidence };

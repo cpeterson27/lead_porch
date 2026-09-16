@@ -707,6 +707,15 @@ router.post("/research/vertex-grounding/results/:id/save", async (req, res) => {
     return res.status(error.code === "GROUNDING_RESULT_NOT_FOUND" ? 404 : 400).json({ success: false, error: error.message, code: error.code });
   }
 });
+/** Bulk-clears the whole pending-review queue in one action ("trash what I had and pull a new batch"). Only ever flips status to "dismissed" — nothing is deleted, no provider is called. */
+router.post("/research/vertex-grounding/results/dismiss-all", async (req, res) => {
+  try {
+    const data = await vertexGroundingDiscoveryService.dismissAllPendingReview({ workspaceId: req.auth.workspaceId, userId: req.auth.user?._id });
+    return res.json({ success: true, data });
+  } catch (_error) {
+    return res.status(500).json({ success: false, error: "Unable to clear the pending review queue." });
+  }
+});
 router.post("/research/vertex-grounding/results/:id/dismiss", async (req, res) => {
   try {
     const data = await vertexGroundingDiscoveryService.dismissResult({ workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, resultId: req.params.id });
