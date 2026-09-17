@@ -7,6 +7,7 @@
  * PublicWebDiscoveryRun is approved and any provider is actually called.
  */
 const JarvisMemoryNote = require("../models/JarvisMemoryNote");
+const CoachingProgram = require("../models/CoachingProgram");
 const agentExecutionService = require("../services/agentExecutionService");
 const { JOB_CATEGORIES } = require("../models/PublicWebDiscoveryRun");
 
@@ -70,12 +71,33 @@ const FAMILY_RESPONSE_SCHEMA = {
 // these, even implicitly through generic real-estate phrasing.
 const STUDENT_EXCLUSION_INSTRUCTION = "For the 'people' and 'intent_discussions' categories specifically: only generate queries aimed at prospective STUDENTS/buyers — never coaches, course sellers, syndicators, brokers, lenders, vendors, or capital-raising services. Those are professionals, not students, and belong in 'communities'/'organizations' instead if relevant at all.";
 
-async function generateSearchFamilies({ workspaceId, userId, auth, programNoteId, locations = [], categories = null, audienceFraming = "", correlationId = "" }, dependencies = {}) {
+/**
+ * Resolves the real content search-family generation and ICP derivation
+ * are grounded in. coachingProgramId (the real CoachingProgram, reading
+ * targetAudience with an internalSummary fallback — the same field every
+ * other targeting-consuming path in this app already reads) is preferred;
+ * programNoteId (a raw Knowledge Center PDF note) is the older path, kept
+ * only for the separate "Direct public-web search" advanced tool, which
+ * still selects a note directly rather than a program.
+ */
+async function resolveProgramContent({ workspaceId, programNoteId, coachingProgramId }, dependencies = {}) {
+  if (coachingProgramId) {
+    const ProgramModel = dependencies.CoachingProgram || CoachingProgram;
+    const program = await ProgramModel.findOne({ _id: coachingProgramId, workspaceId, status: "active" }).select("name targetAudience internalSummary").lean();
+    if (!program) { const error = new Error("That program was not found among this workspace's active programs"); error.code = "DISCOVERY_SEARCH_PROGRAM_NOT_FOUND"; throw error; }
+    const content = program.targetAudience || program.internalSummary || "";
+    if (!content.trim()) { const error = new Error(`"${program.name}" has no target audience set yet — add one in Coaching → Programs before searching for it.`); error.code = "DISCOVERY_SEARCH_PROGRAM_NO_TARGETING"; throw error; }
+    return { title: program.name, content };
+  }
   const NoteModel = dependencies.JarvisMemoryNote || JarvisMemoryNote;
-  const runAgent = dependencies.runAgent || agentExecutionService.runAgent;
-
   const note = await NoteModel.findOne({ _id: programNoteId, workspaceId, category: "offers-programs", status: "approved" }).select("title content").lean();
   if (!note) { const error = new Error("That program note was not found among this workspace's approved Offers & Programs"); error.code = "DISCOVERY_SEARCH_PROGRAM_NOT_FOUND"; throw error; }
+  return note;
+}
+
+async function generateSearchFamilies({ workspaceId, userId, auth, programNoteId, coachingProgramId, locations = [], categories = null, audienceFraming = "", correlationId = "" }, dependencies = {}) {
+  const runAgent = dependencies.runAgent || agentExecutionService.runAgent;
+  const note = await resolveProgramContent({ workspaceId, programNoteId, coachingProgramId }, dependencies);
 
   const safeLocations = (Array.isArray(locations) ? locations : []).slice(0, 10).map((v) => clean(v, 120)).filter(Boolean);
   // A preset (e.g. "Find prospective students") can restrict generation to
@@ -110,4 +132,4 @@ async function generateSearchFamilies({ workspaceId, userId, auth, programNoteId
   return { programNoteId: String(note._id), programName: clean(note.title, 200), families };
 }
 
-module.exports = { generateSearchFamilies, CATEGORY_DESCRIPTIONS, MAX_QUERIES_PER_CATEGORY };
+module.exports = { generateSearchFamilies, resolveProgramContent, CATEGORY_DESCRIPTIONS, MAX_QUERIES_PER_CATEGORY };

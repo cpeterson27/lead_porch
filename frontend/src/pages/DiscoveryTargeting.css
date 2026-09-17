@@ -560,6 +560,70 @@
   color: #1d5c37;
 }
 
+.leadgen-program-dropdown {
+  position: relative;
+  max-width: 360px;
+}
+.leadgen-program-dropdown__toggle {
+  align-items: center;
+  background: #fff;
+  border: 1px solid #cdd5d1;
+  border-radius: 999px;
+  color: #233b33;
+  cursor: pointer;
+  display: flex;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  justify-content: space-between;
+  min-height: 42px;
+  padding: 0.65rem 0.9rem;
+  width: 100%;
+}
+.leadgen-program-dropdown__panel {
+  background: #fff;
+  border: 1px solid #cdd5d1;
+  border-radius: 12px;
+  box-shadow: 0 10px 24px rgba(30, 55, 47, 0.12);
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 0.6rem;
+  position: absolute;
+  top: 100%;
+  width: 100%;
+  z-index: 20;
+}
+.leadgen-program-dropdown__actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.2rem;
+}
+.leadgen-program-dropdown__actions button {
+  background: none;
+  border: none;
+  color: #285b4c;
+  cursor: pointer;
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 0.2rem 0.3rem;
+  text-decoration: underline;
+}
+.leadgen-program-dropdown__row {
+  align-items: center;
+  border-radius: 8px;
+  display: flex;
+  font-size: 0.75rem;
+  gap: 0.55rem;
+  min-height: auto;
+  padding: 0.45rem 0.4rem;
+}
+.leadgen-program-dropdown__row:hover {
+  background: #f5f7f5;
+}
+
 .leadgen-pill-row {
   display: flex;
   flex-wrap: wrap;

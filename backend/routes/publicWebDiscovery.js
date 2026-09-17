@@ -17,7 +17,7 @@ router.post("/runs/propose", async (req, res) => {
   try {
     const data = await publicWebDiscoveryEngineService.proposePublicWebDiscoveryRun({
       workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, auth: req.auth,
-      programNoteId: req.body?.programNoteId, locations: req.body?.locations,
+      programNoteId: req.body?.programNoteId, coachingProgramId: req.body?.coachingProgramId, locations: req.body?.locations,
       correlationId: req.headers["x-request-id"] || "",
     });
     return res.json({ success: true, data });
@@ -37,7 +37,7 @@ router.post("/runs/propose-student-preset", async (req, res) => {
   try {
     const data = await publicWebDiscoveryEngineService.proposeStudentSearchPreset({
       workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, auth: req.auth,
-      programNoteId: req.body?.programNoteId, locations: req.body?.locations,
+      programNoteId: req.body?.programNoteId, coachingProgramId: req.body?.coachingProgramId, locations: req.body?.locations,
       correlationId: req.headers["x-request-id"] || "",
     });
     return res.json({ success: true, data });

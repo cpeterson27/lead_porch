@@ -218,11 +218,11 @@ function emptyRunSummary() {
  * propose→approve pattern. Jobs are round-robin interleaved across
  * category and source before storage (see interleaveJobsRoundRobin).
  */
-async function proposePublicWebDiscoveryRun({ workspaceId, userId, auth, programNoteId, locations, correlationId = "" }, dependencies = {}) {
+async function proposePublicWebDiscoveryRun({ workspaceId, userId, auth, programNoteId, coachingProgramId, locations, correlationId = "" }, dependencies = {}) {
   const Model = dependencies.PublicWebDiscoveryRun || PublicWebDiscoveryRun;
   const generateSearchFamilies = dependencies.generateSearchFamilies || searchFamilyGenerationService.generateSearchFamilies;
 
-  const { programName, families } = await generateSearchFamilies({ workspaceId, userId, auth, programNoteId, locations, correlationId }, dependencies);
+  const { programName, families } = await generateSearchFamilies({ workspaceId, userId, auth, programNoteId, coachingProgramId, locations, correlationId }, dependencies);
   const rawJobs = families.flatMap((family) => family.queries.map((q) => ({
     category: family.category, query: q.query, source: q.source, locationHint: q.locationHint, status: "pending", page: 0, maxPages: 2, attempts: 0, resultsCount: 0, acceptedCount: 0,
   })));
@@ -247,14 +247,14 @@ async function proposePublicWebDiscoveryRun({ workspaceId, userId, auth, program
   // preserves web-only-unless-opted-in behavior for Apollo too.
   const includeApolloPersonSearch = false;
   const maxApolloPersonSearchCredits = 25;
-  const apolloPdlIcp = await deriveInitialIcpForRun({ workspaceId, userId, auth, programNoteId, jobs, correlationId }, dependencies);
+  const apolloPdlIcp = await deriveInitialIcpForRun({ workspaceId, userId, auth, programNoteId, coachingProgramId, jobs, correlationId }, dependencies);
 
   // Set explicitly rather than relying on the schema's own nested-subdocument
   // defaults — keeps a freshly-created run's document fully self-describing
   // (every field a later step reads is actually present) regardless of how
   // it was persisted.
   const run = await Model.create({
-    workspaceId, programNoteId, programName, status: "draft", jobs, nextJobIndex: 0,
+    workspaceId, programNoteId, coachingProgramId, programName, status: "draft", jobs, nextJobIndex: 0,
     dailyCandidateTarget: 25, pageLimitPerQuery: 2, queryLimitPerRun: 40, providerCreditCapUsd: 5, targetType: "all",
     retryPolicy: { maxAttemptsPerJob: 3 },
     estimatedCreditUse: {
@@ -286,12 +286,12 @@ async function proposePublicWebDiscoveryRun({ workspaceId, userId, auth, program
  * (never across tiers, so the priority order itself is never disturbed),
  * and applies conservative, safe-by-default first-run limits.
  */
-async function proposeStudentSearchPreset({ workspaceId, userId, auth, programNoteId, locations, correlationId = "" }, dependencies = {}) {
+async function proposeStudentSearchPreset({ workspaceId, userId, auth, programNoteId, coachingProgramId, locations, correlationId = "" }, dependencies = {}) {
   const Model = dependencies.PublicWebDiscoveryRun || PublicWebDiscoveryRun;
   const generateSearchFamilies = dependencies.generateSearchFamilies || searchFamilyGenerationService.generateSearchFamilies;
 
   const { programName, families } = await generateSearchFamilies({
-    workspaceId, userId, auth, programNoteId, locations, correlationId,
+    workspaceId, userId, auth, programNoteId, coachingProgramId, locations, correlationId,
     categories: ["intent_discussions", "people", "facebook_groups", "communities"],
     audienceFraming: "For the 'people' category specifically: frame queries around ASPIRING or BEGINNER investors — people just starting out, asking introductory questions, or new to real estate investing — not established professionals.",
   }, dependencies);
@@ -326,10 +326,10 @@ async function proposeStudentSearchPreset({ workspaceId, userId, auth, programNo
   // part of the "find prospective students" flow, not just PDL.
   const includeApolloPersonSearch = true;
   const maxApolloPersonSearchCredits = 25;
-  const apolloPdlIcp = await deriveInitialIcpForRun({ workspaceId, userId, auth, programNoteId, jobs, correlationId }, dependencies);
+  const apolloPdlIcp = await deriveInitialIcpForRun({ workspaceId, userId, auth, programNoteId, coachingProgramId, jobs, correlationId }, dependencies);
 
   const run = await Model.create({
-    workspaceId, programNoteId, programName, status: "draft", jobs, nextJobIndex: 0,
+    workspaceId, programNoteId, coachingProgramId, programName, status: "draft", jobs, nextJobIndex: 0,
     // Defaults for the first run of this preset: 25 unique PEOPLE (not a
     // mix with communities — targetType:"person"), one page per query,
     // one retry (2 attempts total), and a $1 hard WEB CASH cap (Vertex +
@@ -845,10 +845,8 @@ const PDL_ICP_SCHEMA = {
  * "beginner") rather than two copies that could drift apart.
  */
 async function derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlationId }, dependencies = {}) {
-  const NoteModel = dependencies.JarvisMemoryNote || JarvisMemoryNote;
   const runAgent = dependencies.runAgent || agentExecutionService.runAgent;
-  const note = run.programNoteId ? await NoteModel.findOne({ _id: run.programNoteId, workspaceId }).select("title content").lean() : null;
-  if (!note) { const error = new Error("No program note available for PDL ICP derivation."); error.code = "PDL_ICP_NO_PROGRAM"; throw error; }
+  const note = await searchFamilyGenerationService.resolveProgramContent({ workspaceId, programNoteId: run.programNoteId, coachingProgramId: run.coachingProgramId }, dependencies);
 
   const locations = [...new Set(run.jobs.map((j) => j.locationHint).filter(Boolean))].slice(0, 10);
   const icpResult = await runAgent({
@@ -873,9 +871,9 @@ async function derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlat
  * phase's own fallback (see the phases below) re-derives fresh if it finds
  * an empty apolloPdlIcp on the run.
  */
-async function deriveInitialIcpForRun({ workspaceId, userId, auth, programNoteId, jobs, correlationId }, dependencies = {}) {
+async function deriveInitialIcpForRun({ workspaceId, userId, auth, programNoteId, coachingProgramId, jobs, correlationId }, dependencies = {}) {
   try {
-    return await derivePdlIcpForProgram({ workspaceId, userId, auth, run: { programNoteId, jobs }, correlationId }, dependencies);
+    return await derivePdlIcpForProgram({ workspaceId, userId, auth, run: { programNoteId, coachingProgramId, jobs }, correlationId }, dependencies);
   } catch {
     return { titles: [], locations: [], industries: [] };
   }

@@ -59,7 +59,14 @@ const jobSchema = new mongoose.Schema({
 }, { _id: true });
 
 const publicWebDiscoveryRunSchema = new mongoose.Schema({
+  // Legacy path — a Knowledge Center note directly, still used by the
+  // separate "Direct public-web search" advanced tool's suggested-searches
+  // feature. The primary "Find people" flow uses coachingProgramId below
+  // instead, so search-family generation and ICP derivation read the same
+  // targetAudience field every other part of this app already reads,
+  // rather than a program's raw, disconnected PDF text.
   programNoteId: { type: mongoose.Schema.Types.ObjectId, ref: "JarvisMemoryNote", default: null },
+  coachingProgramId: { type: mongoose.Schema.Types.ObjectId, ref: "CoachingProgram", default: null },
   programName: { type: String, default: "", trim: true, maxlength: 200 },
   status: { type: String, enum: RUN_STATUSES, default: "draft", index: true },
   jobs: { type: [jobSchema], default: [] },

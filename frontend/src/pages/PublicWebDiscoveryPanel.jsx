@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import Button from "../components/Button.jsx";
 import DashboardCard from "../components/DashboardCard.jsx";
 import {
-  fetchLeadGenerationPrograms,
+  fetchCoachingPrograms,
   fetchLeadGenerationProviderAvailability,
   fetchPublicWebDiscoveryRuns,
   fetchPublicWebDiscoveryRun,
@@ -84,7 +84,8 @@ function StatusBadge({ status }) {
 export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
   const [programs, setPrograms] = useState([]);
   const [providerAvailability, setProviderAvailability] = useState(null);
-  const [selectedProgramNoteIds, setSelectedProgramNoteIds] = useState([]);
+  const [selectedProgramIds, setSelectedProgramIds] = useState([]);
+  const [programPickerOpen, setProgramPickerOpen] = useState(false);
   const [locationsDraft, setLocationsDraft] = useState("");
   const [proposeBusy, setProposeBusy] = useState(false);
   const [error, setError] = useState("");
@@ -98,7 +99,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
   const runInFlight = useRef({}); // synchronous re-entrancy guard — see runOnceNow
 
   useEffect(() => {
-    fetchLeadGenerationPrograms().then((res) => setPrograms(res.data || [])).catch(() => {});
+    fetchCoachingPrograms({ status: "active" }).then((items) => setPrograms(items || [])).catch(() => {});
     fetchLeadGenerationProviderAvailability().then((res) => setProviderAvailability(res.data)).catch(() => {});
     fetchDiscoverySchedules().then((res) => setSchedules(res.data || [])).catch(() => {});
     // Reload persisted, non-draft runs (queued/running/paused/completed/
@@ -146,9 +147,11 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftPreviewInputsKey]);
 
-  const toggleProgram = (noteId) => {
-    setSelectedProgramNoteIds((current) => (current.includes(noteId) ? current.filter((id) => id !== noteId) : [...current, noteId]));
+  const toggleProgram = (programId) => {
+    setSelectedProgramIds((current) => (current.includes(programId) ? current.filter((id) => id !== programId) : [...current, programId]));
   };
+  const selectAllPrograms = () => setSelectedProgramIds(programs.map((program) => program._id));
+  const clearSelectedPrograms = () => setSelectedProgramIds([]);
 
   const updateRunInState = (updatedRun) => {
     setRuns((current) => current.map((r) => (r._id === updatedRun._id ? updatedRun : r)));
@@ -157,14 +160,14 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
   const [presetBusy, setPresetBusy] = useState(false);
 
   const generateSearchFamilies = async (proposeFn, setBusy) => {
-    if (!selectedProgramNoteIds.length || proposeBusy || presetBusy) return;
+    if (!selectedProgramIds.length || proposeBusy || presetBusy) return;
     setBusy(true);
     setError("");
     try {
       const locations = locationsDraft.split(",").map((v) => v.trim()).filter(Boolean);
       const created = [];
-      for (const programNoteId of selectedProgramNoteIds) {
-        const response = await proposeFn({ programNoteId, locations });
+      for (const coachingProgramId of selectedProgramIds) {
+        const response = await proposeFn({ coachingProgramId, locations });
         created.push({ ...response.data, icpDraft: icpDraftFromRun(response.data) });
       }
       setRuns((current) => [...created, ...current]);
@@ -601,18 +604,27 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
       </p>
 
       <div className="leadgen-field-group">
-        <span className="leadgen-field-label">Approved program(s)</span>
-        <div className="leadgen-pill-row" role="group" aria-label="Select one or more approved programs">
-          {programs.map((program) => (
-            <button
-              key={program.noteId} type="button"
-              className={`leadgen-pill${selectedProgramNoteIds.includes(program.noteId) ? " is-selected" : ""}`}
-              aria-pressed={selectedProgramNoteIds.includes(program.noteId)}
-              onClick={() => toggleProgram(program.noteId)}
-            >
-              {program.title}
-            </button>
-          ))}
+        <span className="leadgen-field-label">Program(s) to search for</span>
+        <div className="leadgen-program-dropdown">
+          <button type="button" className="leadgen-program-dropdown__toggle" onClick={() => setProgramPickerOpen((current) => !current)} aria-expanded={programPickerOpen}>
+            {selectedProgramIds.length === 0 ? "Choose a program…" : selectedProgramIds.length === programs.length ? `All ${programs.length} programs` : `${selectedProgramIds.length} of ${programs.length} selected`}
+            <span aria-hidden="true">{programPickerOpen ? "▲" : "▼"}</span>
+          </button>
+          {programPickerOpen ? (
+            <div className="leadgen-program-dropdown__panel">
+              <div className="leadgen-program-dropdown__actions">
+                <button type="button" onClick={selectAllPrograms}>Select all</button>
+                <button type="button" onClick={clearSelectedPrograms}>Clear</button>
+              </div>
+              {programs.map((program) => (
+                <label key={program._id} className="leadgen-program-dropdown__row">
+                  <input type="checkbox" checked={selectedProgramIds.includes(program._id)} onChange={() => toggleProgram(program._id)} />
+                  <span>{program.name}</span>
+                </label>
+              ))}
+              {!programs.length ? <p className="coaching-muted">No active programs yet — create one in Coaching → Programs first.</p> : null}
+            </div>
+          ) : null}
         </div>
       </div>
 
@@ -622,14 +634,17 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
       </label>
 
       <div className="leadgen-review-actions">
-        <Button disabled={!selectedProgramNoteIds.length} loading={presetBusy} onClick={() => generateSearchFamilies(proposeStudentSearchPreset, setPresetBusy)}>
+        <Button disabled={!selectedProgramIds.length} loading={presetBusy} onClick={() => generateSearchFamilies(proposeStudentSearchPreset, setPresetBusy)}>
           {presetBusy ? "Generating…" : "Find prospective students"}
         </Button>
-        <Button variant="outline" disabled={!selectedProgramNoteIds.length} loading={proposeBusy} onClick={() => generateSearchFamilies(proposePublicWebDiscoveryRun, setProposeBusy)}>
-          {proposeBusy ? "Generating…" : "Generate custom search families"}
+        <Button variant="outline" disabled={!selectedProgramIds.length} loading={proposeBusy} onClick={() => generateSearchFamilies(proposePublicWebDiscoveryRun, setProposeBusy)}>
+          {proposeBusy ? "Generating…" : "Full custom search (all categories)"}
         </Button>
         <p className="leadgen-run-disclosure">
-          <strong>Find prospective students</strong> prioritizes: PDL Person Search as an independent candidate source, then recent problem/intent discussions, then aspiring/beginner-investor people searches, then communities and groups — with coaches, course sellers, syndicators, brokers, lenders, vendors, and capital-raising services excluded from the people/intent/PDL results (never from communities). Defaults to 25 unique people, one page per query, one retry, and a $1 hard cap.
+          <strong>Find prospective students</strong> prioritizes: PDL Person Search as an independent candidate source, then recent problem/intent discussions, then aspiring/beginner-investor people searches, then communities and groups — with coaches, course sellers, syndicators, brokers, lenders, vendors, and capital-raising services excluded from the people/intent/PDL results (never from communities). Defaults to 25 unique people, one page per query, one retry, and a $1 hard cap. This is the one to use most of the time.
+        </p>
+        <p className="leadgen-run-disclosure">
+          <strong>Full custom search</strong> generates queries across every category (organizations, events, podcasts, directories, and more, not just people/communities/intent) with no student-specific priority order or exclusions — broader, but less tuned. Use it when you want to cast a wider net than just prospective students.
         </p>
         <p className="leadgen-run-disclosure">
           Both buttons use one Jarvis/OpenAI call per selected program to draft these queries — standard AI usage, billed like any other Jarvis request. No Vertex, OpenAI Web Search, or PDL provider credit is spent yet; that only happens when you approve and run below.
