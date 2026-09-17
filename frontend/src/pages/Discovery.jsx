@@ -1754,8 +1754,8 @@ export default function Discovery() {
         ) : null}
 
         {visibleGroundingResults.length ? <><div className="discovery-lanes">
-          {DISCOVERY_LANES.map(([laneKey, laneLabel, laneDescription]) => groundingResultsByLane[laneKey].length ? <section className={`discovery-lane lane-${laneKey}`} key={laneKey}>
-            <header className="discovery-lane__header"><div><span>{laneLabel}</span><small>{laneDescription}</small></div><strong>{groundingResultsByLane[laneKey].length}</strong></header>
+          {DISCOVERY_LANES.map(([laneKey, laneLabel, laneDescription]) => groundingResultsByLane[laneKey].length ? <details className={`discovery-lane lane-${laneKey}`} key={laneKey} open={laneKey === "prospective_students"}>
+            <summary className="discovery-lane__header"><div><span>{laneLabel}</span><small>{laneDescription}</small></div><strong>{groundingResultsByLane[laneKey].length}</strong></summary>
             <div className="review-queue-grid"><div className="lead-review-table__header" aria-hidden="true"><span>Person</span><span>Title</span><span>Company</span><span>Fit</span><span>Email</span><span>Social</span><span>Status</span><span>Next action</span></div>{groundingResultsByLane[laneKey].map((result) => {
             const { effectiveEmail, apolloProfile, publicProfileUrls, companyWebsiteUrl, missingContactMessage, contactStatus, sourceLabel, corroborated, isStructuredAudienceMatch, enrichedApolloProfile, apolloOrganization } = computeResultDisplay(result);
             // Apollo is always the first, primary contact-finding action.
@@ -1938,7 +1938,7 @@ export default function Discovery() {
               </article>
             );
             })}</div>
-          </section> : null)}
+          </details> : null)}
         </div>{visibleGroundingResults.length ? <nav className="review-pagination" aria-label="Review results pages">
           {reviewPageCount > 1 ? <Button size="sm" variant="outline" disabled={safeReviewPage === 1} onClick={() => setReviewPage((page) => Math.max(1, page - 1))}>Previous</Button> : null}
           <span>Page {safeReviewPage} of {reviewPageCount} · {visibleGroundingResults.length} people</span>
