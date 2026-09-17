@@ -315,7 +315,7 @@ async function runResearchMonitor(monitorId) {
     const uniqueSignals = [...new Map(collected.groups.flatMap((group) => group.signals).map((signal) => [String(signal.sourceUrl || `${signal.source}:${signal.sourceId}`).trim().toLowerCase().replace(/\/$/, ""), signal])).values()];
     await activity(monitor, runId, "sources_checked", `Checked ${collected.groups.length + collected.failures.length} sources.`, collected.groups.length + collected.failures.length);
     await activity(monitor, runId, "candidates_collected", `Collected ${candidates} public candidates.`, candidates);
-    const activePrograms = await CoachingProgram.find({ workspaceId: monitor.workspaceId, status: "active" }).select("name internalSummary publicPresentation.summary status").lean();
+    const activePrograms = await CoachingProgram.find({ workspaceId: monitor.workspaceId, status: "active" }).select("name targetAudience internalSummary publicPresentation.summary status").lean();
     const programProfiles = taxonomy.buildProgramProfiles(activePrograms);
     let found = 0; let rejected = 0; let watchlisted = 0; let communityOpportunities = 0;
     const websiteCandidates = [];

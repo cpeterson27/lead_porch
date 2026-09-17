@@ -19,7 +19,7 @@ function buildProgramProfiles(programs = []) {
   return (programs || []).filter((program) => program.status === "active").map((program) => ({
     id: String(program._id),
     name: program.name,
-    terms: significantTerms(`${program.name} ${program.internalSummary || program.publicPresentation?.summary || ""}`),
+    terms: significantTerms(`${program.name} ${program.targetAudience || program.internalSummary || program.publicPresentation?.summary || ""}`),
   }));
 }
 

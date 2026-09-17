@@ -245,11 +245,11 @@ router.post("/research/weekly-brief", async (req, res) => {
  * coverage gaps. Read-only — proposes nothing, changes nothing.
  */
 router.post("/research/strategy-recommendations", async (req, res) => {
-  const programs = await CoachingProgram.find({ workspaceId: req.auth.workspaceId, status: "active" }).select("name internalSummary").lean();
+  const programs = await CoachingProgram.find({ workspaceId: req.auth.workspaceId, status: "active" }).select("name targetAudience internalSummary").lean();
   try {
     const result = await agentExecutionService.runAgent({
       workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, auth: req.auth, agent: "research", task: "recommend_discovery_strategy",
-      input: { programs: programs.map((p) => ({ name: p.name, summary: p.internalSummary })) },
+      input: { programs: programs.map((p) => ({ name: p.name, summary: p.targetAudience || p.internalSummary })) },
       operationalContext: "Base every recommendation strictly on the supplied monitor performance data and the real active program list. Do not invent monitors, numbers, or outcomes. Recommend specific, focused search queries (not broad keyword dumps) tied to a specific program's real language. Flag any active program with no dedicated monitor as a coverage gap. Never propose creating or changing a monitor automatically — only suggest.",
       correlationId: `discovery-strategy:${req.auth.workspaceId}`,
       options: {
@@ -283,7 +283,7 @@ router.get("/research/signals", async (req, res) => {
   if (req.query.status) filter.status = req.query.status;
   if (req.query.bucket) filter.bucket = req.query.bucket;
   const signals = await IntentSignal.find(filter).sort({ score: -1, publishedAt: -1, discoveredAt: -1 }).limit(limit).lean();
-  const programProfiles = leadDiscoveryTaxonomy.buildProgramProfiles(await CoachingProgram.find({ workspaceId: req.auth.workspaceId, status: "active" }).select("name internalSummary publicPresentation.summary status").lean());
+  const programProfiles = leadDiscoveryTaxonomy.buildProgramProfiles(await CoachingProgram.find({ workspaceId: req.auth.workspaceId, status: "active" }).select("name targetAudience internalSummary publicPresentation.summary status").lean());
   const [liveLeadCount, watchlistCount, communityOpportunityCount, rejectedCount] = await Promise.all(["live_lead", "watchlist", "community_opportunity", "rejected"].map((bucket) => IntentSignal.countDocuments({ workspaceId: req.auth.workspaceId, bucket })));
   const bucketSummary = { live_lead: liveLeadCount, watchlist: watchlistCount, community_opportunity: communityOpportunityCount, rejected: rejectedCount };
   const stalePlatformIdentities = signals.filter((signal) => invalidPlatformIdentityName(signal.authorName));

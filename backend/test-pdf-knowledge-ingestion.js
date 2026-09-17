@@ -162,37 +162,37 @@ function fakeProgramDoc(initial) {
   return doc;
 }
 
-async function testApprovalAppendsIcpIntoEmptyInternalSummary() {
-  const program = fakeProgramDoc({ _id: PROGRAM_ID, workspaceId: WORKSPACE_ID, internalSummary: "" });
+async function testApprovalAppendsIcpIntoEmptyTargetAudience() {
+  const program = fakeProgramDoc({ _id: PROGRAM_ID, workspaceId: WORKSPACE_ID, targetAudience: "" });
   const ProgramModel = { findOne: async () => program };
   const updateOneCalls = [];
   const Model = { updateOne: async (filter, update) => updateOneCalls.push({ filter, update }) };
   const note = { _id: "note-1", category: "offers-programs", linkedCoachingProgramId: PROGRAM_ID, aiAnalysis: { idealCustomerProfile: "ICP text" }, icpAppliedToProgram: false };
   await jarvisMemoryService.applyIcpToProgramOnApproval(note, { workspaceId: WORKSPACE_ID, userId: "user-1" }, Model, ProgramModel);
-  assert.equal(program.internalSummary, "ICP text");
+  assert.equal(program.targetAudience, "ICP text");
   assert.equal(program.saveCalls, 1);
   assert.equal(updateOneCalls.length, 1);
   assert.equal(updateOneCalls[0].update.$set.icpAppliedToProgram, true);
-  console.log("PASS testApprovalAppendsIcpIntoEmptyInternalSummary");
+  console.log("PASS testApprovalAppendsIcpIntoEmptyTargetAudience");
 }
 
-async function testApprovalAppendsAfterExistingInternalSummaryText() {
-  const program = fakeProgramDoc({ _id: PROGRAM_ID, workspaceId: WORKSPACE_ID, internalSummary: "Hand-written notes already here." });
+async function testApprovalAppendsAfterExistingTargetAudienceText() {
+  const program = fakeProgramDoc({ _id: PROGRAM_ID, workspaceId: WORKSPACE_ID, targetAudience: "Hand-written notes already here." });
   const ProgramModel = { findOne: async () => program };
   const Model = { updateOne: async () => {} };
   const note = { _id: "note-1", category: "offers-programs", linkedCoachingProgramId: PROGRAM_ID, aiAnalysis: { idealCustomerProfile: "ICP text" }, icpAppliedToProgram: false };
   await jarvisMemoryService.applyIcpToProgramOnApproval(note, { workspaceId: WORKSPACE_ID, userId: "user-1" }, Model, ProgramModel);
-  assert.equal(program.internalSummary, "Hand-written notes already here.\n\nICP text");
-  console.log("PASS testApprovalAppendsAfterExistingInternalSummaryText");
+  assert.equal(program.targetAudience, "Hand-written notes already here.\n\nICP text");
+  console.log("PASS testApprovalAppendsAfterExistingTargetAudienceText");
 }
 
 async function testApprovalIsIdempotentOnceAlreadyApplied() {
-  const program = fakeProgramDoc({ _id: PROGRAM_ID, workspaceId: WORKSPACE_ID, internalSummary: "Already applied once." });
+  const program = fakeProgramDoc({ _id: PROGRAM_ID, workspaceId: WORKSPACE_ID, targetAudience: "Already applied once." });
   const ProgramModel = { findOne: async () => { throw new Error("should never be looked up again"); } };
   const Model = { updateOne: async () => { throw new Error("should never be called again"); } };
   const note = { _id: "note-1", category: "offers-programs", linkedCoachingProgramId: PROGRAM_ID, aiAnalysis: { idealCustomerProfile: "ICP text" }, icpAppliedToProgram: true };
   await jarvisMemoryService.applyIcpToProgramOnApproval(note, { workspaceId: WORKSPACE_ID, userId: "user-1" }, Model, ProgramModel);
-  assert.equal(program.internalSummary, "Already applied once.");
+  assert.equal(program.targetAudience, "Already applied once.");
   console.log("PASS testApprovalIsIdempotentOnceAlreadyApplied");
 }
 
@@ -253,8 +253,8 @@ async function testIngestPdfActuallyInvokesApprovalSideEffects() {
   await testDropsAProgramIdFromAnotherWorkspaceInsteadOfThrowing();
   await testNeverInventsAiAnalysisWhenAnalysisFails();
   await testListNotesFiltersByLinkedCoachingProgramId();
-  await testApprovalAppendsIcpIntoEmptyInternalSummary();
-  await testApprovalAppendsAfterExistingInternalSummaryText();
+  await testApprovalAppendsIcpIntoEmptyTargetAudience();
+  await testApprovalAppendsAfterExistingTargetAudienceText();
   await testApprovalIsIdempotentOnceAlreadyApplied();
   await testApprovalSkipsNotesWithNoLinkedProgramOrNoIcp();
   await testPdfUploadsAreApprovedImmediatelyNoReviewStep();

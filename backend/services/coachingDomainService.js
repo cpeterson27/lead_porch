@@ -120,6 +120,7 @@ async function createCoachingProgram(input, models = dependencies) {
     workspaceId,
     name,
     internalSummary: String(input.internalSummary || "").trim(),
+    targetAudience: String(input.targetAudience || "").trim(),
     status: input.status === "active" ? "active" : "draft",
     duration: input.duration || {},
     defaultPrice: input.defaultPrice || {},
@@ -135,6 +136,7 @@ async function updateCoachingProgram({ workspaceId, coachingProgramId, changes }
   if (program.status === "archived") throw domainError("Archived programs cannot be edited", "PROGRAM_ARCHIVED");
   if (changes.name !== undefined) program.name = String(changes.name || "").trim();
   if (changes.internalSummary !== undefined) program.internalSummary = String(changes.internalSummary || "").trim();
+  if (changes.targetAudience !== undefined) program.targetAudience = String(changes.targetAudience || "").trim();
   if (changes.duration !== undefined) program.duration = changes.duration;
   if (changes.defaultPrice !== undefined) program.defaultPrice = changes.defaultPrice;
   if (changes.stages !== undefined) program.stages = normalizeStages(changes.stages);

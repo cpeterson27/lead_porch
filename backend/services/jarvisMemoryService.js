@@ -340,21 +340,22 @@ async function runApprovalSideEffects(note, { workspaceId, userId }, Model = Jar
 
 /**
  * The one moment a program-linked PDF's AI-drafted ideal customer profile
- * reaches Internal Summary (the field that drives lead-search targeting) —
- * approving the note, the same review step every Knowledge Center upload
- * already requires. No separate "apply" click: approval IS the apply.
- * icpAppliedToProgram guards against appending twice if a note is later
- * rejected and re-approved.
+ * reaches Target Audience (the field that drives lead-search targeting,
+ * its own section — separate from Internal Summary, which is free-form
+ * internal notes) — approving the note, the same review step every
+ * Knowledge Center upload already requires. No separate "apply" click:
+ * approval IS the apply. icpAppliedToProgram guards against appending
+ * twice if a note is later rejected and re-approved.
  */
 async function applyIcpToProgramOnApproval(note, { workspaceId, userId }, Model, ProgramModel) {
   if (note.category !== "offers-programs" || !note.linkedCoachingProgramId || !note.aiAnalysis?.idealCustomerProfile || note.icpAppliedToProgram) return;
   const program = await ProgramModel.findOne({ _id: note.linkedCoachingProgramId, workspaceId });
   if (!program) return;
   const addition = note.aiAnalysis.idealCustomerProfile;
-  program.internalSummary = program.internalSummary ? `${program.internalSummary}\n\n${addition}` : addition;
+  program.targetAudience = program.targetAudience ? `${program.targetAudience}\n\n${addition}` : addition;
   await program.save();
   await Model.updateOne({ _id: note._id }, { $set: { icpAppliedToProgram: true } });
-  await auditService.record({ workspaceId, actorUserId: userId, action: "coaching_program.internal_summary.auto_applied_from_pdf", targetType: "CoachingProgram", targetId: program._id, after: { sourceNoteId: note._id }, success: true });
+  await auditService.record({ workspaceId, actorUserId: userId, action: "coaching_program.target_audience.auto_applied_from_pdf", targetType: "CoachingProgram", targetId: program._id, after: { sourceNoteId: note._id }, success: true });
 }
 
 async function rejectNote({ workspaceId, noteId, userId, reason = "" } = {}, Model = JarvisMemoryNote) {

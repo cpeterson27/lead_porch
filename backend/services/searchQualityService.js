@@ -30,7 +30,7 @@ async function getMonitorPerformance(workspaceId, models = deps) {
     models.ResearchMonitor.find({ workspaceId }).select("name monitorType enabled totals lastRunStatus lastRunAt createdAt keywords intentCategories negativeKeywords locations").lean(),
     models.IntentSignal.find({ workspaceId }).lean(),
     models.SalesOpportunity.find({ workspaceId, "leadAttribution.monitorId": { $ne: null } }).select("leadAttribution.monitorId stageKey value wonAt").lean(),
-    models.CoachingProgram.find({ workspaceId, status: "active" }).select("name internalSummary publicPresentation.summary status").lean(),
+    models.CoachingProgram.find({ workspaceId, status: "active" }).select("name targetAudience internalSummary publicPresentation.summary status").lean(),
   ]);
   const programProfiles = buildProgramProfiles(programs);
   const monitorMap = new Map(monitors.map((m) => [String(m._id), m]));

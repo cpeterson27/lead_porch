@@ -14,7 +14,21 @@ const stageSchema = new mongoose.Schema({
 const coachingProgramSchema = new mongoose.Schema({
   workspaceId: { type: mongoose.Schema.Types.ObjectId, ref: "Workspace", required: true, index: true },
   name: { type: String, required: true, trim: true, maxlength: 180 },
+  // Free-form internal notes — never shown publicly, but also NOT what
+  // search targeting reads (see targetAudience below). Historically this
+  // field did double duty as both "internal notes" and "who to search
+  // for," which is why several existing programs still have it seeded
+  // with the same opening text as their public description — that overlap
+  // predates this field split and is being cleaned up program by program.
   internalSummary: { type: String, default: "", trim: true, maxlength: 3000 },
+  // The one field lead-search targeting actually reads (with a fallback to
+  // internalSummary for any program that hasn't been given a distinct
+  // value yet — see the read sites in leadDiscoveryTaxonomy.js,
+  // searchQualityService.js, routes/audience.js, researchMonitorService.js,
+  // socialAiService.js, jarvisCampaignStudioService.js). Never shown
+  // publicly. Auto-populated by jarvisMemoryService.applyIcpToProgramOnApproval()
+  // when a linked Knowledge Center PDF is approved; always human-editable.
+  targetAudience: { type: String, default: "", trim: true, maxlength: 3000 },
   status: { type: String, enum: ["draft", "active", "archived"], default: "draft", index: true },
   duration: {
     value: { type: Number, default: null, min: 0 },

@@ -539,13 +539,17 @@ async function workspace(models = deps, request) {
   return item;
 }
 function programProjection(item) {
+  // internalSummary/targetAudience are never a fallback source here — they
+  // are internal-only fields (search targeting, private notes) and must
+  // never reach this public projection, even when the real public copy is
+  // still blank. A program with no public description/summary written yet
+  // shows blank, not internal content.
   return {
     id: item._id,
     slug: item.publicPresentation.slug,
     title: item.publicPresentation.title || item.name,
-    summary: item.publicPresentation.summary || item.internalSummary || "",
-    description:
-      item.publicPresentation.description || item.internalSummary || "",
+    summary: item.publicPresentation.summary || "",
+    description: item.publicPresentation.description || "",
     duration: item.duration,
     price: item.defaultPrice?.amount != null ? item.defaultPrice : null,
     priceVisible: Boolean(item.publicPresentation.priceVisible),

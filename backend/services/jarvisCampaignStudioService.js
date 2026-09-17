@@ -24,7 +24,7 @@ const cleanList = (values, max, length = 500) => (Array.isArray(values) ? values
 function normalizeProposal(output, request, existingProgram) {
   const draft = output.programDraft || {};
   const program = existingProgram ? {
-    name: existingProgram.name, summary: existingProgram.internalSummary || existingProgram.publicPresentation?.summary || "",
+    name: existingProgram.name, summary: existingProgram.targetAudience || existingProgram.internalSummary || existingProgram.publicPresentation?.summary || "",
     durationValue: existingProgram.duration?.value || 0, durationUnit: existingProgram.duration?.unit || "weeks",
     priceAmount: existingProgram.defaultPrice?.amount || 0, audience: existingProgram.publicPresentation?.audience || "",
     outcomes: existingProgram.publicPresentation?.outcomes || [], curriculum: existingProgram.publicPresentation?.curriculum || [],

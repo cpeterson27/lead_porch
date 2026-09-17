@@ -1,6 +1,6 @@
 import PersonIdentityFields from "../components/PersonIdentityFields.jsx";
 import { personName, personFields } from "../utils/personIdentity.js";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { FiBookOpen, FiCalendar, FiCheckCircle, FiClipboard, FiPlus, FiUserCheck, FiUsers } from "react-icons/fi";
 import Button from "../components/Button.jsx";
@@ -50,6 +50,7 @@ import {
   fetchCommunicationJobs,
   scheduleSessionReminders,
   fetchKnowledgeNotes,
+  uploadKnowledgePdfs,
 } from "../services/api.js";
 import "./Coaching.css";
 
@@ -188,8 +189,8 @@ export function CoachingCoaches() {
   </div>;
 }
 
-const emptyProgram = { name: "", internalSummary: "", status: "draft", durationValue: "", durationUnit: "weeks", price: "", currency: "USD", stages: [{ key: "onboarding", label: "Onboarding", order: 0 }] };
-function programForm(program) { return program ? { name: program.name, internalSummary: program.internalSummary || "", status: program.status, durationValue: program.duration?.value ?? "", durationUnit: program.duration?.unit || "weeks", price: program.defaultPrice?.amount ?? "", currency: program.defaultPrice?.currency || "USD", stages: (program.stages || []).map((stage) => ({ key: stage.key, label: stage.label, order: stage.order })) } : structuredClone(emptyProgram); }
+const emptyProgram = { name: "", internalSummary: "", targetAudience: "", status: "draft", durationValue: "", durationUnit: "weeks", price: "", currency: "USD", stages: [{ key: "onboarding", label: "Onboarding", order: 0 }] };
+function programForm(program) { return program ? { name: program.name, internalSummary: program.internalSummary || "", targetAudience: program.targetAudience || "", status: program.status, durationValue: program.duration?.value ?? "", durationUnit: program.duration?.unit || "weeks", price: program.defaultPrice?.amount ?? "", currency: program.defaultPrice?.currency || "USD", stages: (program.stages || []).map((stage) => ({ key: stage.key, label: stage.label, order: stage.order })) } : structuredClone(emptyProgram); }
 function ProgramCard({ program, skoolConnection, onEdit, onMapSkool, onArchive }) {
   const price = program.defaultPrice?.amount != null
     ? new Intl.NumberFormat("en-US", { style: "currency", currency: program.defaultPrice.currency || "USD" }).format(program.defaultPrice.amount)
@@ -223,28 +224,63 @@ function ProgramCard({ program, skoolConnection, onEdit, onMapSkool, onArchive }
 // appended into Internal Summary (see jarvisMemoryService.approveNote on
 // the backend). This list is read-only visibility into what already
 // happened, or what's still waiting on a review.
-function LinkedProgramNotes({ programId }) {
+// Uploads here go through the exact same pipeline as Knowledge Center's own
+// upload screen (uploadKnowledgePdfs, pre-linked to this program) — there is
+// only one place PDFs actually live, this is just a second, more convenient
+// entry point to it. Each upload's AI-drafted ideal customer profile is
+// applied to Target Audience automatically the moment it's approved.
+function LinkedProgramNotes({ programId, onApplied }) {
   const [notes, setNotes] = useState([]);
-  useEffect(() => {
+  const [uploading, setUploading] = useState(false);
+  const [uploadNotice, setUploadNotice] = useState("");
+  const fileInputRef = useRef(null);
+  const load = useCallback(() => {
     if (!programId) { setNotes([]); return; }
     fetchKnowledgeNotes({ category: "offers-programs", coachingProgramId: programId, includeArchived: true })
       .then((res) => setNotes(res.data || []))
       .catch(() => setNotes([]));
   }, [programId]);
-  if (!programId || !notes.length) return null;
+  useEffect(() => { load(); }, [load]);
+  const upload = async () => {
+    const files = fileInputRef.current?.files;
+    if (!files?.length) return;
+    setUploading(true);
+    setUploadNotice("");
+    try {
+      const res = await uploadKnowledgePdfs(files, "offers-programs", programId);
+      const succeeded = res.data.results.filter((row) => row.success).length;
+      const applied = res.data.results.some((row) => row.success);
+      setUploadNotice(`${succeeded} of ${res.data.results.length} PDF(s) uploaded — now in Knowledge Center and available to Jarvis.`);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      load();
+      if (applied) onApplied?.();
+    } catch (err) {
+      setUploadNotice(err.response?.data?.error || "PDF upload failed.");
+    } finally {
+      setUploading(false);
+    }
+  };
+  if (!programId) return null;
   return (
     <div className="coaching-linked-notes">
-      <p><strong>Knowledge Center PDFs linked to this program</strong></p>
-      <ul>
-        {notes.map((note) => (
-          <li key={note._id}>
-            <span>{note.title}</span>
-            <span className="coaching-muted">
-              {note.icpAppliedToProgram ? "Applied to Internal Summary automatically" : note.status === "approved" ? "Approved — no ideal customer profile to apply" : `Waiting on review in the Knowledge Center (${note.status})`}
-            </span>
-          </li>
-        ))}
-      </ul>
+      <p><strong>Program PDFs</strong> — uploading here goes straight to Knowledge Center, linked to this program. No need to also upload it there separately.</p>
+      <div className="coaching-upload-row">
+        <input ref={fileInputRef} type="file" accept="application/pdf" multiple disabled={uploading} />
+        <Button size="sm" loading={uploading} onClick={upload}>Upload PDF(s)</Button>
+      </div>
+      {uploadNotice ? <p className="coaching-muted">{uploadNotice}</p> : null}
+      {notes.length ? (
+        <ul>
+          {notes.map((note) => (
+            <li key={note._id}>
+              <span>{note.title}</span>
+              <span className="coaching-muted">
+                {note.icpAppliedToProgram ? "Applied to Target Audience automatically" : note.status === "approved" ? "Approved — no ideal customer profile to apply" : `Waiting on review in the Knowledge Center (${note.status})`}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
     </div>
   );
 }
@@ -252,14 +288,18 @@ export function CoachingPrograms() {
   const [programs, setPrograms] = useState([]); const [editing, setEditing] = useState(null); const [form, setForm] = useState(null); const [notice, setNotice] = useState(null); const [saving, setSaving] = useState(false); const [skoolConnection, setSkoolConnection] = useState(null); const [skoolProgram, setSkoolProgram] = useState(null); const [skoolForm, setSkoolForm] = useState({ groupId: "", courseIds: "" }); const [skoolState, setSkoolState] = useState({ loading: false, error: "", success: "" }); const [disconnectCandidate, setDisconnectCandidate] = useState(null); const [archiveCandidate, setArchiveCandidate] = useState(null);
   const load = useCallback(() => Promise.all([fetchCoachingPrograms(), fetchSkoolStatus()]).then(([items, connection]) => { setPrograms(items); setSkoolConnection(connection); }).catch((error) => setNotice({ type: "error", message: errorMessage(error) })), []); useEffect(() => { load(); }, [load]);
   const open = (program = null) => { setEditing(program); setForm(programForm(program)); };
-  const save = async (event) => { event.preventDefault(); setSaving(true); const payload = { name: form.name, internalSummary: form.internalSummary, status: form.status, duration: { value: form.durationValue === "" ? null : Number(form.durationValue), unit: form.durationUnit }, defaultPrice: { amount: form.price === "" ? null : Number(form.price), currency: form.currency }, stages: form.stages.map((stage, order) => ({ ...stage, order })) }; try { if (editing) await updateCoachingProgram(editing._id, payload); else await createCoachingProgram(payload); setNotice({ type: "success", message: editing ? "Program updated and versioned." : "Program created." }); setForm(null); setEditing(null); await load(); } catch (error) { setNotice({ type: "error", message: errorMessage(error) }); } finally { setSaving(false); } };
+  const save = async (event) => { event.preventDefault(); setSaving(true); const payload = { name: form.name, internalSummary: form.internalSummary, targetAudience: form.targetAudience, status: form.status, duration: { value: form.durationValue === "" ? null : Number(form.durationValue), unit: form.durationUnit }, defaultPrice: { amount: form.price === "" ? null : Number(form.price), currency: form.currency }, stages: form.stages.map((stage, order) => ({ ...stage, order })) }; try { if (editing) await updateCoachingProgram(editing._id, payload); else await createCoachingProgram(payload); setNotice({ type: "success", message: editing ? "Program updated and versioned." : "Program created." }); setForm(null); setEditing(null); await load(); } catch (error) { setNotice({ type: "error", message: errorMessage(error) }); } finally { setSaving(false); } };
   const archive = async () => { const program = archiveCandidate; if (!program) return; setSaving(true); try { await archiveCoachingProgram(program._id); setArchiveCandidate(null); await load(); } catch (error) { setNotice({ type: "error", message: errorMessage(error) }); } finally { setSaving(false); } };
   const mapSkool = (program) => { setSkoolProgram(program); setSkoolForm({ groupId: program.skoolMapping?.groupId || "", courseIds: (program.skoolMapping?.courseIds || []).join(", ") }); setSkoolState({ loading: false, error: "", success: "" }); };
   const saveSkoolMapping = async (event) => { event.preventDefault(); const groupId = skoolForm.groupId.trim(); if (!groupId) { setSkoolState({ loading: false, error: "Enter the Skool Group ID before connecting.", success: "" }); return; } const courseIds = skoolForm.courseIds.split(",").map((value) => value.trim()).filter(Boolean); setSkoolState({ loading: true, error: "", success: "" }); try { const updated = await updateProgramSkoolMapping(skoolProgram._id, { enabled: true, groupId, groupSlug: skoolProgram.skoolMapping?.groupSlug || "", groupUrl: skoolProgram.skoolMapping?.groupUrl || skoolConnection?.groupUrl || "", courseIds, courseLabels: courseIds, retainAccessOnCompletion: skoolProgram.skoolMapping?.retainAccessOnCompletion !== false, retainAccessOnCancellation: skoolProgram.skoolMapping?.retainAccessOnCancellation !== false }); setPrograms((current) => current.map((program) => program._id === updated._id ? updated : program)); setSkoolProgram(updated); setSkoolState({ loading: false, error: "", success: "Skool mapping connected successfully." }); } catch (error) { setSkoolState({ loading: false, error: errorMessage(error), success: "" }); } };
   const disconnectSkool = async () => { const program = disconnectCandidate; if (!program) return; setSaving(true); try { const updated = await updateProgramSkoolMapping(program._id, { enabled: false, groupId: "", groupSlug: "", groupUrl: "", courseIds: [], courseLabels: [], retainAccessOnCompletion: program.skoolMapping?.retainAccessOnCompletion !== false, retainAccessOnCancellation: program.skoolMapping?.retainAccessOnCancellation !== false }); setPrograms((current) => current.map((item) => item._id === updated._id ? updated : item)); setDisconnectCandidate(null); setNotice({ type: "success", message: "Skool mapping disconnected. The coaching program and student records were not changed." }); } catch (error) { setNotice({ type: "error", message: errorMessage(error) }); } finally { setSaving(false); } };
   return <div className="coaching-page"><PageHeader eyebrow="Coaching CRM" title="Programs" description="Create and edit programs, pricing, duration and the stages students work through." actions={<Button onClick={() => open()}><FiPlus /> New program</Button>} /><CoachingNav active="programs" /><Notice value={notice} />
     {programs.length ? <div className="coaching-program-grid">{programs.map((program) => <ProgramCard key={program._id} program={program} skoolConnection={skoolConnection} onEdit={open} onMapSkool={mapSkool} onArchive={setArchiveCandidate} />)}</div> : <EmptyState icon={<FiBookOpen />} title="No coaching programs" description="Create your first program to start enrolling students." />}
-    <Modal isOpen={Boolean(form)} onClose={() => { setForm(null); setEditing(null); }} title={editing ? "Edit and version program" : "Create coaching program"}>{form ? <form className="coaching-form" onSubmit={save}><label>Program name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label><label>Internal summary — never shown publicly; this is what Jarvis reads to know who to search for<textarea rows="3" value={form.internalSummary} onChange={(event) => setForm({ ...form, internalSummary: event.target.value })} /></label><LinkedProgramNotes programId={editing?._id} /><div className="coaching-form__grid"><label>Status<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="draft">Draft</option><option value="active">Active</option></select></label><label>Duration<input min="0" type="number" value={form.durationValue} onChange={(event) => setForm({ ...form, durationValue: event.target.value })} /></label><label>Unit<select value={form.durationUnit} onChange={(event) => setForm({ ...form, durationUnit: event.target.value })}>{["days", "weeks", "months"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Default price<input min="0" type="number" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /></label></div><fieldset><legend>Program stages</legend>{form.stages.map((stage, index) => <div className="coaching-stage-row" key={`${stage.key}-${index}`}><input aria-label="Stage key" required value={stage.key} onChange={(event) => setForm({ ...form, stages: form.stages.map((item, itemIndex) => itemIndex === index ? { ...item, key: event.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "_") } : item) })} /><input aria-label="Stage label" required value={stage.label} onChange={(event) => setForm({ ...form, stages: form.stages.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item) })} />{form.stages.length > 1 ? <Button size="sm" variant="ghost" onClick={() => setForm({ ...form, stages: form.stages.filter((_, itemIndex) => itemIndex !== index) })}>Remove</Button> : null}</div>)}<Button size="sm" variant="outline" onClick={() => setForm({ ...form, stages: [...form.stages, { key: `stage_${form.stages.length + 1}`, label: `Stage ${form.stages.length + 1}`, order: form.stages.length }] })}>Add stage</Button></fieldset><Button type="submit" block loading={saving}>{editing ? "Save new version" : "Create program"}</Button></form> : null}</Modal>
+    <Modal isOpen={Boolean(form)} onClose={() => { setForm(null); setEditing(null); }} title={editing ? "Edit and version program" : "Create coaching program"}>{form ? <form className="coaching-form" onSubmit={save}><label>Program name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label>
+        <section className="coaching-target-audience"><label><span>Target audience — this is what search reads to know who to look for. Never shown publicly. AI-fills this from any PDF you link below; always editable.</span><textarea rows="4" value={form.targetAudience} onChange={(event) => setForm({ ...form, targetAudience: event.target.value })} placeholder="Who is this program for? Add specifics — income level, current situation, what they're trying to do. Or upload a program PDF below and let AI draft this." /></label>
+        <LinkedProgramNotes programId={editing?._id} onApplied={async () => { const items = await fetchCoachingPrograms(); setPrograms(items); const updated = items.find((item) => item._id === editing?._id); if (updated) setForm((current) => ({ ...current, targetAudience: updated.targetAudience || "" })); }} /></section>
+        <label>Internal notes — free-form, for your own reference only. Never shown publicly and not read by search (see Target audience above for that).<textarea rows="3" value={form.internalSummary} onChange={(event) => setForm({ ...form, internalSummary: event.target.value })} /></label>
+        <div className="coaching-form__grid"><label>Status<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="draft">Draft</option><option value="active">Active</option></select></label><label>Duration<input min="0" type="number" value={form.durationValue} onChange={(event) => setForm({ ...form, durationValue: event.target.value })} /></label><label>Unit<select value={form.durationUnit} onChange={(event) => setForm({ ...form, durationUnit: event.target.value })}>{["days", "weeks", "months"].map((item) => <option key={item}>{item}</option>)}</select></label><label>Default price<input min="0" type="number" value={form.price} onChange={(event) => setForm({ ...form, price: event.target.value })} /></label></div><fieldset><legend>Program stages</legend>{form.stages.map((stage, index) => <div className="coaching-stage-row" key={`${stage.key}-${index}`}><input aria-label="Stage key" required value={stage.key} onChange={(event) => setForm({ ...form, stages: form.stages.map((item, itemIndex) => itemIndex === index ? { ...item, key: event.target.value.toLowerCase().replace(/[^a-z0-9]+/g, "_") } : item) })} /><input aria-label="Stage label" required value={stage.label} onChange={(event) => setForm({ ...form, stages: form.stages.map((item, itemIndex) => itemIndex === index ? { ...item, label: event.target.value } : item) })} />{form.stages.length > 1 ? <Button size="sm" variant="ghost" onClick={() => setForm({ ...form, stages: form.stages.filter((_, itemIndex) => itemIndex !== index) })}>Remove</Button> : null}</div>)}<Button size="sm" variant="outline" onClick={() => setForm({ ...form, stages: [...form.stages, { key: `stage_${form.stages.length + 1}`, label: `Stage ${form.stages.length + 1}`, order: form.stages.length }] })}>Add stage</Button></fieldset><Button type="submit" block loading={saving}>{editing ? "Save new version" : "Create program"}</Button></form> : null}</Modal>
     <Modal isOpen={Boolean(skoolProgram)} onClose={() => { if (!skoolState.loading) setSkoolProgram(null); }} title="Connect to Skool" className="skool-mapping-modal">{skoolProgram ? <form className="skool-mapping-form" onSubmit={saveSkoolMapping} noValidate><div className="skool-mapping-form__program"><span>Lead Porch program</span><strong>{skoolProgram.name}</strong></div>{skoolConnection?.groupId ? <div className="skool-mapping-form__suggestion"><div><strong>{skoolConnection.groupName || "Configured Skool community"}</strong><span>Workspace Skool Group ID: {skoolConnection.groupId}</span></div><Button type="button" size="sm" variant="outline" onClick={() => setSkoolForm({ ...skoolForm, groupId: skoolConnection.groupId })}>Use this community</Button></div> : <p className="coaching-muted">Lead Porch does not receive a discoverable list of Skool communities from the current manual/Zapier integration.</p>}<label>Skool Group ID<input required autoFocus value={skoolForm.groupId} onChange={(event) => { setSkoolForm({ ...skoolForm, groupId: event.target.value }); setSkoolState({ loading: false, error: "", success: "" }); }} aria-describedby="skool-group-help" placeholder="Enter the Skool community Group ID" /><small id="skool-group-help">This identifies the Skool community connected to this Lead Porch program. Copy it from your Skool community URL/settings or from the workspace Skool configuration.</small></label><label>Skool course IDs <span>(optional)</span><input value={skoolForm.courseIds} onChange={(event) => setSkoolForm({ ...skoolForm, courseIds: event.target.value })} placeholder="course-1, course-2" /><small>Separate multiple course IDs with commas. These are passed to the existing access workflow.</small></label>{skoolState.error ? <p className="skool-mapping-form__message skool-mapping-form__message--error" role="alert">{skoolState.error}</p> : null}{skoolState.success ? <p className="skool-mapping-form__message skool-mapping-form__message--success" role="status">{skoolState.success}</p> : null}<div className="skool-mapping-form__actions"><Button type="button" variant="outline" disabled={skoolState.loading} onClick={() => setSkoolProgram(null)}>Cancel</Button>{skoolProgram.skoolMapping?.enabled ? <Button type="button" variant="danger" disabled={skoolState.loading} onClick={() => { setDisconnectCandidate(skoolProgram); setSkoolProgram(null); }}>Disconnect</Button> : null}<Button type="submit" loading={skoolState.loading}>Connect to Skool</Button></div></form> : null}</Modal>
     <Modal isOpen={Boolean(disconnectCandidate)} onClose={() => { if (!saving) setDisconnectCandidate(null); }} title="Disconnect Skool mapping">{disconnectCandidate ? <div className="coaching-confirmation"><p>Disconnect <strong>{disconnectCandidate.name}</strong> from its Skool mapping?</p><p className="coaching-muted">This removes only the mapping in Lead Porch. It does not delete the coaching program, students, enrollments, CRM records, or anything in Skool.</p><div><Button variant="outline" disabled={saving} onClick={() => setDisconnectCandidate(null)}>Cancel</Button><Button variant="danger" loading={saving} onClick={disconnectSkool}>Disconnect mapping</Button></div></div> : null}</Modal>
     <Modal isOpen={Boolean(archiveCandidate)} onClose={() => { if (!saving) setArchiveCandidate(null); }} title="Archive coaching program">{archiveCandidate ? <div className="coaching-confirmation"><p>Archive <strong>{archiveCandidate.name}</strong>?</p><p className="coaching-muted">Existing enrollment snapshots will remain intact.</p><div><Button variant="outline" disabled={saving} onClick={() => setArchiveCandidate(null)}>Cancel</Button><Button variant="danger" loading={saving} onClick={archive}>Archive program</Button></div></div> : null}</Modal>
