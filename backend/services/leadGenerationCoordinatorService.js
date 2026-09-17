@@ -1356,6 +1356,10 @@ module.exports = {
   // (and email-shape-sanitized) by the exact same, already-tested logic
   // used here, rather than a second copy that could silently drift.
   normalizePdlCandidate,
+  // Exported for reuse by services/publicWebDiscoveryEngineService.js's
+  // direct Apollo Person Search phase — same reasoning as
+  // normalizePdlCandidate above.
+  normalizeApolloCandidate,
   // Exported for direct unit testing — pure, no side effects.
   detectExclusionFlags,
   buildQualifyResponseSchema,

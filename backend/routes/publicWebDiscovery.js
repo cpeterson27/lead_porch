@@ -58,7 +58,9 @@ router.post("/runs/preview", (req, res) => {
     const data = publicWebDiscoveryEngineService.computeRunPlanPreview({
       jobs: req.body?.jobs, sources: req.body?.sources, queryLimitPerRun: req.body?.queryLimitPerRun, pageLimitPerQuery: req.body?.pageLimitPerQuery,
       providerCreditCapUsd: req.body?.providerCreditCapUsd, includePdlPersonSearch: req.body?.includePdlPersonSearch, maxPdlPersonSearchCredits: req.body?.maxPdlPersonSearchCredits,
-      includePdlCrossReference: req.body?.includePdlCrossReference, maxPdlCrossReferenceCredits: req.body?.maxPdlCrossReferenceCredits, maxAttemptsPerJob: req.body?.maxAttemptsPerJob,
+      includePdlCrossReference: req.body?.includePdlCrossReference, maxPdlCrossReferenceCredits: req.body?.maxPdlCrossReferenceCredits,
+      includeApolloPersonSearch: req.body?.includeApolloPersonSearch, maxApolloPersonSearchCredits: req.body?.maxApolloPersonSearchCredits,
+      maxAttemptsPerJob: req.body?.maxAttemptsPerJob,
     });
     return res.json({ success: true, data });
   } catch (error) {
@@ -103,6 +105,7 @@ router.post("/runs/:id/approve", async (req, res) => {
       queryLimitPerRun: req.body?.queryLimitPerRun, providerCreditCapUsd: req.body?.providerCreditCapUsd,
       includePdlCrossReference: req.body?.includePdlCrossReference, includePdlPersonSearch: req.body?.includePdlPersonSearch,
       maxPdlPersonSearchCredits: req.body?.maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: req.body?.maxPdlCrossReferenceCredits,
+      includeApolloPersonSearch: req.body?.includeApolloPersonSearch, maxApolloPersonSearchCredits: req.body?.maxApolloPersonSearchCredits,
       sources: req.body?.sources, maxAttemptsPerJob: req.body?.maxAttemptsPerJob,
     });
     return res.json({ success: true, data });
@@ -168,6 +171,7 @@ router.post("/schedules", async (req, res) => {
       pageLimitPerQuery: req.body?.pageLimitPerQuery, queryLimitPerRun: req.body?.queryLimitPerRun, providerCreditCapUsd: req.body?.providerCreditCapUsd,
       sources: req.body?.sources, includePdlCrossReference: req.body?.includePdlCrossReference, includePdlPersonSearch: req.body?.includePdlPersonSearch,
       maxPdlPersonSearchCredits: req.body?.maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: req.body?.maxPdlCrossReferenceCredits,
+      includeApolloPersonSearch: req.body?.includeApolloPersonSearch, maxApolloPersonSearchCredits: req.body?.maxApolloPersonSearchCredits,
       maxAttemptsPerJob: req.body?.maxAttemptsPerJob,
       enabled: false, // Never honors a client-supplied enabled:true — the owner must flip it on via /enable below.
       createdByUserId: req.auth.user?._id,

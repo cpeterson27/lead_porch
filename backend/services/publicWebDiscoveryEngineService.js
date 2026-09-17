@@ -32,6 +32,7 @@ const Organization = require("../models/Organization");
 const vertexGroundingService = require("./vertexGroundingService");
 const openaiWebSearchService = require("./openaiWebSearchService");
 const peopleDataLabsService = require("./peopleDataLabsService");
+const apolloService = require("./apolloService");
 const agentExecutionService = require("./agentExecutionService");
 const auditService = require("./auditService");
 const workspaceSelfExclusionService = require("./workspaceSelfExclusionService");
@@ -241,6 +242,10 @@ async function proposePublicWebDiscoveryRun({ workspaceId, userId, auth, program
   const includePdlPersonSearch = false;
   const maxPdlPersonSearchCredits = 25;
   const maxPdlCrossReferenceCredits = 25;
+  // Same reasoning as includePdlPersonSearch above — this preview flow
+  // preserves web-only-unless-opted-in behavior for Apollo too.
+  const includeApolloPersonSearch = false;
+  const maxApolloPersonSearchCredits = 25;
 
   // Set explicitly rather than relying on the schema's own nested-subdocument
   // defaults — keeps a freshly-created run's document fully self-describing
@@ -255,12 +260,14 @@ async function proposePublicWebDiscoveryRun({ workspaceId, userId, auth, program
       estimatedUsd, expectedPeople, expectedCommunitiesOrganizations,
       maxPdlPersonSearchCredits: includePdlPersonSearch ? maxPdlPersonSearchCredits : 0,
       maxPdlCrossReferenceCredits,
+      maxApolloPersonSearchCredits: includeApolloPersonSearch ? maxApolloPersonSearchCredits : 0,
       budgetWarning: computeBudgetWarning(5),
-      note: "Rough estimate only, assuming every generated query runs its full page limit and PDL cross-reference finds a full batch — actual spend depends on real results and the caps set at approval. PDL credits are tracked separately and are never converted into the web cash estimate above.",
+      note: "Rough estimate only, assuming every generated query runs its full page limit and PDL cross-reference finds a full batch — actual spend depends on real results and the caps set at approval. PDL and Apollo credits are tracked separately and are never converted into the web cash estimate above.",
     },
-    spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, pdlPersonSearchCredits: 0, pdlCrossReferenceCredits: 0, estimatedUsd: 0 },
+    spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, pdlPersonSearchCredits: 0, pdlCrossReferenceCredits: 0, apolloPersonSearchCredits: 0, estimatedUsd: 0 },
     runSummary: emptyRunSummary(),
     includePdlPersonSearch, maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits,
+    includeApolloPersonSearch, maxApolloPersonSearchCredits,
     pdlCrossReferenceDone: false, includePdlCrossReference: true,
     enabledSources: ["vertex", "openai_web_search"],
     createdByUserId: userId, correlationId: clean(correlationId, 255),
@@ -312,25 +319,32 @@ async function proposeStudentSearchPreset({ workspaceId, userId, auth, programNo
   const includePdlPersonSearch = true;
   const maxPdlPersonSearchCredits = 25;
   const maxPdlCrossReferenceCredits = 25;
+  // Apollo runs as the same kind of independent, top-priority candidate
+  // source as PDL — the owner's explicit, repeated ask was for Apollo to be
+  // part of the "find prospective students" flow, not just PDL.
+  const includeApolloPersonSearch = true;
+  const maxApolloPersonSearchCredits = 25;
 
   const run = await Model.create({
     workspaceId, programNoteId, programName, status: "draft", jobs, nextJobIndex: 0,
     // Defaults for the first run of this preset: 25 unique PEOPLE (not a
     // mix with communities — targetType:"person"), one page per query,
     // one retry (2 attempts total), and a $1 hard WEB CASH cap (Vertex +
-    // OpenAI only — PDL's own credit ceiling is separate, see above).
+    // OpenAI only — PDL/Apollo's own credit ceilings are separate, see above).
     dailyCandidateTarget: 25, targetType: "person", pageLimitPerQuery: 1, queryLimitPerRun: Math.max(jobs.length, 20), providerCreditCapUsd,
     retryPolicy: { maxAttemptsPerJob: 2 },
     estimatedCreditUse: {
       vertexCalls, openaiCalls, pdlCandidates: maxPdlPersonSearchCredits, // cross-reference is off by default for this preset — see below.
       estimatedUsd, expectedPeople, expectedCommunitiesOrganizations,
       maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: 0,
+      maxApolloPersonSearchCredits,
       budgetWarning: computeBudgetWarning(providerCreditCapUsd),
-      note: "Find prospective students preset: PDL Person Search runs first as an independent candidate source (its own credit ceiling, never counted as web cash), then recent intent discussions, then aspiring/beginner people searches, then communities/groups — coaches, course sellers, syndicators, brokers, lenders, vendors, and capital-raising services are excluded from the people/intent/PDL results, never from community discovery.",
+      note: "Find prospective students preset: Apollo and PDL Person Search both run first as independent candidate sources (their own credit ceilings, never counted as web cash), then recent intent discussions, then aspiring/beginner people searches, then communities/groups — coaches, course sellers, syndicators, brokers, lenders, vendors, and capital-raising services are excluded from the people/intent/PDL/Apollo results, never from community discovery.",
     },
-    spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, pdlPersonSearchCredits: 0, pdlCrossReferenceCredits: 0, estimatedUsd: 0 },
+    spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, pdlPersonSearchCredits: 0, pdlCrossReferenceCredits: 0, apolloPersonSearchCredits: 0, estimatedUsd: 0 },
     runSummary: emptyRunSummary(),
     includePdlPersonSearch, maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits,
+    includeApolloPersonSearch, maxApolloPersonSearchCredits,
     pdlCrossReferenceDone: false, includePdlCrossReference: false, // PDL already runs directly — cross-reference would be redundant here.
     enabledSources: ["vertex", "openai_web_search"],
     createdByUserId: userId, correlationId: clean(correlationId, 255),
@@ -388,7 +402,7 @@ function finalizeWebJobPlan({ jobs, sources, queryLimitPerRun, pageLimitPerQuery
  * that as a hard stop regardless of how many retries occur, so a number
  * larger than the cap could never actually happen.
  */
-function computeRunPlanPreview({ jobs, sources, queryLimitPerRun, pageLimitPerQuery, providerCreditCapUsd, includePdlPersonSearch, maxPdlPersonSearchCredits, includePdlCrossReference, maxPdlCrossReferenceCredits, maxAttemptsPerJob }) {
+function computeRunPlanPreview({ jobs, sources, queryLimitPerRun, pageLimitPerQuery, providerCreditCapUsd, includePdlPersonSearch, maxPdlPersonSearchCredits, includePdlCrossReference, maxPdlCrossReferenceCredits, includeApolloPersonSearch, maxApolloPersonSearchCredits, maxAttemptsPerJob }) {
   const finalJobs = finalizeWebJobPlan({ jobs, sources, queryLimitPerRun, pageLimitPerQuery });
   const maxVertexCallsInitial = finalJobs.filter((j) => j.source === "vertex").reduce((sum, j) => sum + j.maxPages, 0);
   const maxOpenaiCallsInitial = finalJobs.filter((j) => j.source === "openai_web_search").reduce((sum, j) => sum + j.maxPages, 0);
@@ -405,11 +419,12 @@ function computeRunPlanPreview({ jobs, sources, queryLimitPerRun, pageLimitPerQu
 
   const resolvedMaxPdlPersonSearchCredits = includePdlPersonSearch ? Math.max(0, Math.min(500, Number(maxPdlPersonSearchCredits) || 0)) : 0;
   const resolvedMaxPdlCrossReferenceCredits = includePdlCrossReference ? Math.max(0, Math.min(500, Number(maxPdlCrossReferenceCredits) || 0)) : 0;
+  const resolvedMaxApolloPersonSearchCredits = includeApolloPersonSearch ? Math.max(0, Math.min(500, Number(maxApolloPersonSearchCredits) || 0)) : 0;
 
   const anyWebJobs = maxVertexCallsInitial > 0 || maxOpenaiCallsInitial > 0;
   let validationError = "";
-  if (!anyWebJobs && !includePdlPersonSearch && !includePdlCrossReference) {
-    validationError = "Nothing is configured to run: no Vertex/OpenAI queries survived your provider/query-limit settings, and both PDL sources are off.";
+  if (!anyWebJobs && !includePdlPersonSearch && !includePdlCrossReference && !includeApolloPersonSearch) {
+    validationError = "Nothing is configured to run: no Vertex/OpenAI queries survived your provider/query-limit settings, and PDL and Apollo are both off.";
   } else if (anyWebJobs && cap < COST_PER_GROUNDED_CALL_USD) {
     validationError = `The web cash cap ($${cap}) is below the cost of a single query ($${COST_PER_GROUNDED_CALL_USD}) — no Vertex/OpenAI query could ever run at this cap. Raise the cap or disable these providers.`;
   }
@@ -417,6 +432,7 @@ function computeRunPlanPreview({ jobs, sources, queryLimitPerRun, pageLimitPerQu
   return {
     maxPdlPersonSearchCredits: resolvedMaxPdlPersonSearchCredits,
     maxPdlCrossReferenceCredits: resolvedMaxPdlCrossReferenceCredits,
+    maxApolloPersonSearchCredits: resolvedMaxApolloPersonSearchCredits,
     maxVertexCallsInitial, maxOpenaiCallsInitial,
     maxVertexRetryExposure, maxOpenaiRetryExposure,
     maxWebCashInitial, maxWebCashWithRetries, maxWebCashEnforced,
@@ -426,7 +442,7 @@ function computeRunPlanPreview({ jobs, sources, queryLimitPerRun, pageLimitPerQu
   };
 }
 
-async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, dailyCandidateTarget, pageLimitPerQuery, queryLimitPerRun, providerCreditCapUsd, includePdlCrossReference, includePdlPersonSearch, maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits, sources, maxAttemptsPerJob }, dependencies = {}) {
+async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, dailyCandidateTarget, pageLimitPerQuery, queryLimitPerRun, providerCreditCapUsd, includePdlCrossReference, includePdlPersonSearch, maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits, includeApolloPersonSearch, maxApolloPersonSearchCredits, sources, maxAttemptsPerJob }, dependencies = {}) {
   const Model = dependencies.PublicWebDiscoveryRun || PublicWebDiscoveryRun;
   const run = await Model.findOne({ _id: runId, workspaceId });
   if (!run) { const error = new Error("Discovery run not found"); error.code = "DISCOVERY_RUN_NOT_FOUND"; throw error; }
@@ -456,6 +472,8 @@ async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, 
   if (includePdlPersonSearch != null) run.includePdlPersonSearch = Boolean(includePdlPersonSearch);
   if (maxPdlPersonSearchCredits != null) run.maxPdlPersonSearchCredits = Math.max(0, Math.min(500, Number(maxPdlPersonSearchCredits) || 0));
   if (maxPdlCrossReferenceCredits != null) run.maxPdlCrossReferenceCredits = Math.max(0, Math.min(500, Number(maxPdlCrossReferenceCredits) || 0));
+  if (includeApolloPersonSearch != null) run.includeApolloPersonSearch = Boolean(includeApolloPersonSearch);
+  if (maxApolloPersonSearchCredits != null) run.maxApolloPersonSearchCredits = Math.max(0, Math.min(500, Number(maxApolloPersonSearchCredits) || 0));
   if (maxAttemptsPerJob != null) run.retryPolicy.maxAttemptsPerJob = Math.max(1, Math.min(10, Number(maxAttemptsPerJob) || run.retryPolicy.maxAttemptsPerJob));
   run.enabledSources = allowedSources || run.enabledSources || ["vertex", "openai_web_search"];
 
@@ -708,6 +726,83 @@ async function runPdlPersonSearchPhase({ workspaceId, userId, auth, run, selfSig
   }
 }
 
+/**
+ * The direct Apollo Person Search phase — mirrors runPdlPersonSearchPhase
+ * above exactly (same one-shot-per-run shape, same credit/target sizing,
+ * same merge flow), reusing the SAME derived ICP (titles/locations), since
+ * buildApolloFilters already tolerates the fields PDL's ICP doesn't supply
+ * (seniority, company size) being absent. Gated solely by
+ * run.includeApolloPersonSearch, never by a removable job row, and its
+ * credits are tracked entirely separately from providerCreditCapUsd/
+ * spend.estimatedUsd (the Vertex/OpenAI web cash cap) — same reasoning as
+ * PDL's credits being kept separate, see the model comment.
+ */
+async function runApolloPersonSearchPhase({ workspaceId, userId, auth, run, selfSignals, correlationId }, dependencies = {}) {
+  const apollo = dependencies.apolloService || apolloService;
+  if (!run.includeApolloPersonSearch) return; // off — never called, estimated, or charged.
+
+  const perSourceEntry = {
+    source: "apollo_person_search", category: "people", queriesRun: 0, entitiesExtracted: 0, accepted: 0, error: null,
+    acceptedNew: 0, merged: 0, rejectedSelf: 0, rejectedCrm: 0, rejectedDismissed: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedBudgetCap: 0, unexplained: 0,
+  };
+  const remainingCredits = Math.max(0, run.maxApolloPersonSearchCredits - run.spend.apolloPersonSearchCredits);
+  const remainingTarget = Math.max(0, run.dailyCandidateTarget - acceptedCountForTarget(run));
+  const desiredCount = Math.min(remainingCredits, remainingTarget, 100);
+  if (desiredCount <= 0) {
+    perSourceEntry.error = remainingCredits <= 0
+      ? `Skipped — the ${run.maxApolloPersonSearchCredits}-credit Apollo Person Search limit for this run was already reached. No Apollo call was made — no credits were used.`
+      : `Skipped — the daily candidate target (${run.dailyCandidateTarget}) was already reached. No Apollo call was made.`;
+    run.runSummary.perSource = [...(run.runSummary.perSource || []), perSourceEntry];
+    run.apolloPersonSearchDone = true; // attempted (and skipped) exactly once — never re-queried on a later tick.
+    return;
+  }
+
+  try {
+    const icp = await derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlationId }, dependencies);
+    const filters = leadGenerationCoordinatorService.buildApolloFilters(icp);
+    if (!Object.keys(filters).length) throw Object.assign(new Error("No realistic ICP criteria (titles or locations) could be derived from the program for Apollo."), { code: "APOLLO_ICP_EMPTY" });
+    perSourceEntry.queriesRun = 1;
+    const outcome = await apollo.searchPeople({ workspaceId, userId, filters, page: 1, perPage: desiredCount, correlationId });
+    perSourceEntry.entitiesExtracted = outcome.people.length;
+    run.spend.apolloPersonSearchCredits += outcome.people.length;
+
+    for (const person of outcome.people) {
+      // Defensive only — correct pre-sizing above should make this
+      // unreachable, but every remaining candidate is counted honestly
+      // rather than silently vanishing.
+      if (run.spend.apolloPersonSearchCredits > run.maxApolloPersonSearchCredits || acceptedCountForTarget(run) >= run.dailyCandidateTarget) {
+        perSourceEntry.rejectedBudgetCap += 1;
+        run.runSummary.rejectedBudgetCap += 1;
+        continue;
+      }
+      const candidate = leadGenerationCoordinatorService.normalizeApolloCandidate(person);
+      candidate.discoveryCategory = "people";
+      candidate.providers = [candidate.provider];
+      // eslint-disable-next-line no-await-in-loop
+      const merge = await mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, selfSignals, isStudentSearch: true, correlationId }, dependencies);
+      if (merge.outcome === "created" || merge.outcome === "merged") { perSourceEntry.accepted += 1; tallyFreshnessTier(run, merge.row.freshnessTier); }
+      if (merge.outcome === "created") perSourceEntry.acceptedNew += 1;
+      else if (merge.outcome === "merged") perSourceEntry.merged += 1;
+      else if (merge.outcome === "rejected_self") perSourceEntry.rejectedSelf += 1;
+      else if (merge.outcome === "rejected_crm") perSourceEntry.rejectedCrm += 1;
+      else if (merge.outcome === "rejected_dismissed") perSourceEntry.rejectedDismissed += 1;
+      else if (merge.outcome === "rejected_seller_or_vendor") perSourceEntry.rejectedSellerOrVendor += 1;
+      else if (merge.outcome === "rejected_invalid_identity") perSourceEntry.rejectedInvalidIdentity += 1;
+      tallyMergeOutcome(run, merge, "person");
+    }
+    reconcileUnexplainedRejections(run, perSourceEntry, perSourceEntry.entitiesExtracted);
+  } catch (error) {
+    // Unlike a web job, the direct Apollo phase is not a retryable job-array
+    // member — an ICP-derivation or Apollo API failure is recorded and the
+    // phase is simply marked done, matching how the PDL phase handles its
+    // own failures.
+    perSourceEntry.error = clean(error.message, 300);
+  } finally {
+    run.runSummary.perSource = [...(run.runSummary.perSource || []), perSourceEntry];
+    run.apolloPersonSearchDone = true;
+  }
+}
+
 const PDL_ICP_SCHEMA = {
   type: "object",
   properties: {
@@ -887,10 +982,16 @@ async function processNextBatch({ workspaceId, userId = null, auth = null, runId
     const selfSignals = await (dependencies.getWorkspaceSelfSignals || workspaceSelfExclusionService.getWorkspaceSelfSignals)({ workspaceId }, dependencies);
     let stoppedReason = "";
 
-    // The direct PDL Person Search phase runs at most once per run, before
-    // any web job, and independently of the web job loop/queryLimitPerRun —
-    // gated solely by includePdlPersonSearch (see model comment) and priced
-    // in its own credits, never the web cash cap below.
+    // Apollo runs first — cheapest, highest-confidence structured source —
+    // then PDL, then (below) the Vertex/OpenAI web jobs only fill whatever
+    // gap remains. Both direct-search phases run at most once per run,
+    // before any web job, independently of the web job loop/queryLimitPerRun,
+    // gated solely by their own include* flag (see model comment) and priced
+    // in their own credits, never the web cash cap below.
+    if (run.includeApolloPersonSearch && !run.apolloPersonSearchDone) {
+      await runApolloPersonSearchPhase({ workspaceId, userId, auth, run, selfSignals, correlationId }, dependencies);
+      stepsRun += 1;
+    }
     if (run.includePdlPersonSearch && !run.pdlPersonSearchDone) {
       await runPdlPersonSearchPhase({ workspaceId, userId, auth, run, selfSignals, correlationId }, dependencies);
       stepsRun += 1;
@@ -945,7 +1046,8 @@ async function processNextBatch({ workspaceId, userId = null, auth = null, runId
     } else {
       const allDone = run.nextJobIndex >= run.jobs.length
         && (!run.includePdlCrossReference || run.pdlCrossReferenceDone)
-        && (!run.includePdlPersonSearch || run.pdlPersonSearchDone);
+        && (!run.includePdlPersonSearch || run.pdlPersonSearchDone)
+        && (!run.includeApolloPersonSearch || run.apolloPersonSearchDone);
       if (stoppedReason === "provider_credit_cap_reached") {
         // Distinct from "completed" — a run stopped early by the budget cap
         // must never be reported the same way as one that finished all its
@@ -1066,6 +1168,10 @@ function explainZeroCallProviders(run) {
     const entry = (run.runSummary.perSource || []).find((p) => p.source === "pdl_person_search" && p.category !== "cross_reference");
     notes.push(`PDL Person Search was enabled but used 0 credits${entry?.error ? `: ${entry.error}` : "."}`);
   }
+  if (run.includeApolloPersonSearch && run.spend.apolloPersonSearchCredits === 0) {
+    const entry = (run.runSummary.perSource || []).find((p) => p.source === "apollo_person_search");
+    notes.push(`Apollo Person Search was enabled but used 0 credits${entry?.error ? `: ${entry.error}` : "."}`);
+  }
   if (run.includePdlCrossReference && run.spend.pdlCrossReferenceCredits === 0) {
     const entry = (run.runSummary.perSource || []).find((p) => p.category === "cross_reference");
     notes.push(`PDL cross-reference was enabled but used 0 credits${entry?.error ? `: ${entry.error}` : "."}`);
@@ -1118,7 +1224,7 @@ async function runDueDiscoverySchedules(dependencies = {}) {
           // eslint-disable-next-line no-await-in-loop
           run = await proposePublicWebDiscoveryRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, programNoteId: claimed.programNoteId, locations: [] }, dependencies);
           // eslint-disable-next-line no-await-in-loop
-          run = await approvePublicWebDiscoveryRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, runId: run._id, dailyCandidateTarget: claimed.dailyCandidateTarget, pageLimitPerQuery: claimed.pageLimitPerQuery, queryLimitPerRun: claimed.queryLimitPerRun, providerCreditCapUsd: claimed.providerCreditCapUsd, includePdlCrossReference: claimed.includePdlCrossReference, includePdlPersonSearch: claimed.includePdlPersonSearch, maxPdlPersonSearchCredits: claimed.maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: claimed.maxPdlCrossReferenceCredits, sources: claimed.sources, maxAttemptsPerJob: claimed.maxAttemptsPerJob }, dependencies);
+          run = await approvePublicWebDiscoveryRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, runId: run._id, dailyCandidateTarget: claimed.dailyCandidateTarget, pageLimitPerQuery: claimed.pageLimitPerQuery, queryLimitPerRun: claimed.queryLimitPerRun, providerCreditCapUsd: claimed.providerCreditCapUsd, includePdlCrossReference: claimed.includePdlCrossReference, includePdlPersonSearch: claimed.includePdlPersonSearch, maxPdlPersonSearchCredits: claimed.maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: claimed.maxPdlCrossReferenceCredits, includeApolloPersonSearch: claimed.includeApolloPersonSearch, maxApolloPersonSearchCredits: claimed.maxApolloPersonSearchCredits, sources: claimed.sources, maxAttemptsPerJob: claimed.maxAttemptsPerJob }, dependencies);
           claimed.currentRunId = run._id;
         }
         // eslint-disable-next-line no-await-in-loop

@@ -32,6 +32,12 @@ const discoveryScheduleSchema = new mongoose.Schema({
   maxPdlPersonSearchCredits: { type: Number, default: 25, min: 0, max: 500 },
   maxPdlCrossReferenceCredits: { type: Number, default: 25, min: 0, max: 500 },
   includePdlCrossReference: { type: Boolean, default: true },
+  // Mirrors includePdlPersonSearch exactly — Apollo Person Search as its own
+  // independent candidate source for the recurring schedule, not only the
+  // one-off manual run. Defaults on, same as PDL, since the schedule itself
+  // still defaults to enabled: false until the owner turns it on.
+  includeApolloPersonSearch: { type: Boolean, default: true },
+  maxApolloPersonSearchCredits: { type: Number, default: 25, min: 0, max: 500 },
   maxAttemptsPerJob: { type: Number, default: 3, min: 1, max: 10 },
   nextRunAt: { type: Date, default: null },
   runRequestedAt: { type: Date, default: null },

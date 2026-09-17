@@ -110,6 +110,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
       queryLimitPerRun: r.queryLimitPerRun, pageLimitPerQuery: r.pageLimitPerQuery, providerCreditCapUsd: r.providerCreditCapUsd,
       includePdlPersonSearch: r.includePdlPersonSearch, maxPdlPersonSearchCredits: r.maxPdlPersonSearchCredits,
       includePdlCrossReference: r.includePdlCrossReference, maxPdlCrossReferenceCredits: r.maxPdlCrossReferenceCredits,
+      includeApolloPersonSearch: r.includeApolloPersonSearch, maxApolloPersonSearchCredits: r.maxApolloPersonSearchCredits,
       maxAttemptsPerJob: r.retryPolicy?.maxAttemptsPerJob,
     })),
   );
@@ -123,6 +124,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
           queryLimitPerRun: run.queryLimitPerRun, pageLimitPerQuery: run.pageLimitPerQuery, providerCreditCapUsd: run.providerCreditCapUsd,
           includePdlPersonSearch: run.includePdlPersonSearch, maxPdlPersonSearchCredits: run.maxPdlPersonSearchCredits,
           includePdlCrossReference: run.includePdlCrossReference, maxPdlCrossReferenceCredits: run.maxPdlCrossReferenceCredits,
+          includeApolloPersonSearch: run.includeApolloPersonSearch, maxApolloPersonSearchCredits: run.maxApolloPersonSearchCredits,
           maxAttemptsPerJob: run.retryPolicy?.maxAttemptsPerJob,
         }).then((response) => {
           setPlanPreviewByRun((current) => ({ ...current, [run._id]: response.data }));
@@ -189,6 +191,8 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
       includePdlPersonSearch: run.includePdlPersonSearch,
       maxPdlPersonSearchCredits: run.maxPdlPersonSearchCredits,
       maxPdlCrossReferenceCredits: run.maxPdlCrossReferenceCredits,
+      includeApolloPersonSearch: run.includeApolloPersonSearch,
+      maxApolloPersonSearchCredits: run.maxApolloPersonSearchCredits,
       maxAttemptsPerJob: run.retryPolicy?.maxAttemptsPerJob,
       sources: run.sources,
     });
@@ -303,6 +307,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
         queryLimitPerRun: run.queryLimitPerRun, providerCreditCapUsd: run.providerCreditCapUsd,
         includePdlCrossReference: run.includePdlCrossReference, includePdlPersonSearch: run.includePdlPersonSearch,
         maxPdlPersonSearchCredits: run.maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: run.maxPdlCrossReferenceCredits,
+        includeApolloPersonSearch: run.includeApolloPersonSearch, maxApolloPersonSearchCredits: run.maxApolloPersonSearchCredits,
         maxAttemptsPerJob: run.retryPolicy?.maxAttemptsPerJob,
         sources: run.sources,
       });
@@ -411,6 +416,15 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
             </div>
 
             <div className="leadgen-field-group">
+              <span className="leadgen-field-label">Apollo — tracked in its own credits, never converted to web cash. Runs first, before PDL and web search.</span>
+              <div className="leadgen-review-grid">
+                <label className="leadgen-run-checkbox"><input type="checkbox" checked={run.includeApolloPersonSearch} onChange={(event) => updateRunField(run, "includeApolloPersonSearch", event.target.checked)} /><span>Apollo Person Search (independent candidate source)</span></label>
+                <label><span>Max Apollo Person Search credits</span><input type="number" min="0" max="500" disabled={!run.includeApolloPersonSearch} value={run.maxApolloPersonSearchCredits} onChange={(event) => updateRunField(run, "maxApolloPersonSearchCredits", Number(event.target.value))} /></label>
+              </div>
+              <p className="leadgen-run-disclosure">This toggle is the ONLY thing that turns the Apollo call on or off — when off, nothing is enqueued, called, estimated, or charged for it.</p>
+            </div>
+
+            <div className="leadgen-field-group">
               <span className="leadgen-field-label">PDL (People Data Labs) — tracked in its own credits, never converted to web cash</span>
               <div className="leadgen-review-grid">
                 <label className="leadgen-run-checkbox"><input type="checkbox" checked={run.includePdlPersonSearch} onChange={(event) => updateRunField(run, "includePdlPersonSearch", event.target.checked)} /><span>PDL Person Search (independent candidate source)</span></label>
@@ -432,6 +446,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
               <dt>Expected people</dt><dd>~{run.estimatedCreditUse?.expectedPeople ?? "?"} (rough estimate — direct outreach candidates)</dd>
               <dt>Expected communities/organizations</dt><dd>~{run.estimatedCreditUse?.expectedCommunitiesOrganizations ?? "?"} (rough estimate — need an organizer/partnership approach, not direct outreach)</dd>
               <dt>Target</dt><dd>{run.dailyCandidateTarget} {run.targetType === "person" ? "unique people specifically" : "candidates of any type"}</dd>
+              <dt>Maximum Apollo Person Search credits</dt><dd>{preview ? preview.maxApolloPersonSearchCredits : "…"}</dd>
               <dt>Maximum PDL Person Search credits</dt><dd>{preview ? preview.maxPdlPersonSearchCredits : "…"}</dd>
               <dt>Maximum PDL cross-reference credits</dt><dd>{preview ? preview.maxPdlCrossReferenceCredits : "…"}</dd>
               <dt>Maximum Vertex calls</dt><dd>{preview ? `${preview.maxVertexCallsInitial} initial` : "…"}{preview?.maxVertexRetryExposure ? ` (up to ${preview.maxVertexRetryExposure} more only if a query fails and is retried)` : ""}</dd>
@@ -468,6 +483,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
             ) : null}
             {run.runSummary?.explanation ? <p className="leadgen-run-explanation">{run.runSummary.explanation}</p> : null}
             <dl className="leadgen-review-summary">
+              <dt>Apollo Person Search credits used</dt><dd>{run.spend?.apolloPersonSearchCredits || 0} of {run.maxApolloPersonSearchCredits} max{!run.includeApolloPersonSearch ? " (off)" : ""}</dd>
               <dt>PDL Person Search credits used</dt><dd>{run.spend?.pdlPersonSearchCredits || 0} of {run.maxPdlPersonSearchCredits} max{!run.includePdlPersonSearch ? " (off)" : ""}</dd>
               <dt>PDL cross-reference credits used</dt><dd>{run.spend?.pdlCrossReferenceCredits || 0} of {run.maxPdlCrossReferenceCredits} max{!run.includePdlCrossReference ? " (off)" : ""}</dd>
               <dt>Vertex calls</dt><dd>{run.spend?.vertexCalls || 0}</dd>

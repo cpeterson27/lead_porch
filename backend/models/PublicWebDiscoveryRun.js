@@ -104,6 +104,15 @@ const publicWebDiscoveryRunSchema = new mongoose.Schema({
   maxPdlCrossReferenceCredits: { type: Number, default: 25, min: 0, max: 500 },
   includePdlCrossReference: { type: Boolean, default: true },
   pdlCrossReferenceDone: { type: Boolean, default: false },
+  // Mirrors includePdlPersonSearch/pdlPersonSearchDone exactly — the direct
+  // Apollo Person Search phase's own independent on/off switch and
+  // once-per-run completion flag. Apollo is billed in its own per-record
+  // credits too, tracked separately from providerCreditCapUsd/spend.estimatedUsd
+  // for the same reason PDL's credits are kept separate — see the comment
+  // on maxPdlPersonSearchCredits above.
+  includeApolloPersonSearch: { type: Boolean, default: true },
+  apolloPersonSearchDone: { type: Boolean, default: false },
+  maxApolloPersonSearchCredits: { type: Number, default: 25, min: 0, max: 500 },
   // The owner's provider selection at approval time, persisted so a
   // completed/capped run can honestly report WHY an enabled provider ended
   // up with zero calls (query limit, edits, cap, or every query failing)
@@ -129,6 +138,7 @@ const publicWebDiscoveryRunSchema = new mongoose.Schema({
     // estimate below, never combined into one figure.
     maxPdlPersonSearchCredits: { type: Number, default: 0 },
     maxPdlCrossReferenceCredits: { type: Number, default: 0 },
+    maxApolloPersonSearchCredits: { type: Number, default: 0 },
     // Set only when providerCreditCapUsd is well above the conservative
     // recommended default — this app does not track a workspace-wide
     // spending limit, so this is a relative safety comparison, not a real
@@ -146,6 +156,7 @@ const publicWebDiscoveryRunSchema = new mongoose.Schema({
     pdlCandidates: { type: Number, default: 0 },
     pdlPersonSearchCredits: { type: Number, default: 0 },
     pdlCrossReferenceCredits: { type: Number, default: 0 },
+    apolloPersonSearchCredits: { type: Number, default: 0 },
     // Web-search cash ONLY (Vertex + OpenAI calls) — PDL is never added
     // here. Checked directly against providerCreditCapUsd.
     estimatedUsd: { type: Number, default: 0 },

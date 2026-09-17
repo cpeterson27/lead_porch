@@ -670,6 +670,65 @@ async function testRunPdlPersonSearchPhaseActsAsIndependentCandidateSourceNotOnl
   assert.equal(outcome.run.spend.estimatedUsd, 0, "PDL must never be converted into web cash");
 }
 
+// Mirrors testRunPdlPersonSearchPhaseActsAsIndependentCandidateSourceNotOnlyCrossReference
+// exactly — the owner's explicit, repeated ask was for Apollo to run as its
+// own independent candidate source in the recurring/scheduled engine too,
+// not just PDL.
+async function testRunApolloPersonSearchPhaseActsAsIndependentCandidateSourceAlongsidePdl() {
+  const run = fakePublicWebDiscoveryRunModel([{
+    _id: "run-apollo", workspaceId: WORKSPACE_ID, status: "queued",
+    jobs: [], nextJobIndex: 0, dailyCandidateTarget: 25, targetType: "person", pageLimitPerQuery: 1, queryLimitPerRun: 10, providerCreditCapUsd: 5,
+    includeApolloPersonSearch: true, apolloPersonSearchDone: false, maxApolloPersonSearchCredits: 25,
+    includePdlPersonSearch: false, pdlPersonSearchDone: false, maxPdlPersonSearchCredits: 25,
+    includePdlCrossReference: false, pdlCrossReferenceDone: false, maxPdlCrossReferenceCredits: 25, retryPolicy: { maxAttemptsPerJob: 2 },
+    estimatedCreditUse: {}, spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, pdlPersonSearchCredits: 0, pdlCrossReferenceCredits: 0, apolloPersonSearchCredits: 0, estimatedUsd: 0 },
+    runSummary: { created: 0, merged: 0, rejectedSelfMatch: 0, rejectedCrmDuplicate: 0, rejectedPreviouslyDismissed: 0, rejectedAlreadyInQueue: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedBudgetCap: 0, unexplainedRejections: 0, personAccepted: 0, crawlBlockedByRobots: 0, crawlSkippedLoginWall: 0, crawlErrors: 0, byFreshnessTier: { recent: 0, aging: 0, evergreen: 0 }, perSource: [], explanation: "", zeroCallReasons: [] },
+    programNoteId: "note-1",
+  }]).rows[0];
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([run]);
+  const GroundingResearchResult = fakeGroundingResultModel();
+  const runAgent = async () => ({ output: { titles: ["Real Estate Agent"], locations: ["Texas"], industries: [] } });
+  const apolloService = { searchPeople: async () => ({ people: [{ fullName: "Apollo-Found Investor", company: "", companyDomain: "", linkedinUrl: "", email: "", emailState: "" }] }) };
+  const JarvisMemoryNote = fakeNoteModel({ _id: "note-1", workspaceId: WORKSPACE_ID, title: "Multifamily Bootcamp", content: "A coaching program for real estate investors." });
+
+  const outcome = await processNextBatch(
+    { workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-apollo", batchSize: 1 },
+    { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, GroundingResearchResult, apolloService, runAgent, JarvisMemoryNote, Contact: fakeLookupModel([]), Organization: fakeLookupModel([]), getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }), isSelfMatch: () => ({ isSelf: false, reasons: [] }) },
+  );
+
+  assert.equal(GroundingResearchResult.rows.length, 1, "Apollo must independently stage a candidate on its own, exactly like the direct PDL phase");
+  const perSourceEntry = outcome.run.runSummary.perSource.find((e) => e.source === "apollo_person_search");
+  assert.ok(perSourceEntry, "Apollo's own contribution must be clearly reported as its own perSource row");
+  assert.equal(outcome.run.runSummary.personAccepted, 1);
+  assert.equal(outcome.run.spend.apolloPersonSearchCredits, 1, "Apollo credits are tracked in their own counter");
+  assert.equal(outcome.run.spend.estimatedUsd, 0, "Apollo must never be converted into web cash, same as PDL");
+}
+
+async function testApolloPersonSearchPhaseSkipsTheCallEntirelyWhenCreditLimitReached() {
+  const run = fakePublicWebDiscoveryRunModel([{
+    _id: "run-apollo-capped", workspaceId: WORKSPACE_ID, status: "queued", jobs: [], nextJobIndex: 0,
+    dailyCandidateTarget: 25, targetType: "person", pageLimitPerQuery: 1, queryLimitPerRun: 10, providerCreditCapUsd: 5,
+    includeApolloPersonSearch: true, apolloPersonSearchDone: false, maxApolloPersonSearchCredits: 5,
+    includePdlPersonSearch: false, pdlPersonSearchDone: false, maxPdlPersonSearchCredits: 25,
+    includePdlCrossReference: false, pdlCrossReferenceDone: false, maxPdlCrossReferenceCredits: 25, retryPolicy: { maxAttemptsPerJob: 2 },
+    estimatedCreditUse: {}, spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, pdlPersonSearchCredits: 0, pdlCrossReferenceCredits: 0, apolloPersonSearchCredits: 5, estimatedUsd: 0 },
+    runSummary: { created: 0, merged: 0, rejectedSelfMatch: 0, rejectedCrmDuplicate: 0, rejectedPreviouslyDismissed: 0, rejectedAlreadyInQueue: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedBudgetCap: 0, unexplainedRejections: 0, personAccepted: 0, crawlBlockedByRobots: 0, crawlSkippedLoginWall: 0, crawlErrors: 0, byFreshnessTier: { recent: 0, aging: 0, evergreen: 0 }, perSource: [], explanation: "", zeroCallReasons: [] },
+    programNoteId: "note-1",
+  }]).rows[0];
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([run]);
+  const GroundingResearchResult = fakeGroundingResultModel();
+  let called = false;
+  const apolloService = { searchPeople: async () => { called = true; return { people: [] }; } };
+  const JarvisMemoryNote = fakeNoteModel({ _id: "note-1", workspaceId: WORKSPACE_ID, title: "Multifamily Bootcamp", content: "A coaching program for real estate investors." });
+
+  const outcome = await processNextBatch(
+    { workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-apollo-capped", batchSize: 1 },
+    { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, GroundingResearchResult, apolloService, JarvisMemoryNote, Contact: fakeLookupModel([]), Organization: fakeLookupModel([]), getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }), isSelfMatch: () => ({ isSelf: false, reasons: [] }) },
+  );
+  assert.equal(called, false, "Apollo must never be called once its own credit cap is already reached");
+  assert.equal(outcome.run.apolloPersonSearchDone, true, "the phase must still be marked done — never re-attempted on the next tick");
+}
+
 async function testRunPdlCrossReferenceIsLabeledDistinctlyFromTheDirectSource() {
   const run = fakePublicWebDiscoveryRunModel([{
     _id: "run-xref", workspaceId: WORKSPACE_ID, status: "queued", jobs: [], nextJobIndex: 0,
@@ -1137,6 +1196,8 @@ async function run() {
   testAcceptedCountForTargetRespectsTargetType();
   await testProposeStudentSearchPresetOrdersTiersAndAppliesSafeDefaults();
   await testRunPdlPersonSearchPhaseActsAsIndependentCandidateSourceNotOnlyCrossReference();
+  await testRunApolloPersonSearchPhaseActsAsIndependentCandidateSourceAlongsidePdl();
+  await testApolloPersonSearchPhaseSkipsTheCallEntirelyWhenCreditLimitReached();
   await testRunPdlCrossReferenceIsLabeledDistinctlyFromTheDirectSource();
   testRoundRobinBySourceGloballyAlternatesAcrossCategoriesNotJustWithinOne();
   testReconcileUnexplainedRejectionsCatchesTheExactReportedGap();
@@ -1152,7 +1213,7 @@ async function run() {
   await testProcessNextBatchFallsBackToARawUpdateWhenRunSaveItselfFails();
   await testRunDueDiscoverySchedulesSkipsDisabledSchedules();
   await testRunDueDiscoverySchedulesProcessesAnEnabledDueSchedule();
-  console.log("Public Web Discovery engine: robots.txt/rate-limit/login-wall/Facebook-LinkedIn-denylist crawler compliance (fails closed on unverifiable robots.txt, never fetches the page when disallowed), freshness TIERING (labels recent/aging/evergreen — never drops an old or undated lead), dedup against self-match/CRM/dismissed-records/previous-runs, checkpointed+resumable+retryable batch processing with a hard provider-credit-cap stop and an honest explanation, and a scheduler that never acts on a disabled schedule but genuinely runs an enabled+due one — all passed.");
+  console.log("Public Web Discovery engine: robots.txt/rate-limit/login-wall/Facebook-LinkedIn-denylist crawler compliance (fails closed on unverifiable robots.txt, never fetches the page when disallowed), freshness TIERING (labels recent/aging/evergreen — never drops an old or undated lead), dedup against self-match/CRM/dismissed-records/previous-runs, checkpointed+resumable+retryable batch processing with a hard provider-credit-cap stop and an honest explanation, Apollo Person Search running as its own independent candidate source alongside PDL (own credit ceiling, never counted as web cash, never called once its cap is reached), and a scheduler that never acts on a disabled schedule but genuinely runs an enabled+due one — all passed.");
 }
 
 run().catch((error) => {
