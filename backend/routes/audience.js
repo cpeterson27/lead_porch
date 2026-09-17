@@ -670,6 +670,27 @@ router.get("/research/people-previews", async (req, res) => {
 });
 
 /**
+ * There was previously no way to remove a stale staged batch at all —
+ * "Previously staged Jarvis searches" only ever grew. A genuine delete (not
+ * a status flip) is appropriate here, unlike leads: this model only ever
+ * holds disposable staging batches, never a record of a real decision, so
+ * there's nothing worth preserving under a "dismissed" filter. Refuses to
+ * delete an already-imported batch — that one has real downstream history
+ * (real CRM contacts trace back to it).
+ */
+router.delete("/research/people-previews/:id", async (req, res) => {
+  try {
+    const preview = await PeopleResearchPreview.findOne({ _id: req.params.id, workspaceId: req.auth.workspaceId });
+    if (!preview) return res.status(404).json({ success: false, error: "Staged research batch not found." });
+    if (preview.status === "imported") return res.status(400).json({ success: false, error: "This batch was already imported to CRM and can't be deleted — its history is real." });
+    await preview.deleteOne();
+    return res.json({ success: true, deleted: String(preview._id) });
+  } catch (_error) {
+    return res.status(500).json({ success: false, error: "Unable to delete this staged research batch." });
+  }
+});
+
+/**
  * Two OPTIONAL public-web research sources for Discovery People Research —
  * Vertex AI Grounding and OpenAI Responses API web_search, selected via
  * `source` ("vertex" | "openai_web_search" | "both", default "both") and

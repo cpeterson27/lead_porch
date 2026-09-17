@@ -17,6 +17,7 @@ import {
   fetchMarketResearchResults,
   fetchMarketResearchHistory,
   fetchPeopleResearchPreviews,
+  deletePeopleResearchPreview,
   fetchMarketResearchSources,
   fetchResearchMonitors,
   fetchResearchMonitorPresets,
@@ -939,6 +940,17 @@ export default function Discovery() {
     }
   };
 
+  const removePeoplePreview = async (preview) => {
+    if (!window.confirm(`Delete this staged batch ("${preview.name}")? This can't be undone.`)) return;
+    try {
+      await deletePeopleResearchPreview(preview._id);
+      setPeoplePreviews((current) => current.filter((row) => String(row._id) !== String(preview._id)));
+      setNotice("Staged research batch deleted.");
+    } catch (err) {
+      setNotice(err.response?.data?.error || "Unable to delete this staged research batch.");
+    }
+  };
+
   const loadAutomaticResearch = async () => {
     try {
       const [monitorResponse, signalResponse, liveLeadResponse, activityResponse] = await Promise.all([fetchResearchMonitors(), fetchIntentSignals({ limit: 150 }), fetchIntentSignals({ bucket: "live_lead", limit: 150 }), fetchResearchActivity({ limit: 100 })]);
@@ -1568,6 +1580,7 @@ export default function Discovery() {
               <div><span>{preview.status.replaceAll("_", " ")}</span><strong>{preview.name}</strong><small>{new Date(preview.updatedAt).toLocaleString()} · {preview.source === "chatgpt_public_web" ? "ChatGPT connection" : "Jarvis"} public-web research</small></div>
               <div className="people-preview-summary"><strong>{preview.summary?.total || preview.people?.length || 0}</strong><span>people</span><small>{preview.summary?.newContacts || 0} new · {preview.summary?.existingContacts || 0} existing · {preview.summary?.publishedEmails || 0} published emails</small></div>
               <Button size="sm" variant="outline" onClick={() => setOpenPeoplePreviewId(isOpen ? "" : String(preview._id))}>{isOpen ? "Hide people" : "Review people"}</Button>
+              {preview.status !== "imported" ? <Button size="sm" variant="outline" onClick={() => removePeoplePreview(preview)}>Delete</Button> : null}
             </header>
             {isOpen ? <div className="people-preview-rows">{(preview.people || []).map((person, index) => <div className="people-preview-person" key={`${person.firstName}-${person.lastName}-${person.company}-${index}`}>
               <div><strong>{[person.firstName, person.lastName].filter(Boolean).join(" ") || "Unnamed person"}</strong><span>{[person.title, person.company].filter(Boolean).join(" · ") || "Role needs review"}</span></div>

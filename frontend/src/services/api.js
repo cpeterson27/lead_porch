@@ -1205,6 +1205,11 @@ export const fetchPeopleResearchPreviews = (limit = 20) =>
     .get("/audience/research/people-previews", { params: { limit } })
     .then((res) => res.data);
 
+export const deletePeopleResearchPreview = (previewId) =>
+  api
+    .delete(`/audience/research/people-previews/${previewId}`)
+    .then((res) => res.data);
+
 // Vertex AI Grounding — optional public-web research source for Discovery.
 // Its own longer timeout, same reasoning as runVertexGrounding: not a
 // change to the shared client's default.
