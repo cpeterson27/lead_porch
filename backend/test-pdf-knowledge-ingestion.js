@@ -144,12 +144,69 @@ async function testListNotesFiltersByLinkedCoachingProgramId() {
   console.log("PASS testListNotesFiltersByLinkedCoachingProgramId");
 }
 
+// ---- approval-time auto-apply (no manual "Apply" click anymore) ----
+function fakeProgramDoc(initial) {
+  const doc = { ...initial, saveCalls: 0 };
+  doc.save = async function save() { doc.saveCalls += 1; };
+  return doc;
+}
+
+async function testApprovalAppendsIcpIntoEmptyInternalSummary() {
+  const program = fakeProgramDoc({ _id: PROGRAM_ID, workspaceId: WORKSPACE_ID, internalSummary: "" });
+  const ProgramModel = { findOne: async () => program };
+  const updateOneCalls = [];
+  const Model = { updateOne: async (filter, update) => updateOneCalls.push({ filter, update }) };
+  const note = { _id: "note-1", category: "offers-programs", linkedCoachingProgramId: PROGRAM_ID, aiAnalysis: { idealCustomerProfile: "ICP text" }, icpAppliedToProgram: false };
+  await jarvisMemoryService.applyIcpToProgramOnApproval(note, { workspaceId: WORKSPACE_ID, userId: "user-1" }, Model, ProgramModel);
+  assert.equal(program.internalSummary, "ICP text");
+  assert.equal(program.saveCalls, 1);
+  assert.equal(updateOneCalls.length, 1);
+  assert.equal(updateOneCalls[0].update.$set.icpAppliedToProgram, true);
+  console.log("PASS testApprovalAppendsIcpIntoEmptyInternalSummary");
+}
+
+async function testApprovalAppendsAfterExistingInternalSummaryText() {
+  const program = fakeProgramDoc({ _id: PROGRAM_ID, workspaceId: WORKSPACE_ID, internalSummary: "Hand-written notes already here." });
+  const ProgramModel = { findOne: async () => program };
+  const Model = { updateOne: async () => {} };
+  const note = { _id: "note-1", category: "offers-programs", linkedCoachingProgramId: PROGRAM_ID, aiAnalysis: { idealCustomerProfile: "ICP text" }, icpAppliedToProgram: false };
+  await jarvisMemoryService.applyIcpToProgramOnApproval(note, { workspaceId: WORKSPACE_ID, userId: "user-1" }, Model, ProgramModel);
+  assert.equal(program.internalSummary, "Hand-written notes already here.\n\nICP text");
+  console.log("PASS testApprovalAppendsAfterExistingInternalSummaryText");
+}
+
+async function testApprovalIsIdempotentOnceAlreadyApplied() {
+  const program = fakeProgramDoc({ _id: PROGRAM_ID, workspaceId: WORKSPACE_ID, internalSummary: "Already applied once." });
+  const ProgramModel = { findOne: async () => { throw new Error("should never be looked up again"); } };
+  const Model = { updateOne: async () => { throw new Error("should never be called again"); } };
+  const note = { _id: "note-1", category: "offers-programs", linkedCoachingProgramId: PROGRAM_ID, aiAnalysis: { idealCustomerProfile: "ICP text" }, icpAppliedToProgram: true };
+  await jarvisMemoryService.applyIcpToProgramOnApproval(note, { workspaceId: WORKSPACE_ID, userId: "user-1" }, Model, ProgramModel);
+  assert.equal(program.internalSummary, "Already applied once.");
+  console.log("PASS testApprovalIsIdempotentOnceAlreadyApplied");
+}
+
+async function testApprovalSkipsNotesWithNoLinkedProgramOrNoIcp() {
+  const ProgramModel = { findOne: async () => { throw new Error("should never be looked up"); } };
+  const Model = { updateOne: async () => { throw new Error("should never be called"); } };
+  const unlinked = { _id: "note-1", category: "offers-programs", linkedCoachingProgramId: null, aiAnalysis: { idealCustomerProfile: "ICP text" }, icpAppliedToProgram: false };
+  await jarvisMemoryService.applyIcpToProgramOnApproval(unlinked, { workspaceId: WORKSPACE_ID, userId: "user-1" }, Model, ProgramModel);
+  const noAnalysis = { _id: "note-2", category: "offers-programs", linkedCoachingProgramId: PROGRAM_ID, aiAnalysis: undefined, icpAppliedToProgram: false };
+  await jarvisMemoryService.applyIcpToProgramOnApproval(noAnalysis, { workspaceId: WORKSPACE_ID, userId: "user-1" }, Model, ProgramModel);
+  const wrongCategory = { _id: "note-3", category: "sops", linkedCoachingProgramId: PROGRAM_ID, aiAnalysis: { idealCustomerProfile: "ICP text" }, icpAppliedToProgram: false };
+  await jarvisMemoryService.applyIcpToProgramOnApproval(wrongCategory, { workspaceId: WORKSPACE_ID, userId: "user-1" }, Model, ProgramModel);
+  console.log("PASS testApprovalSkipsNotesWithNoLinkedProgramOrNoIcp");
+}
+
 (async () => {
   await testStoresStructuredAiAnalysisOnTheNote();
   await testLinksToAValidProgramInTheSameWorkspace();
   await testDropsAProgramIdFromAnotherWorkspaceInsteadOfThrowing();
   await testNeverInventsAiAnalysisWhenAnalysisFails();
   await testListNotesFiltersByLinkedCoachingProgramId();
+  await testApprovalAppendsIcpIntoEmptyInternalSummary();
+  await testApprovalAppendsAfterExistingInternalSummaryText();
+  await testApprovalIsIdempotentOnceAlreadyApplied();
+  await testApprovalSkipsNotesWithNoLinkedProgramOrNoIcp();
   console.log("\nAll PDF-to-Internal-Summary linking tests passed.");
 })().catch((error) => {
   console.error("FAIL", error);

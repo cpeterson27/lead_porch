@@ -287,7 +287,7 @@ async function getNote({ workspaceId, noteId } = {}, Model = JarvisMemoryNote) {
   return note;
 }
 
-async function approveNote({ workspaceId, noteId, userId, effectiveDate, reviewDate, ownerLabel } = {}, Model = JarvisMemoryNote) {
+async function approveNote({ workspaceId, noteId, userId, effectiveDate, reviewDate, ownerLabel } = {}, Model = JarvisMemoryNote, ProgramModel) {
   const note = await Model.findOneAndUpdate(
     { _id: noteId, workspaceId },
     { $set: { status: "approved", approvedByUserId: userId, approvedAt: new Date(), rejectedByUserId: null, rejectedAt: null, rejectionReason: "", ...(effectiveDate !== undefined ? { effectiveDate: effectiveDate ? new Date(effectiveDate) : null } : {}), ...(reviewDate !== undefined ? { reviewDate: reviewDate ? new Date(reviewDate) : null } : {}), ...(ownerLabel !== undefined ? { ownerLabel: String(ownerLabel || "").trim().slice(0, 120) } : {}) } },
@@ -296,7 +296,27 @@ async function approveNote({ workspaceId, noteId, userId, effectiveDate, reviewD
   if (!note) { const error = new Error("Knowledge note not found"); error.code = "MEMORY_NOTE_NOT_FOUND"; throw error; }
   await auditService.record({ workspaceId, actorUserId: userId, action: "knowledge.note.approved", targetType: "JarvisMemoryNote", targetId: note._id, after: { status: "approved", ownerLabel: note.ownerLabel }, success: true });
   await require("./discoveryEngineSyncService").indexApprovedNote(note);
+  await applyIcpToProgramOnApproval(note, { workspaceId, userId }, Model, ProgramModel || require("../models/CoachingProgram"));
   return note;
+}
+
+/**
+ * The one moment a program-linked PDF's AI-drafted ideal customer profile
+ * reaches Internal Summary (the field that drives lead-search targeting) —
+ * approving the note, the same review step every Knowledge Center upload
+ * already requires. No separate "apply" click: approval IS the apply.
+ * icpAppliedToProgram guards against appending twice if a note is later
+ * rejected and re-approved.
+ */
+async function applyIcpToProgramOnApproval(note, { workspaceId, userId }, Model, ProgramModel) {
+  if (note.category !== "offers-programs" || !note.linkedCoachingProgramId || !note.aiAnalysis?.idealCustomerProfile || note.icpAppliedToProgram) return;
+  const program = await ProgramModel.findOne({ _id: note.linkedCoachingProgramId, workspaceId });
+  if (!program) return;
+  const addition = note.aiAnalysis.idealCustomerProfile;
+  program.internalSummary = program.internalSummary ? `${program.internalSummary}\n\n${addition}` : addition;
+  await program.save();
+  await Model.updateOne({ _id: note._id }, { $set: { icpAppliedToProgram: true } });
+  await auditService.record({ workspaceId, actorUserId: userId, action: "coaching_program.internal_summary.auto_applied_from_pdf", targetType: "CoachingProgram", targetId: program._id, after: { sourceNoteId: note._id }, success: true });
 }
 
 async function rejectNote({ workspaceId, noteId, userId, reason = "" } = {}, Model = JarvisMemoryNote) {
@@ -354,4 +374,4 @@ async function restoreVersion({ workspaceId, noteId, userId, version } = {}, Mod
   return note;
 }
 
-module.exports = { CATEGORY_FOLDERS, KNOWLEDGE_FOLDERS, approveNote, archiveNote, categoryForPath, deleteNote, getNote, getStatus, isSafeNotePath, listNotes, localWorkspaceAllowed, memorySource, recordConversation, rejectNote, restoreVersion, retrieveCloudNotes, retrieveRelevantNotes, saveApprovedMemory, syncCloudNotes };
+module.exports = { CATEGORY_FOLDERS, KNOWLEDGE_FOLDERS, approveNote, archiveNote, categoryForPath, deleteNote, getNote, getStatus, isSafeNotePath, listNotes, localWorkspaceAllowed, memorySource, recordConversation, rejectNote, restoreVersion, retrieveCloudNotes, retrieveRelevantNotes, saveApprovedMemory, syncCloudNotes, applyIcpToProgramOnApproval };

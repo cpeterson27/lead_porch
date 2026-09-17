@@ -50,6 +50,11 @@ const jarvisMemoryNoteSchema = new mongoose.Schema({
     }, { _id: false }),
     default: undefined,
   },
+  // Set the moment idealCustomerProfile is appended into the linked
+  // program's Internal Summary (on approval — see
+  // jarvisMemoryService.applyIcpToProgramOnApproval). Prevents a re-approval
+  // after a reject from appending the same text twice.
+  icpAppliedToProgram: { type: Boolean, default: false },
   sourceUpdatedAt: { type: Date, default: null },
   createdByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   approvedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },

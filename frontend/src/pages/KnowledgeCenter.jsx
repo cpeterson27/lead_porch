@@ -303,10 +303,10 @@ export default function KnowledgeCenter() {
                 </select>
               </label>
               <p className="knowledge-upload-explainer">
-                Pick a program here and, once you approve this PDF below, its edit
-                screen will show the AI-drafted ideal customer profile with a
-                one-click button to copy it into that program's Internal
-                Summary — no extra AI call, no risk to the public website.
+                Pick a program here and, once you approve this PDF below, its
+                AI-drafted ideal customer profile is added to that program's
+                Internal Summary automatically — nothing else to click. No
+                extra AI call, and no risk to the public website.
               </p>
             </div>
           ) : null}
