@@ -11,6 +11,9 @@ import {
   createMarketResearchPlan,
   deleteContact,
   discoverAudienceOrganizations,
+  fetchMarketResearchSources,
+  startExternalMarketResearch,
+  fetchMarketResearchJob,
   fetchCampaigns,
   fetchContacts,
   fetchDiscoveryTemplates,
@@ -311,6 +314,9 @@ export default function Discovery() {
   const [researchResult, setResearchResult] = useState(null);
   const [researchOrganizations, setResearchOrganizations] = useState([]);
   const [researchHistory, setResearchHistory] = useState([]);
+  const [apolloSourceStatus, setApolloSourceStatus] = useState(null);
+  const [apolloSearching, setApolloSearching] = useState(false);
+  const [apolloJob, setApolloJob] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [openingHistoryId, setOpeningHistoryId] = useState("");
   const [peoplePreviews, setPeoplePreviews] = useState([]);
@@ -1011,6 +1017,7 @@ export default function Discovery() {
       loadProspects().catch(() => setNotice("Unable to load prospects."));
       fetchCampaigns().then((items) => setCampaigns(Array.isArray(items) ? items : [])).catch(() => {});
       fetchDiscoveryTemplates().then((data) => setTemplates(data.templates || [])).catch(() => {});
+      fetchMarketResearchSources().then((data) => setApolloSourceStatus(data.sources?.[0] || null)).catch(() => {});
       fetchResearchMonitorPresets().then((data) => setMonitorPresets(data.presets || [])).catch(() => {});
       refreshResearchRef.current?.();
     };
@@ -1358,6 +1365,53 @@ export default function Discovery() {
       setNotice(error.response?.data?.error || "Lead Porch could not complete this research run.");
     } finally {
       setRunning(false);
+    }
+  };
+
+  // Real external search — via Apollo Organization Search, replacing the
+  // old empty owned-index engine. Separate from runResearch() above (which
+  // only filters organizations already in your CRM): this one can add
+  // genuinely NEW companies. Builds its plan straight from the same
+  // Research criteria fields, so it works whether or not "Build a market
+  // research plan" was ever used.
+  const runApolloCompanySearch = async () => {
+    const payload = buildAudiencePayload(target);
+    if (!payload.criteria.industries.length && !payload.criteria.keywords.length) {
+      return setNotice("Add at least one industry or business keyword before searching Apollo.");
+    }
+    if (!apolloSourceStatus?.configured) {
+      return setNotice(apolloSourceStatus?.message || "Connect Apollo to search for new companies.");
+    }
+    try {
+      setApolloSearching(true);
+      setNotice("");
+      const plan = { name: payload.name, summary: payload.description, criteria: payload.criteria };
+      const response = await startExternalMarketResearch({ question: payload.name, plan, maxResults: 300 });
+      setApolloJob(response.job);
+      if (response.job.status === "source_required") { setNotice(response.job.error); return; }
+      setNotice("Searching Apollo for new companies — capped at 300 results. You can keep this page open.");
+      for (let attempt = 0; attempt < 60; attempt += 1) {
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        // eslint-disable-next-line no-await-in-loop
+        const current = await fetchMarketResearchJob(response.job._id);
+        setApolloJob(current.job);
+        if (["completed", "failed", "source_required"].includes(current.job.status)) {
+          if (current.job.status === "completed") {
+            // eslint-disable-next-line no-await-in-loop
+            const resultList = await fetchMarketResearchResults(current.job.audienceId);
+            setResearchOrganizations(resultList.organizations || []);
+            setResearchResult({ organizationsFound: current.job.statistics.received, organizationsCreated: current.job.statistics.created, organizationsUpdated: current.job.statistics.updated });
+            setNotice(`Apollo search complete: ${current.job.statistics.created} new and ${current.job.statistics.updated} refreshed companies.`);
+            loadResearchHistory();
+          } else setNotice(current.job.error || "Apollo company search did not complete.");
+          break;
+        }
+      }
+    } catch (error) {
+      setNotice(error.response?.data?.error || "Apollo company search could not start.");
+    } finally {
+      setApolloSearching(false);
     }
   };
 
@@ -2085,7 +2139,16 @@ export default function Discovery() {
         <label><span>Minimum employees</span><input type="number" min="0" value={target.employeeMin} onChange={(event) => setField("employeeMin", event.target.value)} /></label>
         <label><span>Maximum employees</span><input type="number" min="0" value={target.employeeMax} onChange={(event) => setField("employeeMax", event.target.value)} /></label>
       </div>
-      <div className="target-actions"><Button variant="outline" loading={savingTemplate} onClick={saveTemplate}>Save profile</Button><Button loading={running} onClick={runResearch}>Match saved organizations</Button></div>
+      <div className="target-actions">
+        <Button variant="outline" loading={savingTemplate} onClick={saveTemplate}>Save profile</Button>
+        <Button variant="outline" loading={running} onClick={runResearch}>Search my CRM (instant)</Button>
+        <Button loading={apolloSearching} disabled={!apolloSourceStatus?.configured} onClick={runApolloCompanySearch}>Search Apollo for new companies</Button>
+      </div>
+      <p className="leadgen-run-disclosure">
+        "Search my CRM" only filters organizations you already have — instant, free. "Search Apollo" looks for genuinely new companies matching this profile — real external data, capped at 300 results per search.
+        {apolloSourceStatus && !apolloSourceStatus.configured ? ` ${apolloSourceStatus.message}` : ""}
+      </p>
+      {apolloJob && apolloSearching ? <div className="research-job-progress"><strong>{apolloJob.status.replace(/_/g, " ")}</strong><span>{apolloJob.statistics?.received || 0} received · {apolloJob.statistics?.created || 0} new · {apolloJob.statistics?.updated || 0} refreshed · {apolloJob.statistics?.duplicates || 0} duplicates</span></div> : null}
       {researchResult ? <div className="discovery-result-summary"><strong>{researchResult.organizationsFound || 0} matched organizations</strong><span>{researchResult.organizationsCreated || 0} new · {researchResult.organizationsUpdated || 0} refreshed</span></div> : null}
     </DashboardCard>
 
