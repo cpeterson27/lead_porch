@@ -807,13 +807,20 @@ async function runApolloPersonSearchPhase({ workspaceId, userId, auth, run, self
     // 25 while the UI correctly displayed a 100-profile maximum.
     let page = 1;
     const providerPageSize = 25;
+    const seenPeople = new Set();
     while (run.spend.apolloPersonSearchCredits < run.maxApolloPersonSearchCredits && acceptedCountForTarget(run) < run.dailyCandidateTarget) {
       const creditsLeft = run.maxApolloPersonSearchCredits - run.spend.apolloPersonSearchCredits;
       const acceptedStillNeeded = run.dailyCandidateTarget - acceptedCountForTarget(run);
       const pageSize = Math.min(providerPageSize, creditsLeft, acceptedStillNeeded);
       // eslint-disable-next-line no-await-in-loop
       const outcome = await apollo.searchPeople({ workspaceId, userId, filters, page, perPage: pageSize, correlationId });
-      const people = outcome.people || [];
+      const returnedPeople = outcome.people || [];
+      const people = returnedPeople.filter((person) => {
+        const identity = person.externalId || person.email || person.linkedinUrl || `${person.fullName || ""}|${person.company || ""}`;
+        if (!identity || seenPeople.has(identity)) return false;
+        seenPeople.add(identity);
+        return true;
+      });
       perSourceEntry.queriesRun += 1;
       perSourceEntry.entitiesExtracted += people.length;
       run.spend.apolloPersonSearchCredits += people.length;
@@ -840,8 +847,12 @@ async function runApolloPersonSearchPhase({ workspaceId, userId, auth, run, self
         tallyMergeOutcome(run, merge, "person");
       }
 
-      const totalPages = Number(outcome.pagination?.totalPages) || 0;
-      if (!people.length || (totalPages && page >= totalPages) || (!totalPages && people.length < pageSize)) break;
+      // Apollo has been observed returning a full 25-person page while its
+      // pagination object says totalPages=1. A full page is evidence that a
+      // next-page probe is warranted; stop only on an empty/partial page or
+      // a page containing no new identities (protects against a provider
+      // that ignores `page` and repeats page 1 forever).
+      if (!people.length || returnedPeople.length < pageSize) break;
       page += 1;
     }
   } catch (error) {

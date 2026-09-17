@@ -830,7 +830,10 @@ async function testApolloPersonSearchPaginatesPastTheFirst25UntilIts100ProfileCa
     pages.push({ page, perPage });
     return {
       people: Array.from({ length: 25 }, (_, index) => ({ fullName: `Apollo Prospect ${page}-${index}`, company: "Buyer LLC", companyDomain: "", linkedinUrl: `apollo-${page}-${index}`, email: "", emailState: "" })),
-      pagination: { page, totalPages: 10, totalEntries: 250 },
+      // Reproduce the live provider contradiction: every requested page is
+      // full, but Apollo claims there is only one page. The engine must use
+      // the full-page signal and keep probing safely.
+      pagination: { page, totalPages: 1, totalEntries: 25 },
     };
   } };
   const outcome = await processNextBatch(
