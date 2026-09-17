@@ -35,9 +35,17 @@ const searchQualityService = require("../services/searchQualityService");
 const vertexGroundingDiscoveryService = require("../services/vertexGroundingDiscoveryService");
 
 const router = express.Router();
+// bing_web dropped from buyer_intent/investor_profile — measured in this
+// workspace at 0.004% signal-to-live-lead versus reddit_rss's 33.5% (see
+// intentSourceService.js's collectMonitorSignals() for the full numbers).
+// bluesky is a second free public-post source alongside reddit_rss; sec_form_d
+// (investor_profile only) is real SEC EDGAR capital-raise filings, already
+// filtered to real-estate/investment-fund relevance. community_partner keeps
+// bing_web — a raw web search is still useful there for finding a named
+// community's own page, a different goal from finding personal buyer intent.
 const MONITOR_SOURCE_DEFAULTS = {
-  buyer_intent: ["bing_web", "reddit_rss"],
-  investor_profile: ["bing_web", "reddit_rss"],
+  buyer_intent: ["reddit_rss", "bluesky"],
+  investor_profile: ["reddit_rss", "bluesky", "sec_form_d"],
   community_partner: ["linkedin_public", "facebook_public", "meetup_public", "community_directories", "bing_web"],
 };
 const sourcesForMonitorType = (type) => [...(MONITOR_SOURCE_DEFAULTS[type] || MONITOR_SOURCE_DEFAULTS.buyer_intent)];

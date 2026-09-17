@@ -741,7 +741,20 @@ async function collectMonitorSignals(monitor) {
   // reddit_rss's 60 live_leads out of 179 (33.5%). No longer a default
   // buyer_intent source; still available for community_partner monitors,
   // where finding a named community's own page is the actual goal.
-  const selected = monitor.sources?.length ? [...monitor.sources] : isCommunityPartnerMonitor(monitor) ? ["linkedin_public", "facebook_public", "meetup_public", "community_directories", "bing_web"] : ["reddit_rss"];
+  //
+  // bluesky added alongside reddit_rss for both buyer_intent and
+  // investor_profile — same mechanism as reddit_rss (free, public,
+  // keyword-searched personal posts), just a second network so a monitor
+  // isn't wholly dependent on Reddit. sec_form_d added for investor_profile
+  // only: real SEC EDGAR filings from people actively raising capital right
+  // now, already filtered in searchSecFormD() to real-estate/investment-fund
+  // relevance — about as qualified an investor signal as exists, and
+  // deliberately excluded from buyer_intent below (a company filing isn't
+  // the same thing as an individual buyer post).
+  const selected = monitor.sources?.length ? [...monitor.sources]
+    : isCommunityPartnerMonitor(monitor) ? ["linkedin_public", "facebook_public", "meetup_public", "community_directories", "bing_web"]
+    : isInvestorProfileMonitor(monitor) ? ["reddit_rss", "bluesky", "sec_form_d"]
+    : ["reddit_rss", "bluesky"];
   if (!isCommunityPartnerMonitor(monitor)) {
     for (const source of ["linkedin_public", "facebook_public", "meetup_public", "community_directories"]) {
       const index = selected.indexOf(source); if (index >= 0) selected.splice(index, 1);

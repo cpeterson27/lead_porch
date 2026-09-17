@@ -56,7 +56,7 @@ function staticUxAndSourceChecks() {
   const source = fs.readFileSync(path.join(__dirname, "services/intentSourceService.js"), "utf8");
   const ui = fs.readFileSync(path.join(__dirname, "../frontend/src/pages/Discovery.jsx"), "utf8");
   assert.equal(route.includes("AUGUST_22_PRESET"), false); assert.equal(ui.includes("August 22 online event"), false);
-  assert.ok(route.includes('buyer_intent: ["bing_web", "reddit_rss"]'));
+  assert.ok(route.includes('buyer_intent: ["reddit_rss", "bluesky"]'));
   assert.ok(source.includes('monitor.monitorType === "buyer_intent"'));
   assert.ok(ui.includes("Public web / community discovery")); assert.ok(ui.includes("Connected social accounts are a separate OAuth capability"));
   assert.ok(ui.includes("Legacy Apollo-labeled research")); assert.ok(ui.includes("titles alone never qualify"));
