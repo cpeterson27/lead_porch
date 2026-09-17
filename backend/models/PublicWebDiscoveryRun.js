@@ -201,6 +201,10 @@ const publicWebDiscoveryRunSchema = new mongoose.Schema({
     // staged as a review-queue row (name is required) — rejected here
     // explicitly rather than throwing and silently failing the whole job.
     rejectedInvalidIdentity: { type: Number, default: 0 },
+    // Apollo search said a verified address was available, but exact-ID
+    // enrichment did not return a real verified address. Never stage these
+    // records or ask the owner to spend again from the review queue.
+    rejectedNoVerifiedEmail: { type: Number, default: 0 },
     // A candidate a provider genuinely returned but that was never
     // evaluated because the credit cap was reached mid-batch — distinct
     // from every rejection reason above, which all mean a candidate WAS

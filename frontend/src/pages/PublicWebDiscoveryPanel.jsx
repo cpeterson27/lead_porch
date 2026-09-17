@@ -62,7 +62,7 @@ function providerRejectionBreakdown(entry = {}) {
   const reasons = [
     [entry.rejectedSelf, "self-match"], [entry.rejectedCrm, "already in CRM"],
     [entry.rejectedDismissed, "previously dismissed"], [entry.rejectedSellerOrVendor, "seller/vendor"],
-    [entry.rejectedInvalidIdentity, "missing identity"], [entry.rejectedBudgetCap, "target/cap reached"],
+    [entry.rejectedInvalidIdentity, "missing identity"], [entry.rejectedNoVerifiedEmail, "no verified email returned"], [entry.rejectedBudgetCap, "target/cap reached"],
     [entry.unexplained, "unexplained (bug)"],
   ].filter(([count]) => Number(count) > 0).map(([count, label]) => `${count} ${label}`);
   return reasons.length ? reasons.join(" · ") : "—";
@@ -564,7 +564,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
               <dt>Web cash spent</dt><dd>${run.spend?.estimatedUsd ?? 0} of ${run.providerCreditCapUsd} cap</dd>
               <dt>Accepted</dt><dd>{run.runSummary?.created || 0} new · {run.runSummary?.merged || 0} merged into existing queue entries</dd>
               <dt>Freshness</dt><dd>{run.runSummary?.byFreshnessTier?.recent || 0} recent (0-90d) · {run.runSummary?.byFreshnessTier?.aging || 0} aging (91-365d) · {run.runSummary?.byFreshnessTier?.evergreen || 0} evergreen/undated</dd>
-              <dt>Excluded</dt><dd>{run.runSummary?.rejectedSelfMatch || 0} self-match · {run.runSummary?.rejectedCrmDuplicate || 0} already in CRM · {run.runSummary?.rejectedPreviouslyDismissed || 0} previously dismissed · {run.runSummary?.rejectedSellerOrVendor || 0} seller/vendor · {run.runSummary?.rejectedInvalidIdentity || 0} missing identity · {run.runSummary?.rejectedBudgetCap || 0} target/cap reached · {run.runSummary?.unexplainedRejections || 0} unexplained</dd>
+              <dt>Excluded</dt><dd>{run.runSummary?.rejectedSelfMatch || 0} self-match · {run.runSummary?.rejectedCrmDuplicate || 0} already in CRM · {run.runSummary?.rejectedPreviouslyDismissed || 0} previously dismissed · {run.runSummary?.rejectedSellerOrVendor || 0} seller/vendor · {run.runSummary?.rejectedInvalidIdentity || 0} missing identity · {run.runSummary?.rejectedNoVerifiedEmail || 0} no verified email returned · {run.runSummary?.rejectedBudgetCap || 0} target/cap reached · {run.runSummary?.unexplainedRejections || 0} unexplained</dd>
               <dt>Crawl</dt><dd>{run.runSummary?.crawlBlockedByRobots || 0} blocked by robots.txt · {run.runSummary?.crawlSkippedLoginWall || 0} skipped (login wall/never-crawled platform) · {run.runSummary?.crawlErrors || 0} errors</dd>
             </dl>
             {run.runSummary?.zeroCallReasons?.length ? (

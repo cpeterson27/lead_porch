@@ -796,7 +796,10 @@ async function testRunApolloPersonSearchPhaseActsAsIndependentCandidateSourceAlo
   const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([run]);
   const GroundingResearchResult = fakeGroundingResultModel();
   const runAgent = async () => ({ output: { titles: ["Real Estate Agent"], locations: ["Texas"], industries: [] } });
-  const apolloService = { searchPeople: async () => ({ people: [{ fullName: "Apollo-Found Investor", company: "", companyDomain: "", linkedinUrl: "", email: "", emailState: "" }] }) };
+  const apolloService = {
+    searchPeople: async () => ({ people: [{ externalId: "apollo-1", fullName: "Apollo-Found Investor", company: "", companyDomain: "", linkedinUrl: "", email: "", emailState: "" }] }),
+    enrichPerson: async ({ matchInput }) => ({ externalId: matchInput.id, fullName: "Apollo-Found Investor", company: "", email: "investor@example.com", emailState: "verified", emailProviderVerified: true }),
+  };
   const JarvisMemoryNote = fakeNoteModel({ _id: "note-1", workspaceId: WORKSPACE_ID, title: "Multifamily Bootcamp", content: "A coaching program for real estate investors." });
 
   const outcome = await processNextBatch(
@@ -840,13 +843,13 @@ async function testApolloPersonSearchPaginatesPastTheFirst25UntilIts100ProfileCa
   const apolloService = { searchPeople: async ({ page, perPage }) => {
     pages.push({ page, perPage });
     return {
-      people: Array.from({ length: 25 }, (_, index) => ({ fullName: `Apollo Prospect ${page}-${index}`, company: "Buyer LLC", companyDomain: "", linkedinUrl: `apollo-${page}-${index}`, email: "", emailState: "" })),
+      people: Array.from({ length: 25 }, (_, index) => ({ externalId: `apollo-${page}-${index}`, fullName: `Apollo Prospect ${page}-${index}`, company: "Buyer LLC", companyDomain: "", linkedinUrl: `https://linkedin.example/apollo-${page}-${index}`, email: "", emailState: "" })),
       // Reproduce the live provider contradiction: every requested page is
       // full, but Apollo claims there is only one page. The engine must use
       // the full-page signal and keep probing safely.
       pagination: { page, totalPages: 1, totalEntries: 25 },
     };
-  } };
+  }, enrichPerson: async ({ matchInput }) => ({ externalId: matchInput.id, fullName: `Apollo Prospect ${matchInput.id.replace("apollo-", "")}`, company: "Buyer LLC", linkedinUrl: `https://linkedin.example/${matchInput.id}`, email: `${matchInput.id}@example.com`, emailState: "verified", emailProviderVerified: true }) };
   const outcome = await processNextBatch(
     { workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-apollo-100", batchSize: 1 },
     { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, GroundingResearchResult, apolloService, Contact: fakeLookupModel([]), Organization: fakeLookupModel([]), getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }), isSelfMatch: () => ({ isSelf: false, reasons: [] }) },
@@ -860,6 +863,37 @@ async function testApolloPersonSearchPaginatesPastTheFirst25UntilIts100ProfileCa
   assert.equal(entry.queriesRun, 4);
   assert.equal(entry.entitiesExtracted, 100);
   assert.equal(entry.unexplained, 0, "all 100 returned people must be accounted for");
+}
+
+async function testApolloPersonSearchNeverStagesAProfileWhenExactIdEnrichmentReturnsNoVerifiedEmail() {
+  const run = fakePublicWebDiscoveryRunModel([{
+    _id: "run-apollo-no-email", workspaceId: WORKSPACE_ID, status: "queued", jobs: [], nextJobIndex: 0,
+    dailyCandidateTarget: 1, targetType: "person", pageLimitPerQuery: 1, queryLimitPerRun: 1, providerCreditCapUsd: 0,
+    includeApolloPersonSearch: true, apolloPersonSearchDone: false, maxApolloPersonSearchCredits: 1,
+    includePdlPersonSearch: false, pdlPersonSearchDone: false, maxPdlPersonSearchCredits: 0,
+    includePdlCrossReference: false, pdlCrossReferenceDone: false, maxPdlCrossReferenceCredits: 0, retryPolicy: { maxAttemptsPerJob: 1 },
+    apolloPdlIcp: { titles: ["Real Estate Investor"], locations: ["United States"], industries: [] },
+    estimatedCreditUse: {}, spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, pdlPersonSearchCredits: 0, pdlCrossReferenceCredits: 0, apolloPersonSearchCredits: 0, estimatedUsd: 0 },
+    runSummary: { created: 0, merged: 0, rejectedSelfMatch: 0, rejectedCrmDuplicate: 0, rejectedPreviouslyDismissed: 0, rejectedAlreadyInQueue: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedNoVerifiedEmail: 0, rejectedBudgetCap: 0, unexplainedRejections: 0, personAccepted: 0, crawlBlockedByRobots: 0, crawlSkippedLoginWall: 0, crawlErrors: 0, byFreshnessTier: { recent: 0, aging: 0, evergreen: 0 }, perSource: [], explanation: "", zeroCallReasons: [] },
+    programNoteId: "note-1", enabledSources: [],
+  }]).rows[0];
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([run]);
+  const GroundingResearchResult = fakeGroundingResultModel();
+  let enrichedId = "";
+  const apolloService = {
+    searchPeople: async () => ({ people: [{ externalId: "apollo-no-email", fullName: "No Email Person", company: "Buyer LLC" }], pagination: { page: 1, totalPages: 1, totalEntries: 1 } }),
+    enrichPerson: async ({ matchInput }) => { enrichedId = matchInput.id; return { externalId: matchInput.id, fullName: "No Email Person", company: "Buyer LLC", email: "", emailState: "unavailable" }; },
+  };
+
+  const outcome = await processNextBatch(
+    { workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-apollo-no-email", batchSize: 1 },
+    { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, GroundingResearchResult, apolloService, Contact: fakeLookupModel([]), Organization: fakeLookupModel([]), getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }), isSelfMatch: () => ({ isSelf: false, reasons: [] }) },
+  );
+
+  assert.equal(enrichedId, "apollo-no-email", "enrichment must use the exact person ID returned by Apollo search");
+  assert.equal(GroundingResearchResult.rows.length, 0, "a profile without a real verified email must never enter the review queue");
+  assert.equal(outcome.run.runSummary.rejectedNoVerifiedEmail, 1);
+  assert.equal(outcome.run.spend.apolloPersonSearchCredits, 1, "the failed enrichment attempt must still be honestly counted against the cap");
 }
 
 async function testApolloPersonSearchPhaseSkipsTheCallEntirelyWhenCreditLimitReached() {
@@ -1365,6 +1399,7 @@ async function run() {
   await testRunApolloPersonSearchPhaseActsAsIndependentCandidateSourceAlongsidePdl();
   testStudentSearchIcpRemovesTitlesTheMergeGateWouldReject();
   await testApolloPersonSearchPaginatesPastTheFirst25UntilIts100ProfileCap();
+  await testApolloPersonSearchNeverStagesAProfileWhenExactIdEnrichmentReturnsNoVerifiedEmail();
   await testApolloPersonSearchPhaseSkipsTheCallEntirelyWhenCreditLimitReached();
   await testRunPdlCrossReferenceIsLabeledDistinctlyFromTheDirectSource();
   testRoundRobinBySourceGloballyAlternatesAcrossCategoriesNotJustWithinOne();

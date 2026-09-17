@@ -224,7 +224,7 @@ function computeBudgetWarning(providerCreditCapUsd) {
 }
 
 function emptyRunSummary() {
-  return { created: 0, merged: 0, rejectedSelfMatch: 0, rejectedCrmDuplicate: 0, rejectedPreviouslyDismissed: 0, rejectedAlreadyInQueue: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedBudgetCap: 0, unexplainedRejections: 0, personAccepted: 0, crawlBlockedByRobots: 0, crawlSkippedLoginWall: 0, crawlErrors: 0, byFreshnessTier: { recent: 0, aging: 0, evergreen: 0 }, perSource: [], explanation: "", zeroCallReasons: [] };
+  return { created: 0, merged: 0, rejectedSelfMatch: 0, rejectedCrmDuplicate: 0, rejectedPreviouslyDismissed: 0, rejectedAlreadyInQueue: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedNoVerifiedEmail: 0, rejectedBudgetCap: 0, unexplainedRejections: 0, personAccepted: 0, crawlBlockedByRobots: 0, crawlSkippedLoginWall: 0, crawlErrors: 0, byFreshnessTier: { recent: 0, aging: 0, evergreen: 0 }, perSource: [], explanation: "", zeroCallReasons: [] };
 }
 
 /**
@@ -573,6 +573,14 @@ async function mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, se
       verifiedIdentifier: existing.pdlEnrichment?.matched || existing.apolloEnrichment?.matched || existing.emailVerificationStatus === "verified",
     });
     existing.discoveryRunId = existing.discoveryRunId || run._id;
+    existing.apolloPersonId = existing.apolloPersonId || candidate.apolloPersonId || "";
+    if (candidate.apolloSearchProfile && Object.keys(candidate.apolloSearchProfile).length) {
+      existing.apolloSearchProfile = { ...(existing.apolloSearchProfile || {}), ...candidate.apolloSearchProfile };
+      existing.markModified("apolloSearchProfile");
+    }
+    existing.email = existing.email || candidate.email || "";
+    existing.emailState = existing.emailState || candidate.emailState || "";
+    existing.emailVerificationStatus = existing.emailVerificationStatus || candidate.emailState || "";
     await existing.save();
     return { outcome: "merged", row: existing };
   }
@@ -582,7 +590,9 @@ async function mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, se
   const created = await Model.create({
     workspaceId, query: candidate.query || `discovery_run:${run._id}:${candidate.discoveryCategory || ""}`, type: candidate.type, name: candidate.name,
     organizationName: candidate.organizationName || "", organizationDomain: candidate.organizationDomain || "",
+    apolloPersonId: candidate.apolloPersonId || "", apolloSearchProfile: candidate.apolloSearchProfile || {},
     email: candidate.email || "", emailState: candidate.emailState || "",
+    emailVerificationStatus: candidate.emailState || "",
     summary: candidate.summary || "", evidenceUrls: candidate.evidenceUrls || [], evidenceDate: candidate.evidenceDate || null,
     confidence: initialConfidence, providers: initialProviders,
     identityConfidence: computeIdentityConfidence({ providers: initialProviders, confidence: initialConfidence, linkedinUrl: candidate.linkedinUrl, organizationName: candidate.organizationName }),
@@ -604,6 +614,7 @@ function tallyMergeOutcome(run, merge, candidateType) {
   else if (merge.outcome === "rejected_dismissed") run.runSummary.rejectedPreviouslyDismissed += 1;
   else if (merge.outcome === "rejected_seller_or_vendor") run.runSummary.rejectedSellerOrVendor += 1;
   else if (merge.outcome === "rejected_invalid_identity") run.runSummary.rejectedInvalidIdentity += 1;
+  else if (merge.outcome === "rejected_no_verified_email") run.runSummary.rejectedNoVerifiedEmail = (run.runSummary.rejectedNoVerifiedEmail || 0) + 1;
 }
 
 /**
@@ -615,7 +626,8 @@ function tallyMergeOutcome(run, merge, candidateType) {
  */
 function reconcileUnexplainedRejections(run, perSourceEntry, foundCount) {
   const accountedFor = perSourceEntry.acceptedNew + perSourceEntry.merged + perSourceEntry.rejectedSelf + perSourceEntry.rejectedCrm
-    + perSourceEntry.rejectedDismissed + perSourceEntry.rejectedSellerOrVendor + perSourceEntry.rejectedInvalidIdentity + perSourceEntry.rejectedBudgetCap;
+    + perSourceEntry.rejectedDismissed + perSourceEntry.rejectedSellerOrVendor + perSourceEntry.rejectedInvalidIdentity
+    + (perSourceEntry.rejectedNoVerifiedEmail || 0) + perSourceEntry.rejectedBudgetCap;
   const unexplained = Math.max(0, foundCount - accountedFor);
   perSourceEntry.unexplained = unexplained;
   if (unexplained > 0) run.runSummary.unexplainedRejections += unexplained;
@@ -710,7 +722,7 @@ async function runPdlPersonSearchPhase({ workspaceId, userId, auth, run, selfSig
 
   const perSourceEntry = {
     source: "pdl_person_search", category: "people", queriesRun: 0, entitiesExtracted: 0, accepted: 0, error: null,
-    acceptedNew: 0, merged: 0, rejectedSelf: 0, rejectedCrm: 0, rejectedDismissed: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedBudgetCap: 0, unexplained: 0,
+    acceptedNew: 0, merged: 0, rejectedSelf: 0, rejectedCrm: 0, rejectedDismissed: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedNoVerifiedEmail: 0, rejectedBudgetCap: 0, unexplained: 0,
   };
   const remainingCredits = Math.max(0, run.maxPdlPersonSearchCredits - run.spend.pdlPersonSearchCredits);
   const remainingTarget = Math.max(0, run.dailyCandidateTarget - acceptedCountForTarget(run));
@@ -829,7 +841,6 @@ async function runApolloPersonSearchPhase({ workspaceId, userId, auth, run, self
       });
       perSourceEntry.queriesRun += 1;
       perSourceEntry.entitiesExtracted += people.length;
-      run.spend.apolloPersonSearchCredits += people.length;
 
       for (const person of people) {
         if (acceptedCountForTarget(run) >= run.dailyCandidateTarget) {
@@ -837,7 +848,32 @@ async function runApolloPersonSearchPhase({ workspaceId, userId, auth, run, self
           run.runSummary.rejectedBudgetCap += 1;
           continue;
         }
-        const candidate = leadGenerationCoordinatorService.normalizeApolloCandidate(person);
+        // People Search is free and intentionally does not reveal addresses.
+        // Its verified-email filter only promises that Apollo believes an
+        // address is available. Spend one capped enrichment credit against
+        // the exact Apollo person ID now, and stage the lead only after a
+        // real verified address is returned. This prevents dead-end queue
+        // rows and prevents the owner from paying a second time later.
+        if (!person.externalId || run.spend.apolloPersonSearchCredits >= run.maxApolloPersonSearchCredits) {
+          perSourceEntry.rejectedBudgetCap += 1;
+          run.runSummary.rejectedBudgetCap += 1;
+          continue;
+        }
+        run.spend.apolloPersonSearchCredits += 1;
+        let enrichedPerson = null;
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          enrichedPerson = await apollo.enrichPerson({ workspaceId, userId, matchInput: { id: person.externalId }, revealEmail: true, correlationId });
+        } catch (_) {
+          // A failed/no-email enrichment is an explained rejection for this
+          // candidate; continue through the remaining filtered profiles.
+        }
+        if (!enrichedPerson?.email || enrichedPerson.emailState !== "verified") {
+          perSourceEntry.rejectedNoVerifiedEmail += 1;
+          run.runSummary.rejectedNoVerifiedEmail = (run.runSummary.rejectedNoVerifiedEmail || 0) + 1;
+          continue;
+        }
+        const candidate = leadGenerationCoordinatorService.normalizeApolloCandidate(enrichedPerson);
         candidate.discoveryCategory = "people";
         candidate.providers = [candidate.provider];
         // eslint-disable-next-line no-await-in-loop
@@ -850,6 +886,7 @@ async function runApolloPersonSearchPhase({ workspaceId, userId, auth, run, self
         else if (merge.outcome === "rejected_dismissed") perSourceEntry.rejectedDismissed += 1;
         else if (merge.outcome === "rejected_seller_or_vendor") perSourceEntry.rejectedSellerOrVendor += 1;
         else if (merge.outcome === "rejected_invalid_identity") perSourceEntry.rejectedInvalidIdentity += 1;
+        else if (merge.outcome === "rejected_no_verified_email") perSourceEntry.rejectedNoVerifiedEmail += 1;
         tallyMergeOutcome(run, merge, "person");
       }
 
@@ -1291,6 +1328,7 @@ function buildRunExplanation(run, stoppedReason) {
     run.runSummary.rejectedPreviouslyDismissed ? `${run.runSummary.rejectedPreviouslyDismissed} previously dismissed` : "",
     run.runSummary.rejectedSellerOrVendor ? `${run.runSummary.rejectedSellerOrVendor} coach/seller/vendor excluded from student search` : "",
     run.runSummary.rejectedInvalidIdentity ? `${run.runSummary.rejectedInvalidIdentity} missing a usable name` : "",
+    run.runSummary.rejectedNoVerifiedEmail ? `${run.runSummary.rejectedNoVerifiedEmail} Apollo profiles did not return a real verified email and were not staged` : "",
     run.runSummary.rejectedBudgetCap ? `${run.runSummary.rejectedBudgetCap} found but never evaluated (budget cap reached mid-batch)` : "",
   ].filter(Boolean).join(", ");
   // This must never happen after the cap fix above — surfaced loudly
