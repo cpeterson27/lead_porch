@@ -18,6 +18,13 @@ const workspacePlugin = require("../tenancy/workspacePlugin");
 const discoveryScheduleSchema = new mongoose.Schema({
   name: { type: String, required: true, trim: true, maxlength: 200 },
   programNoteId: { type: mongoose.Schema.Types.ObjectId, ref: "JarvisMemoryNote", default: null },
+  // Preferred over programNoteId for any schedule created from the primary
+  // High-Volume Public Web Discovery flow, which targets a real
+  // CoachingProgram — see PublicWebDiscoveryRun.js's own coachingProgramId
+  // field for the identical legacy-vs-primary distinction. programNoteId
+  // alone stays supported only for a schedule saved from the legacy
+  // "Direct public-web search" advanced tool.
+  coachingProgramId: { type: mongoose.Schema.Types.ObjectId, ref: "CoachingProgram", default: null },
   programName: { type: String, default: "", trim: true, maxlength: 200 },
   enabled: { type: Boolean, default: false },
   intervalMinutes: { type: Number, default: 1440, min: 60, max: 43200 },

@@ -608,6 +608,34 @@ async function testRunDueDiscoverySchedulesProcessesAnEnabledDueSchedule() {
   assert.equal(schedule.leaseOwner, "", "the lease must be released after the tick");
 }
 
+async function testRunDueDiscoverySchedulesResolvesACoachingProgramIdSchedule() {
+  // Reported incident: a schedule saved from the primary (coachingProgramId)
+  // flow never carried coachingProgramId at all — only programNoteId, which
+  // is always null for that flow — so every tick failed with "that program
+  // note was not found." runDueDiscoverySchedules must pass coachingProgramId
+  // through to proposePublicWebDiscoveryRun exactly like the one-off manual
+  // propose route already does.
+  const DiscoveryScheduleModel = fakeDiscoveryScheduleModel([{ _id: "sched-1", workspaceId: WORKSPACE_ID, enabled: true, nextRunAt: new Date(Date.now() - 1000), intervalMinutes: 1440, dailyCandidateTarget: 5, pageLimitPerQuery: 1, queryLimitPerRun: 10, providerCreditCapUsd: 5, sources: ["vertex"], includePdlCrossReference: false, currentRunId: null, createdByUserId: "u1", programNoteId: null, coachingProgramId: "prog-1" }]);
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel();
+  const GroundingResearchResult = fakeGroundingResultModel();
+  const vertexGroundingService = { groundedSearch: async () => ({ results: [], groundingCitations: [] }) };
+  const openaiWebSearchService = { groundedSearch: async () => ({ results: [], groundingCitations: [] }) };
+  let sawCoachingProgramId = "";
+  const generateSearchFamilies = async ({ coachingProgramId }) => { sawCoachingProgramId = coachingProgramId; return { programName: "Test Program", families: [{ category: "people", queries: [{ query: "find people", locationHint: "", source: "vertex" }] }] }; };
+
+  await runDueDiscoverySchedules({
+    DiscoverySchedule: DiscoveryScheduleModel, PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, GroundingResearchResult, vertexGroundingService, openaiWebSearchService, generateSearchFamilies,
+    Contact: fakeLookupModel([]), Organization: fakeLookupModel([]),
+    getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }),
+    isSelfMatch: () => ({ isSelf: false, reasons: [] }),
+  });
+
+  assert.equal(sawCoachingProgramId, "prog-1", "the schedule's coachingProgramId must reach generateSearchFamilies, never silently dropped in favor of a null programNoteId");
+  assert.equal(PublicWebDiscoveryRunModel.rows.length, 1, "a coachingProgramId-based schedule must successfully create a run instead of failing to resolve its program");
+  const schedule = DiscoveryScheduleModel.rows[0];
+  assert.notEqual(schedule.lastRunStatus, "failed", `a coachingProgramId schedule must not fail (message: ${schedule.lastRunMessage})`);
+}
+
 // ==================== search-family generation: current year, never stale ====================
 
 async function testGenerateSearchFamiliesInjectsTheServersActualCurrentYear() {
@@ -1451,6 +1479,7 @@ async function run() {
   await testProcessNextBatchFallsBackToARawUpdateWhenRunSaveItselfFails();
   await testRunDueDiscoverySchedulesSkipsDisabledSchedules();
   await testRunDueDiscoverySchedulesProcessesAnEnabledDueSchedule();
+  await testRunDueDiscoverySchedulesResolvesACoachingProgramIdSchedule();
   console.log("Public Web Discovery engine: robots.txt/rate-limit/login-wall/Facebook-LinkedIn-denylist crawler compliance (fails closed on unverifiable robots.txt, never fetches the page when disallowed), freshness TIERING (labels recent/aging/evergreen — never drops an old or undated lead), dedup against self-match/CRM/dismissed-records/previous-runs, checkpointed+resumable+retryable batch processing with a hard provider-credit-cap stop and an honest explanation, Apollo Person Search running as its own independent candidate source alongside PDL (own credit ceiling, never counted as web cash, never called once its cap is reached), and a scheduler that never acts on a disabled schedule but genuinely runs an enabled+due one — all passed.");
 }
 

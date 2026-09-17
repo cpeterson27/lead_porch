@@ -187,6 +187,7 @@ router.post("/schedules", async (req, res) => {
   try {
     const schedule = await DiscoverySchedule.create({
       workspaceId: req.auth.workspaceId, name: req.body?.name || "Discovery schedule", programNoteId: req.body?.programNoteId || null,
+      coachingProgramId: req.body?.coachingProgramId || null,
       programName: req.body?.programName || "", intervalMinutes: req.body?.intervalMinutes, dailyCandidateTarget: req.body?.dailyCandidateTarget,
       pageLimitPerQuery: req.body?.pageLimitPerQuery, queryLimitPerRun: req.body?.queryLimitPerRun, providerCreditCapUsd: req.body?.providerCreditCapUsd,
       sources: req.body?.sources, includePdlCrossReference: req.body?.includePdlCrossReference, includePdlPersonSearch: req.body?.includePdlPersonSearch,

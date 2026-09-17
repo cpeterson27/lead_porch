@@ -365,7 +365,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
     try {
       const response = await createDiscoverySchedule({
         name: `${run.programName || "Program"} — recurring discovery`,
-        programNoteId: run.programNoteId, programName: run.programName,
+        programNoteId: run.programNoteId, coachingProgramId: run.coachingProgramId, programName: run.programName,
         intervalMinutes: frequencyByRun[run._id] || 1440,
         dailyCandidateTarget: run.dailyCandidateTarget, pageLimitPerQuery: run.pageLimitPerQuery,
         queryLimitPerRun: run.queryLimitPerRun, providerCreditCapUsd: run.providerCreditCapUsd,

@@ -1379,7 +1379,7 @@ async function runDueDiscoverySchedules(dependencies = {}) {
         let run = claimed.currentRunId ? await RunModel.findOne({ _id: claimed.currentRunId, workspaceId: claimed.workspaceId, status: { $in: ["queued", "running"] } }) : null;
         if (!run) {
           // eslint-disable-next-line no-await-in-loop
-          run = await proposePublicWebDiscoveryRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, programNoteId: claimed.programNoteId, locations: [] }, dependencies);
+          run = await proposePublicWebDiscoveryRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, programNoteId: claimed.programNoteId, coachingProgramId: claimed.coachingProgramId, locations: [] }, dependencies);
           // eslint-disable-next-line no-await-in-loop
           run = await approvePublicWebDiscoveryRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, runId: run._id, dailyCandidateTarget: claimed.dailyCandidateTarget, pageLimitPerQuery: claimed.pageLimitPerQuery, queryLimitPerRun: claimed.queryLimitPerRun, providerCreditCapUsd: claimed.providerCreditCapUsd, includePdlCrossReference: claimed.includePdlCrossReference, includePdlPersonSearch: claimed.includePdlPersonSearch, maxPdlPersonSearchCredits: claimed.maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: claimed.maxPdlCrossReferenceCredits, includeApolloPersonSearch: claimed.includeApolloPersonSearch, maxApolloPersonSearchCredits: claimed.maxApolloPersonSearchCredits, sources: claimed.sources, maxAttemptsPerJob: claimed.maxAttemptsPerJob }, dependencies);
           claimed.currentRunId = run._id;
