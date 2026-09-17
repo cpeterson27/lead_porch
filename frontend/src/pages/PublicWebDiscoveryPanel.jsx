@@ -516,8 +516,8 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
               <label><span>Retry attempts per query</span><input type="number" min="1" max="10" value={run.retryPolicy?.maxAttemptsPerJob || 3} onChange={(event) => updateRunInState({ ...run, retryPolicy: { maxAttemptsPerJob: Number(event.target.value) } })} /></label>
             </div>
             <dl className="leadgen-review-summary">
-              <dt>Expected people</dt><dd>~{run.estimatedCreditUse?.expectedPeople ?? "?"} (rough estimate — direct outreach candidates)</dd>
-              <dt>Expected communities/organizations</dt><dd>~{run.estimatedCreditUse?.expectedCommunitiesOrganizations ?? "?"} (rough estimate — need an organizer/partnership approach, not direct outreach)</dd>
+              <dt>Expected people</dt><dd>~{preview ? preview.expectedPeople : "…"} (rough estimate — direct outreach candidates, includes Apollo/PDL)</dd>
+              <dt>Expected communities/organizations</dt><dd>~{preview ? preview.expectedCommunitiesOrganizations : "…"} (rough estimate — need an organizer/partnership approach, not direct outreach)</dd>
               <dt>Target</dt><dd>{run.dailyCandidateTarget} {run.targetType === "person" ? "unique people specifically" : "candidates of any type"}</dd>
               <dt>Maximum Apollo Person Search credits</dt><dd>{preview ? preview.maxApolloPersonSearchCredits : "…"}</dd>
               <dt>Maximum PDL Person Search credits</dt><dd>{preview ? preview.maxPdlPersonSearchCredits : "…"}</dd>

@@ -1176,6 +1176,40 @@ function testComputeRunPlanPreviewUsesTheExactFinalizedJobPlanNotTheUnslicedDraf
   assert.ok(nothingConfiguredPreview.validationError, "no web queries and both PDL sources off must be flagged as a conflict — nothing is configured to run");
 }
 
+// ==================== reported incident: "Expected people"/"Expected communities" stayed stale after the maxVertexCallsInitial fix above, and never counted Apollo/PDL at all ====================
+
+function testExpectedPeopleAndCommunitiesReflectTheFinalizedPlanAndIncludeApolloPdl() {
+  // A real user-reported case: many web jobs drafted across both people
+  // and community/organization categories, but a query limit of 1 sliced
+  // the finalized plan down to a single web job — "Expected
+  // communities/organizations" kept reporting a double-digit count taken
+  // from the full unsliced draft collection regardless, exactly the same
+  // staleness bug maxVertexCallsInitial above was already fixed for.
+  const jobs = [
+    ...Array.from({ length: 10 }, (_, i) => ({ category: "people", query: `p${i}`, source: "vertex", locationHint: "" })),
+    ...Array.from({ length: 10 }, (_, i) => ({ category: "communities", query: `c${i}`, source: "vertex", locationHint: "" })),
+  ];
+  const tightPreview = computeRunPlanPreview({
+    jobs, sources: ["vertex", "openai_web_search"], queryLimitPerRun: 1, pageLimitPerQuery: 1,
+    providerCreditCapUsd: 1, includePdlPersonSearch: false, maxPdlPersonSearchCredits: 0,
+    includePdlCrossReference: false, maxPdlCrossReferenceCredits: 0,
+    includeApolloPersonSearch: false, maxApolloPersonSearchCredits: 0, maxAttemptsPerJob: 1,
+  });
+  assert.equal(tightPreview.finalJobCount, 1, "a query limit of 1 must finalize to exactly one web job");
+  assert.ok(tightPreview.expectedCommunitiesOrganizations <= 2, `a single finalized web job must not still report the full unsliced draft's ~20 community estimate (got ${tightPreview.expectedCommunitiesOrganizations})`);
+
+  // Apollo/PDL are real, independent people sources this estimate used to
+  // ignore completely — "Expected people" must reflect their configured
+  // caps too, not just whatever survived the web query slice.
+  const apolloPdlPreview = computeRunPlanPreview({
+    jobs: [], sources: ["vertex", "openai_web_search"], queryLimitPerRun: 40, pageLimitPerQuery: 1,
+    providerCreditCapUsd: 1, includePdlPersonSearch: true, maxPdlPersonSearchCredits: 25,
+    includePdlCrossReference: false, maxPdlCrossReferenceCredits: 0,
+    includeApolloPersonSearch: true, maxApolloPersonSearchCredits: 25, maxAttemptsPerJob: 1,
+  });
+  assert.equal(apolloPdlPreview.expectedPeople, 50, "with no web jobs at all, expected people must still count Apollo's 25 + PDL's 25 configured credits, never report near-zero");
+}
+
 // ==================== reported incident: an exception before any provider call left the run stuck with no explanation ====================
 
 /**
@@ -1410,6 +1444,7 @@ async function run() {
   await testRunPdlPersonSearchPhaseSkipsTheCallEntirelyWhenCreditLimitReached();
   await testToggledOffPdlNeverRunsAndALowQueryLimitStillGivesEachWebProviderATurn();
   testComputeRunPlanPreviewUsesTheExactFinalizedJobPlanNotTheUnslicedDraftCollection();
+  testExpectedPeopleAndCommunitiesReflectTheFinalizedPlanAndIncludeApolloPdl();
   await testProcessNextBatchPersistsASanitizedFailureAndStaysSafelyResumableForAPreProviderCrash();
   await testProcessNextBatchClearsAPriorFailureRecordOnceATickSucceeds();
   await testProcessNextBatchPersistsAFailureEvenWhenTheLeaseAcquiringQueryItselfThrows();

@@ -443,6 +443,23 @@ function computeRunPlanPreview({ jobs, sources, queryLimitPerRun, pageLimitPerQu
   const resolvedMaxPdlCrossReferenceCredits = includePdlCrossReference ? Math.max(0, Math.min(500, Number(maxPdlCrossReferenceCredits) || 0)) : 0;
   const resolvedMaxApolloPersonSearchCredits = includeApolloPersonSearch ? Math.max(0, Math.min(500, Number(maxApolloPersonSearchCredits) || 0)) : 0;
 
+  // Previously computed once at propose time from the FULL unsliced draft
+  // query list and never revisited — exactly the same staleness bug
+  // finalJobs/maxVertexCallsInitial above was already fixed for (see this
+  // function's own header comment). A query limit tight enough to slice
+  // web jobs down to zero left "Expected communities/organizations" still
+  // reporting a double-digit estimate as if nothing had changed, which is
+  // exactly what a real run showed the owner. Recomputed here from the
+  // ACTUAL finalized (sliced) job list instead, on every preview. Apollo
+  // and PDL Person Search are also real, independent people sources this
+  // estimate previously ignored entirely — each credit roughly corresponds
+  // to one reviewed candidate elsewhere in this codebase (see
+  // leadGenerationCoordinatorService.js's own spend tracking), so their
+  // configured caps are added in directly; PDL cross-reference only
+  // verifies candidates already found elsewhere, so it contributes none.
+  const { expectedPeople: expectedPeopleFromWeb, expectedCommunitiesOrganizations } = estimateExpectedCounts(finalJobs, false);
+  const expectedPeople = expectedPeopleFromWeb + resolvedMaxApolloPersonSearchCredits + resolvedMaxPdlPersonSearchCredits;
+
   const anyWebJobs = maxVertexCallsInitial > 0 || maxOpenaiCallsInitial > 0;
   let validationError = "";
   if (!anyWebJobs && !includePdlPersonSearch && !includePdlCrossReference && !includeApolloPersonSearch) {
@@ -460,6 +477,7 @@ function computeRunPlanPreview({ jobs, sources, queryLimitPerRun, pageLimitPerQu
     maxWebCashInitial, maxWebCashWithRetries, maxWebCashEnforced,
     providerCreditCapUsd: cap,
     finalJobCount: finalJobs.length,
+    expectedPeople, expectedCommunitiesOrganizations,
     validationError,
   };
 }
