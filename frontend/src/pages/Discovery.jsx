@@ -311,6 +311,15 @@ export default function Discovery() {
   const [query, setQuery] = useState("");
   const [emailFilter, setEmailFilter] = useState("verified");
   const [notice, setNotice] = useState("");
+  // A real toast: appears, then clears itself, instead of a static banner
+  // that just silently gets overwritten by whatever the next action sets —
+  // which is invisible during a fast bulk loop unless it stays on screen
+  // long enough to read.
+  useEffect(() => {
+    if (!notice) return undefined;
+    const timer = setTimeout(() => setNotice(""), 6000);
+    return () => clearTimeout(timer);
+  }, [notice]);
   const [running, setRunning] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -426,8 +435,11 @@ export default function Discovery() {
     return next;
   });
   const [qualifySummary, setQualifySummary] = useState(null);
+  const [qualifyProgress, setQualifyProgress] = useState(null);
+  const [saveProgress, setSaveProgress] = useState(null);
   const [qualifyOutcomeFilter, setQualifyOutcomeFilter] = useState("all");
   const [reviewPage, setReviewPage] = useState(1);
+  const [reviewPageSize, setReviewPageSize] = useState(50);
   const [draftSignal, setDraftSignal] = useState(null);
   const [draftCampaignId, setDraftCampaignId] = useState("");
   const [draftEditor, setDraftEditor] = useState(null);
@@ -545,22 +557,41 @@ export default function Discovery() {
   // into one qualificationLabel — see leadGenerationCoordinatorService.js's
   // qualifyAndRecommend()/computeQualificationOutcome(). Shows an accurate
   // completion summary and refreshes the cards so the change is visible.
+  // The backend hard-caps qualify_and_recommend_leads at 20 IDs per request
+  // (leadGenerationCoordinatorService.js silently .slice(0, 20)s anything
+  // beyond that). Selecting more than 20 and calling this once used to
+  // silently drop the rest with zero indication — this chunks into batches
+  // of 20 and runs them sequentially instead, so every selected lead is
+  // actually processed and the UI shows real batch progress.
+  const QUALIFY_BATCH_SIZE = 20;
   const qualifyGroundingResults = async (resultIds) => {
     const ids = Array.isArray(resultIds) ? resultIds : selectedGroundingIds;
     if (!ids.length || qualifyBusy) return;
     setQualifyBusy(true);
     setQualifySummary(null);
+    const batches = [];
+    for (let i = 0; i < ids.length; i += QUALIFY_BATCH_SIZE) batches.push(ids.slice(i, i + QUALIFY_BATCH_SIZE));
+    const totals = { processed: 0, qualified: 0, needsReview: 0, notAFit: 0, failed: 0 };
     try {
-      const res = await qualifyLeadGenerationResults(ids);
-      const s = res.data.summary || { processed: res.data.qualified || 0, qualified: res.data.qualified || 0, needsReview: 0, notAFit: 0, failed: 0 };
-      setQualifySummary(s);
-      setNotice(`Jarvis processed ${s.processed} of ${res.data.requested} selected: ${s.qualified} qualified, ${s.needsReview} needs review, ${s.notAFit} not a fit${s.failed ? `, ${s.failed} failed` : ""}.`);
+      for (let i = 0; i < batches.length; i += 1) {
+        setQualifyProgress({ batch: i + 1, batchCount: batches.length, total: ids.length });
+        const res = await qualifyLeadGenerationResults(batches[i]);
+        const s = res.data.summary || { processed: res.data.qualified || 0, qualified: res.data.qualified || 0, needsReview: 0, notAFit: 0, failed: 0 };
+        totals.processed += s.processed || 0;
+        totals.qualified += s.qualified || 0;
+        totals.needsReview += s.needsReview || 0;
+        totals.notAFit += s.notAFit || 0;
+        totals.failed += s.failed || 0;
+      }
+      setQualifySummary(totals);
+      setNotice(`Jarvis processed ${totals.processed} of ${ids.length} selected: ${totals.qualified} qualified, ${totals.needsReview} needs review, ${totals.notAFit} not a fit${totals.failed ? `, ${totals.failed} failed` : ""}.`);
       setSelectedGroundingIds([]);
       await loadGroundingResults();
     } catch (err) {
       setNotice(err.response?.data?.error || "Qualification failed.");
     } finally {
       setQualifyBusy(false);
+      setQualifyProgress(null);
     }
   };
 
@@ -589,15 +620,19 @@ export default function Discovery() {
     }
   };
 
-  const saveGroundingResult = async (id) => {
+  const saveGroundingResult = async (id, { silent = false } = {}) => {
     try {
       await saveVertexGroundingResult(id, leadCampaignId);
-      const selectedCampaign = campaigns.find((campaign) => String(campaign._id) === String(leadCampaignId));
-      setNotice(selectedCampaign ? `Added to CRM and assigned to ${selectedCampaign.name}. No email was sent.` : "Added to CRM. No email was sent.");
-      loadGroundingResults();
-      refreshCampaignContactCount();
+      if (!silent) {
+        const selectedCampaign = campaigns.find((campaign) => String(campaign._id) === String(leadCampaignId));
+        setNotice(selectedCampaign ? `Added to CRM and assigned to ${selectedCampaign.name}. No email was sent.` : "Added to CRM. No email was sent.");
+        loadGroundingResults();
+        refreshCampaignContactCount();
+      }
+      return true;
     } catch (err) {
-      setNotice(err.response?.data?.error || "Unable to save that result.");
+      if (!silent) setNotice(err.response?.data?.error || "Unable to save that result.");
+      return false;
     }
   };
 
@@ -719,11 +754,20 @@ export default function Discovery() {
 
   const saveSelectedQualified = async () => {
     const qualifiedIds = visibleGroundingResults.filter((r) => selectedGroundingIds.includes(r._id) && r.qualificationLabel === "qualified").map((r) => r._id);
-    if (!qualifiedIds.length) return;
-    for (const id of qualifiedIds) {
-      await saveGroundingResult(id);
+    if (!qualifiedIds.length || saveProgress) return;
+    let succeeded = 0;
+    let failed = 0;
+    for (let i = 0; i < qualifiedIds.length; i += 1) {
+      setSaveProgress({ done: i, total: qualifiedIds.length });
+      const ok = await saveGroundingResult(qualifiedIds[i], { silent: true });
+      if (ok) succeeded += 1; else failed += 1;
     }
+    setSaveProgress(null);
     setSelectedGroundingIds((current) => current.filter((id) => !qualifiedIds.includes(id)));
+    const selectedCampaign = campaigns.find((campaign) => String(campaign._id) === String(leadCampaignId));
+    setNotice(`Added ${succeeded} of ${qualifiedIds.length} to CRM${selectedCampaign ? ` and assigned to ${selectedCampaign.name}` : ""}.${failed ? ` ${failed} failed.` : ""} No email was sent.`);
+    await loadGroundingResults();
+    refreshCampaignContactCount();
   };
   const dismissSelected = async () => {
     if (!selectedGroundingIds.length) return;
@@ -786,7 +830,6 @@ export default function Discovery() {
     return new Date(b.createdAt) - new Date(a.createdAt);
   }), [groundingResults, reviewFilters, qualifyOutcomeFilter]);
 
-  const reviewPageSize = 12;
   const reviewPageCount = Math.max(1, Math.ceil(visibleGroundingResults.length / reviewPageSize));
   const safeReviewPage = Math.min(reviewPage, reviewPageCount);
   const pagedGroundingResults = useMemo(() => visibleGroundingResults.slice((safeReviewPage - 1) * reviewPageSize, safeReviewPage * reviewPageSize), [visibleGroundingResults, safeReviewPage]);
@@ -1642,7 +1685,14 @@ export default function Discovery() {
                 Have Jarvis qualify {selectedGroundingIds.length || ""} selected leads
               </Button>
             </div>
-            {qualifyBusy ? <p className="review-queue-progress" role="status">Jarvis is qualifying {selectedGroundingIds.length} candidate(s) against your approved programs — this can take up to a minute. Please wait; the button is disabled to prevent duplicate submissions.</p> : null}
+            {qualifyBusy ? (
+              <p className="review-queue-progress" role="status">
+                {qualifyProgress && qualifyProgress.batchCount > 1
+                  ? `Jarvis is qualifying batch ${qualifyProgress.batch} of ${qualifyProgress.batchCount} (${qualifyProgress.total} candidates total, 20 at a time) — this can take a few minutes for a large batch. Please wait; the button is disabled to prevent duplicate submissions.`
+                  : `Jarvis is qualifying ${qualifyProgress?.total ?? selectedGroundingIds.length} candidate(s) against your approved programs — this can take up to a minute. Please wait; the button is disabled to prevent duplicate submissions.`}
+              </p>
+            ) : null}
+            {saveProgress ? <p className="review-queue-progress" role="status">Adding lead {saveProgress.done + 1} of {saveProgress.total} to CRM{leadCampaignId ? " and this campaign" : ""}…</p> : null}
             {qualifySummary ? (
               <div className="review-queue-summary" role="status">
                 <strong>Qualification complete</strong>
@@ -1668,7 +1718,7 @@ export default function Discovery() {
                   <Button size="sm" variant="outline" loading={apolloBulkEnrichBusy} disabled={!apolloEligible} title={apolloEligible ? undefined : "No selected leads need this — Apollo research only applies to qualified/needs-review leads that don't have an email yet and haven't been tried with Apollo already."} onClick={researchSelectedWithApollo}>Research selected with Apollo</Button>
                 );
               })()}
-              <Button size="sm" variant="outline" disabled={!selectedGroundingIds.some((id) => visibleGroundingResults.find((r) => r._id === id)?.qualificationLabel === "qualified")} title={selectedGroundingIds.some((id) => visibleGroundingResults.find((r) => r._id === id)?.qualificationLabel === "qualified") ? undefined : "None of your selected leads are qualified yet — click \"Have Jarvis qualify\" first, then this enables for whichever come back qualified."} onClick={saveSelectedQualified}>{leadCampaignId ? "Add selected leads to CRM + campaign" : "Add selected qualified leads to CRM"}</Button>
+              <Button size="sm" variant="outline" loading={Boolean(saveProgress)} disabled={Boolean(saveProgress) || !selectedGroundingIds.some((id) => visibleGroundingResults.find((r) => r._id === id)?.qualificationLabel === "qualified")} title={selectedGroundingIds.some((id) => visibleGroundingResults.find((r) => r._id === id)?.qualificationLabel === "qualified") ? undefined : "None of your selected leads are qualified yet — click \"Have Jarvis qualify\" first, then this enables for whichever come back qualified."} onClick={saveSelectedQualified}>{leadCampaignId ? "Add selected leads to CRM + campaign" : "Add selected qualified leads to CRM"}</Button>
               <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} onClick={dismissSelected}>Mark selected as not leads</Button>
             </div>
           </div>
@@ -1855,10 +1905,16 @@ export default function Discovery() {
             );
             })}</div>
           </section> : null)}
-        </div>{reviewPageCount > 1 ? <nav className="review-pagination" aria-label="Review results pages">
-          <Button size="sm" variant="outline" disabled={safeReviewPage === 1} onClick={() => setReviewPage((page) => Math.max(1, page - 1))}>Previous</Button>
+        </div>{visibleGroundingResults.length ? <nav className="review-pagination" aria-label="Review results pages">
+          {reviewPageCount > 1 ? <Button size="sm" variant="outline" disabled={safeReviewPage === 1} onClick={() => setReviewPage((page) => Math.max(1, page - 1))}>Previous</Button> : null}
           <span>Page {safeReviewPage} of {reviewPageCount} · {visibleGroundingResults.length} people</span>
-          <Button size="sm" variant="outline" disabled={safeReviewPage === reviewPageCount} onClick={() => setReviewPage((page) => Math.min(reviewPageCount, page + 1))}>Next</Button>
+          {reviewPageCount > 1 ? <Button size="sm" variant="outline" disabled={safeReviewPage === reviewPageCount} onClick={() => setReviewPage((page) => Math.min(reviewPageCount, page + 1))}>Next</Button> : null}
+          <label className="review-pagination__page-size"><span>Per page</span><select value={reviewPageSize} onChange={(e) => { setReviewPageSize(Number(e.target.value)); setReviewPage(1); }}>
+            <option value={12}>12</option>
+            <option value={25}>25</option>
+            <option value={50}>50</option>
+            <option value={100}>100</option>
+          </select></label>
         </nav> : null}</> : <div className="table-state table-state--empty">No {groundingResultsStatus.replace("_", " ")} results match the current filters.</div>}
       </DashboardCard>
       </section>

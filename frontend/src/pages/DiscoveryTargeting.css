@@ -1342,6 +1342,9 @@
 .review-card__why p{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden}
 .review-card__why small{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
 .review-pagination{align-items:center;display:flex;gap:12px;justify-content:center;padding:16px 0 2px}.review-pagination span{color:#696d7a;font-size:.75rem;font-weight:700}
+.review-pagination__page-size{align-items:center;display:flex;gap:6px;margin-left:8px}
+.review-pagination__page-size span{font-weight:600}
+.review-pagination__page-size select{border:1px solid var(--color-border,#e0e5e2);border-radius:999px;padding:4px 10px;font-size:.75rem;font-weight:700;color:#22232e;background:#fff}
 .leadgen-row-actions__group.is-next-step{display:grid;grid-template-columns:1fr;gap:7px}
 .leadgen-row-actions__group.is-next-step>span{font-size:.7rem;font-weight:800}
 .leadgen-row-actions__group.is-next-step .btn{border-radius:999px!important;min-height:40px!important;padding:9px 18px!important;white-space:nowrap!important;width:100%!important}
