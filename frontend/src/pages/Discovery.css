@@ -60,6 +60,7 @@
 .discovery-flow-nav>details>div button{background:transparent;border:0;border-radius:10px;color:var(--color-text);cursor:pointer;font:inherit;font-size:.76rem;padding:10px;text-align:left}
 .discovery-flow-nav>details>div button:hover{background:var(--color-surface-muted)}
 .notice-banner{background:rgba(255,255,255,.74);border:1px solid color-mix(in srgb,var(--color-brand) 18%,transparent);border-left:0;border-radius:999px;box-shadow:0 8px 24px rgba(18,38,33,.05);font-size:.76rem;justify-self:start;padding:9px 14px}
+.notice-banner--warn{background:#fff4e5;border-color:#e0b46a;color:#8a5a12;border-radius:14px;justify-self:stretch;margin-bottom:12px}
 .people-research-workspace{gap:18px}
 .discovery-workflow-hero--simple{backdrop-filter:blur(26px) saturate(135%);background:radial-gradient(circle at 10% 100%,color-mix(in srgb,var(--app-accent) 15%,transparent),transparent 42%),rgba(255,255,255,.7);border-color:rgba(255,255,255,.82);box-shadow:0 24px 80px rgba(62,55,90,.09)}
 .discovery-workflow-section>.dashboard-card{background:rgba(255,255,255,.78);backdrop-filter:blur(20px);border-color:rgba(255,255,255,.9);border-radius:22px;box-shadow:0 18px 60px rgba(57,53,75,.07)}

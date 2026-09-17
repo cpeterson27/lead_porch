@@ -418,6 +418,7 @@ export default function Discovery() {
   const [apolloBulkOutcome, setApolloBulkOutcome] = useState(null);
   const [qualifyBusy, setQualifyBusy] = useState(false);
   const [groundingResults, setGroundingResults] = useState([]);
+  const [groundingResultsTruncation, setGroundingResultsTruncation] = useState(null);
   const [groundingResultsLoading, setGroundingResultsLoading] = useState(false);
   const [groundingResultsStatus, setGroundingResultsStatus] = useState("pending_review");
   const [pdlEnrichBusyId, setPdlEnrichBusyId] = useState("");
@@ -497,7 +498,8 @@ export default function Discovery() {
     setGroundingResultsLoading(true);
     try {
       const response = await fetchVertexGroundingResults({ status });
-      setGroundingResults(response.data || []);
+      setGroundingResults(response.data?.rows || []);
+      setGroundingResultsTruncation(response.data?.truncated ? { shown: response.data.rows.length, total: response.data.totalCount } : null);
     } catch {
       setNotice("Unable to load Vertex Grounding results.");
     } finally {
@@ -1632,6 +1634,11 @@ export default function Discovery() {
           <small>Leads you approve will be added to your CRM and this campaign. {campaignContactCount != null ? <strong>{campaignContactCount} lead{campaignContactCount === 1 ? "" : "s"} in this campaign so far.</strong> : null}</small>
           <small>This is a repeatable loop, not a one-time run: come back to the <strong>Find leads</strong> tab above any time (this campaign stays linked) to search for more people, then qualify and add them the same way.</small>
         </div> : null}
+        {groundingResultsTruncation ? (
+          <p className="notice-banner notice-banner--warn" role="status">
+            Showing the newest {groundingResultsTruncation.shown} of {groundingResultsTruncation.total} results in this status. The rest aren't lost — qualify, add, or dismiss some of what's loaded here (or narrow with a filter) to bring the next ones in.
+          </p>
+        ) : null}
         <div className="discovery-review-filters">
           {["pending_review", "saved", "dismissed"].map((status) => (
             <Button key={status} size="sm" variant={groundingResultsStatus === status ? "primary" : "outline"} onClick={() => { setGroundingResultsStatus(status); setSelectedGroundingIds([]); setQualifySummary(null); loadGroundingResults(status); }}>
@@ -1769,8 +1776,13 @@ export default function Discovery() {
             const showWebSearchButton = apolloAttempted && pdlAttempted && !effectiveEmail && !result.publicWebLookup?.attempted;
             const showFindContactGroup = result.type === "person" && ["qualified", "needs_review"].includes(result.qualificationLabel) && (showApolloButton || showPdlButton || showWebSearchButton);
             const canQualifyAgain = result.qualificationLabel === "needs_review" && Boolean(effectiveEmail || result.pdlEnrichment?.attempted || result.apolloEnrichment?.attempted);
-            const canSaveAnyway = result.qualificationLabel === "needs_review" && Boolean(effectiveEmail);
             const canAddToCrm = result.qualificationLabel === "qualified" && Boolean(effectiveEmail);
+            // A deliberate override, always tucked under "More options," never
+            // a primary action: Jarvis's verdict is the default, but the
+            // owner can still add someone Jarvis marked needs_review or even
+            // not_a_fit once they've looked at the real evidence and email
+            // themselves and disagree.
+            const canSaveAnyway = ["needs_review", "not_a_fit"].includes(result.qualificationLabel) && Boolean(effectiveEmail);
             // Exactly one clear next step per lead — the way a professional
             // lead-gen tool surfaces a single primary action instead of a
             // wall of buttons. Every other applicable action is still one
@@ -1853,7 +1865,7 @@ export default function Discovery() {
                             <Button size="sm" variant="outline" loading={qualifyBusy} onClick={() => qualifyGroundingResults([result._id])}>Qualify again with Jarvis</Button>
                           ) : null}
                           {canSaveAnyway ? (
-                            <Button size="sm" variant="outline" onClick={() => saveGroundingResult(result._id)} title="Jarvis didn't find enough evidence to auto-qualify this one, but you have a real email and can judge it yourself">Save anyway</Button>
+                            <Button size="sm" variant="outline" onClick={() => saveGroundingResult(result._id)} title={result.qualificationLabel === "not_a_fit" ? "Jarvis scored this a poor program fit and marked it not a fit — you have a real email and can overrule that judgment yourself." : "Jarvis didn't find enough evidence to auto-qualify this one, but you have a real email and can judge it yourself."}>{result.qualificationLabel === "not_a_fit" ? "Add anyway — Jarvis said not a fit" : "Save anyway"}</Button>
                           ) : null}
                         </div>
                       </details>

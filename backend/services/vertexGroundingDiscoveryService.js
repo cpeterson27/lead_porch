@@ -292,22 +292,34 @@ async function search({ workspaceId, userId, auth, query, resultTypes, source = 
   return { created, merged: mergedCount, total: combinedResults.length, source: selectedSource, groundingCitations, sourceErrors, excludedForFreshness, excludedForSelfMatch, personFreshnessDays: PERSON_FRESHNESS_DAYS, providerStats: Object.values(providerStats) };
 }
 
+const LIST_RESULTS_LIMIT = 500;
+
 async function listResults({ workspaceId, status, type }, dependencies = {}) {
   const Model = dependencies.GroundingResearchResult || GroundingResearchResult;
   const filter = { workspaceId };
   if (status) filter.status = status;
   if (type) filter.type = type;
-  const rows = await Model.find(filter).sort({ createdAt: -1 }).limit(200).lean();
+  // A silent hard cap used to mean anyone with more than 200 matching
+  // results (a real, common case once someone works through a large
+  // Apollo/PDL pull) would have the rest permanently invisible with zero
+  // indication they existed at all. totalCount + truncated make that
+  // honest instead: the frontend can tell the owner exactly how many are
+  // not shown rather than letting them think leads went missing.
+  const [rows, totalCount] = await Promise.all([
+    Model.find(filter).sort({ createdAt: -1 }).limit(LIST_RESULTS_LIMIT).lean(),
+    Model.countDocuments(filter),
+  ]);
   const now = Date.now();
   const NEW_WINDOW_MS = 48 * 60 * 60 * 1000;
   // Age/newness are computed at read time, never stored, so they're always
   // accurate relative to "now" rather than whatever moment the row was last
   // written.
-  return rows.map((row) => ({
+  const mapped = rows.map((row) => ({
     ...row,
     evidenceAgeDays: row.evidenceDate ? Math.max(0, Math.floor((now - new Date(row.evidenceDate).getTime()) / 86400000)) : null,
     isNew: row.status === "pending_review" && (now - new Date(row.createdAt).getTime()) < NEW_WINDOW_MS,
   }));
+  return { rows: mapped, totalCount, truncated: totalCount > mapped.length };
 }
 
 /**
@@ -350,7 +362,15 @@ async function saveResult({ workspaceId, userId, resultId, campaignId = null }, 
   if (row.status !== "pending_review") { const error = new Error("This result has already been reviewed"); error.code = "GROUNDING_RESULT_ALREADY_REVIEWED"; throw error; }
   let selectedCampaign = null;
   if (campaignId) {
-    if (row.type !== "person" || row.qualificationLabel !== "qualified") { const error = new Error("Qualify this person before adding them to a campaign"); error.code = "GROUNDING_RESULT_NOT_QUALIFIED"; throw error; }
+    // Only person rows can join a campaign at all. Beyond that, this does
+    // NOT require qualificationLabel === "qualified" — the review queue's
+    // primary bulk path already only ever calls this for qualified leads,
+    // but a needs_review or not_a_fit lead can still be saved one at a time
+    // through an explicit "Add anyway" override once the owner has looked
+    // at Jarvis's evidence and email and decided to overrule it themselves.
+    // That deliberate human click is the real qualification check; this
+    // never runs automatically or in bulk for an unreviewed lead.
+    if (row.type !== "person") { const error = new Error("Only a person can be added to a campaign"); error.code = "GROUNDING_RESULT_NOT_QUALIFIED"; throw error; }
     selectedCampaign = await CampaignModel.findOne({ _id: campaignId, workspaceId }).select("_id").lean();
     if (!selectedCampaign) { const error = new Error("Campaign not found"); error.code = "CAMPAIGN_NOT_FOUND"; throw error; }
   }

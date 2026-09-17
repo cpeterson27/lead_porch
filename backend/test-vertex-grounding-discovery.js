@@ -50,6 +50,7 @@ const JarvisMemoryNote = require("./models/JarvisMemoryNote");
 const RECENT_EVIDENCE_DATE = new Date(Date.now() - 5 * 24 * 60 * 60 * 1000);
 const Organization = require("./models/Organization");
 const Contact = require("./models/Contact");
+const Campaign = require("./models/Campaign");
 async function testSearchStagesResultsWithoutCreatingAnyLead() {
   const workspaceId = new mongoose.Types.ObjectId();
   const userId = new mongoose.Types.ObjectId();
@@ -270,7 +271,7 @@ async function testListResultsComputesEvidenceAgeFromEvidenceDate() {
   await GroundingResearchResult.create({ workspaceId, query: "q", type: "person", name: "Dated Person", evidenceUrls: ["https://example.com"], evidenceDate: tenDaysAgo, status: "pending_review" });
   await GroundingResearchResult.create({ workspaceId, query: "q", type: "organization", name: "No Date Needed Org", evidenceUrls: ["https://example.com"], status: "pending_review" });
 
-  const rows = await vertexGroundingDiscoveryService.listResults({ workspaceId });
+  const { rows } = await vertexGroundingDiscoveryService.listResults({ workspaceId });
   const dated = rows.find((row) => row.name === "Dated Person");
   const org = rows.find((row) => row.name === "No Date Needed Org");
   assert.equal(dated.evidenceAgeDays, 10, "evidence age must be computed from evidenceDate at read time");
@@ -493,6 +494,43 @@ async function testSavingAPersonUsesThePdlVerifiedEmailWhenPresent() {
   await Contact.deleteMany({ workspaceId });
 }
 
+async function testSavingWithACampaignAllowsAnExplicitOverrideOfNeedsReviewOrNotAFit() {
+  const workspaceId = new mongoose.Types.ObjectId();
+  const userId = new mongoose.Types.ObjectId();
+  const campaign = await Campaign.create({ workspaceId, name: "September Outreach", campaignKind: "program" });
+
+  // Jarvis marked this a poor fit, but the row still carries a real,
+  // already-known email — the owner should be able to overrule that
+  // verdict for one specific person without needing to first remove the
+  // campaign, save, then reassign it by hand.
+  const notAFitRow = await GroundingResearchResult.create({
+    workspaceId, query: "q", type: "person", name: "Benjamin Weyers", organizationName: "Zendesk", email: "benjamin.weyers@zendesk.com", emailState: "verified",
+    evidenceUrls: ["https://zendesk.com"], status: "pending_review", qualificationLabel: "not_a_fit", providers: ["apollo_person_search"],
+  });
+  const savedNotAFit = await vertexGroundingDiscoveryService.saveResult({ workspaceId, userId, resultId: notAFitRow._id, campaignId: campaign._id });
+  assert.equal(savedNotAFit.status, "saved", "an explicit override must succeed even though Jarvis said not_a_fit");
+  const notAFitContact = await Contact.findById(savedNotAFit.savedContactId).lean();
+  assert.ok(notAFitContact.campaignIds.some((id) => String(id) === String(campaign._id)), "the overridden save must still assign the requested campaign");
+
+  const needsReviewRow = await GroundingResearchResult.create({
+    workspaceId, query: "q", type: "person", name: "Needs Review Person", email: "person@example.com", emailState: "unverified",
+    evidenceUrls: ["https://example.com"], status: "pending_review", qualificationLabel: "needs_review", providers: ["apollo_person_search"],
+  });
+  const savedNeedsReview = await vertexGroundingDiscoveryService.saveResult({ workspaceId, userId, resultId: needsReviewRow._id, campaignId: campaign._id });
+  assert.equal(savedNeedsReview.status, "saved", "an explicit override must also succeed for needs_review");
+
+  // An organization can never join a campaign this way, override or not.
+  const orgRow = await GroundingResearchResult.create({ workspaceId, query: "q", type: "organization", name: "Some REIA", organizationDomain: "somereia.org", evidenceUrls: ["https://somereia.org"], status: "pending_review" });
+  await assert.rejects(
+    () => vertexGroundingDiscoveryService.saveResult({ workspaceId, userId, resultId: orgRow._id, campaignId: campaign._id }),
+    (error) => error.code === "GROUNDING_RESULT_NOT_QUALIFIED",
+  );
+
+  await GroundingResearchResult.deleteMany({ workspaceId });
+  await Contact.deleteMany({ workspaceId });
+  await Campaign.deleteMany({ workspaceId });
+}
+
 async function testRankForProgramFitScoresOnlyValidPendingRowsAndRecordsProvenance() {
   const workspaceId = new mongoose.Types.ObjectId();
   const userId = new mongoose.Types.ObjectId();
@@ -574,6 +612,7 @@ async function run() {
     await testSearchPublicWebRecordsAnHonestErrorWhenBothSourcesFail();
     await testSearchPublicWebRefusesADuplicateAttempt();
     await testSavingAPersonUsesThePdlVerifiedEmailWhenPresent();
+    await testSavingWithACampaignAllowsAnExplicitOverrideOfNeedsReviewOrNotAFit();
     await testRankForProgramFitScoresOnlyValidPendingRowsAndRecordsProvenance();
     await testRankForProgramFitRequiresAtLeastOneSelection();
     testOpenAiIntegrationStillHasNoResponsesApiWebSearch();
