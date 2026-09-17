@@ -1620,7 +1620,7 @@ export default function Discovery() {
               <div className="review-queue-summary" role="status">
                 <strong>Qualification complete</strong>
                 <span>{qualifySummary.processed} processed · {qualifySummary.qualified} qualified · {qualifySummary.needsReview} needs review · {qualifySummary.notAFit} not a fit{qualifySummary.failed ? ` · ${qualifySummary.failed} failed` : ""}</span>
-                <small>{qualifySummary.qualified ? "Next: view qualified leads, then add the ones with contact information to your CRM and campaign." : qualifySummary.needsReview ? "Next: view needs-review leads and use Apollo to confirm their identity and contact information, then qualify them again." : "No usable leads were produced in this batch. Review the rejection reasons before spending anything on enrichment."}</small>
+                <small>{qualifySummary.qualified ? "Next: view qualified leads, then add the ones with contact information to your CRM and campaign." : qualifySummary.needsReview ? "Next: review these leads. If an email is already available, do not spend another Apollo credit; use the score and full record to save or reject the lead." : "No usable leads were produced in this batch. Review the rejection reasons before spending anything on enrichment."}</small>
               </div>
             ) : null}
             {apolloBulkOutcome ? <div className={`review-queue-provider-result is-${apolloBulkOutcome.state}`} role="status">
@@ -1634,7 +1634,7 @@ export default function Discovery() {
               ))}
               <Button size="sm" variant="outline" loading={apolloBulkEnrichBusy} disabled={!selectedGroundingIds.some((id) => {
                 const result = visibleGroundingResults.find((row) => row._id === id);
-                return result?.type === "person" && ["qualified", "needs_review"].includes(result.qualificationLabel) && !result.apolloEnrichment?.attempted;
+                return result?.type === "person" && ["qualified", "needs_review"].includes(result.qualificationLabel) && !effectiveEmailOf(result) && !result.apolloEnrichment?.attempted;
               })} onClick={researchSelectedWithApollo}>Research selected with Apollo</Button>
               <Button size="sm" variant="outline" disabled={!selectedGroundingIds.some((id) => visibleGroundingResults.find((r) => r._id === id)?.qualificationLabel === "qualified")} onClick={saveSelectedQualified}>{leadCampaignId ? "Add selected leads to CRM + campaign" : "Add selected qualified leads to CRM"}</Button>
               <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} onClick={dismissSelected}>Mark selected as not leads</Button>
@@ -1655,7 +1655,7 @@ export default function Discovery() {
             const apolloAttempted = Boolean(result.apolloEnrichment?.attempted);
             const apolloFailed = apolloAttempted && !(result.apolloEnrichment?.matched && result.apolloEnrichment?.email);
             const pdlAttempted = Boolean(result.pdlEnrichment?.attempted);
-            const showApolloButton = apolloAvailable && !apolloAttempted;
+            const showApolloButton = apolloAvailable && !effectiveEmail && !apolloAttempted;
             const showPdlButton = !pdlAttempted && (!apolloAvailable || apolloFailed);
             // The waterfall's last resort: once BOTH structured providers
             // have genuinely been tried (server-side enforced too), offer a
@@ -1701,7 +1701,7 @@ export default function Discovery() {
                       </div>
                     ) : null}
                     {result.qualificationLabel === "needs_review" ? (
-                      <small className="review-card__missing">Jarvis needs stronger identity or intent evidence. Review the details, then research the contact and qualify them again.</small>
+                      <small className="review-card__missing">{effectiveEmail ? "Jarvis found the contact but did not auto-approve the program fit. Review the score and full record; do not spend another Apollo credit." : "Jarvis needs stronger identity or contact evidence. Research the contact, then qualify again."}</small>
                     ) : null}
                     {(result.type === "person" && ["qualified", "needs_review"].includes(result.qualificationLabel) && (showApolloButton || showPdlButton || showWebSearchButton)) ? (
                       <div className="leadgen-row-actions__group">
@@ -1717,7 +1717,7 @@ export default function Discovery() {
                         ) : null}
                       </div>
                     ) : null}
-                    {result.qualificationLabel === "needs_review" && (result.pdlEnrichment?.attempted || result.apolloEnrichment?.attempted) ? (
+                    {result.qualificationLabel === "needs_review" && (effectiveEmail || result.pdlEnrichment?.attempted || result.apolloEnrichment?.attempted) ? (
                       <Button size="sm" variant="outline" loading={qualifyBusy} onClick={() => qualifyGroundingResults([result._id])}>Qualify again with Jarvis</Button>
                     ) : null}
                     {result.qualificationLabel === "needs_review" && effectiveEmail ? (

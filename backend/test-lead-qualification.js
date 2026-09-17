@@ -185,7 +185,7 @@ async function testPublicDiscoveryRunKeepsItsSelectedProgramDuringQualification(
 }
 
 async function testPrimaryPublicDiscoveryRunMapsItsCoachingProgramDuringQualification() {
-  const rows = [{ _id: "gr-coaching-run", name: "Taylor Buyer", organizationName: "Taylor Investments", organizationDomain: "", summary: "Multifamily Investor", evidenceUrls: [], conflicts: [], providers: ["apollo_person_search"], confidence: "single_source", discoveryMode: "icp_match", discoveryRunId: "run-coaching-1", linkedinUrl: "https://linkedin.example/taylor", pdlEnrichment: {}, apolloEnrichment: {} }];
+  const rows = [{ _id: "gr-coaching-run", name: "Taylor Buyer", organizationName: "Taylor Investments", organizationDomain: "", summary: "Multifamily Investor", evidenceUrls: [], conflicts: [], providers: ["apollo_person_search"], confidence: "single_source", discoveryMode: "public_web_high_volume", discoveryRunId: "run-coaching-1", linkedinUrl: "https://linkedin.example/taylor", emailVerificationStatus: "verified", pdlEnrichment: {}, apolloEnrichment: {} }];
   const GroundingResearchResult = fakeGroundingResultModel(rows);
   const PublicWebDiscoveryRun = { find: () => leanQuery([{ _id: "run-coaching-1", programNoteId: null, coachingProgramId: "coaching-program-1", programName: "6-Week Coaching - Acquisitions" }]) };
   const CoachingProgram = { find: () => leanQuery([{ _id: "coaching-program-1", name: "6-Week Coaching - Acquisitions" }]) };

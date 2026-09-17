@@ -573,6 +573,7 @@ async function mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, se
       verifiedIdentifier: existing.pdlEnrichment?.matched || existing.apolloEnrichment?.matched || existing.emailVerificationStatus === "verified",
     });
     existing.discoveryRunId = existing.discoveryRunId || run._id;
+    if (candidate.discoveryMode === "icp_match") existing.discoveryMode = "icp_match";
     existing.apolloPersonId = existing.apolloPersonId || candidate.apolloPersonId || "";
     if (candidate.apolloSearchProfile && Object.keys(candidate.apolloSearchProfile).length) {
       existing.apolloSearchProfile = { ...(existing.apolloSearchProfile || {}), ...candidate.apolloSearchProfile };
@@ -596,7 +597,7 @@ async function mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, se
     summary: candidate.summary || "", evidenceUrls: candidate.evidenceUrls || [], evidenceDate: candidate.evidenceDate || null,
     confidence: initialConfidence, providers: initialProviders,
     identityConfidence: computeIdentityConfidence({ providers: initialProviders, confidence: initialConfidence, linkedinUrl: candidate.linkedinUrl, organizationName: candidate.organizationName }),
-    discoveryMode: "public_web_high_volume", discoveryCategory: candidate.discoveryCategory || "",
+    discoveryMode: candidate.discoveryMode || "public_web_high_volume", discoveryCategory: candidate.discoveryCategory || "",
     freshnessTier, intentSignals: (candidate.intentSignals || []).slice(0, 10),
     linkedinUrl: candidate.linkedinUrl || "", discoveryRunId: run._id,
     status: "pending_review", createdByUserId: userId, correlationId,
@@ -757,6 +758,7 @@ async function runPdlPersonSearchPhase({ workspaceId, userId, auth, run, selfSig
       }
       const candidate = leadGenerationCoordinatorService.normalizePdlCandidate(person);
       candidate.discoveryCategory = "people";
+      candidate.discoveryMode = "icp_match";
       candidate.providers = [candidate.provider];
       // eslint-disable-next-line no-await-in-loop
       const merge = await mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, selfSignals, isStudentSearch: true, correlationId }, dependencies);
@@ -875,6 +877,7 @@ async function runApolloPersonSearchPhase({ workspaceId, userId, auth, run, self
         }
         const candidate = leadGenerationCoordinatorService.normalizeApolloCandidate(enrichedPerson);
         candidate.discoveryCategory = "people";
+        candidate.discoveryMode = "icp_match";
         candidate.providers = [candidate.provider];
         // eslint-disable-next-line no-await-in-loop
         const merge = await mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, selfSignals, isStudentSearch: true, correlationId }, dependencies);

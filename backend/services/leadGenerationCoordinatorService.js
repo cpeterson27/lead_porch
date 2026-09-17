@@ -1285,6 +1285,14 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
     });
     const sourceSearch = row.discoverySearchId ? searchById.get(String(row.discoverySearchId)) : null;
     const sourcePublicRun = row.discoveryRunId ? publicRunById.get(String(row.discoveryRunId)) : null;
+    // Repair rows created by the high-volume engine before it persisted the
+    // structured source mode correctly. Apollo/PDL person-search profiles
+    // are ICP database matches, not public-web intent evidence, regardless
+    // of the stale discoveryMode stored on an existing row.
+    const providers = row.providers || [];
+    const discoveryMode = providers.some((provider) => ["apollo_person_search", "pdl_person_search"].includes(provider))
+      ? "icp_match"
+      : row.discoveryMode;
     const sourceProgramId = sourceSearch?.programNoteId
       || sourcePublicRun?.programNoteId
       || coachingProgramKeyById.get(String(sourcePublicRun?.coachingProgramId || ""));
@@ -1294,7 +1302,7 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
     return {
       resultId: String(row._id), name: row.name, organizationName: row.organizationName, organizationDomain: row.organizationDomain,
       summary: row.summary, evidenceUrls: row.evidenceUrls, conflicts: row.conflicts || [],
-      discoveryMode: row.discoveryMode, identityConfidence, preScreenedExclusionFlags: deterministicFlags,
+      discoveryMode, identityConfidence, preScreenedExclusionFlags: deterministicFlags,
       targetProgramId, targetProgramName: targetProgramId ? programById.get(targetProgramId)?.title || sourceSearch?.programName || sourcePublicRun?.programName || "" : "",
     };
   });
