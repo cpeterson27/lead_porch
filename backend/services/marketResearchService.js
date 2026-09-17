@@ -12,7 +12,7 @@ function parseNumber(value) {
 
 function compileWithRules(question) {
   const prompt = clean(question);
-  if (prompt.length < 8) throw new Error("Describe the businesses and market you want Growth Operator to research.");
+  if (prompt.length < 8) throw new Error("Describe the businesses and market you want Lead Porch to research.");
   const normalized = prompt.replace(/[?.!]+$/, "");
   const subjectMatch = normalized.match(/^(?:find|show me|research|build (?:a )?list of|identify)\s+(.+?)(?=\s+(?:in|near|across|within|with|that|having)\s+|$)/i);
   const locationMatch = normalized.match(/\s+(?:in|near|across|within)\s+(.+?)(?=\s+(?:with|that|having|who|where)\s+|$)/i);
@@ -41,7 +41,7 @@ function compileWithRules(question) {
     },
     rankingDimensions: ["ICP fit", "revenue potential", "intent signals", "technology readiness"],
     assumptions: location ? [] : ["No geography was specified; add a city, state, or country before running a broad search."],
-    unresolved: ["A connected business-data source is required to discover organizations not already stored in Growth Operator."],
+    unresolved: ["A connected Apollo account is required to discover organizations not already in your CRM."],
     compiler: "rules",
   };
 }
@@ -70,7 +70,7 @@ async function compileMarketQuestion(question) {
     const aiPlan = await compileWithOpenAI(question);
     return aiPlan || fallback;
   } catch (error) {
-    return { ...fallback, compilerWarning: "Growth Operator used its built-in parser because the AI planner was unavailable." };
+    return { ...fallback, compilerWarning: "Lead Porch used its built-in parser because the AI planner was unavailable." };
   }
 }
 

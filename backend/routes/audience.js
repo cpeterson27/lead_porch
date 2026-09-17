@@ -22,8 +22,7 @@ const {
 } = require("../services/audience");
 const { previewOrganizationImport, importOrganizations } = require("../services/organizationImportService");
 const { compileMarketQuestion } = require("../services/marketResearchService");
-const { sourceStatus } = require("../services/businessDataSourceService");
-const { runMarketResearchJob } = require("../services/externalMarketResearchService");
+const { sourceStatus, runMarketResearchJob } = require("../services/externalMarketResearchService");
 const { applyManualBucketOverride, classifySignalBucket, deduplicateSignals, requestResearchMonitorRun, resetMonitorSignals, runResearchMonitor, scoreSignal, signalEligibility } = require("../services/researchMonitorService");
 const { ensureLinks, generateIntentEmailDraft } = require("../services/intentEmailDraftService");
 const { researchAudienceForSignal } = require("../services/researchAudienceTemplates");
@@ -498,7 +497,7 @@ router.post("/research/signals/:signalId/identity-research", async (req, res) =>
       evidenceUrls: evidence.map((item) => item.url).slice(0, 10),
     };
     await signal.save();
-    if (people.length > 1) return res.json({ success: true, status: "choose_person", signal, people, message: "Several people are named publicly. Choose the correct contact below; Growth Operator will not guess." });
+    if (people.length > 1) return res.json({ success: true, status: "choose_person", signal, people, message: "Several people are named publicly. Choose the correct contact below; Lead Porch will not guess." });
     return res.json({ success: true, status: "no_person_found", signal, message: "No named organizer or contact person is published on this page. Keep it as a community opportunity or contact the group through the original platform." });
   } catch (error) {
     return res.status(400).json({ success: false, error: error.message || "Unable to research this public source." });
@@ -818,11 +817,15 @@ router.post("/research/run", async (req, res) => {
   try {
     const question = String(req.body?.question || "").trim();
     const plan = req.body?.plan || await compileMarketQuestion(question);
-    const maxResults = Math.min(5000, Math.max(1, Number(req.body?.maxResults) || 1000));
+    // 300 = the real ceiling enforced inside searchApolloCompanies (3 pages
+    // x 100 results, each page one paid Apollo call) — this outer limit is
+    // kept in sync so the API contract is honest rather than silently
+    // truncating a higher number a caller asked for.
+    const maxResults = Math.min(300, Math.max(1, Number(req.body?.maxResults) || 300));
     const status = sourceStatus();
     const audience = await Audience.create({
       workspaceId: req.auth.workspaceId,
-      name: String(plan.name || "Growth Operator market research").slice(0, 160),
+      name: String(plan.name || "Lead Porch market research").slice(0, 160),
       description: String(plan.summary || question),
       source: "ai",
       criteria: plan.criteria || {},
@@ -1758,7 +1761,7 @@ router.get("/organizations", async (req, res) => {
 // ======================================
 // DISCOVER ORGANIZATIONS FOR AUDIENCE
 // Triggers discovery flow for a given Audience:
-// - Search Growth Operator's organization intelligence records
+// - Search Lead Porch's organization intelligence records
 // - Enrich each organization
 // - Score and filter by criteria
 // - Save/update to MongoDB
