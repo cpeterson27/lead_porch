@@ -636,12 +636,21 @@ export default function Discovery() {
     }
   };
 
-  const dismissGroundingResult = async (id) => {
+  const dismissGroundingResult = async (id, { silent = false } = {}) => {
+    // Remove it from the list immediately instead of waiting on a full
+    // reload of the whole (now up to ~200-row) results page — that round
+    // trip was the "takes a minute" delay. The dismiss call still happens
+    // for real underneath; this only makes the list catch up instantly
+    // instead of after a fresh fetch.
+    setGroundingResults((current) => current.filter((r) => r._id !== id));
     try {
       await dismissVertexGroundingResult(id);
-      loadGroundingResults();
+      if (!silent) setNotice("Marked as not a lead.");
+      return true;
     } catch (err) {
-      setNotice(err.response?.data?.error || "Unable to dismiss that result.");
+      if (!silent) setNotice(err.response?.data?.error || "Unable to dismiss that result.");
+      await loadGroundingResults();
+      return false;
     }
   };
 
@@ -770,11 +779,18 @@ export default function Discovery() {
     refreshCampaignContactCount();
   };
   const dismissSelected = async () => {
-    if (!selectedGroundingIds.length) return;
-    for (const id of selectedGroundingIds) {
-      await dismissGroundingResult(id);
+    if (!selectedGroundingIds.length || saveProgress) return;
+    const ids = [...selectedGroundingIds];
+    let succeeded = 0;
+    let failed = 0;
+    for (let i = 0; i < ids.length; i += 1) {
+      setSaveProgress({ done: i, total: ids.length, action: "dismiss" });
+      const ok = await dismissGroundingResult(ids[i], { silent: true });
+      if (ok) succeeded += 1; else failed += 1;
     }
+    setSaveProgress(null);
     setSelectedGroundingIds([]);
+    setNotice(`Marked ${succeeded} of ${ids.length} as not a lead.${failed ? ` ${failed} failed.` : ""}`);
   };
 
   // One entry per distinct run (a DiscoverySearch or PublicWebDiscoveryRun)
@@ -1692,7 +1708,13 @@ export default function Discovery() {
                   : `Jarvis is qualifying ${qualifyProgress?.total ?? selectedGroundingIds.length} candidate(s) against your approved programs — this can take up to a minute. Please wait; the button is disabled to prevent duplicate submissions.`}
               </p>
             ) : null}
-            {saveProgress ? <p className="review-queue-progress" role="status">Adding lead {saveProgress.done + 1} of {saveProgress.total} to CRM{leadCampaignId ? " and this campaign" : ""}…</p> : null}
+            {saveProgress ? (
+              <p className="review-queue-progress" role="status">
+                {saveProgress.action === "dismiss"
+                  ? `Marking lead ${saveProgress.done + 1} of ${saveProgress.total} as not a lead…`
+                  : `Adding lead ${saveProgress.done + 1} of ${saveProgress.total} to CRM${leadCampaignId ? " and this campaign" : ""}…`}
+              </p>
+            ) : null}
             {qualifySummary ? (
               <div className="review-queue-summary" role="status">
                 <strong>Qualification complete</strong>
@@ -1719,7 +1741,7 @@ export default function Discovery() {
                 );
               })()}
               <Button size="sm" variant="outline" loading={Boolean(saveProgress)} disabled={Boolean(saveProgress) || !selectedGroundingIds.some((id) => visibleGroundingResults.find((r) => r._id === id)?.qualificationLabel === "qualified")} title={selectedGroundingIds.some((id) => visibleGroundingResults.find((r) => r._id === id)?.qualificationLabel === "qualified") ? undefined : "None of your selected leads are qualified yet — click \"Have Jarvis qualify\" first, then this enables for whichever come back qualified."} onClick={saveSelectedQualified}>{leadCampaignId ? "Add selected leads to CRM + campaign" : "Add selected qualified leads to CRM"}</Button>
-              <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} onClick={dismissSelected}>Mark selected as not leads</Button>
+              <Button size="sm" variant="outline" loading={Boolean(saveProgress)} disabled={Boolean(saveProgress) || !selectedGroundingIds.length} onClick={dismissSelected}>Mark selected as not leads</Button>
             </div>
           </div>
         ) : null}
