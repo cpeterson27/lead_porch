@@ -25,6 +25,7 @@ const crypto = require("crypto");
 const { PDFParse } = require("pdf-parse");
 const JarvisMemoryNote = require("../models/JarvisMemoryNote");
 const ResearchMonitor = require("../models/ResearchMonitor");
+const CoachingProgram = require("../models/CoachingProgram");
 const agentExecutionService = require("./agentExecutionService");
 const auditService = require("./auditService");
 const { CATEGORY_FOLDERS, isSafeNotePath } = require("./jarvisMemoryService");
@@ -121,11 +122,21 @@ function composeContent({ originalFilename, extractedText, analysisResult }) {
  * (+ up to MAX_SUGGESTED_MONITORS disabled draft monitors). Never approves
  * the note and never enables a monitor.
  */
-async function ingestPdf({ workspaceId, userId, auth, category, originalFilename, buffer, correlationId = "" }, dependencies = {}) {
+async function ingestPdf({ workspaceId, userId, auth, category, originalFilename, buffer, coachingProgramId = null, correlationId = "" }, dependencies = {}) {
   const Model = dependencies.JarvisMemoryNote || JarvisMemoryNote;
   const MonitorModel = dependencies.ResearchMonitor || ResearchMonitor;
+  const ProgramModel = dependencies.CoachingProgram || CoachingProgram;
   if (!CATEGORY_FOLDERS[category]) { const error = new Error("Select an approved knowledge category"); error.code = "MEMORY_CATEGORY_INVALID"; throw error; }
   if (!Buffer.isBuffer(buffer) || !buffer.length) { const error = new Error(`"${originalFilename}" is empty or unreadable`); error.code = "PDF_EMPTY_FILE"; throw error; }
+
+  // Never trust a program id blind — confirm it's a real program in THIS
+  // workspace before linking, otherwise silently drop it rather than fail
+  // the whole upload over an optional field.
+  let linkedCoachingProgramId = null;
+  if (coachingProgramId) {
+    const program = await ProgramModel.findOne({ _id: coachingProgramId, workspaceId }).select("_id").lean();
+    if (program) linkedCoachingProgramId = program._id;
+  }
 
   const fileHash = crypto.createHash("sha256").update(buffer).digest("hex");
   if (typeof Model.findOne === "function") {
@@ -162,6 +173,14 @@ async function ingestPdf({ workspaceId, userId, auth, category, originalFilename
     workspaceId, source: "pdf_upload", category, path, title, content, contentHash,
     originalFilename: clean(originalFilename, 300), fileHash, createdByUserId: userId,
     status: "draft", version: 1, versions: [],
+    linkedCoachingProgramId,
+    ...(analysisResult.ok ? {
+      aiAnalysis: {
+        programSummary: clean(analysisResult.analysis.programSummary, 4000),
+        idealCustomerProfile: clean(analysisResult.analysis.idealCustomerProfile, 4000),
+        qualificationCriteria: (analysisResult.analysis.qualificationCriteria || []).slice(0, 20).map((row) => clean(row, 300)).filter(Boolean),
+      },
+    } : {}),
   });
 
   const monitorDrafts = [];

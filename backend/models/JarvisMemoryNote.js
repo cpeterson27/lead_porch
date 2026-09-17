@@ -25,10 +25,31 @@ const jarvisMemoryNoteSchema = new mongoose.Schema({
   // or AI analysis so the same file cannot consume credits twice.
   fileHash: { type: String, default: "", trim: true, index: true },
   category: { type: String, enum: ["dashboard/context", "campaigns", "contacts-icp", "partners-affiliates", "offers-programs", "marketing-channels", "sops", "decisions"], required: true, index: true },
+  // Only ever set for source: "pdf_upload" notes in the "offers-programs"
+  // category, and only when the uploader explicitly picked a program at
+  // upload time — never inferred. Lets a program's edit screen show exactly
+  // which uploaded PDFs are about it, so its Internal Summary (the field
+  // that actually drives lead-search targeting) can be built from the
+  // AI-drafted ideal customer profile below with one click, instead of a
+  // separate paid "regenerate" step.
+  linkedCoachingProgramId: { type: mongoose.Schema.Types.ObjectId, ref: "CoachingProgram", default: null, index: true },
   path: { type: String, required: true, trim: true },
   title: { type: String, required: true, trim: true },
   content: { type: String, required: true },
   contentHash: { type: String, required: true },
+  // Structured mirror of the same AI analysis already folded into `content`
+  // as markdown (see pdfKnowledgeIngestionService.js). Stored separately,
+  // undefined when analysis failed, so callers like the "Apply to Internal
+  // Summary" action can read idealCustomerProfile directly instead of
+  // parsing it back out of prose.
+  aiAnalysis: {
+    type: new mongoose.Schema({
+      programSummary: { type: String, default: "" },
+      idealCustomerProfile: { type: String, default: "" },
+      qualificationCriteria: { type: [String], default: [] },
+    }, { _id: false }),
+    default: undefined,
+  },
   sourceUpdatedAt: { type: Date, default: null },
   createdByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   approvedByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },

@@ -268,12 +268,13 @@ async function retrieveCloudNotes(query, { workspaceId, categories, limit = 4 } 
 }
 
 /** List notes for the Knowledge Center UI, with optional status/category/search filters. */
-async function listNotes({ workspaceId, status, category, search, includeArchived = false } = {}, Model = JarvisMemoryNote) {
+async function listNotes({ workspaceId, status, category, search, includeArchived = false, coachingProgramId } = {}, Model = JarvisMemoryNote) {
   if (!workspaceId) { const error = new Error("Workspace context is required"); error.code = "WORKSPACE_REQUIRED"; throw error; }
   const filter = { workspaceId };
   if (status) filter.status = status;
   else if (!includeArchived) filter.status = { $ne: "archived" };
   if (category) filter.category = category;
+  if (coachingProgramId) filter.linkedCoachingProgramId = coachingProgramId;
   const notes = await Model.find(filter).select("-versions").sort({ updatedAt: -1 }).limit(500).lean();
   const term = String(search || "").trim().toLowerCase();
   return term ? notes.filter((note) => `${note.title} ${note.content}`.toLowerCase().includes(term)) : notes;

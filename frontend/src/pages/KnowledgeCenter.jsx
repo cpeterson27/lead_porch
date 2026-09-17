@@ -17,6 +17,7 @@ import {
   uploadKnowledgePdfs,
   fetchWorkspaceConfig,
   uploadOrganizationLogo,
+  fetchCoachingPrograms,
 } from "../services/api.js";
 import "./KnowledgeCenter.css";
 
@@ -56,6 +57,8 @@ export default function KnowledgeCenter() {
   const [showImported, setShowImported] = useState(false);
   const [workspaceView, setWorkspaceView] = useState("upload");
   const [pdfCategory, setPdfCategory] = useState("offers-programs");
+  const [pdfProgramId, setPdfProgramId] = useState("");
+  const [coachingPrograms, setCoachingPrograms] = useState([]);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfResults, setPdfResults] = useState(null);
   const pdfInputRef = useRef(null);
@@ -66,6 +69,12 @@ export default function KnowledgeCenter() {
   useEffect(() => {
     fetchWorkspaceConfig()
       .then((config) => setLogoUrl(config.organizationLogoUrl || ""))
+      .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    fetchCoachingPrograms()
+      .then((rows) => setCoachingPrograms(rows || []))
       .catch(() => {});
   }, []);
 
@@ -211,7 +220,7 @@ export default function KnowledgeCenter() {
     setError("");
     setPdfResults(null);
     try {
-      const res = await uploadKnowledgePdfs(files, pdfCategory);
+      const res = await uploadKnowledgePdfs(files, pdfCategory, pdfCategory === "offers-programs" ? pdfProgramId : "");
       setPdfResults(res.data.results);
       const succeeded = res.data.results.filter((row) => row.success).length;
       setNotice(`${succeeded} of ${res.data.results.length} PDF(s) staged as drafts awaiting your review.`);
@@ -284,6 +293,23 @@ export default function KnowledgeCenter() {
         <DashboardCard title="Upload new PDFs">
           <p className="knowledge-upload-explainer"><strong>Duplicates are blocked automatically.</strong> Uploaded PDFs wait for your review before Jarvis can use them.</p>
           <div className="knowledge-upload-grid"><label>Category<select value={pdfCategory} onChange={(e) => setPdfCategory(e.target.value)}>{CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>PDF files (up to 10)<input ref={pdfInputRef} type="file" accept="application/pdf" multiple disabled={pdfBusy} /></label></div>
+          {pdfCategory === "offers-programs" ? (
+            <div className="knowledge-upload-grid">
+              <label>
+                Which program is this about? (optional)
+                <select value={pdfProgramId} onChange={(e) => setPdfProgramId(e.target.value)}>
+                  <option value="">Not tied to one specific program</option>
+                  {coachingPrograms.map((program) => <option key={program._id} value={program._id}>{program.name}</option>)}
+                </select>
+              </label>
+              <p className="knowledge-upload-explainer">
+                Pick a program here and, once you approve this PDF below, its edit
+                screen will show the AI-drafted ideal customer profile with a
+                one-click button to copy it into that program's Internal
+                Summary — no extra AI call, no risk to the public website.
+              </p>
+            </div>
+          ) : null}
           <Button loading={pdfBusy} onClick={uploadPdfs}>{pdfBusy ? "Checking and analyzing…" : "Check and upload PDFs"}</Button>
           {pdfResults ? <ul className="knowledge-pdf-results">{pdfResults.map((row, index) => <li key={index} className={row.success ? "is-success" : "is-error"}><strong>{row.filename}</strong>{row.success ? ` — staged for review${row.monitorDraftsCreated ? `, ${row.monitorDraftsCreated} suggested monitor(s) created inactive` : ""}` : row.code === "PDF_DUPLICATE" ? ` — not uploaded: ${row.error}` : ` — failed: ${row.error}`}</li>)}</ul> : null}
         </DashboardCard>

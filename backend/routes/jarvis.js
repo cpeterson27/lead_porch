@@ -609,7 +609,7 @@ router.post("/memory/:id/confirm", requireRole("owner", "admin"), async (req, re
  */
 router.get("/memory/notes", requireRole("owner", "admin"), async (req, res) => {
   try {
-    const notes = await jarvisMemoryService.listNotes({ workspaceId: req.auth.workspaceId, status: req.query.status, category: req.query.category, search: req.query.search, includeArchived: req.query.includeArchived === "true" });
+    const notes = await jarvisMemoryService.listNotes({ workspaceId: req.auth.workspaceId, status: req.query.status, category: req.query.category, search: req.query.search, includeArchived: req.query.includeArchived === "true", coachingProgramId: req.query.coachingProgramId });
     return res.json({ success: true, data: notes });
   } catch (error) {
     return res.status(500).json({ success: false, error: "Knowledge notes could not be loaded" });
@@ -677,13 +677,14 @@ router.post("/memory/notes/upload-pdfs", requireRole("owner"), (req, res, next) 
   const files = req.files || [];
   if (!files.length) return res.status(400).json({ success: false, error: "Choose at least one PDF file", code: "PDF_FILES_REQUIRED" });
   const category = req.body?.category;
+  const coachingProgramId = req.body?.coachingProgramId || null;
   const results = [];
   for (const file of files) {
     try {
       // eslint-disable-next-line no-await-in-loop
       const outcome = await ingestPdf({
         workspaceId: req.auth.workspaceId, userId: req.auth.userId, auth: req.auth, category,
-        originalFilename: file.originalname, buffer: file.buffer,
+        originalFilename: file.originalname, buffer: file.buffer, coachingProgramId,
         correlationId: req.headers["x-request-id"] || "",
       });
       results.push({ filename: file.originalname, success: true, noteId: outcome.note._id, monitorDraftsCreated: outcome.monitorDrafts.length, aiAnalysisSucceeded: outcome.aiAnalysisSucceeded, aiAnalysisReason: outcome.aiAnalysisReason });
