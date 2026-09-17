@@ -430,7 +430,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
         {run.status === "draft" ? (
           <>
             {JOB_CATEGORIES.map(([key, label]) => (jobGroups.get(key)?.length ? (
-              <details key={key} className="leadgen-advanced-search" open>
+              <details key={key} className="leadgen-advanced-search">
                 <summary>{label} ({jobGroups.get(key).length})</summary>
                 <div className="leadgen-advanced-search__body">
                   {run.jobs.map((job, index) => (job.category === key ? (
