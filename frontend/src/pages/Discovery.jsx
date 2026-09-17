@@ -1659,11 +1659,16 @@ export default function Discovery() {
               {[["all", "All"], ["ready", "Ready to contact"], ["needs_contact", "Needs contact information"], ["unscored", "Not yet qualified"], ["needs_review", "Needs review"], ["not_a_fit", "Not a fit"]].map(([value, label]) => (
                 <Button key={value} size="sm" variant={qualifyOutcomeFilter === value ? "primary" : "outline"} onClick={() => setQualifyOutcomeFilter(value)}>{label}</Button>
               ))}
-              <Button size="sm" variant="outline" loading={apolloBulkEnrichBusy} disabled={!selectedGroundingIds.some((id) => {
-                const result = visibleGroundingResults.find((row) => row._id === id);
-                return result?.type === "person" && ["qualified", "needs_review"].includes(result.qualificationLabel) && !effectiveEmailOf(result) && !result.apolloEnrichment?.attempted;
-              })} onClick={researchSelectedWithApollo}>Research selected with Apollo</Button>
-              <Button size="sm" variant="outline" disabled={!selectedGroundingIds.some((id) => visibleGroundingResults.find((r) => r._id === id)?.qualificationLabel === "qualified")} onClick={saveSelectedQualified}>{leadCampaignId ? "Add selected leads to CRM + campaign" : "Add selected qualified leads to CRM"}</Button>
+              {(() => {
+                const apolloEligible = selectedGroundingIds.some((id) => {
+                  const result = visibleGroundingResults.find((row) => row._id === id);
+                  return result?.type === "person" && ["qualified", "needs_review"].includes(result.qualificationLabel) && !effectiveEmailOf(result) && !result.apolloEnrichment?.attempted;
+                });
+                return (
+                  <Button size="sm" variant="outline" loading={apolloBulkEnrichBusy} disabled={!apolloEligible} title={apolloEligible ? undefined : "No selected leads need this — Apollo research only applies to qualified/needs-review leads that don't have an email yet and haven't been tried with Apollo already."} onClick={researchSelectedWithApollo}>Research selected with Apollo</Button>
+                );
+              })()}
+              <Button size="sm" variant="outline" disabled={!selectedGroundingIds.some((id) => visibleGroundingResults.find((r) => r._id === id)?.qualificationLabel === "qualified")} title={selectedGroundingIds.some((id) => visibleGroundingResults.find((r) => r._id === id)?.qualificationLabel === "qualified") ? undefined : "None of your selected leads are qualified yet — click \"Have Jarvis qualify\" first, then this enables for whichever come back qualified."} onClick={saveSelectedQualified}>{leadCampaignId ? "Add selected leads to CRM + campaign" : "Add selected qualified leads to CRM"}</Button>
               <Button size="sm" variant="outline" disabled={!selectedGroundingIds.length} onClick={dismissSelected}>Mark selected as not leads</Button>
             </div>
           </div>
