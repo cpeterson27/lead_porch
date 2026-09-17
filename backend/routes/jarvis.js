@@ -581,7 +581,7 @@ router.get("/status", async (req, res) => {
       data: {
         openai: llmService.getStatus(),
         imageGeneration: { enabled: imageGenerationService.isEnabled(), model: process.env.OPENAI_IMAGE_MODEL || "gpt-image-1" },
-        discoveryProviders: leadGenerationCoordinatorService.checkProviderAvailability(),
+        discoveryProviders: await leadGenerationCoordinatorService.checkProviderAvailability(),
         obsidian: memory,
       },
     });

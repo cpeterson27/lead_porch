@@ -9,6 +9,7 @@ const discoveryEngineService = require("../services/discoveryEngineService");
 const discoveryEngineSyncService = require("../services/discoveryEngineSyncService");
 const apolloService = require("../services/apolloService");
 const peopleDataLabsService = require("../services/peopleDataLabsService");
+const openaiAdminUsageService = require("../services/openaiAdminUsageService");
 const emailVerificationService = require("../services/emailVerificationService");
 const llmService = require("../services/llmService");
 const ResearchMonitor = require("../models/ResearchMonitor");
@@ -162,6 +163,26 @@ function createAiRouter(dependencies = {}) {
         emailable: { enabled: emailVerificationService.isEnabled(), configured: Boolean(process.env.EMAILABLE_API_KEY?.trim()) },
       },
     });
+  });
+
+  /**
+   * Real remaining credits/spend per provider — a genuinely different thing
+   * from /providers/health above (which never makes a real balance call).
+   * Apollo is a live call (cached ~10 min); PDL is whatever its last real
+   * search response header reported (PDL has no dedicated balance
+   * endpoint); OpenAI is this org's real spend vs. its real spend limit via
+   * the Admin API, only when OPENAI_ADMIN_API_KEY is configured. Vertex is
+   * intentionally omitted — standard GCP billing has no prepaid-credit
+   * concept, so there is no real balance to show; its own self-imposed
+   * monthly budget already appears in the /vertex/config card below.
+   */
+  router.get("/providers/credits", async (req, res) => {
+    const [apollo, openai] = await Promise.all([
+      apolloService.isEnabled() ? apolloService.getCreditBalance() : Promise.resolve({ configured: false }),
+      openaiAdminUsageService.isConfigured() ? openaiAdminUsageService.getAccountBalance() : Promise.resolve({ configured: false }),
+    ]);
+    const pdl = peopleDataLabsService.isEnabled() ? peopleDataLabsService.getCachedCreditBalance() : { configured: false };
+    return res.json({ success: true, data: { apollo, pdl, openai } });
   });
 
   /**

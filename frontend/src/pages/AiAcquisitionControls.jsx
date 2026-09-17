@@ -17,6 +17,7 @@ import {
   runVertexAgentSearch,
   purgeVertexAgentSearchIndex,
   fetchProvidersHealth,
+  fetchProviderCredits,
   pauseAllAiAndAcquisition,
   fetchPlatformProviderAvailability,
   updatePlatformProviderAvailability,
@@ -72,6 +73,48 @@ function ProviderStatus({ label, status }) {
   );
 }
 
+/**
+ * A single provider's real account credit/balance, not a Lead-Porch usage
+ * estimate — for Apollo (live) and PDL (last real search's response
+ * header) this is the provider's own actual remaining count; for OpenAI
+ * (only when OPENAI_ADMIN_API_KEY is configured) this is the real org
+ * spend vs. the real org spend limit, both read live from OpenAI's Admin
+ * API. `unit` picks the right label/format.
+ */
+function ProviderCreditTile({ label, data, unit, setupHint }) {
+  if (!data || data.configured === false) {
+    return (
+      <article className="provider-credit-tile provider-credit-tile--unconfigured">
+        <strong>{label}</strong>
+        <p>{setupHint}</p>
+      </article>
+    );
+  }
+  if (data.healthy === false) {
+    return (
+      <article className="provider-credit-tile provider-credit-tile--warn">
+        <strong>{label}</strong>
+        <p>Couldn't check just now{data.reason ? ` (${data.reason})` : ""}. Showing the last known value, if any.</p>
+      </article>
+    );
+  }
+  const remaining = data.remaining;
+  const limit = data.limitUsd ?? data.leadCreditsLimit ?? null;
+  const ratio = remaining != null && limit ? remaining / limit : null;
+  const tone = remaining != null && remaining <= 0 ? "out" : ratio != null && ratio < 0.2 ? "low" : "ok";
+  const formatted = unit === "usd" ? money(remaining) : remaining == null ? "—" : remaining.toLocaleString();
+  return (
+    <article className={`provider-credit-tile provider-credit-tile--${tone}`}>
+      <strong>{label}</strong>
+      <span className="provider-credit-tile__value">{formatted}<small> remaining</small></span>
+      {unit === "usd" && limit != null ? <p>{money(data.spentUsd)} spent of your {money(limit)} account spend limit this month.</p> : null}
+      {tone === "out" ? <p><strong>Auto-paused</strong> — this provider is out of credits. It will resume automatically once you add more.</p> : null}
+      {tone === "low" ? <p>Running low — consider adding credits soon.</p> : null}
+      {data.fetchedAt ? <small className="provider-credit-tile__fetched">As of {new Date(data.fetchedAt).toLocaleString()}</small> : null}
+    </article>
+  );
+}
+
 export default function AiAcquisitionControls() {
   const { session } = useAuth();
   const [aiConfig, setAiConfig] = useState(null);
@@ -79,6 +122,7 @@ export default function AiAcquisitionControls() {
   const [geminiConfig, setGeminiConfig] = useState(null);
   const [vertexConfig, setVertexConfig] = useState(null);
   const [health, setHealth] = useState(null);
+  const [credits, setCredits] = useState(null);
   const [platformAvailability, setPlatformAvailability] = useState(null);
   const [monitors, setMonitors] = useState([]);
   const [monitorPerformance, setMonitorPerformance] = useState([]);
@@ -104,6 +148,7 @@ export default function AiAcquisitionControls() {
       fetchGeminiConfig().then((res) => setGeminiConfig(res.data)),
       fetchVertexConfig().then((res) => setVertexConfig(res.data)),
       fetchProvidersHealth().then((res) => setHealth(res.data)),
+      fetchProviderCredits().then((res) => setCredits(res.data)).catch(() => {}),
       fetchResearchMonitors().then((res) => setMonitors(res.monitors || res.data || [])),
       fetchMonitorPerformance().then((res) => setMonitorPerformance(res.performance || res.data?.performance || [])).catch(() => {}),
     ];
@@ -124,8 +169,9 @@ export default function AiAcquisitionControls() {
     setError("");
     setNotice("");
     try {
-      const res = await fetchProvidersHealth();
+      const [res, creditsRes] = await Promise.all([fetchProvidersHealth(), fetchProviderCredits().catch(() => null)]);
       setHealth(res.data);
+      if (creditsRes) setCredits(creditsRes.data);
       setNotice("Provider connections checked just now.");
     } catch (err) {
       setError(err.response?.data?.error || "Unable to check provider connections.");
@@ -361,7 +407,7 @@ export default function AiAcquisitionControls() {
             <b>{money(agent.estimatedTotalCostUsd)}</b>
           </div>) : <p>No AI usage has been recorded this month.</p>}
         </div>
-        <p className="ai-usage-command__note"><strong>This is not your provider billing total.</strong> It includes only AI requests recorded by Lead Porch during the current month. Requests made before usage tracking existed, direct provider-dashboard usage, image charges without returned pricing, and Apollo, PDL, Gemini, Vertex, or other external credit balances may be absent. {usage.unpricedRequestCount || 0} tracked request{usage.unpricedRequestCount === 1 ? " has" : "s have"} no price available.</p>
+        <p className="ai-usage-command__note"><strong>This is not your provider billing total.</strong> It includes only AI requests recorded by Lead Porch during the current month. Requests made before usage tracking existed, direct provider-dashboard usage, image charges without returned pricing, and Gemini's external credit balance may be absent. Apollo, PDL, and OpenAI's real account balances are shown separately below. {usage.unpricedRequestCount || 0} tracked request{usage.unpricedRequestCount === 1 ? " has" : "s have"} no price available.</p>
       </section> : null}
 
       <DashboardCard
@@ -390,6 +436,15 @@ export default function AiAcquisitionControls() {
         ) : (
           <p>Loading…</p>
         )}
+      </DashboardCard>
+
+      <DashboardCard title="Provider credits" action={<Button variant="outline" size="sm" loading={checkingConnections} onClick={checkConnections}>{checkingConnections ? "Checking…" : "Check again"}</Button>}>
+        <p className="provider-health-explainer">Real remaining balances read from each provider's own account — not a Lead Porch estimate. A provider auto-pauses the moment it reads zero and resumes automatically once credits are added, so nothing runs away on cost. Vertex AI isn't shown here: standard Google Cloud billing has no prepaid-credit concept to run out of — its own self-imposed monthly spend cap is set in the Vertex AI section below instead.</p>
+        <div className="provider-credit-grid">
+          <ProviderCreditTile label="Apollo" data={credits?.apollo} unit="credits" setupHint="Set APOLLO_ENABLED and APOLLO_API_KEY to see Apollo's real remaining credits here." />
+          <ProviderCreditTile label="People Data Labs" data={credits?.pdl} unit="credits" setupHint="Set PDL_ENABLED and PDL_API_KEY, then run one real search — PDL only reports credits remaining on its search responses, so this fills in after your first search." />
+          <ProviderCreditTile label="OpenAI (account)" data={credits?.openai} unit="usd" setupHint="Add an OpenAI Admin API key (OPENAI_ADMIN_API_KEY, created under your OpenAI org's Settings → Admin keys — separate from the regular API key used for requests) to see your real account spend vs. spend limit here." />
+        </div>
       </DashboardCard>
 
       {aiConfig ? (

@@ -13,10 +13,10 @@ const leadGenerationCoordinatorService = require("../services/leadGenerationCoor
 const DiscoverySearch = require("../models/DiscoverySearch");
 const LeadMonitorSuggestion = require("../models/LeadMonitorSuggestion");
 
-/** Pure config check, no provider call — powers the provider checkboxes' default-selection/disabled state. */
-router.get("/provider-availability", (req, res) => {
+/** Config check plus a live out-of-credits check — powers the provider checkboxes' default-selection/disabled state. */
+router.get("/provider-availability", async (req, res) => {
   try {
-    const data = leadGenerationCoordinatorService.checkProviderAvailability();
+    const data = await leadGenerationCoordinatorService.checkProviderAvailability();
     return res.json({ success: true, data });
   } catch (_error) {
     return res.status(500).json({ success: false, error: "Unable to check provider availability." });

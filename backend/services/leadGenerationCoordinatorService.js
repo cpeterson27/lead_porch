@@ -44,6 +44,7 @@ const vertexGroundingService = require("./vertexGroundingService");
 const openaiWebSearchService = require("./openaiWebSearchService");
 const peopleDataLabsService = require("./peopleDataLabsService");
 const apolloService = require("./apolloService");
+const openaiAdminUsageService = require("./openaiAdminUsageService");
 const agentExecutionService = require("./agentExecutionService");
 const auditService = require("./auditService");
 const workspaceSelfExclusionService = require("./workspaceSelfExclusionService");
@@ -105,16 +106,45 @@ const AUTO_ENRICH_LIMIT = 25;
  * vertexGroundingService.assertGroundingReady() and would surface as a
  * normal sourceError on the run, exactly as it already does today.
  */
-function checkProviderAvailability() {
+/**
+ * Config-enabled AND not out of real credits. The config check alone used
+ * to be the whole story (env vars only, no provider call) — this now also
+ * auto-pauses a provider the moment its own real account balance (Apollo's
+ * live credit balance, PDL's last-seen response header, OpenAI's real org
+ * spend vs. spend limit via the Admin API) reads zero or below, and
+ * automatically un-pauses the next time that balance reads positive again.
+ * Vertex is deliberately excluded from the credit check: standard GCP
+ * billing has no prepaid-credit concept to run out of, so there is nothing
+ * real to auto-pause on (its own self-imposed monthly budget is enforced
+ * separately by services/vertexConfigService.js on every call).
+ */
+async function checkProviderAvailability(dependencies = {}) {
+  const apollo = dependencies.apolloService || apolloService;
+  const pdl = dependencies.peopleDataLabsService || peopleDataLabsService;
+  const openaiSearch = dependencies.openaiWebSearchService || openaiWebSearchService;
+  const openaiAdmin = dependencies.openaiAdminUsageService || openaiAdminUsageService;
+
   const vertexAvailable = vertexGroundingService.groundingPlatformEnabled();
-  const openaiAvailable = openaiWebSearchService.masterEnabled();
-  const pdlAvailable = peopleDataLabsService.isEnabled();
-  const apolloAvailable = apolloService.isEnabled();
+  const openaiEnabled = openaiSearch.masterEnabled();
+  const pdlEnabled = pdl.isEnabled();
+  const apolloEnabled = apollo.isEnabled();
+
+  const [apolloBalance, openaiBalance] = await Promise.all([
+    apolloEnabled ? apollo.getCreditBalance() : Promise.resolve(null),
+    openaiEnabled ? openaiAdmin.getAccountBalance() : Promise.resolve(null),
+  ]);
+  const pdlBalance = pdlEnabled ? pdl.getCachedCreditBalance() : null;
+
+  const outOfCredits = (balance) => balance && Number.isFinite(balance.remaining) && balance.remaining <= 0;
+  const apolloAvailable = apolloEnabled && !outOfCredits(apolloBalance);
+  const pdlAvailable = pdlEnabled && !outOfCredits(pdlBalance);
+  const openaiAvailable = openaiEnabled && !outOfCredits(openaiBalance);
+
   return {
     vertex: { available: vertexAvailable, reason: vertexAvailable ? "" : "Not enabled at the platform level (VERTEX_ENABLED, VERTEX_GROUNDING_ENABLED, and Google credentials are required)." },
-    openai_web_search: { available: openaiAvailable, reason: openaiAvailable ? "" : "Not enabled (OPENAI_WEB_SEARCH_ENABLED and OPENAI_API_KEY are required)." },
-    pdl_person_search: { available: pdlAvailable, reason: pdlAvailable ? "" : "Not enabled (PDL_ENABLED and PDL_API_KEY are required)." },
-    apollo_person_search: { available: apolloAvailable, reason: apolloAvailable ? "" : "Not enabled (APOLLO_ENABLED and APOLLO_API_KEY are required)." },
+    openai_web_search: { available: openaiAvailable, reason: openaiAvailable ? "" : !openaiEnabled ? "Not enabled (OPENAI_WEB_SEARCH_ENABLED and OPENAI_API_KEY are required)." : "Auto-paused — this OpenAI account is out of its configured spend limit. It will resume automatically once more budget is added." },
+    pdl_person_search: { available: pdlAvailable, reason: pdlAvailable ? "" : !pdlEnabled ? "Not enabled (PDL_ENABLED and PDL_API_KEY are required)." : "Auto-paused — this People Data Labs account is out of credits. It will resume automatically once credits are added." },
+    apollo_person_search: { available: apolloAvailable, reason: apolloAvailable ? "" : !apolloEnabled ? "Not enabled (APOLLO_ENABLED and APOLLO_API_KEY are required)." : "Auto-paused — this Apollo account is out of credits. It will resume automatically once credits are added." },
   };
 }
 
@@ -360,7 +390,7 @@ async function proposeSearch({ workspaceId, userId, auth, naturalLanguageRequest
   // provider — never literally "all" regardless of configuration, which is
   // what previously let the plan claim Apollo credits while Apollo was
   // disabled.
-  const availability = checkProviderAvailability();
+  const availability = await checkProviderAvailability();
   const explicitSources = (Array.isArray(sources) ? sources : []).filter((source) => ALL_SOURCE_KEYS.includes(source));
   const effectiveSources = explicitSources.length ? explicitSources : ALL_SOURCE_KEYS.filter((source) => availability[source]?.available);
   if (!effectiveSources.length) { const error = new Error("No sourcing provider is selected and available. Select at least one enabled provider."); error.code = "DISCOVERY_NO_SOURCES_AVAILABLE"; throw error; }

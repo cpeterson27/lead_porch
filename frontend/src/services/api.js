@@ -1693,6 +1693,8 @@ export const updateGeminiConfig = (payload) =>
   api.patch("/ai/gemini/config", payload).then((res) => res.data);
 export const fetchProvidersHealth = () =>
   api.get("/ai/providers/health").then((res) => res.data);
+export const fetchProviderCredits = () =>
+  api.get("/ai/providers/credits").then((res) => res.data);
 export const pauseAllAiAndAcquisition = () =>
   api.post("/ai/pause-all").then((res) => res.data);
 export const fetchPlatformProviderAvailability = () =>

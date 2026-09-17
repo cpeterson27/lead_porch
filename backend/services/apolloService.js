@@ -247,6 +247,42 @@ async function enrichCompany({ workspaceId, userId = null, domain, correlationId
   }
 }
 
+let creditBalanceCache = null; // { value, expiresAt }
+const CREDIT_BALANCE_CACHE_TTL_MS = 10 * 60000;
+
+/**
+ * Real remaining Apollo credit balance, read live from Apollo's own account
+ * (GET /users/api_profile?include_credit_usage=true) — not an estimate.
+ * Cached briefly so the AI Usage page and the discovery-run availability
+ * check don't each trigger a fresh call. Never throws: callers (dashboards,
+ * availability checks) should degrade gracefully instead of breaking on a
+ * transient Apollo error.
+ */
+async function getCreditBalance({ forceRefresh = false } = {}) {
+  if (!isEnabled()) return { configured: false };
+  if (!forceRefresh && creditBalanceCache && creditBalanceCache.expiresAt > Date.now()) return creditBalanceCache.value;
+  try {
+    const response = await withResilience(CIRCUIT_KEY, () => client().get("/users/api_profile", { params: { include_credit_usage: true } }));
+    const data = response.data || {};
+    const value = {
+      configured: true,
+      healthy: true,
+      remaining: cleanNumber(data.num_credits_remaining),
+      leadCreditsLimit: cleanNumber(data.effective_num_lead_credits),
+      leadCreditsUsed: cleanNumber(data.num_lead_credits_used),
+      fetchedAt: new Date().toISOString(),
+    };
+    creditBalanceCache = { value, expiresAt: Date.now() + CREDIT_BALANCE_CACHE_TTL_MS };
+    return value;
+  } catch (error) {
+    const value = { configured: true, healthy: false, remaining: null, reason: error.category || "unknown" };
+    // Cache the failure too, briefly — so a transient outage doesn't cause
+    // the availability check to hammer Apollo on every request.
+    creditBalanceCache = { value, expiresAt: Date.now() + 60000 };
+    return value;
+  }
+}
+
 async function healthCheck({ workspaceId, userId = null, correlationId = "" } = {}) {
   if (!isEnabled()) return { enabled: false, configured: Boolean(process.env.APOLLO_API_KEY?.trim()), healthy: false, reason: "disabled" };
   const started = Date.now();
@@ -260,4 +296,4 @@ async function healthCheck({ workspaceId, userId = null, correlationId = "" } = 
   }
 }
 
-module.exports = { isEnabled, assertEnabled, classifyEmail, isPlaceholderEmail, normalizePerson, normalizeCompany, dedupePeople, searchPeople, searchCompanies, enrichPerson, enrichCompany, healthCheck, resetApolloCache };
+module.exports = { isEnabled, assertEnabled, classifyEmail, isPlaceholderEmail, normalizePerson, normalizeCompany, dedupePeople, searchPeople, searchCompanies, enrichPerson, enrichCompany, healthCheck, getCreditBalance, resetApolloCache };

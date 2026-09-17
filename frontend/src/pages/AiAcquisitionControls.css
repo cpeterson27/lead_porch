@@ -170,6 +170,78 @@
   color: var(--color-warning, #b06a00);
 }
 
+.provider-credit-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.provider-credit-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px;
+  border: 1px solid var(--color-border, #eef0f3);
+  border-radius: 16px;
+  background: #fafaff;
+}
+
+.provider-credit-tile strong {
+  color: #22232e;
+}
+
+.provider-credit-tile p {
+  margin: 2px 0 0;
+  color: #777b8b;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.provider-credit-tile__value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #22232e;
+}
+
+.provider-credit-tile__value small {
+  margin-left: 4px;
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: #9296a3;
+}
+
+.provider-credit-tile__fetched {
+  margin-top: 4px;
+  color: #9296a3;
+  font-size: 0.68rem;
+}
+
+.provider-credit-tile--unconfigured {
+  background: var(--color-surface-muted, #f1f2f4);
+}
+
+.provider-credit-tile--low {
+  border-color: var(--color-warning, #b06a00);
+  background: var(--color-warning-soft, #fff4e5);
+}
+
+.provider-credit-tile--out,
+.provider-credit-tile--warn {
+  border-color: #e2554f;
+  background: #fdeeed;
+}
+
+.provider-credit-tile--out strong,
+.provider-credit-tile--out .provider-credit-tile__value {
+  color: #b3312b;
+}
+
+@media (max-width: 900px) {
+  .provider-credit-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .ai-controls-monitor-table {
   width: 100%;
   border-collapse: collapse;

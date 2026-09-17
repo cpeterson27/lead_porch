@@ -136,6 +136,31 @@ function normalizeCompany(raw = {}) {
   };
 }
 
+// PDL has no dedicated "check my balance" endpoint — every real response
+// carries the account's current remaining-credit count in this header
+// (confirmed against PDL's own usage-limits docs). Captured opportunistically
+// off calls this app is making anyway, so it costs nothing extra; it just
+// won't update between real searches/enrichments.
+let cachedCreditBalance = null; // { remaining, purchasedRemaining, fetchedAt }
+
+function captureCreditHeaders(response) {
+  const headers = response?.headers || {};
+  const remaining = Number(headers["x-totallimit-remaining"]);
+  if (!Number.isFinite(remaining)) return;
+  cachedCreditBalance = {
+    remaining,
+    purchasedRemaining: Number.isFinite(Number(headers["x-totallimit-purchased-remaining"])) ? Number(headers["x-totallimit-purchased-remaining"]) : null,
+    fetchedAt: new Date().toISOString(),
+  };
+}
+
+/** Real remaining PDL credit balance, last captured from a real API call's response headers — not a live check (PDL has no such endpoint) and not an estimate. */
+function getCachedCreditBalance() {
+  if (!isEnabled()) return { configured: false };
+  if (!cachedCreditBalance) return { configured: true, remaining: null, reason: "not_checked_yet" };
+  return { configured: true, ...cachedCreditBalance };
+}
+
 async function logUsage({ workspaceId, userId = null, endpoint, operation, success, resultCount = null, latencyMs, errorCategory = "", errorCode = "", cacheHit = false, correlationId = "" }, models = { ProviderApiUsage }) {
   if (!workspaceId) return;
   try { await models.ProviderApiUsage.create({ workspaceId, userId, provider: "people_data_labs", endpoint, operation, success, resultCount, latencyMs, errorCategory, errorCode, cacheHit, correlationId }); }
@@ -152,6 +177,7 @@ async function searchPeople({ workspaceId, userId = null, sql, size = 25, correl
   const started = Date.now();
   try {
     const response = await withResilience(CIRCUIT_KEY, () => client().post("/person/search", { sql, size: safeSize }));
+    captureCreditHeaders(response);
     const people = (response.data?.data || []).map(normalizePerson);
     const result = { people, total: response.data?.total ?? people.length };
     writeCache(key, result);
@@ -195,6 +221,7 @@ async function searchPeople({ workspaceId, userId = null, sql, size = 25, correl
       );
       wrapped.code = "PDL_SEARCH_PAYMENT_REQUIRED";
       wrapped.cause = error;
+      cachedCreditBalance = { remaining: 0, purchasedRemaining: null, fetchedAt: new Date().toISOString() };
       throw wrapped;
     }
     throw error;
@@ -213,6 +240,7 @@ async function enrichPerson({ workspaceId, userId = null, inputs = {}, minLikeli
   const started = Date.now();
   try {
     const response = await withResilience(CIRCUIT_KEY, () => client().get("/person/enrich", { params: { ...inputs, min_likelihood: Math.max(MIN_LIKELIHOOD, Number(minLikelihood) || MIN_LIKELIHOOD), pretty: false } }));
+    captureCreditHeaders(response);
     const data = response.data?.data;
     const likelihood = response.data?.likelihood ?? data?.likelihood;
     const matched = Boolean(data) && meetsMatchThreshold(likelihood);
@@ -268,4 +296,4 @@ async function healthCheck({ workspaceId, userId = null, correlationId = "" } = 
   }
 }
 
-module.exports = { MIN_LIKELIHOOD, isEnabled, assertEnabled, meetsMatchThreshold, classifyWorkEmail, extractEmailString, normalizePerson, normalizeCompany, searchPeople, enrichPerson, enrichCompany, healthCheck, resetPdlCache };
+module.exports = { MIN_LIKELIHOOD, isEnabled, assertEnabled, meetsMatchThreshold, classifyWorkEmail, extractEmailString, normalizePerson, normalizeCompany, searchPeople, enrichPerson, enrichCompany, healthCheck, getCachedCreditBalance, resetPdlCache };
