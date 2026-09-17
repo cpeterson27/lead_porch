@@ -1,5 +1,5 @@
-import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { lazy, Suspense, useEffect, useRef } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 
 import DashboardLayout from "./layouts/DashboardLayout.jsx";
 
@@ -7,6 +7,7 @@ import { InitiativeProvider } from "./context/InitiativeContext.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { WorkspaceThemeProvider } from "./context/WorkspaceThemeContext.jsx";
 import PublicHomepageAnchors from "./components/PublicHomepageAnchors.jsx";
+import { trackSiteEvent } from "./utils/siteTracking.js";
 import useAuth from "./context/useAuth.js";
 import { canManageCoaching, canUseCoachPortal, canUseSales, hasPermission, hasRole, isAmbassadorOnly, isCoachOnly, isSocialConnectionOnly } from "./utils/roleAccess.js";
 
@@ -81,6 +82,23 @@ const MyProfile = lazy(() => import("./pages/MyProfile.jsx"));
 const Businesses = lazy(() => import("./pages/Businesses.jsx"));
 
 const PageLoading = () => <div className="auth-loading">Opening Lead Porch…</div>;
+
+function PublicPageTracking() {
+  const location = useLocation();
+  const lastPath = useRef("");
+  useEffect(() => {
+    const publicPath = /^(?:\/$|\/(?:testimonials|contact|privacy|privacy-policy|terms|data-deletion|apply)(?:\/)?$|\/(?:people|ref)\/)/.test(location.pathname);
+    if (!publicPath) return;
+    const path = `${location.pathname}${location.search}`;
+    if (lastPath.current === path) return;
+    lastPath.current = path;
+    trackSiteEvent("virtual_page_view", {
+      page_path: path,
+      page_title: document.title,
+    });
+  }, [location.pathname, location.search]);
+  return null;
+}
 
 function ProtectedApp() {
   const { loading, session } = useAuth();
@@ -215,6 +233,7 @@ function App() {
   return (
     <BrowserRouter>
       <WorkspaceThemeProvider><AuthProvider>
+        <PublicPageTracking />
         <PublicHomepageAnchors />
         <Suspense fallback={<PageLoading />}>
           <Routes>

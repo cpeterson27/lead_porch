@@ -2,6 +2,9 @@ const fs = require("fs");
 const path = require("path");
 const publicSiteService = require("../services/publicSiteService");
 const WorkspaceConfig = require("../models/WorkspaceConfig");
+const PublicProfile = require("../models/PublicProfile");
+const { runWithWorkspace } = require("../tenancy/workspaceContext");
+const { publicOrigin } = require("./publicSeo");
 
 const INDEX_HTML_PATH = path.join(
   __dirname,
@@ -25,7 +28,7 @@ function escapeHtml(value) {
 }
 
 function truncate(value, max) {
-  const text = String(value || "").trim();
+  const text = String(value || "").trim().replace(/\bAquire\b/gi, "Acquire");
   if (text.length <= max) return text;
   return `${text.slice(0, max - 1).trimEnd()}…`;
 }
@@ -36,7 +39,51 @@ function truncate(value, max) {
 function stripGenericMeta(html) {
   return html
     .replace(/[ \t]*<meta\s+name="description"[^>]*>\n?/gi, "")
-    .replace(/[ \t]*<meta\s+property="og:[a-z]+"[^>]*>\n?/gi, "");
+    .replace(/[ \t]*<meta\s+name="robots"[^>]*>\n?/gi, "")
+    .replace(/[ \t]*<meta\s+(?:name|property)="(?:og|twitter):[a-z]+"[^>]*>\n?/gi, "")
+    .replace(/[ \t]*<link\s+rel="canonical"[^>]*>\n?/gi, "")
+    .replace(/[ \t]*<script\s+type="application\/ld\+json"[^>]*>[\s\S]*?<\/script>\n?/gi, "");
+}
+
+function absoluteUrl(value, origin) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  try {
+    return new URL(raw, origin).toString();
+  } catch {
+    return "";
+  }
+}
+
+function safeJson(value) {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
+function pathSettings(pathname, siteName, defaultDescription) {
+  const path = pathname !== "/" ? pathname.replace(/\/$/, "") : "/";
+  const fixed = {
+    "/": {
+      title: `${siteName} | Multifamily Real Estate Coaching`,
+      description: defaultDescription,
+      indexable: true,
+    },
+    "/testimonials": {
+      title: `Student Results & Testimonials | ${siteName}`,
+      description: "Read real student experiences from multifamily real estate coaching programs focused on practical execution, capital raising, and acquisitions.",
+      indexable: true,
+    },
+    "/contact": {
+      title: `Contact ${siteName}`,
+      description: "Contact Ellie's Coaching to ask about multifamily real estate coaching programs, applications, and upcoming training.",
+      indexable: true,
+    },
+    "/privacy": { title: `Privacy Policy | ${siteName}`, description: `Privacy policy for ${siteName}.`, indexable: true },
+    "/privacy-policy": { title: `Privacy Policy | ${siteName}`, description: `Privacy policy for ${siteName}.`, indexable: false, canonicalPath: "/privacy" },
+    "/terms": { title: `Terms of Service | ${siteName}`, description: `Terms of service for ${siteName}.`, indexable: true },
+    "/data-deletion": { title: `Data Deletion | ${siteName}`, description: `Data deletion instructions for ${siteName}.`, indexable: true },
+    "/apply": { title: `Apply to a Coaching Program | ${siteName}`, description: `Apply to a ${siteName} coaching program.`, indexable: false },
+  };
+  return { path, ...(fixed[path] || { title: siteName, description: defaultDescription, indexable: false }) };
 }
 
 // Reuses the same domain-to-workspace resolution the public API already
@@ -50,21 +97,70 @@ async function workspaceMeta(req) {
     workspaceId: ws._id,
     key: "primary",
   })
-    .select("branding publicSite")
+    .select("branding publicSite legalBusinessName websiteUrl addressLine1 addressLine2 addressCity addressRegion addressPostalCode addressCountry")
     .lean();
   const branding = config?.branding || {};
   const publicSite = config?.publicSite || {};
+  const siteName = branding.publicSiteName || ws.name || FALLBACK_TITLE;
+  const origin = publicOrigin(req);
+  const defaults = pathSettings(
+    req.path,
+    siteName,
+    truncate(publicSite.subheadline || publicSite.introBody || "", 160),
+  );
+  let profile = null;
+  const profileSlug = defaults.path.match(/^\/people\/([a-z0-9-]+)$/i)?.[1];
+  if (profileSlug) {
+    profile = await runWithWorkspace(ws._id, () => PublicProfile.findOne({
+      workspaceId: ws._id,
+      slug: profileSlug.toLowerCase(),
+      status: "published",
+    }).lean());
+    if (profile) {
+      defaults.title = `${profile.displayName}${profile.publicTitle ? `, ${profile.publicTitle}` : ""} | ${siteName}`;
+      defaults.description = truncate(profile.headline || profile.bio, 160);
+      defaults.indexable = true;
+    }
+  }
+  const canonicalPath = defaults.canonicalPath || defaults.path;
+  const canonical = `${origin}${canonicalPath}`;
+  const image = absoluteUrl(profile?.avatarUrl || publicSite.heroMediaUrl || branding.publicSiteLogoUrl || branding.logoUrl, origin);
+  const organizationId = `${origin}/#organization`;
+  const organization = {
+    "@type": "Organization",
+    "@id": organizationId,
+    name: config?.legalBusinessName || siteName,
+    url: origin,
+    ...(image ? { logo: image, image } : {}),
+    ...(publicSite.contactEmail ? { email: publicSite.contactEmail } : {}),
+    ...(publicSite.contactPhone ? { telephone: publicSite.contactPhone } : {}),
+    ...(Array.isArray(publicSite.socialLinks) && publicSite.socialLinks.length
+      ? { sameAs: publicSite.socialLinks.map((item) => item.url).filter(Boolean) }
+      : {}),
+  };
+  const schemas = defaults.path === "/"
+    ? [organization, { "@type": "WebSite", "@id": `${origin}/#website`, url: origin, name: siteName, publisher: { "@id": organizationId } }]
+    : profile
+      ? [{
+          "@type": "Person",
+          "@id": `${canonical}#person`,
+          name: profile.displayName,
+          url: canonical,
+          ...(profile.publicTitle ? { jobTitle: profile.publicTitle } : {}),
+          ...(profile.headline || profile.bio ? { description: truncate(profile.headline || profile.bio, 300) } : {}),
+          ...(image ? { image } : {}),
+          ...(profile.publicLocation ? { homeLocation: { "@type": "Place", name: profile.publicLocation } } : {}),
+          ...(profile.socialLinks?.length ? { sameAs: profile.socialLinks.map((item) => item.url).filter(Boolean) } : {}),
+          worksFor: { "@id": organizationId },
+        }]
+      : [];
   return {
-    title: branding.publicSiteName || ws.name || FALLBACK_TITLE,
-    description: truncate(
-      publicSite.subheadline || publicSite.introBody || "",
-      200,
-    ),
-    image:
-      publicSite.heroMediaUrl ||
-      branding.publicSiteLogoUrl ||
-      branding.logoUrl ||
-      "",
+    title: defaults.title,
+    description: truncate(defaults.description, 160),
+    image,
+    canonical,
+    indexable: defaults.indexable,
+    schemas,
   };
 }
 
@@ -74,10 +170,14 @@ async function renderShell(req) {
     title: FALLBACK_TITLE,
     description: "",
     image: "",
+    canonical: `${publicOrigin(req)}${req.path || "/"}`,
+    indexable: false,
+    schemas: [],
   }));
   const safeTitle = escapeHtml(meta.title);
   const safeDescription = escapeHtml(meta.description);
   const safeImage = escapeHtml(meta.image);
+  const safeCanonical = escapeHtml(meta.canonical);
   const tags = [
     meta.description
       ? `<meta name="description" content="${safeDescription}">`
@@ -88,12 +188,27 @@ async function renderShell(req) {
       ? `<meta property="og:description" content="${safeDescription}">`
       : "",
     meta.image ? `<meta property="og:image" content="${safeImage}">` : "",
+    `<meta property="og:url" content="${safeCanonical}">`,
+    `<meta name="twitter:card" content="summary_large_image">`,
+    `<meta name="twitter:title" content="${safeTitle}">`,
+    meta.description ? `<meta name="twitter:description" content="${safeDescription}">` : "",
+    meta.image ? `<meta name="twitter:image" content="${safeImage}">` : "",
+    `<meta name="robots" content="${meta.indexable ? "index,follow,max-image-preview:large" : "noindex,follow"}">`,
+    `<link rel="canonical" href="${safeCanonical}">`,
+    ...(meta.schemas || []).map((schema) => `<script type="application/ld+json">${safeJson({ "@context": "https://schema.org", ...schema })}</script>`),
   ]
     .filter(Boolean)
     .join("\n    ");
-  return stripGenericMeta(baseHtml)
+  let html = stripGenericMeta(baseHtml)
     .replace(/<title>.*?<\/title>/i, `<title>${safeTitle}</title>`)
     .replace("</head>", `    ${tags}\n  </head>`);
+  const tagManagerId = String(process.env.GOOGLE_TAG_MANAGER_ID || "").trim();
+  if (/^GTM-[A-Z0-9]+$/i.test(tagManagerId)) {
+    const headScript = `<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${tagManagerId}');</script>`;
+    const bodyFrame = `<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=${tagManagerId}" height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>`;
+    html = html.replace("</head>", `    ${headScript}\n  </head>`).replace("<body>", `<body>\n    ${bodyFrame}`);
+  }
+  return html;
 }
 
 // Only intercepts document/navigation requests (GET, no file extension, not
@@ -101,7 +216,7 @@ async function renderShell(req) {
 // if the built frontend isn't present on disk (e.g. local dev without a
 // frontend build), this falls through via next() instead of erroring.
 function publicHtmlShell(req, res, next) {
-  if (req.method !== "GET" || req.path.startsWith("/api") || ASSET_PATH.test(req.path))
+  if (!["GET", "HEAD"].includes(req.method) || req.path.startsWith("/api") || ASSET_PATH.test(req.path))
     return next();
   if (!fs.existsSync(INDEX_HTML_PATH)) return next();
   renderShell(req)
@@ -113,4 +228,4 @@ function publicHtmlShell(req, res, next) {
     .catch(next);
 }
 
-module.exports = { publicHtmlShell, renderShell, workspaceMeta };
+module.exports = { publicHtmlShell, renderShell, workspaceMeta, pathSettings, safeJson };

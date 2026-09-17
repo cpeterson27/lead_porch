@@ -1,6 +1,7 @@
 import { useEffect, useId, useRef } from "react";
 import Button from "./Button.jsx";
-import { ModalPortal, useModalLayer } from "./ModalLayer.jsx";
+import { ModalPortal } from "./ModalLayer.jsx";
+import useModalLayer from "../hooks/useModalLayer.js";
 import "./WorkspaceUI.css";
 
 export function PageHeader({ eyebrow, title, description, actions, children, className = "" }) {

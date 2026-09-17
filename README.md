@@ -416,6 +416,12 @@ automated `npm test` suite.
 - Set `NODE_ENV=production`, `FRONTEND_URL`, `PUBLIC_BACKEND_URL`, `MONGO_URI`,
   the encryption/signing secrets, and the credentials required by enabled
   integrations in the hosting provider's secret settings.
+- For public-site analytics, create a Google Tag Manager web container owned
+  by the customer and set `GOOGLE_TAG_MANAGER_ID=GTM-...` on the backend. The
+  container is not loaded while this variable is empty. Configure GA4 inside
+  GTM and map the app's `virtual_page_view`, `application_open`,
+  `application_start`, `program_select`, and `application_submit` data-layer
+  events without collecting form fields or other personal information.
 - If a dedicated worker is deployed, run `npm run start:worker` and set
   `RESEARCH_WORKER_MODE=external` on the web service.
 - Configure provider callback and webhook URLs only after the final public

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import './Modal.css'
-import { ModalPortal, useModalLayer } from './ModalLayer.jsx'
+import { ModalPortal } from './ModalLayer.jsx'
+import useModalLayer from '../hooks/useModalLayer.js'
 
 export default function Modal({ isOpen, onClose, title, children, footer, size = "default", className = "" }) {
   useModalLayer(isOpen)

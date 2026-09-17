@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useParams } from "react-router-dom";
 import { FiCheck } from "react-icons/fi";
 import {
@@ -8,6 +8,7 @@ import {
 import { PublicLayout } from "./PublicSite.jsx";
 import useWorkspaceTheme from "../context/useWorkspaceTheme.js";
 import { cloudinaryImage } from "../utils/cloudinaryImage.js";
+import { trackSiteEvent } from "../utils/siteTracking.js";
 import "./PublicApplication.css";
 
 const initial = {
@@ -45,6 +46,7 @@ export default function PublicApplication({ embedded: embeddedOverride, search: 
   const [error, setError] = useState("");
   const [done, setDone] = useState("");
   const [saving, setSaving] = useState(false);
+  const started = useRef(false);
   const attribution = useMemo(() => {
     const query = new URLSearchParams(search);
     return {
@@ -101,6 +103,10 @@ export default function PublicApplication({ embedded: embeddedOverride, search: 
         idempotencyKey,
       });
       setDone(result.data.message);
+      trackSiteEvent("application_submit", {
+        program_id: form.coachingProgramId,
+        referral_present: Boolean(form.referralCode || attribution.referralCode),
+      });
     } catch (requestError) {
       setError(
         requestError.response?.data?.error ||
@@ -161,7 +167,15 @@ export default function PublicApplication({ embedded: embeddedOverride, search: 
             Program applications are not currently open.
           </p>
         ) : (
-          <form onSubmit={submit} className="application-form">
+          <form
+            onSubmit={submit}
+            className="application-form"
+            onFocusCapture={() => {
+              if (started.current) return;
+              started.current = true;
+              trackSiteEvent("application_start", { embedded });
+            }}
+          >
             <fieldset className="application-section">
               <legend>
                 <span className="application-section__index">1</span>
@@ -219,7 +233,10 @@ export default function PublicApplication({ embedded: embeddedOverride, search: 
                     required
                     value={form.coachingProgramId}
                     onChange={(event) =>
-                      set("coachingProgramId", event.target.value)
+                      {
+                        set("coachingProgramId", event.target.value);
+                        trackSiteEvent("program_select", { program_id: event.target.value });
+                      }
                     }
                   >
                     <option value="">Select a program</option>

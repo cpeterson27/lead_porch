@@ -5,7 +5,7 @@ import { hasPermission } from "../utils/roleAccess.js";
 import useAuth from "../context/useAuth.js";
 import "./PaymentSettings.css";
 import PaymentPlanPanel from "./PaymentPlanPanel.jsx";
-import { useModalLayer } from "./ModalLayer.jsx";
+import useModalLayer from "../hooks/useModalLayer.js";
 
 const money = (amount, currency = "USD") => new Intl.NumberFormat(undefined, { style: "currency", currency }).format((amount || 0) / 100);
 const message = (error, fallback) => error?.response?.data?.error || fallback;

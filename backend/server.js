@@ -292,6 +292,7 @@ connectDatabase(mongoUri)
       }),
     );
 
+    app.use(require("./middleware/publicSeo").publicSeo);
     app.use(require("./middleware/publicHtmlShell").publicHtmlShell);
 
     const server = app.listen(PORT, () => {

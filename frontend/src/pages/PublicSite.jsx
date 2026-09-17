@@ -19,8 +19,10 @@ import {
   fetchPublicTestimonials,
 } from "../services/api.js";
 import { cloudinaryImage } from "../utils/cloudinaryImage.js";
+import { trackSiteEvent } from "../utils/siteTracking.js";
 import TestimonialVideoPlayer from "../components/TestimonialVideoPlayer.jsx";
-import { ModalPortal, useModalLayer } from "../components/ModalLayer.jsx";
+import { ModalPortal } from "../components/ModalLayer.jsx";
+import useModalLayer from "../hooks/useModalLayer.js";
 import "./PublicSite.css";
 import "./PublicEnhancements.css";
 
@@ -122,7 +124,10 @@ function ApplicationButton({
   });
   return (
     <>
-      <button type="button" className={className} onClick={() => setOpen(true)}>
+      <button type="button" className={className} onClick={() => {
+        trackSiteEvent("application_open", { program_slug: program || "" });
+        setOpen(true);
+      }}>
         {children}
       </button>
       {open ? <ModalPortal>
@@ -483,7 +488,10 @@ function ProgramCards({ programs = [] }) {
                 <button
                   type="button"
                   className="public-program-apply"
-                  onClick={() => setApplying(program)}
+                  onClick={() => {
+                    trackSiteEvent("application_open", { program_slug: program.slug || String(program.id) });
+                    setApplying(program);
+                  }}
                 >
                   Apply to program <FiArrowRight />
                 </button>
@@ -606,7 +614,10 @@ function ProgramCards({ programs = [] }) {
                   <button
                     type="button"
                     className="public-program-apply"
-                    onClick={() => setApplying(program)}
+                    onClick={() => {
+                      trackSiteEvent("application_open", { program_slug: program.slug || String(program.id) });
+                      setApplying(program);
+                    }}
                   >
                     Apply to program <FiArrowRight />
                   </button>
