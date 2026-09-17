@@ -58,7 +58,7 @@ async function run() {
   assert.equal(records[0].feature, "jarvis.chat");
   assert.equal(records[0].success, true);
   assert.equal(records[0].providerRequestId, "req_safe_123");
-  assert.equal(records[0].pricingVersion, "2026-08-27");
+  assert.equal(records[0].pricingVersion, "2026-09-16");
   assert(Math.abs(records[0].estimatedTotalCostUsd - 0.00006) < 1e-12);
   const serialized = JSON.stringify(records[0]);
   assert(!serialized.includes("PRIVATE PROMPT"));
@@ -105,7 +105,16 @@ async function run() {
 
   const knownCost = estimateCost("gpt-4.1-mini", { inputTokens: 100, cachedTokens: 40, outputTokens: 20 });
   assert(Math.abs(knownCost.totalCostUsd - 0.00006) < 1e-12);
-  assert.deepEqual(estimateCost("future-model", { inputTokens: 100 }), { pricingAvailable: false, pricingVersion: "2026-08-27", inputCostUsd: null, outputCostUsd: null, totalCostUsd: null, costIsEstimate: true });
+  // gpt-5.6-terra: real rate confirmed 2026-09-16 from OpenAI's own pricing
+  // page — $2.00/1M input, $0.20/1M cached input, $12.00/1M output,
+  // standard short-context tier. This is JARVIS_RESEARCH_OPENAI_MODEL in
+  // production, so an inaccurate rate here directly means an inaccurate
+  // number on the AI spend dashboard.
+  const terraCost = estimateCost("gpt-5.6-terra", { inputTokens: 1_000_000, cachedTokens: 400_000, outputTokens: 1_000_000 });
+  assert.equal(terraCost.pricingAvailable, true);
+  assert(Math.abs(terraCost.inputCostUsd - (600_000 * 2.00 / 1_000_000 + 400_000 * 0.20 / 1_000_000)) < 1e-9);
+  assert(Math.abs(terraCost.outputCostUsd - 12.00) < 1e-9);
+  assert.deepEqual(estimateCost("future-model", { inputTokens: 100 }), { pricingAvailable: false, pricingVersion: "2026-09-16", inputCostUsd: null, outputCostUsd: null, totalCostUsd: null, costIsEstimate: true });
   assert.deepEqual(normalizeUsage({ usage: { input_tokens: 8, output_tokens: 2, input_tokens_details: { cached_tokens: 3 }, output_tokens_details: { reasoning_tokens: 1 } } }), { inputTokens: 8, outputTokens: 2, cachedTokens: 3, reasoningTokens: 1, totalTokens: 10 });
   assert.deepEqual(safeError({ status: 401, message: "secret", code: "bad key!" }), { errorCategory: "authentication", errorCode: "bad_key_", providerRequestId: "" });
 

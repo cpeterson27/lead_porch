@@ -1,11 +1,18 @@
 // USD per one million text tokens. This is a deliberately small, versioned
 // configuration snapshot; unknown models return unavailable rather than $0.
-const PRICING_VERSION = "2026-08-27";
+const PRICING_VERSION = "2026-09-16";
 const MODEL_PRICING = Object.freeze({
   "gpt-4.1-mini": { input: 0.40, cachedInput: 0.10, output: 1.60 },
   "gpt-4.1-mini-2025-04-14": { input: 0.40, cachedInput: 0.10, output: 1.60 },
   "gpt-4o-mini": { input: 0.15, cachedInput: 0.075, output: 0.60 },
   "gpt-4o-mini-2024-07-18": { input: 0.15, cachedInput: 0.075, output: 0.60 },
+  // Confirmed 2026-09-16 straight from OpenAI's own pricing page
+  // (developers.openai.com/api/docs/pricing), standard short-context tier —
+  // this is JARVIS_RESEARCH_OPENAI_MODEL in production (.env), the model
+  // openaiWebSearchService.js and publicPeopleResearchService.js actually
+  // bill against for every web-search-backed lead research call. Long-
+  // context and batch/flex/fast-mode rates differ and are not tracked here.
+  "gpt-5.6-terra": { input: 2.00, cachedInput: 0.20, output: 12.00 },
   // Verify against Google's current published rate card before relying on
   // this for real billing decisions — like the OpenAI rows above, this is a
   // versioned snapshot, not a live-fetched price. This same row also serves
