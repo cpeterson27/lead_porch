@@ -1322,6 +1322,8 @@ export const disableDiscoverySchedule = (scheduleId) =>
   api.post(`/public-web-discovery/schedules/${scheduleId}/disable`).then((res) => res.data);
 export const runDiscoveryScheduleNow = (scheduleId) =>
   api.post(`/public-web-discovery/schedules/${scheduleId}/run-now`).then((res) => res.data);
+export const deleteDiscoverySchedule = (scheduleId) =>
+  api.delete(`/public-web-discovery/schedules/${scheduleId}`).then((res) => res.data);
 
 export const startExternalMarketResearch = (payload) =>
   api.post("/audience/research/run", payload).then((res) => res.data);

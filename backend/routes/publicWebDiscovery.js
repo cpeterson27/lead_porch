@@ -241,4 +241,20 @@ router.post("/schedules/:id/run-now", async (req, res) => {
   }
 });
 
+/**
+ * Permanently removes the schedule itself — the recurring "check again
+ * later" instruction. Never touches any lead already found by a past run
+ * of it (those stay exactly where they are: in the review queue, in
+ * Contacts, wherever the owner already put them).
+ */
+router.delete("/schedules/:id", async (req, res) => {
+  try {
+    const schedule = await DiscoverySchedule.findOneAndDelete({ _id: req.params.id, workspaceId: req.auth.workspaceId });
+    if (!schedule) return res.status(404).json({ success: false, error: "Schedule not found" });
+    return res.json({ success: true, data: { _id: schedule._id } });
+  } catch (_error) {
+    return res.status(500).json({ success: false, error: "Unable to delete this schedule." });
+  }
+});
+
 module.exports = router;

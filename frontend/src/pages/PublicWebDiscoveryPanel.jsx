@@ -20,6 +20,7 @@ import {
   enableDiscoverySchedule,
   disableDiscoverySchedule,
   runDiscoveryScheduleNow,
+  deleteDiscoverySchedule,
 } from "../services/api.js";
 import "./DiscoveryTargeting.css";
 
@@ -414,6 +415,19 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
       setScheduleBusy((current) => ({ ...current, [schedule._id]: "" }));
     }
   };
+  const removeSchedule = async (schedule) => {
+    if (!window.confirm(`Delete the schedule "${schedule.name}"? This stops it from ever checking again — any leads it already found stay exactly where they are.`)) return;
+    setScheduleBusy((current) => ({ ...current, [schedule._id]: "deleting" }));
+    try {
+      await deleteDiscoverySchedule(schedule._id);
+      setSchedules((current) => current.filter((s) => s._id !== schedule._id));
+      setNotice(`"${schedule.name}" deleted.`);
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to delete this schedule.");
+    } finally {
+      setScheduleBusy((current) => ({ ...current, [schedule._id]: "" }));
+    }
+  };
 
   /**
    * Renders one run — a draft still being edited/approved, or a
@@ -609,6 +623,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
             <div className="leadgen-review-actions">
               {!schedule.enabled ? <Button size="sm" loading={scheduleBusy[schedule._id] === "enabling"} onClick={() => enableSchedule(schedule)}>Enable schedule</Button> : <Button size="sm" variant="outline" loading={scheduleBusy[schedule._id] === "disabling"} onClick={() => disableSchedule(schedule)}>Disable schedule</Button>}
               <Button size="sm" variant="outline" loading={scheduleBusy[schedule._id] === "running"} onClick={() => runScheduleNow(schedule)}>Run schedule now</Button>
+              <Button size="sm" variant="outline" loading={scheduleBusy[schedule._id] === "deleting"} onClick={() => removeSchedule(schedule)}>Delete schedule</Button>
             </div>
           </div>
         ) : null}
