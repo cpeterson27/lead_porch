@@ -97,6 +97,22 @@ function isLikelySellerOrVendor(candidate) {
   return SELLER_OR_VENDOR_PATTERNS.some((pattern) => pattern.test(text));
 }
 
+/**
+ * Apollo/PDL criteria for this engine always feed a prospective-student
+ * search. Do not ask a provider for titles that the merge gate will then
+ * deterministically reject as sellers or service providers. Keeping this
+ * at the shared ICP boundary also protects owner-edited drafts, not only
+ * AI-generated proposals.
+ */
+function sanitizeStudentSearchIcp(icp = {}) {
+  return {
+    titles: [...new Set((icp.titles || []).map((title) => clean(title, 120)).filter(Boolean))]
+      .filter((title) => !isLikelySellerOrVendor({ summary: title })),
+    locations: [...new Set((icp.locations || []).map((location) => clean(location, 120)).filter(Boolean))],
+    industries: [...new Set((icp.industries || []).map((industry) => clean(industry, 120)).filter(Boolean))],
+  };
+}
+
 let timer = null;
 let polling = false;
 
@@ -479,11 +495,11 @@ async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, 
   if (maxApolloPersonSearchCredits != null) run.maxApolloPersonSearchCredits = Math.max(0, Math.min(500, Number(maxApolloPersonSearchCredits) || 0));
   if (maxAttemptsPerJob != null) run.retryPolicy.maxAttemptsPerJob = Math.max(1, Math.min(10, Number(maxAttemptsPerJob) || run.retryPolicy.maxAttemptsPerJob));
   if (apolloPdlIcp) {
-    run.apolloPdlIcp = {
+    run.apolloPdlIcp = sanitizeStudentSearchIcp({
       titles: (Array.isArray(apolloPdlIcp.titles) ? apolloPdlIcp.titles : []).map((t) => clean(t, 120)).filter(Boolean).slice(0, 30),
       locations: (Array.isArray(apolloPdlIcp.locations) ? apolloPdlIcp.locations : []).map((l) => clean(l, 120)).filter(Boolean).slice(0, 30),
       industries: (Array.isArray(apolloPdlIcp.industries) ? apolloPdlIcp.industries : []).map((i) => clean(i, 120)).filter(Boolean).slice(0, 30),
-    };
+    });
   }
   run.enabledSources = allowedSources || run.enabledSources || ["vertex", "openai_web_search"];
 
@@ -781,39 +797,53 @@ async function runApolloPersonSearchPhase({ workspaceId, userId, auth, run, self
   }
 
   try {
-    const icp = await icpForRun({ workspaceId, userId, auth, run, correlationId }, dependencies);
+    const icp = sanitizeStudentSearchIcp(await icpForRun({ workspaceId, userId, auth, run, correlationId }, dependencies));
     const filters = leadGenerationCoordinatorService.buildApolloFilters(icp);
     if (!Object.keys(filters).length) throw Object.assign(new Error("No realistic ICP criteria (titles or locations) could be derived from the program for Apollo."), { code: "APOLLO_ICP_EMPTY" });
-    perSourceEntry.queriesRun = 1;
-    const outcome = await apollo.searchPeople({ workspaceId, userId, filters, page: 1, perPage: desiredCount, correlationId });
-    perSourceEntry.entitiesExtracted = outcome.people.length;
-    run.spend.apolloPersonSearchCredits += outcome.people.length;
-
-    for (const person of outcome.people) {
-      // Defensive only — correct pre-sizing above should make this
-      // unreachable, but every remaining candidate is counted honestly
-      // rather than silently vanishing.
-      if (run.spend.apolloPersonSearchCredits > run.maxApolloPersonSearchCredits || acceptedCountForTarget(run) >= run.dailyCandidateTarget) {
-        perSourceEntry.rejectedBudgetCap += 1;
-        run.runSummary.rejectedBudgetCap += 1;
-        continue;
-      }
-      const candidate = leadGenerationCoordinatorService.normalizeApolloCandidate(person);
-      candidate.discoveryCategory = "people";
-      candidate.providers = [candidate.provider];
+    // Apollo can return only 25 people even when a larger per_page value is
+    // requested. Page explicitly in 25-person chunks until the configured
+    // profile ceiling, accepted-person target, or provider result set is
+    // exhausted. The previous one-call implementation silently stopped at
+    // 25 while the UI correctly displayed a 100-profile maximum.
+    let page = 1;
+    const providerPageSize = 25;
+    while (run.spend.apolloPersonSearchCredits < run.maxApolloPersonSearchCredits && acceptedCountForTarget(run) < run.dailyCandidateTarget) {
+      const creditsLeft = run.maxApolloPersonSearchCredits - run.spend.apolloPersonSearchCredits;
+      const acceptedStillNeeded = run.dailyCandidateTarget - acceptedCountForTarget(run);
+      const pageSize = Math.min(providerPageSize, creditsLeft, acceptedStillNeeded);
       // eslint-disable-next-line no-await-in-loop
-      const merge = await mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, selfSignals, isStudentSearch: true, correlationId }, dependencies);
-      if (merge.outcome === "created" || merge.outcome === "merged") { perSourceEntry.accepted += 1; tallyFreshnessTier(run, merge.row.freshnessTier); }
-      if (merge.outcome === "created") perSourceEntry.acceptedNew += 1;
-      else if (merge.outcome === "merged") perSourceEntry.merged += 1;
-      else if (merge.outcome === "rejected_self") perSourceEntry.rejectedSelf += 1;
-      else if (merge.outcome === "rejected_crm") perSourceEntry.rejectedCrm += 1;
-      else if (merge.outcome === "rejected_dismissed") perSourceEntry.rejectedDismissed += 1;
-      else if (merge.outcome === "rejected_seller_or_vendor") perSourceEntry.rejectedSellerOrVendor += 1;
-      else if (merge.outcome === "rejected_invalid_identity") perSourceEntry.rejectedInvalidIdentity += 1;
-      tallyMergeOutcome(run, merge, "person");
+      const outcome = await apollo.searchPeople({ workspaceId, userId, filters, page, perPage: pageSize, correlationId });
+      const people = outcome.people || [];
+      perSourceEntry.queriesRun += 1;
+      perSourceEntry.entitiesExtracted += people.length;
+      run.spend.apolloPersonSearchCredits += people.length;
+
+      for (const person of people) {
+        if (acceptedCountForTarget(run) >= run.dailyCandidateTarget) {
+          perSourceEntry.rejectedBudgetCap += 1;
+          run.runSummary.rejectedBudgetCap += 1;
+          continue;
+        }
+        const candidate = leadGenerationCoordinatorService.normalizeApolloCandidate(person);
+        candidate.discoveryCategory = "people";
+        candidate.providers = [candidate.provider];
+        // eslint-disable-next-line no-await-in-loop
+        const merge = await mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, selfSignals, isStudentSearch: true, correlationId }, dependencies);
+        if (merge.outcome === "created" || merge.outcome === "merged") { perSourceEntry.accepted += 1; tallyFreshnessTier(run, merge.row.freshnessTier); }
+        if (merge.outcome === "created") perSourceEntry.acceptedNew += 1;
+        else if (merge.outcome === "merged") perSourceEntry.merged += 1;
+        else if (merge.outcome === "rejected_self") perSourceEntry.rejectedSelf += 1;
+        else if (merge.outcome === "rejected_crm") perSourceEntry.rejectedCrm += 1;
+        else if (merge.outcome === "rejected_dismissed") perSourceEntry.rejectedDismissed += 1;
+        else if (merge.outcome === "rejected_seller_or_vendor") perSourceEntry.rejectedSellerOrVendor += 1;
+        else if (merge.outcome === "rejected_invalid_identity") perSourceEntry.rejectedInvalidIdentity += 1;
+        tallyMergeOutcome(run, merge, "person");
+      }
+
+      const totalPages = Number(outcome.pagination?.totalPages) || 0;
+      if (!people.length || (totalPages && page >= totalPages) || (!totalPages && people.length < pageSize)) break;
+      page += 1;
     }
-    reconcileUnexplainedRejections(run, perSourceEntry, perSourceEntry.entitiesExtracted);
   } catch (error) {
     // Unlike a web job, the direct Apollo phase is not a retryable job-array
     // member — an ICP-derivation or Apollo API failure is recorded and the
@@ -821,6 +851,7 @@ async function runApolloPersonSearchPhase({ workspaceId, userId, auth, run, self
     // own failures.
     perSourceEntry.error = clean(error.message, 300);
   } finally {
+    reconcileUnexplainedRejections(run, perSourceEntry, perSourceEntry.entitiesExtracted);
     run.runSummary.perSource = [...(run.runSummary.perSource || []), perSourceEntry];
     run.apolloPersonSearchDone = true;
   }
@@ -854,11 +885,11 @@ async function derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlat
     operationalContext: `Program: ${clean(note.title, 200)}\n${clean(note.content, 3000)}\n${locations.length ? `Target locations: ${locations.join(", ")}\n` : ""}Extract real, searchable professional job titles (never skill levels or audience labels), locations, and industries for a structured people-database search matching this program's ideal buyer.`,
     input: {}, options: { responseSchema: PDL_ICP_SCHEMA, schemaName: "public_web_discovery_pdl_icp" },
   });
-  return {
+  return sanitizeStudentSearchIcp({
     titles: (icpResult.output.titles || []).map((t) => clean(t, 120)).filter(leadGenerationCoordinatorService.isRealisticJobTitle),
     locations: (icpResult.output.locations || []).map((l) => clean(l, 120)),
     industries: (icpResult.output.industries || []).map((i) => clean(i, 120)),
-  };
+  });
 }
 
 /**
@@ -886,7 +917,7 @@ async function deriveInitialIcpForRun({ workspaceId, userId, auth, programNoteId
  * field, or one where derivation happened to fail at propose time. */
 async function icpForRun({ workspaceId, userId, auth, run, correlationId }, dependencies = {}) {
   const stored = run.apolloPdlIcp;
-  if (stored && ((stored.titles || []).length || (stored.locations || []).length || (stored.industries || []).length)) return stored;
+  if (stored && ((stored.titles || []).length || (stored.locations || []).length || (stored.industries || []).length)) return sanitizeStudentSearchIcp(stored);
   return derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlationId }, dependencies);
 }
 
@@ -1339,6 +1370,7 @@ module.exports = {
   estimateExpectedCounts,
   computeBudgetWarning,
   isLikelySellerOrVendor,
+  sanitizeStudentSearchIcp,
   isStudentSearchContext,
   acceptedCountForTarget,
   reconcileUnexplainedRejections,

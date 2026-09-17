@@ -19,7 +19,7 @@ const { parseRobotsTxt, evaluateCrawlability, fetchPage, isNeverCrawlHost, looks
 const {
   computeFreshnessTier, extractIntentSignals, mergeDiscoveryCandidate, proposePublicWebDiscoveryRun, approvePublicWebDiscoveryRun, processNextBatch, runDueDiscoverySchedules, runPdlPersonSearchPhase,
   proposeStudentSearchPreset, interleaveJobsRoundRobin, roundRobinBySourceGlobally, estimateExpectedCounts, computeBudgetWarning, isLikelySellerOrVendor, isStudentSearchContext, acceptedCountForTarget,
-  reconcileUnexplainedRejections, buildRunExplanation, explainZeroCallProviders, computeRunPlanPreview,
+  reconcileUnexplainedRejections, buildRunExplanation, explainZeroCallProviders, computeRunPlanPreview, sanitizeStudentSearchIcp,
 } = publicWebDiscoveryEngineService;
 
 // ---- tiny generic in-memory Mongo-like helpers (shared across fakes) ----
@@ -392,7 +392,7 @@ async function testApprovePublicWebDiscoveryRunPersistsAnOwnerEditedIcp() {
     { workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-1", apolloPdlIcp: { titles: ["Asset Manager", "Broker"], locations: ["Austin, TX"], industries: ["Real Estate"] } },
     { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel },
   );
-  assert.deepEqual(run.apolloPdlIcp.titles, ["Asset Manager", "Broker"]);
+  assert.deepEqual(run.apolloPdlIcp.titles, ["Asset Manager"], "valid owner edits persist, but a title the student-search merge gate always rejects must never be sent to Apollo/PDL");
   assert.deepEqual(run.apolloPdlIcp.locations, ["Austin, TX"]);
   console.log("PASS testApprovePublicWebDiscoveryRunPersistsAnOwnerEditedIcp");
 }
@@ -799,6 +799,53 @@ async function testRunApolloPersonSearchPhaseActsAsIndependentCandidateSourceAlo
   assert.equal(outcome.run.runSummary.personAccepted, 1);
   assert.equal(outcome.run.spend.apolloPersonSearchCredits, 1, "Apollo credits are tracked in their own counter");
   assert.equal(outcome.run.spend.estimatedUsd, 0, "Apollo must never be converted into web cash, same as PDL");
+}
+
+function testStudentSearchIcpRemovesTitlesTheMergeGateWouldReject() {
+  const sanitized = sanitizeStudentSearchIcp({
+    titles: ["Real Estate Investor", "Capital Raiser", "Real Estate Broker", "Syndicator", "Entrepreneur"],
+    locations: ["United States"], industries: ["Real Estate"],
+  });
+  assert.deepEqual(sanitized.titles, ["Real Estate Investor", "Entrepreneur"], "the provider query must never include titles that this same student-search pipeline will deterministically reject later");
+  assert.deepEqual(sanitized.locations, ["United States"]);
+  assert.deepEqual(sanitized.industries, ["Real Estate"]);
+}
+
+async function testApolloPersonSearchPaginatesPastTheFirst25UntilIts100ProfileCap() {
+  const run = fakePublicWebDiscoveryRunModel([{
+    _id: "run-apollo-100", workspaceId: WORKSPACE_ID, status: "queued", jobs: [], nextJobIndex: 0,
+    dailyCandidateTarget: 100, targetType: "person", pageLimitPerQuery: 1, queryLimitPerRun: 1, providerCreditCapUsd: 0.03,
+    includeApolloPersonSearch: true, apolloPersonSearchDone: false, maxApolloPersonSearchCredits: 100,
+    includePdlPersonSearch: false, pdlPersonSearchDone: false, maxPdlPersonSearchCredits: 0,
+    includePdlCrossReference: false, pdlCrossReferenceDone: false, maxPdlCrossReferenceCredits: 0, retryPolicy: { maxAttemptsPerJob: 1 },
+    apolloPdlIcp: { titles: ["Real Estate Investor"], locations: ["United States"], industries: ["Real Estate"] },
+    estimatedCreditUse: {}, spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, pdlPersonSearchCredits: 0, pdlCrossReferenceCredits: 0, apolloPersonSearchCredits: 0, estimatedUsd: 0 },
+    runSummary: { created: 0, merged: 0, rejectedSelfMatch: 0, rejectedCrmDuplicate: 0, rejectedPreviouslyDismissed: 0, rejectedAlreadyInQueue: 0, rejectedSellerOrVendor: 0, rejectedInvalidIdentity: 0, rejectedBudgetCap: 0, unexplainedRejections: 0, personAccepted: 0, crawlBlockedByRobots: 0, crawlSkippedLoginWall: 0, crawlErrors: 0, byFreshnessTier: { recent: 0, aging: 0, evergreen: 0 }, perSource: [], explanation: "", zeroCallReasons: [] },
+    programNoteId: "note-1", enabledSources: ["vertex"],
+  }]).rows[0];
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([run]);
+  const GroundingResearchResult = fakeGroundingResultModel();
+  const pages = [];
+  const apolloService = { searchPeople: async ({ page, perPage }) => {
+    pages.push({ page, perPage });
+    return {
+      people: Array.from({ length: 25 }, (_, index) => ({ fullName: `Apollo Prospect ${page}-${index}`, company: "Buyer LLC", companyDomain: "", linkedinUrl: `apollo-${page}-${index}`, email: "", emailState: "" })),
+      pagination: { page, totalPages: 10, totalEntries: 250 },
+    };
+  } };
+  const outcome = await processNextBatch(
+    { workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-apollo-100", batchSize: 1 },
+    { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, GroundingResearchResult, apolloService, Contact: fakeLookupModel([]), Organization: fakeLookupModel([]), getWorkspaceSelfSignals: async () => ({ names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }), isSelfMatch: () => ({ isSelf: false, reasons: [] }) },
+  );
+
+  assert.deepEqual(pages, [{ page: 1, perPage: 25 }, { page: 2, perPage: 25 }, { page: 3, perPage: 25 }, { page: 4, perPage: 25 }], "a 100-profile allowance must consume four real Apollo pages when the provider returns 25 at a time");
+  assert.equal(outcome.run.spend.apolloPersonSearchCredits, 100);
+  assert.equal(outcome.run.runSummary.personAccepted, 100);
+  assert.equal(GroundingResearchResult.rows.length, 100);
+  const entry = outcome.run.runSummary.perSource.find((row) => row.source === "apollo_person_search");
+  assert.equal(entry.queriesRun, 4);
+  assert.equal(entry.entitiesExtracted, 100);
+  assert.equal(entry.unexplained, 0, "all 100 returned people must be accounted for");
 }
 
 async function testApolloPersonSearchPhaseSkipsTheCallEntirelyWhenCreditLimitReached() {
@@ -1301,6 +1348,8 @@ async function run() {
   await testProposeStudentSearchPresetOrdersTiersAndAppliesSafeDefaults();
   await testRunPdlPersonSearchPhaseActsAsIndependentCandidateSourceNotOnlyCrossReference();
   await testRunApolloPersonSearchPhaseActsAsIndependentCandidateSourceAlongsidePdl();
+  testStudentSearchIcpRemovesTitlesTheMergeGateWouldReject();
+  await testApolloPersonSearchPaginatesPastTheFirst25UntilIts100ProfileCap();
   await testApolloPersonSearchPhaseSkipsTheCallEntirelyWhenCreditLimitReached();
   await testRunPdlCrossReferenceIsLabeledDistinctlyFromTheDirectSource();
   testRoundRobinBySourceGloballyAlternatesAcrossCategoriesNotJustWithinOne();

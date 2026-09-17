@@ -58,6 +58,16 @@ const icpDraftFromRun = (run) => ({
 const RUN_STATUS_LABELS = { stopped_at_cap: "Stopped at budget cap" };
 const MAX_BATCH_ITERATIONS = 500;
 
+function providerRejectionBreakdown(entry = {}) {
+  const reasons = [
+    [entry.rejectedSelf, "self-match"], [entry.rejectedCrm, "already in CRM"],
+    [entry.rejectedDismissed, "previously dismissed"], [entry.rejectedSellerOrVendor, "seller/vendor"],
+    [entry.rejectedInvalidIdentity, "missing identity"], [entry.rejectedBudgetCap, "target/cap reached"],
+    [entry.unexplained, "unexplained (bug)"],
+  ].filter(([count]) => Number(count) > 0).map(([count, label]) => `${count} ${label}`);
+  return reasons.length ? reasons.join(" · ") : "—";
+}
+
 function groupJobsByCategory(jobs) {
   const groups = new Map(JOB_CATEGORIES.map(([key]) => [key, []]));
   for (const job of jobs || []) {
@@ -550,7 +560,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
               <dt>Web cash spent</dt><dd>${run.spend?.estimatedUsd ?? 0} of ${run.providerCreditCapUsd} cap</dd>
               <dt>Accepted</dt><dd>{run.runSummary?.created || 0} new · {run.runSummary?.merged || 0} merged into existing queue entries</dd>
               <dt>Freshness</dt><dd>{run.runSummary?.byFreshnessTier?.recent || 0} recent (0-90d) · {run.runSummary?.byFreshnessTier?.aging || 0} aging (91-365d) · {run.runSummary?.byFreshnessTier?.evergreen || 0} evergreen/undated</dd>
-              <dt>Excluded</dt><dd>{run.runSummary?.rejectedSelfMatch || 0} self-match · {run.runSummary?.rejectedCrmDuplicate || 0} already in CRM · {run.runSummary?.rejectedPreviouslyDismissed || 0} previously dismissed</dd>
+              <dt>Excluded</dt><dd>{run.runSummary?.rejectedSelfMatch || 0} self-match · {run.runSummary?.rejectedCrmDuplicate || 0} already in CRM · {run.runSummary?.rejectedPreviouslyDismissed || 0} previously dismissed · {run.runSummary?.rejectedSellerOrVendor || 0} seller/vendor · {run.runSummary?.rejectedInvalidIdentity || 0} missing identity · {run.runSummary?.rejectedBudgetCap || 0} target/cap reached · {run.runSummary?.unexplainedRejections || 0} unexplained</dd>
               <dt>Crawl</dt><dd>{run.runSummary?.crawlBlockedByRobots || 0} blocked by robots.txt · {run.runSummary?.crawlSkippedLoginWall || 0} skipped (login wall/never-crawled platform) · {run.runSummary?.crawlErrors || 0} errors</dd>
             </dl>
             {run.runSummary?.zeroCallReasons?.length ? (
@@ -561,12 +571,12 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
             {run.runSummary?.perSource?.length ? (
               <div className="leadgen-provider-breakdown-wrap">
                 <table className="leadgen-provider-breakdown">
-                  <thead><tr><th>Source</th><th>Category</th><th>Crawled</th><th>Found</th><th>Accepted</th><th>Error</th></tr></thead>
+                  <thead><tr><th>Source</th><th>Category</th><th>Crawled</th><th>Found</th><th>Accepted</th><th>Not accepted</th><th>Error</th></tr></thead>
                   <tbody>
                     {run.runSummary.perSource.map((entry, index) => (
                       <tr key={index}>
                         <td>{entry.source}</td><td>{entry.category}</td><td>{entry.urlsCrawled ?? "—"}</td>
-                        <td>{entry.entitiesExtracted ?? 0}</td><td>{entry.accepted ?? 0}</td>
+                        <td>{entry.entitiesExtracted ?? 0}</td><td>{entry.accepted ?? 0}</td><td>{providerRejectionBreakdown(entry)}</td>
                         <td>{entry.error ? <span className="form-error">{entry.error}</span> : "—"}</td>
                       </tr>
                     ))}
@@ -576,7 +586,12 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
             ) : null}
             <div className="leadgen-review-actions">
               {RUN_ACTIVE_STATUSES.has(run.status) ? <Button loading={busy === "running"} disabled={Boolean(busy)} onClick={() => runOnceNow(run)}>Continue running</Button> : null}
-              {RUN_ACTIVE_STATUSES.has(run.status) ? <Button variant="outline" loading={busy === "pause"} disabled={Boolean(busy)} onClick={() => pauseRun(run)}>Pause</Button> : null}
+              {/* A running batch can take up to 75 seconds. Keep Pause
+                  clickable while that request is in flight: the backend
+                  intentionally accepts a concurrent pause and preserves it
+                  when the batch finishes. Only another control mutation
+                  (pause/cancel/etc.) should disable this button. */}
+              {RUN_ACTIVE_STATUSES.has(run.status) ? <Button variant="outline" loading={busy === "pause"} disabled={Boolean(busy) && busy !== "running"} onClick={() => pauseRun(run)}>Pause</Button> : null}
               {run.status === "paused" ? <Button loading={busy === "resume"} disabled={Boolean(busy)} onClick={() => resumeRun(run)}>Resume</Button> : null}
               {!RUN_TERMINAL_STATUSES.has(run.status) ? <Button variant="outline" loading={busy === "cancel"} disabled={Boolean(busy)} onClick={() => cancelRun(run)}>Cancel</Button> : null}
               {RUN_TERMINAL_STATUSES.has(run.status) ? <Button variant="outline" loading={busy === "delete"} disabled={Boolean(busy)} onClick={() => deleteRun(run)}>Delete history</Button> : null}

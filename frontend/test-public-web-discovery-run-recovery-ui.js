@@ -43,7 +43,12 @@ assert.ok(runOnceNowSrc.includes("runInFlight.current[run._id]"), "the existing 
 
 // ---- 4. Terminal runs remain viewable but never expose an invalid Continue ----
 
-assert.ok(panelSrc.includes('RUN_ACTIVE_STATUSES.has(run.status) ? <Button loading={busy === "running"} onClick={() => runOnceNow(run)}>Continue running</Button> : null'), "Continue running must only ever render for an active (queued/running) status — a completed/cancelled/stopped_at_cap/failed run must never show it");
+assert.ok(/RUN_ACTIVE_STATUSES\.has\(run\.status\) \? <Button loading=\{busy === "running"\}[^>]*onClick=\{\(\) => runOnceNow\(run\)\}>Continue running<\/Button> : null/.test(panelSrc), "Continue running must only ever render for an active (queued/running) status — a completed/cancelled/stopped_at_cap/failed run must never show it");
+
+// ---- 4a. Pause remains available while Continue's bounded batch request is in flight ----
+
+assert.ok(panelSrc.includes('loading={busy === "pause"} disabled={Boolean(busy) && busy !== "running"} onClick={() => pauseRun(run)}>Pause</Button>'), "Pause must remain clickable while Continue is marked running — process-next-batch can take up to 75 seconds and the backend explicitly preserves a concurrent pause request");
+assert.ok(panelSrc.includes("providerRejectionBreakdown(entry)"), "the provider table must show why found Apollo/PDL people were not accepted, rather than only showing a confusing found/accepted gap");
 
 // ---- 5. The backend list endpoint returns real, resumable data: jobs included, drafts excluded ----
 
