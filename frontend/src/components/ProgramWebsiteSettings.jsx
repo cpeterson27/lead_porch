@@ -51,7 +51,11 @@ export default function ProgramWebsiteSettings({ websiteUrl = "/", onChange }) {
   ];
   const presentationForEditing = (program) => {
     const current = program.publicPresentation || {};
-    const description = current.description || current.summary || program.internalSummary || "";
+    // internalSummary must never be a fallback source for public copy — it's
+    // meant for internal notes (including lead-search targeting detail),
+    // and silently surfacing it here risked publishing that text the moment
+    // a program went live with no separate public description written yet.
+    const description = current.description || current.summary || "";
     return {
       ...program,
       publicPresentation: {

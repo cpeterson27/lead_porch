@@ -578,14 +578,32 @@ export default function JarvisChat() {
     const recognition = new Recognition();
     recognitionRef.current = recognition;
     recognition.lang = "en-US";
-    recognition.interimResults = false;
+    // continuous:true is the actual fix for "it cuts me off" — the previous
+    // continuous:false (the default) made the browser's own speech engine
+    // submit on the FIRST pause it detected, which reads as an interruption
+    // mid-thought. Now it keeps listening — through pauses, while thinking —
+    // until the mic button is clicked again to stop. interimResults:true
+    // shows the live transcript in the input box as you talk, so you can
+    // see what it's actually hearing.
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    let finalTranscript = "";
     recognition.onstart = () => setListening(true);
-    recognition.onend = () => { recognitionRef.current = null; setListening(false); };
+    recognition.onend = () => {
+      recognitionRef.current = null;
+      setListening(false);
+      const transcript = finalTranscript.trim();
+      if (transcript) { setInput(""); submitPrompt(transcript); }
+    };
     recognition.onerror = () => { recognitionRef.current = null; setListening(false); };
     recognition.onresult = (event) => {
-      const transcript = event.results[0][0].transcript;
-      setInput("");
-      submitPrompt(transcript);
+      let interim = "";
+      for (let i = event.resultIndex; i < event.results.length; i += 1) {
+        const piece = event.results[i][0].transcript;
+        if (event.results[i].isFinal) finalTranscript += `${piece} `;
+        else interim += piece;
+      }
+      setInput((finalTranscript + interim).trim());
     };
     recognition.start();
   };
