@@ -289,9 +289,9 @@ function cleanProgramTitle(rawTitle) {
  */
 async function listApprovedPrograms({ workspaceId }, dependencies = {}) {
   const NoteModel = dependencies.JarvisMemoryNote || JarvisMemoryNote;
-  const notes = await NoteModel.find({ workspaceId, category: "offers-programs", status: "approved" }).select("title source").limit(MAX_APPROVED_PROGRAMS).lean();
+  const notes = await NoteModel.find({ workspaceId, category: "offers-programs", status: "approved" }).select("title source content").limit(MAX_APPROVED_PROGRAMS).lean();
   return notes
-    .map((note) => ({ noteId: String(note._id), title: cleanProgramTitle(note.title), rawTitle: clean(note.title, 200), source: note.source || "" }))
+    .map((note) => ({ noteId: String(note._id), title: cleanProgramTitle(note.title), rawTitle: clean(note.title, 200), source: note.source || "", targetAudience: clean(note.content, 1500) }))
     .sort((a, b) => a.title.localeCompare(b.title));
 }
 
@@ -1258,13 +1258,20 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
   // records, never model-generated text.
   const coachingProgramIds = [...new Set(publicRuns.map((run) => run.coachingProgramId).filter(Boolean).map(String))];
   const coachingPrograms = coachingProgramIds.length
-    ? await CoachingProgramModel.find({ _id: { $in: coachingProgramIds }, workspaceId, status: "active" }).select("name").lean()
+    ? await CoachingProgramModel.find({ _id: { $in: coachingProgramIds }, workspaceId, status: "active" }).select("name targetAudience internalSummary").lean()
     : [];
   for (const program of coachingPrograms) {
     programs.push({
       noteId: `coaching:${program._id}`,
       coachingProgramId: String(program._id),
       title: cleanProgramTitle(program.name),
+      // The same real targetAudience text that already drives search
+      // (see searchFamilyGenerationService.resolveProgramContent) — until
+      // now, qualification only ever saw the bare program NAME and had to
+      // guess what that name meant. Scoring "does this person fit" against
+      // an actual description of the real intended buyer, not a guess from
+      // a title string, is the whole point of this field existing at all.
+      targetAudience: clean(program.targetAudience || program.internalSummary || "", 1500),
     });
   }
   const coachingProgramKeyById = new Map(coachingPrograms.map((program) => [String(program._id), `coaching:${program._id}`]));
@@ -1309,7 +1316,7 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
 
   const result = await runAgent({
     workspaceId, userId, auth, agent: "lead", task: "qualify_and_recommend_leads", correlationId,
-    operationalContext: `Qualify each candidate below against ONLY this workspace's real approved programs listed here — never invent or generalize a program name:\n${programIds.length ? programIds.map((id) => `- ${id}: "${programById.get(id).title}"`).join("\n") : "(No approved programs are currently available — recommendedProgramId must be 'none' for every candidate.)"}\n\nEach candidate already carries a computed "identityConfidence" (low/medium/high/conflict) — this is fixed, real data; do not second-guess it, just note in identityNotes whether the given evidence is consistent with it. A candidate with discoveryMode "icp_match" came from an Apollo/PDL structured audience search, not a public intent post. For that mode, evaluate whether the profile matches its targetProgramId and intended buyer; do NOT mark it not_a_fit merely because no current public buying-intent evidence was supplied. Missing intent should remain buyerIntentLevel "none" and may require review, while an actual mismatch or exclusion can be not_a_fit. Score programFitScore on whether this person resembles the recommended program's real intended buyer — 0-100, never a 0-10 scale. When a structured match has a valid targetProgramId and its profile genuinely fits, use that exact target program rather than returning "none" merely because public intent is absent. For public-web candidates, assess buyerIntentLevel STRICTLY from evidence of a CURRENT need or want (asking for recommendations, describing a specific problem this program solves) — a job title, real-estate role, or being "in the industry" is NEVER by itself buyer intent. Each candidate also carries "preScreenedExclusionFlags" from a keyword pre-screen (coach/broker/lender/etc.) — verify against the real evidence and include in your own exclusionFlags if still applicable, or omit if the pre-screen was a false positive; also add wrong_country, unrelated_corporate_employee, or no_personal_investing_evidence yourself when the evidence supports it. A candidate with listed conflicts should be treated cautiously. Draft a short, personalized outreach message strictly grounded in the evidence given only when you believe outreach is genuinely warranted — never invent facts not present.\n\nCandidates:\n${JSON.stringify(candidates, null, 2)}`,
+    operationalContext: `Qualify each candidate below against ONLY this workspace's real approved programs listed here — never invent or generalize a program name. Score fit against each program's actual target-audience description below, not just its name — a name alone (e.g. "Asset Management") is not enough to know who the real intended buyer is:\n${programIds.length ? programIds.map((id) => `- ${id}: "${programById.get(id).title}"${programById.get(id).targetAudience ? `\n  Target audience: ${programById.get(id).targetAudience}` : "\n  (No target audience description is set for this program yet — judge fit from the name alone, cautiously.)"}`).join("\n") : "(No approved programs are currently available — recommendedProgramId must be 'none' for every candidate.)"}\n\nEach candidate already carries a computed "identityConfidence" (low/medium/high/conflict) — this is fixed, real data; do not second-guess it, just note in identityNotes whether the given evidence is consistent with it. A candidate with discoveryMode "icp_match" came from an Apollo/PDL structured audience search, not a public intent post. For that mode, evaluate whether the profile matches its targetProgramId and intended buyer; do NOT mark it not_a_fit merely because no current public buying-intent evidence was supplied. Missing intent should remain buyerIntentLevel "none" and may require review, while an actual mismatch or exclusion can be not_a_fit. Score programFitScore on whether this person resembles the recommended program's real intended buyer — 0-100, never a 0-10 scale. When a structured match has a valid targetProgramId and its profile genuinely fits, use that exact target program rather than returning "none" merely because public intent is absent. For public-web candidates, assess buyerIntentLevel STRICTLY from evidence of a CURRENT need or want (asking for recommendations, describing a specific problem this program solves) — a job title, real-estate role, or being "in the industry" is NEVER by itself buyer intent. Each candidate also carries "preScreenedExclusionFlags" from a keyword pre-screen (coach/broker/lender/etc.) — verify against the real evidence and include in your own exclusionFlags if still applicable, or omit if the pre-screen was a false positive; also add wrong_country, unrelated_corporate_employee, or no_personal_investing_evidence yourself when the evidence supports it. A candidate with listed conflicts should be treated cautiously. Draft a short, personalized outreach message strictly grounded in the evidence given only when you believe outreach is genuinely warranted — never invent facts not present.\n\nCandidates:\n${JSON.stringify(candidates, null, 2)}`,
     input: { candidateCount: candidates.length, approvedProgramCount: programIds.length },
     options: { responseSchema: buildQualifyResponseSchema(programIds), schemaName: "lead_qualification" },
   });

@@ -137,6 +137,42 @@ async function testQualifyAndRecommendPersistsOnlyARealApprovedProgramId() {
   assert.equal(rows[0].outreachRecommended, true);
 }
 
+async function testQualifyAndRecommendIncludesTheRealTargetAudienceTextNotJustTheProgramName() {
+  // Reported gap: scoring "does this person fit" only ever saw the bare
+  // program NAME (e.g. "6-Week Coaching - Asset Management") and had to
+  // guess what that meant — the real target-audience description the
+  // owner actually wrote (and which already drives search) never reached
+  // qualification at all.
+  const rows = [{ _id: "gr-1", name: "Jane Prospect", organizationName: "Acme Rentals", organizationDomain: "acme.com", summary: "Recently closed on a 40-unit multifamily property.", evidenceUrls: [], conflicts: [], providers: ["apollo_person_search"], confidence: "single_source", discoveryMode: "icp_match", linkedinUrl: "", pdlEnrichment: {}, apolloEnrichment: { matched: true } }];
+  const GroundingResearchResult = fakeGroundingResultModel(rows);
+  const listApprovedPrograms = async () => [{ noteId: "note-real-1", title: "6-Week Coaching - Asset Management", targetAudience: "Multifamily property owners/operators who have recently acquired or are about to acquire an asset and want to protect NOI." }];
+  let capturedContext = "";
+  const runAgent = async ({ operationalContext }) => {
+    capturedContext = operationalContext;
+    return { output: { qualifications: [{ resultId: "gr-1", identityNotes: "consistent", programFitScore: 88, programFitReasons: ["Recently acquired a multifamily asset"], recommendedProgramId: "note-real-1", buyerIntentLevel: "none", buyerIntentEvidence: "", exclusionFlags: [], qualificationLabel: "qualified", recommendedNextAction: "Reach out.", outreachRecommended: true, outreachDraft: "Hi Jane..." }] } };
+  };
+
+  await qualifyAndRecommend({ workspaceId: "workspace-1", userId: "u1", resultIds: ["gr-1"] }, { GroundingResearchResult, listApprovedPrograms, runAgent });
+
+  assert.ok(capturedContext.includes("protect NOI"), "the real target-audience description must reach the qualification prompt, not just the bare program name");
+  assert.ok(capturedContext.includes("Score fit against each program's actual target-audience description"), "the prompt must explicitly instruct scoring against the description, not the name alone");
+}
+
+async function testQualifyAndRecommendDegradesHonestlyWhenNoTargetAudienceIsSet() {
+  const rows = [{ _id: "gr-1", name: "Jane Prospect", organizationName: "Acme Rentals", organizationDomain: "acme.com", summary: "Recently closed on a multifamily property.", evidenceUrls: [], conflicts: [], providers: ["apollo_person_search"], confidence: "single_source", discoveryMode: "icp_match", linkedinUrl: "", pdlEnrichment: {}, apolloEnrichment: { matched: true } }];
+  const GroundingResearchResult = fakeGroundingResultModel(rows);
+  const listApprovedPrograms = async () => [{ noteId: "note-real-1", title: "6-Week Coaching - Asset Management" }];
+  let capturedContext = "";
+  const runAgent = async ({ operationalContext }) => {
+    capturedContext = operationalContext;
+    return { output: { qualifications: [{ resultId: "gr-1", identityNotes: "", programFitScore: 50, programFitReasons: [], recommendedProgramId: "none", buyerIntentLevel: "none", buyerIntentEvidence: "", exclusionFlags: [], qualificationLabel: "needs_review", recommendedNextAction: "", outreachRecommended: false, outreachDraft: "" }] } };
+  };
+
+  await qualifyAndRecommend({ workspaceId: "workspace-1", userId: "u1", resultIds: ["gr-1"] }, { GroundingResearchResult, listApprovedPrograms, runAgent });
+
+  assert.ok(capturedContext.includes("No target audience description is set for this program yet"), "a program with no targetAudience must degrade to an honest, explicit note, never a fabricated description");
+}
+
 async function testQualifyAndRecommendDiscardsAFabricatedProgramIdIfOneEverSlipsThrough() {
   const rows = [{ _id: "gr-2", name: "Pat Prospect", organizationName: "", organizationDomain: "", summary: "Looking for help analyzing my first multifamily deal.", evidenceUrls: [], conflicts: [], providers: ["vertex_grounding"], confidence: "single_source", discoveryMode: "public_web_evidence", linkedinUrl: "", pdlEnrichment: {}, apolloEnrichment: {} }];
   const GroundingResearchResult = fakeGroundingResultModel(rows);
@@ -498,6 +534,8 @@ async function run() {
   testComputeQualificationOutcomeKeepsMissingEvidenceReviewable();
   testStructuredAudienceMatchCanQualifyWithoutPublicIntent();
   await testQualifyAndRecommendPersistsOnlyARealApprovedProgramId();
+  await testQualifyAndRecommendIncludesTheRealTargetAudienceTextNotJustTheProgramName();
+  await testQualifyAndRecommendDegradesHonestlyWhenNoTargetAudienceIsSet();
   await testQualifyAndRecommendDiscardsAFabricatedProgramIdIfOneEverSlipsThrough();
   await testStructuredSearchKeepsItsRealTargetProgramAndQualifiesAfterIdentityMatch();
   await testPublicDiscoveryRunKeepsItsSelectedProgramDuringQualification();
