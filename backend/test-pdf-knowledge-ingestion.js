@@ -41,6 +41,13 @@ function fakeProgramModel(programs) {
 
 const fakeMonitorModel = { create: async () => ({ _id: "monitor-1" }) };
 
+// ingestPdf tests below are only about note creation/linking — approval
+// side-effects (indexing + ICP-apply) are covered on their own further down
+// against applyIcpToProgramOnApproval directly, so every ingestPdf test
+// injects a no-op here to stay isolated and avoid a second, differently-
+// shaped fake CoachingProgram model just for this plumbing call.
+const noopApprovalSideEffects = async () => {};
+
 const okAnalysis = {
   programSummary: "A 6-week beginner multifamily course.",
   idealCustomerProfile: "W-2 professionals with a stuck 401k who want to learn to invest it themselves; also house flippers looking to scale into multifamily.",
@@ -58,6 +65,7 @@ async function testStoresStructuredAiAnalysisOnTheNote() {
       CoachingProgram: fakeProgramModel([]),
       pdfParse: async () => ({ text: "Some real extracted program text." }),
       runAgent: async () => ({ output: okAnalysis }),
+      runApprovalSideEffects: noopApprovalSideEffects,
     },
   );
   assert.equal(outcome.aiAnalysisSucceeded, true);
@@ -77,6 +85,7 @@ async function testLinksToAValidProgramInTheSameWorkspace() {
       CoachingProgram: fakeProgramModel([{ _id: PROGRAM_ID, workspaceId: WORKSPACE_ID }]),
       pdfParse: async () => ({ text: "Some real extracted program text." }),
       runAgent: async () => ({ output: okAnalysis }),
+      runApprovalSideEffects: noopApprovalSideEffects,
     },
   );
   assert.equal(outcome.note.linkedCoachingProgramId, PROGRAM_ID);
@@ -94,6 +103,7 @@ async function testDropsAProgramIdFromAnotherWorkspaceInsteadOfThrowing() {
       CoachingProgram: fakeProgramModel([{ _id: PROGRAM_ID, workspaceId: OTHER_WORKSPACE_ID }]),
       pdfParse: async () => ({ text: "Some real extracted program text." }),
       runAgent: async () => ({ output: okAnalysis }),
+      runApprovalSideEffects: noopApprovalSideEffects,
     },
   );
   assert.equal(outcome.note.linkedCoachingProgramId, null);
@@ -110,6 +120,7 @@ async function testNeverInventsAiAnalysisWhenAnalysisFails() {
       CoachingProgram: fakeProgramModel([]),
       pdfParse: async () => ({ text: "Some real extracted program text." }),
       runAgent: async () => { throw new Error("model unavailable"); },
+      runApprovalSideEffects: noopApprovalSideEffects,
     },
   );
   assert.equal(outcome.aiAnalysisSucceeded, false);
@@ -197,6 +208,45 @@ async function testApprovalSkipsNotesWithNoLinkedProgramOrNoIcp() {
   console.log("PASS testApprovalSkipsNotesWithNoLinkedProgramOrNoIcp");
 }
 
+async function testPdfUploadsAreApprovedImmediatelyNoReviewStep() {
+  const notes = [];
+  const outcome = await ingestPdf(
+    { workspaceId: WORKSPACE_ID, userId: "user-1", auth: {}, category: "offers-programs", originalFilename: "beginner.pdf", buffer: Buffer.from("x") },
+    {
+      JarvisMemoryNote: fakeNoteModel(notes),
+      ResearchMonitor: fakeMonitorModel,
+      CoachingProgram: fakeProgramModel([]),
+      pdfParse: async () => ({ text: "Some real extracted program text." }),
+      runAgent: async () => { throw new Error("even a failed analysis must still be approved"); },
+      runApprovalSideEffects: noopApprovalSideEffects,
+    },
+  );
+  assert.equal(notes[0].status, "approved");
+  assert.equal(notes[0].approvedByUserId, "user-1");
+  assert.ok(notes[0].approvedAt instanceof Date);
+  assert.equal(outcome.note.status, "approved");
+  console.log("PASS testPdfUploadsAreApprovedImmediatelyNoReviewStep");
+}
+
+async function testIngestPdfActuallyInvokesApprovalSideEffects() {
+  const notes = [];
+  let calledWith = null;
+  const outcome = await ingestPdf(
+    { workspaceId: WORKSPACE_ID, userId: "user-1", auth: {}, category: "offers-programs", originalFilename: "beginner.pdf", buffer: Buffer.from("x"), coachingProgramId: PROGRAM_ID },
+    {
+      JarvisMemoryNote: fakeNoteModel(notes),
+      ResearchMonitor: fakeMonitorModel,
+      CoachingProgram: fakeProgramModel([{ _id: PROGRAM_ID, workspaceId: WORKSPACE_ID }]),
+      pdfParse: async () => ({ text: "Some real extracted program text." }),
+      runAgent: async () => ({ output: okAnalysis }),
+      runApprovalSideEffects: async (note, context) => { calledWith = { note, context }; },
+    },
+  );
+  assert.equal(calledWith.note._id, outcome.note._id);
+  assert.equal(calledWith.context.workspaceId, WORKSPACE_ID);
+  console.log("PASS testIngestPdfActuallyInvokesApprovalSideEffects");
+}
+
 (async () => {
   await testStoresStructuredAiAnalysisOnTheNote();
   await testLinksToAValidProgramInTheSameWorkspace();
@@ -207,6 +257,8 @@ async function testApprovalSkipsNotesWithNoLinkedProgramOrNoIcp() {
   await testApprovalAppendsAfterExistingInternalSummaryText();
   await testApprovalIsIdempotentOnceAlreadyApplied();
   await testApprovalSkipsNotesWithNoLinkedProgramOrNoIcp();
+  await testPdfUploadsAreApprovedImmediatelyNoReviewStep();
+  await testIngestPdfActuallyInvokesApprovalSideEffects();
   console.log("\nAll PDF-to-Internal-Summary linking tests passed.");
 })().catch((error) => {
   console.error("FAIL", error);

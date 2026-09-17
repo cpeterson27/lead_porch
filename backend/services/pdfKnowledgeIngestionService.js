@@ -3,23 +3,28 @@
  * each PDF, uses the app's existing (OpenAI-backed) agent system to produce
  * a structured program summary, ideal-customer profile, qualification
  * criteria, and suggested discovery-monitor searches, and creates ONE
- * DRAFT JarvisMemoryNote per PDF — never auto-approved, exactly like every
- * other Knowledge Center draft. An approved note syncs to Agent Search
- * automatically through the SAME hook every other approval already uses
- * (jarvisMemoryService.approveNote() -> discoveryEngineSyncService) — no
- * new sync path was added here.
+ * ALREADY-APPROVED JarvisMemoryNote per PDF — usable by Jarvis and (when
+ * linked to a program) applied to Internal Summary the moment upload
+ * finishes, no manual review click. This is deliberately different from a
+ * hand-typed or Obsidian-synced note, which still lands as a draft pending
+ * human approval: a PDF's own byte-for-byte fileHash uniqueness check
+ * (below, and enforced again at the DB level by a partial unique index) is
+ * the safety net here instead — the exact same file can never be ingested
+ * twice, so there is nothing a manual review step would catch that
+ * duplicate-detection doesn't already.
  *
  * Suggested monitors are created as real ResearchMonitor documents so they
  * are genuinely editable through the existing Discovery > Intent Monitoring
  * UI, but ALWAYS with enabled: false — both the automatic scheduler
  * (services/researchMonitorService.js's due-monitor query) and the manual
  * "Run now" action require enabled: true, so a suggested monitor cannot run
- * in any way until a human explicitly turns it on.
+ * in any way until a human explicitly turns it on. This one review gate is
+ * NOT removed: it's about real ongoing provider spend, a different kind of
+ * risk than a note simply being readable.
  *
- * If AI analysis fails for any reason, the draft note is still created
- * (with the raw extracted text and an honest note that analysis failed)
- * rather than silently discarding the upload — never invents the missing
- * analysis.
+ * If AI analysis fails for any reason, the note is still created (with the
+ * raw extracted text and an honest note that analysis failed) rather than
+ * silently discarding the upload — never invents the missing analysis.
  */
 const crypto = require("crypto");
 const { PDFParse } = require("pdf-parse");
@@ -28,7 +33,7 @@ const ResearchMonitor = require("../models/ResearchMonitor");
 const CoachingProgram = require("../models/CoachingProgram");
 const agentExecutionService = require("./agentExecutionService");
 const auditService = require("./auditService");
-const { CATEGORY_FOLDERS, isSafeNotePath } = require("./jarvisMemoryService");
+const { CATEGORY_FOLDERS, isSafeNotePath, runApprovalSideEffects } = require("./jarvisMemoryService");
 
 const MAX_EXTRACTED_TEXT = 100000;
 const MAX_AI_INPUT_TEXT = 18000;
@@ -172,7 +177,12 @@ async function ingestPdf({ workspaceId, userId, auth, category, originalFilename
   const note = await Model.create({
     workspaceId, source: "pdf_upload", category, path, title, content, contentHash,
     originalFilename: clean(originalFilename, 300), fileHash, createdByUserId: userId,
-    status: "draft", version: 1, versions: [],
+    // Approved immediately — see the file header comment for why a PDF
+    // skips the manual review queue that hand-typed/Obsidian notes still go
+    // through: duplicate-by-content is already impossible (fileHash check
+    // above, backed by a DB-level unique index).
+    status: "approved", approvedByUserId: userId, approvedAt: new Date(),
+    version: 1, versions: [],
     linkedCoachingProgramId,
     ...(analysisResult.ok ? {
       aiAnalysis: {
@@ -182,6 +192,7 @@ async function ingestPdf({ workspaceId, userId, auth, category, originalFilename
       },
     } : {}),
   });
+  await (dependencies.runApprovalSideEffects || runApprovalSideEffects)(note, { workspaceId, userId }, Model, ProgramModel);
 
   const monitorDrafts = [];
   if (analysisResult.ok) {

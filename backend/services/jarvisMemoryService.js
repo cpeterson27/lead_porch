@@ -295,9 +295,21 @@ async function approveNote({ workspaceId, noteId, userId, effectiveDate, reviewD
   );
   if (!note) { const error = new Error("Knowledge note not found"); error.code = "MEMORY_NOTE_NOT_FOUND"; throw error; }
   await auditService.record({ workspaceId, actorUserId: userId, action: "knowledge.note.approved", targetType: "JarvisMemoryNote", targetId: note._id, after: { status: "approved", ownerLabel: note.ownerLabel }, success: true });
+  await runApprovalSideEffects(note, { workspaceId, userId }, Model, ProgramModel);
+  return note;
+}
+
+/**
+ * Everything that has to happen the moment a note becomes "approved" and
+ * usable — whether that's a human clicking Approve in the Knowledge Center
+ * review queue, or a PDF upload that goes straight to approved (see
+ * pdfKnowledgeIngestionService.ingestPdf, which is trusted to skip manual
+ * review because duplicate PDFs are already blocked by file-hash matching).
+ * Kept as one shared function so both paths can never drift apart.
+ */
+async function runApprovalSideEffects(note, { workspaceId, userId }, Model = JarvisMemoryNote, ProgramModel) {
   await require("./discoveryEngineSyncService").indexApprovedNote(note);
   await applyIcpToProgramOnApproval(note, { workspaceId, userId }, Model, ProgramModel || require("../models/CoachingProgram"));
-  return note;
 }
 
 /**
@@ -374,4 +386,4 @@ async function restoreVersion({ workspaceId, noteId, userId, version } = {}, Mod
   return note;
 }
 
-module.exports = { CATEGORY_FOLDERS, KNOWLEDGE_FOLDERS, approveNote, archiveNote, categoryForPath, deleteNote, getNote, getStatus, isSafeNotePath, listNotes, localWorkspaceAllowed, memorySource, recordConversation, rejectNote, restoreVersion, retrieveCloudNotes, retrieveRelevantNotes, saveApprovedMemory, syncCloudNotes, applyIcpToProgramOnApproval };
+module.exports = { CATEGORY_FOLDERS, KNOWLEDGE_FOLDERS, approveNote, archiveNote, categoryForPath, deleteNote, getNote, getStatus, isSafeNotePath, listNotes, localWorkspaceAllowed, memorySource, recordConversation, rejectNote, restoreVersion, retrieveCloudNotes, retrieveRelevantNotes, saveApprovedMemory, syncCloudNotes, applyIcpToProgramOnApproval, runApprovalSideEffects };

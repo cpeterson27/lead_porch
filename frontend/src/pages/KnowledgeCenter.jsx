@@ -223,7 +223,7 @@ export default function KnowledgeCenter() {
       const res = await uploadKnowledgePdfs(files, pdfCategory, pdfCategory === "offers-programs" ? pdfProgramId : "");
       setPdfResults(res.data.results);
       const succeeded = res.data.results.filter((row) => row.success).length;
-      setNotice(`${succeeded} of ${res.data.results.length} PDF(s) staged as drafts awaiting your review.`);
+      setNotice(`${succeeded} of ${res.data.results.length} PDF(s) uploaded and available to Jarvis immediately.`);
       if (pdfInputRef.current) pdfInputRef.current.value = "";
       loadNotes();
     } catch (err) {
@@ -291,7 +291,7 @@ export default function KnowledgeCenter() {
 
       {hasRole(session, "owner") && workspaceView === "upload" ? (
         <DashboardCard title="Upload new PDFs">
-          <p className="knowledge-upload-explainer"><strong>Duplicates are blocked automatically.</strong> Uploaded PDFs wait for your review before Jarvis can use them.</p>
+          <p className="knowledge-upload-explainer"><strong>Duplicates are blocked automatically</strong> — the exact same file can never be uploaded twice. No review step: Jarvis can use a PDF the moment it's uploaded.</p>
           <div className="knowledge-upload-grid"><label>Category<select value={pdfCategory} onChange={(e) => setPdfCategory(e.target.value)}>{CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>PDF files (up to 10)<input ref={pdfInputRef} type="file" accept="application/pdf" multiple disabled={pdfBusy} /></label></div>
           {pdfCategory === "offers-programs" ? (
             <div className="knowledge-upload-grid">
@@ -311,7 +311,7 @@ export default function KnowledgeCenter() {
             </div>
           ) : null}
           <Button loading={pdfBusy} onClick={uploadPdfs}>{pdfBusy ? "Checking and analyzing…" : "Check and upload PDFs"}</Button>
-          {pdfResults ? <ul className="knowledge-pdf-results">{pdfResults.map((row, index) => <li key={index} className={row.success ? "is-success" : "is-error"}><strong>{row.filename}</strong>{row.success ? ` — staged for review${row.monitorDraftsCreated ? `, ${row.monitorDraftsCreated} suggested monitor(s) created inactive` : ""}` : row.code === "PDF_DUPLICATE" ? ` — not uploaded: ${row.error}` : ` — failed: ${row.error}`}</li>)}</ul> : null}
+          {pdfResults ? <ul className="knowledge-pdf-results">{pdfResults.map((row, index) => <li key={index} className={row.success ? "is-success" : "is-error"}><strong>{row.filename}</strong>{row.success ? ` — uploaded and live${row.monitorDraftsCreated ? `, ${row.monitorDraftsCreated} suggested monitor(s) created inactive` : ""}` : row.code === "PDF_DUPLICATE" ? ` — not uploaded: ${row.error}` : ` — failed: ${row.error}`}</li>)}</ul> : null}
         </DashboardCard>
       ) : null}
 

@@ -662,8 +662,10 @@ router.post("/memory/notes/:id/restore-version", requireRole("owner", "admin"), 
  * Owner-only multi-PDF upload. Deliberately narrower than every other
  * Knowledge Center route above (owner/admin) — this both spends AI budget
  * and creates draft monitors, so it stays owner-only. Every PDF becomes one
- * draft note (never auto-approved) plus, when AI analysis succeeds, up to a
- * few DISABLED draft monitors (never auto-enabled) — see
+ * ALREADY-APPROVED note (usable by Jarvis immediately — no manual review
+ * click, since an identical file can never be uploaded twice) plus, when AI
+ * analysis succeeds, up to a few DISABLED draft monitors (never
+ * auto-enabled, since those spend real provider credits every run) — see
  * services/pdfKnowledgeIngestionService.js for the full safety reasoning.
  * A partial failure (one bad PDF among several) never discards the ones
  * that succeeded.
