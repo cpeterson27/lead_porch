@@ -127,7 +127,16 @@ const effectiveEmailOf = (result) => result.pdlEnrichment?.matched && result.pdl
       : null;
 const reviewActionabilityOf = (result) => {
   if (result.qualificationLabel === "not_a_fit" || result.status === "dismissed") return "not_a_fit";
-  if (!result.qualificationLabel || result.qualificationLabel === "needs_review") return "needs_review";
+  // "Never run through Jarvis qualify" and "Jarvis reviewed it and flagged
+  // needs_review" used to share this same bucket, which made the "Needs
+  // review" tab silently absorb every unscored lead too — someone who had
+  // just qualified a full page would see the tab still full of 12 people
+  // and reasonably assume qualification hadn't taken effect, when really
+  // those were a different, never-scored batch. Keeping them as two
+  // distinct outcomes is what the "Qualification" filter dropdown already
+  // does; this just makes the quick-filter tabs agree with it.
+  if (!result.qualificationLabel) return "unscored";
+  if (result.qualificationLabel === "needs_review") return "needs_review";
   return effectiveEmailOf(result) ? "ready" : "needs_contact";
 };
 
@@ -1629,7 +1638,7 @@ export default function Discovery() {
               {apolloBulkOutcome.state === "complete" && apolloBulkOutcome.matched === 0 ? <small>Apollo completed successfully but did not return an email for this selection. No additional Apollo action is available for those people; try PDL only if you want to spend credits on a second source.</small> : null}
             </div> : null}
             <div className="review-queue-bulk-actions">
-              {[["all", "All"], ["ready", "Ready to contact"], ["needs_contact", "Needs contact information"], ["needs_review", "Needs review"], ["not_a_fit", "Not a fit"]].map(([value, label]) => (
+              {[["all", "All"], ["ready", "Ready to contact"], ["needs_contact", "Needs contact information"], ["unscored", "Not yet qualified"], ["needs_review", "Needs review"], ["not_a_fit", "Not a fit"]].map(([value, label]) => (
                 <Button key={value} size="sm" variant={qualifyOutcomeFilter === value ? "primary" : "outline"} onClick={() => setQualifyOutcomeFilter(value)}>{label}</Button>
               ))}
               <Button size="sm" variant="outline" loading={apolloBulkEnrichBusy} disabled={!selectedGroundingIds.some((id) => {
