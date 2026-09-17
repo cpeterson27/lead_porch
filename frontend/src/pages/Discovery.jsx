@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Button from "../components/Button.jsx";
 import DashboardCard from "../components/DashboardCard.jsx";
@@ -300,6 +300,14 @@ export default function Discovery() {
   const [campaignId, setCampaignId] = useState("");
   const campaignContextId = searchParams.get("campaignId") || "";
   const leadCampaignId = campaignContextId;
+  const [campaignContactCount, setCampaignContactCount] = useState(null);
+  const refreshCampaignContactCount = useCallback(() => {
+    if (!campaignContextId) { setCampaignContactCount(null); return; }
+    fetchContacts({ campaignId: campaignContextId, limit: 1 })
+      .then((res) => setCampaignContactCount(res.pagination?.total ?? null))
+      .catch(() => {});
+  }, [campaignContextId]);
+  useEffect(() => { refreshCampaignContactCount(); }, [refreshCampaignContactCount]);
   const [query, setQuery] = useState("");
   const [emailFilter, setEmailFilter] = useState("verified");
   const [notice, setNotice] = useState("");
@@ -407,7 +415,7 @@ export default function Discovery() {
   const [webSearchBusyId, setWebSearchBusyId] = useState("");
   const [dismissAllBusy, setDismissAllBusy] = useState(false);
   const [selectedGroundingIds, setSelectedGroundingIds] = useState([]);
-  const [reviewFilters, setReviewFilters] = useState({ run: "all", newOnly: false, provider: "all", qualification: "all", location: "", freshness: "all", identityConfidence: "all" });
+  const [reviewFilters, setReviewFilters] = useState({ run: "all", newOnly: false, provider: "all", qualification: "all", contactStatus: "all", location: "", freshness: "all", identityConfidence: "all" });
   // Spreadsheet-style inline row expansion — replaces the old slide-over
   // drawer. A row's full record expands in place, directly below it, like
   // expanding a row in a spreadsheet, instead of opening a separate panel.
@@ -587,6 +595,7 @@ export default function Discovery() {
       const selectedCampaign = campaigns.find((campaign) => String(campaign._id) === String(leadCampaignId));
       setNotice(selectedCampaign ? `Added to CRM and assigned to ${selectedCampaign.name}. No email was sent.` : "Added to CRM. No email was sent.");
       loadGroundingResults();
+      refreshCampaignContactCount();
     } catch (err) {
       setNotice(err.response?.data?.error || "Unable to save that result.");
     }
@@ -747,6 +756,7 @@ export default function Discovery() {
     reviewFilters.newOnly,
     reviewFilters.provider !== "all",
     reviewFilters.qualification !== "all",
+    reviewFilters.contactStatus !== "all",
     Boolean(reviewFilters.location.trim()),
     reviewFilters.freshness !== "all",
     reviewFilters.identityConfidence !== "all",
@@ -757,6 +767,7 @@ export default function Discovery() {
     if (reviewFilters.newOnly && !r.isNew) return false;
     if (reviewFilters.provider !== "all" && !(r.providers || []).includes(reviewFilters.provider)) return false;
     if (reviewFilters.qualification !== "all" && (r.qualificationLabel || "unscored") !== reviewFilters.qualification) return false;
+    if (reviewFilters.contactStatus !== "all" && contactStatusOf(r) !== reviewFilters.contactStatus) return false;
     if (reviewFilters.location.trim() && !`${r.summary || ""} ${r.organizationName || ""}`.toLowerCase().includes(reviewFilters.location.trim().toLowerCase())) return false;
     if (reviewFilters.freshness !== "all" && (r.freshnessTier || "n/a") !== reviewFilters.freshness) return false;
     if (reviewFilters.identityConfidence !== "all" && (r.identityConfidence || "low") !== reviewFilters.identityConfidence) return false;
@@ -1558,7 +1569,8 @@ export default function Discovery() {
         </p>
         {campaignContextId ? <div className="review-campaign-context">
           <div className="review-campaign-context__locked"><span>Finding leads for</span><strong>{campaigns.find((campaign) => String(campaign._id) === String(campaignContextId))?.name || "Current campaign"}</strong></div>
-          <small>Leads you approve will be added to your CRM and this campaign.</small>
+          <small>Leads you approve will be added to your CRM and this campaign. {campaignContactCount != null ? <strong>{campaignContactCount} lead{campaignContactCount === 1 ? "" : "s"} in this campaign so far.</strong> : null}</small>
+          <small>This is a repeatable loop, not a one-time run: come back to the <strong>Find leads</strong> tab above any time (this campaign stays linked) to search for more people, then qualify and add them the same way.</small>
         </div> : null}
         <div className="discovery-review-filters">
           {["pending_review", "saved", "dismissed"].map((status) => (
@@ -1597,6 +1609,14 @@ export default function Discovery() {
                   <option value="needs_review">Needs review</option>
                   <option value="not_a_fit">Not a fit</option>
                   <option value="unscored">Not yet qualified</option>
+                </select></label>
+                <label><span>Contact status</span><select value={reviewFilters.contactStatus} onChange={(e) => setReviewFilters((c) => ({ ...c, contactStatus: e.target.value }))}>
+                  <option value="all">Any contact status</option>
+                  <option value={CONTACT_STATUS.ENRICHED_APOLLO}>Already enriched — Apollo</option>
+                  <option value={CONTACT_STATUS.ENRICHED_PDL}>Already enriched — PDL</option>
+                  <option value={CONTACT_STATUS.NO_EMAIL_RETURNED}>Enrichment tried, no email found</option>
+                  <option value={CONTACT_STATUS.EMAIL_AVAILABLE}>Email available, not yet enriched</option>
+                  <option value={CONTACT_STATUS.ENRICHMENT_NEEDED}>Not yet enriched</option>
                 </select></label>
                 <label><span>Location contains</span><input type="text" value={reviewFilters.location} onChange={(e) => setReviewFilters((c) => ({ ...c, location: e.target.value }))} placeholder="e.g. Texas" /></label>
                 <label><span>Freshness</span><select value={reviewFilters.freshness} onChange={(e) => setReviewFilters((c) => ({ ...c, freshness: e.target.value }))}>
@@ -1672,6 +1692,34 @@ export default function Discovery() {
             // from Apollo/PDL alone — the same pattern modern enrichment
             // tools use.
             const showWebSearchButton = apolloAttempted && pdlAttempted && !effectiveEmail && !result.publicWebLookup?.attempted;
+            const showFindContactGroup = result.type === "person" && ["qualified", "needs_review"].includes(result.qualificationLabel) && (showApolloButton || showPdlButton || showWebSearchButton);
+            const canQualifyAgain = result.qualificationLabel === "needs_review" && Boolean(effectiveEmail || result.pdlEnrichment?.attempted || result.apolloEnrichment?.attempted);
+            const canSaveAnyway = result.qualificationLabel === "needs_review" && Boolean(effectiveEmail);
+            const canAddToCrm = result.qualificationLabel === "qualified" && Boolean(effectiveEmail);
+            // Exactly one clear next step per lead — the way a professional
+            // lead-gen tool surfaces a single primary action instead of a
+            // wall of buttons. Every other applicable action is still one
+            // click away under "More options," never removed.
+            const primaryStep = !result.qualificationLabel ? "qualify"
+              : canAddToCrm ? "add_to_crm"
+              : showFindContactGroup ? "find_contact"
+              : canQualifyAgain ? "qualify_again"
+              : "none";
+            const findContactGroup = showFindContactGroup ? (
+              <div className="leadgen-row-actions__group">
+                <span>Find contact information:</span>
+                {showApolloButton ? (
+                  <Button size="sm" variant="outline" loading={apolloEnrichBusyId === result._id} disabled={Boolean(apolloEnrichBusyId) && apolloEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithApollo(result._id)}>Research with Apollo</Button>
+                ) : null}
+                {showPdlButton ? (
+                  <Button size="sm" variant="outline" loading={pdlEnrichBusyId === result._id} disabled={Boolean(pdlEnrichBusyId) && pdlEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithPdl(result._id)}>{apolloAttempted ? "Try PDL (Apollo found no email)" : "Research with PDL"}</Button>
+                ) : null}
+                {showWebSearchButton ? (
+                  <Button size="sm" variant="outline" loading={webSearchBusyId === result._id} disabled={Boolean(webSearchBusyId) && webSearchBusyId !== result._id} onClick={() => searchPublicWebForResult(result._id)} title="Apollo and PDL both came up empty — search the public web for this specific person">Search the public web</Button>
+                ) : null}
+              </div>
+            ) : null;
+            const hasMoreOptions = (showFindContactGroup && primaryStep !== "find_contact") || (canQualifyAgain && primaryStep !== "qualify_again") || canSaveAnyway;
             return (
               <article key={result._id} className={`review-card is-${result.status} qualification-${result.qualificationLabel || "unscored"}`}>
                 <header className="review-card__header">
@@ -1703,7 +1751,7 @@ export default function Discovery() {
                 <button type="button" className="review-card__details-toggle" onClick={() => toggleResultExpanded(result._id)} aria-expanded={expandedResultIds.has(result._id)}>{expandedResultIds.has(result._id) ? "Hide full record ▲" : "View full record ▼"}</button>
                 {result.status === "pending_review" ? (
                   <div className="leadgen-row-actions">
-                    {!result.qualificationLabel ? (
+                    {primaryStep === "qualify" ? (
                       <div className="leadgen-row-actions__group is-next-step">
                         <span>Next step:</span>
                         <Button size="sm" loading={qualifyBusy} onClick={() => qualifyGroundingResults([result._id])}>Qualify with Jarvis</Button>
@@ -1712,29 +1760,30 @@ export default function Discovery() {
                     {result.qualificationLabel === "needs_review" ? (
                       <small className="review-card__missing">{effectiveEmail ? "Jarvis found the contact but did not auto-approve the program fit. Review the score and full record; do not spend another Apollo credit." : "Jarvis needs stronger identity or contact evidence. Research the contact, then qualify again."}</small>
                     ) : null}
-                    {(result.type === "person" && ["qualified", "needs_review"].includes(result.qualificationLabel) && (showApolloButton || showPdlButton || showWebSearchButton)) ? (
-                      <div className="leadgen-row-actions__group">
-                        <span>Find contact information:</span>
-                        {showApolloButton ? (
-                          <Button size="sm" variant="outline" loading={apolloEnrichBusyId === result._id} disabled={Boolean(apolloEnrichBusyId) && apolloEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithApollo(result._id)}>Research with Apollo</Button>
-                        ) : null}
-                        {showPdlButton ? (
-                          <Button size="sm" variant="outline" loading={pdlEnrichBusyId === result._id} disabled={Boolean(pdlEnrichBusyId) && pdlEnrichBusyId !== result._id} onClick={() => enrichGroundingResultWithPdl(result._id)}>{apolloAttempted ? "Try PDL (Apollo found no email)" : "Research with PDL"}</Button>
-                        ) : null}
-                        {showWebSearchButton ? (
-                          <Button size="sm" variant="outline" loading={webSearchBusyId === result._id} disabled={Boolean(webSearchBusyId) && webSearchBusyId !== result._id} onClick={() => searchPublicWebForResult(result._id)} title="Apollo and PDL both came up empty — search the public web for this specific person">Search the public web</Button>
-                        ) : null}
+                    {primaryStep === "find_contact" ? <div className="leadgen-row-actions__group is-next-step"><span>Next step:</span>{findContactGroup}</div> : null}
+                    {primaryStep === "qualify_again" ? (
+                      <div className="leadgen-row-actions__group is-next-step">
+                        <span>Next step:</span>
+                        <Button size="sm" loading={qualifyBusy} onClick={() => qualifyGroundingResults([result._id])}>Qualify again with Jarvis</Button>
                       </div>
                     ) : null}
-                    {result.qualificationLabel === "needs_review" && (effectiveEmail || result.pdlEnrichment?.attempted || result.apolloEnrichment?.attempted) ? (
-                      <Button size="sm" variant="outline" loading={qualifyBusy} onClick={() => qualifyGroundingResults([result._id])}>Qualify again with Jarvis</Button>
-                    ) : null}
-                    {result.qualificationLabel === "needs_review" && effectiveEmail ? (
-                      <Button size="sm" variant="outline" onClick={() => saveGroundingResult(result._id)} title="Jarvis didn't find enough evidence to auto-qualify this one, but you have a real email and can judge it yourself">Save anyway</Button>
-                    ) : null}
-                    {result.qualificationLabel === "qualified" && effectiveEmail ? <Button size="sm" onClick={() => saveGroundingResult(result._id)}>{leadCampaignId ? "Add to CRM + campaign" : "Add to CRM"}</Button> : null}
+                    {primaryStep === "add_to_crm" ? <Button size="sm" onClick={() => saveGroundingResult(result._id)}>{leadCampaignId ? "Add to CRM + campaign" : "Add to CRM"}</Button> : null}
                     {result.qualificationLabel === "qualified" && !effectiveEmail ? <small className="review-card__missing">Qualified—find an email before adding this lead to your campaign-ready CRM list.</small> : null}
-                    <Button size="sm" variant="outline" onClick={() => dismissGroundingResult(result._id)}>Not a lead</Button>
+                    {hasMoreOptions ? (
+                      <details className="leadgen-row-actions__more">
+                        <summary>More options</summary>
+                        <div className="leadgen-row-actions__more-body">
+                          {showFindContactGroup && primaryStep !== "find_contact" ? findContactGroup : null}
+                          {canQualifyAgain && primaryStep !== "qualify_again" ? (
+                            <Button size="sm" variant="outline" loading={qualifyBusy} onClick={() => qualifyGroundingResults([result._id])}>Qualify again with Jarvis</Button>
+                          ) : null}
+                          {canSaveAnyway ? (
+                            <Button size="sm" variant="outline" onClick={() => saveGroundingResult(result._id)} title="Jarvis didn't find enough evidence to auto-qualify this one, but you have a real email and can judge it yourself">Save anyway</Button>
+                          ) : null}
+                        </div>
+                      </details>
+                    ) : null}
+                    <Button size="sm" variant="outline" className="leadgen-row-actions__not-a-lead" onClick={() => dismissGroundingResult(result._id)}>Not a lead</Button>
                   </div>
                 ) : <span className="people-preview-footnote">{result.status === "saved" ? "Saved" : "Dismissed"}</span>}
                 {expandedResultIds.has(result._id) ? <div className="review-card__details">

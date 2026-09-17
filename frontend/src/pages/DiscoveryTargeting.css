@@ -1398,6 +1398,12 @@
 .leadgen-row-actions{
   border-top-color:var(--color-border);
 }
+.leadgen-row-actions__more{grid-column:1/-1;border:1px solid var(--color-border,#e0e5e2);border-radius:14px;background:#fafafc;}
+.leadgen-row-actions__more>summary{cursor:pointer;list-style:none;padding:.5rem .75rem;font-size:.72rem;font-weight:700;color:var(--color-text-subtle,#737788);}
+.leadgen-row-actions__more>summary::-webkit-details-marker{display:none;}
+.leadgen-row-actions__more[open]>summary{border-bottom:1px solid var(--color-border,#e0e5e2);}
+.leadgen-row-actions__more-body{display:grid;gap:.5rem;padding:.65rem .75rem;}
+.leadgen-row-actions__not-a-lead{grid-column:1/-1;opacity:.75;}
 
 .discovery-run-details { background: #f7f8f8; border: 1px solid #e0e5e2; border-radius: 16px; padding: 0; }
 .discovery-run-details > summary { align-items: center; cursor: pointer; display: flex; justify-content: space-between; list-style: none; padding: 1rem 1.1rem; }
