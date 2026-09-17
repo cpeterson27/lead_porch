@@ -143,6 +143,22 @@
 
 .monitor-setup-panel>.monitor-preset{position:relative;min-height:0!important;padding:18px 46px 18px 18px!important;border-radius:14px!important;background:#fff!important;box-shadow:none!important}.monitor-setup-panel>.monitor-preset:after{content:"→";position:absolute;right:18px;top:50%;color:#654de6;font-size:1.3rem;transform:translateY(-50%)}.monitor-setup-panel>.monitor-preset:hover{transform:none!important;background:#f4f1ff!important;box-shadow:inset 4px 0 #7457ff!important}.leadgen-pill-row .leadgen-pill.is-disabled{cursor:pointer!important;opacity:1!important;color:#654de6!important;border-style:dashed!important;background:#f7f5ff!important}.leadgen-provider-reasons{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}.leadgen-provider-reasons span{padding:9px 11px;border-radius:10px;background:#fff7f1;color:#8b4b35;font-size:.7rem}
 .lead-view-tabs{padding:5px!important;border-radius:999px!important;background:#f2f1f7!important}.lead-view-tabs button{border-radius:999px!important}.intent-signal-list{display:grid!important;grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:12px!important}.intent-signal-card{grid-template-columns:100px minmax(0,1fr)!important;border:1px solid rgba(47,42,102,.1)!important;border-left:4px solid #d69a28!important;border-radius:18px!important;box-shadow:none!important}.signal-contact,.intent-signal-actions{grid-column:2!important;border-left:0!important;border-top:1px solid rgba(47,42,102,.08)!important;padding-top:14px!important}.intent-signal-actions .btn{border-radius:999px!important}@media(max-width:1150px){.intent-signal-list{grid-template-columns:1fr!important}.leadgen-provider-reasons{grid-template-columns:1fr}}
+.intent-signal-list .intent-signal-row{grid-column:1/-1!important;border:1px solid rgba(47,42,102,.1)!important;border-left:0!important;border-radius:10px!important;box-shadow:none!important;padding:0!important;overflow:hidden}
+.intent-signal-list .intent-signal-row:nth-child(even){background:#fbfbfd}
+.intent-signal-row__summary{display:grid;grid-template-columns:110px minmax(0,1fr) auto;align-items:center;gap:14px;padding:12px 16px;cursor:pointer}
+.intent-signal-row__summary:hover{background:#faf9ff}
+.intent-signal-row__summary .signal-priority{display:flex;flex-direction:column;gap:1px}
+.intent-signal-row__summary .signal-priority span{color:#6e6a7c;font-size:.62rem;font-weight:800;text-transform:uppercase;letter-spacing:.03em}
+.intent-signal-row__summary .signal-priority strong{font-size:.8rem}
+.intent-signal-row__summary .signal-priority small{color:#74707e;font-size:.65rem}
+.intent-signal-row__title{display:grid;gap:2px;min-width:0}
+.intent-signal-row__title span{color:#6e6a7c;font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.03em}
+.intent-signal-row__title h3{margin:0;font-size:.85rem;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.intent-signal-row__toggle{border:1px solid rgba(47,42,102,.15)!important;border-radius:999px!important;background:#fff;color:#3c3564;font-size:.68rem;font-weight:800;padding:7px 14px;white-space:nowrap;cursor:pointer}
+.intent-signal-row__toggle:hover{background:#f2f1f7}
+.intent-signal-row__details{border-top:1px solid rgba(47,42,102,.08);padding:14px 16px;display:grid;gap:12px}
+.intent-signal-row__details .signal-contact,.intent-signal-row__details .intent-signal-actions{grid-column:auto!important;border-left:0!important;border-top:1px solid rgba(47,42,102,.08)!important;padding-top:14px!important}
+@media(max-width:640px){.intent-signal-row__summary{grid-template-columns:1fr;justify-items:start}}
 
 /* Each auto-generated keyword chip in the search-plan review is removable —
    without this the chips looked interactive (per their own caption text)

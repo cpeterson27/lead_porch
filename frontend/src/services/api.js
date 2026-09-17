@@ -1310,6 +1310,8 @@ export const resumePublicWebDiscoveryRun = (runId) =>
   api.post(`/public-web-discovery/runs/${runId}/resume`).then((res) => res.data);
 export const cancelPublicWebDiscoveryRun = (runId) =>
   api.post(`/public-web-discovery/runs/${runId}/cancel`).then((res) => res.data);
+export const deletePublicWebDiscoveryRun = (runId) =>
+  api.delete(`/public-web-discovery/runs/${runId}`).then((res) => res.data);
 export const createDiscoverySchedule = (payload) =>
   api.post("/public-web-discovery/schedules", payload).then((res) => res.data);
 export const fetchDiscoverySchedules = () =>

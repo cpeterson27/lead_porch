@@ -9,13 +9,13 @@ function sourceStatus() {
   const endpoint = String(process.env.ELLIE_BUSINESS_DATA_API_URL || "").trim();
   return {
     id: "ellie_business_data",
-    name: "Growth Operator-owned Business Index",
+    name: "Lead Porch-owned Business Index",
     configured: true,
     mode: endpoint ? "owned_index_plus_feed" : "owned_index",
     supports: ["organization_search", "evidence", "pagination", "sacramento_open_data_pilot"],
     message: endpoint
-      ? "Growth Operator will search its owned index and the configured licensed feed."
-      : "Growth Operator will search its owned index, with a live OpenStreetMap pilot for Sacramento-area business searches. No external API URL or key is required.",
+      ? "Lead Porch will search its owned index and the configured licensed feed."
+      : "Lead Porch will search its owned index, with a live OpenStreetMap pilot for Sacramento-area business searches. No external API URL or key is required.",
   };
 }
 
@@ -67,7 +67,7 @@ async function searchSacramentoOpenData({ plan, limit = 100 }) {
   const response = await axios.post("https://overpass-api.de/api/interpreter", new URLSearchParams({ data: query }).toString(), {
     timeout: 30000,
     maxContentLength: 8 * 1024 * 1024,
-    headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "User-Agent": "GrowthOperatorGrowthHub/1.0 (business-research; support@elliescoaching.com)" },
+    headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8", "User-Agent": "LeadPorch/1.0 (business-research; support@elliescoaching.com)" },
   });
   const keywords = [...(plan?.criteria?.keywords || []), ...(plan?.criteria?.industries || [])].map((value) => String(value).toLowerCase()).filter(Boolean);
   const mapped = (response.data?.elements || []).map((element) => {
@@ -158,7 +158,7 @@ async function searchBusinessFeed({ plan, cursor = null, limit = 100 }) {
     maxContentLength: 10 * 1024 * 1024,
     headers: {
       "Content-Type": "application/json",
-      "User-Agent": "GrowthOperatorGrowthHub/1.0 market-research",
+      "User-Agent": "LeadPorch/1.0 market-research",
       ...(process.env.ELLIE_BUSINESS_DATA_API_KEY?.trim() ? { Authorization: `Bearer ${process.env.ELLIE_BUSINESS_DATA_API_KEY.trim()}` } : {}),
     },
   });

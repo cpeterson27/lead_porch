@@ -14,6 +14,7 @@ import {
   pausePublicWebDiscoveryRun,
   resumePublicWebDiscoveryRun,
   cancelPublicWebDiscoveryRun,
+  deletePublicWebDiscoveryRun,
   createDiscoverySchedule,
   fetchDiscoverySchedules,
   enableDiscoverySchedule,
@@ -78,6 +79,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
   const [locationsDraft, setLocationsDraft] = useState("");
   const [proposeBusy, setProposeBusy] = useState(false);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [runs, setRuns] = useState([]); // draft/queued/running/... runs this session is managing
   const [runBusy, setRunBusy] = useState({}); // runId -> action label in flight
   const [schedules, setSchedules] = useState([]);
@@ -269,29 +271,61 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
 
   const pauseRun = async (run) => {
     stopFlags.current[run._id] = true;
+    setError("");
+    setNotice("");
+    setRunBusy((current) => ({ ...current, [run._id]: "pause" }));
     try {
       const response = await pausePublicWebDiscoveryRun(run._id);
       updateRunInState(response.data);
+      setNotice(`"${run.programName || "Run"}" paused — its checkpoint is saved, resume any time.`);
     } catch (err) {
       setError(err.response?.data?.error || "Unable to pause this run.");
+    } finally {
+      setRunBusy((current) => ({ ...current, [run._id]: "" }));
     }
   };
   const resumeRun = async (run) => {
+    setError("");
+    setNotice("");
+    setRunBusy((current) => ({ ...current, [run._id]: "resume" }));
     try {
       const response = await resumePublicWebDiscoveryRun(run._id);
       updateRunInState(response.data);
+      setNotice(`"${run.programName || "Run"}" resumed from its checkpoint.`);
       runOnceNow(response.data);
     } catch (err) {
       setError(err.response?.data?.error || "Unable to resume this run.");
+    } finally {
+      setRunBusy((current) => ({ ...current, [run._id]: "" }));
     }
   };
   const cancelRun = async (run) => {
     stopFlags.current[run._id] = true;
+    setError("");
+    setNotice("");
+    setRunBusy((current) => ({ ...current, [run._id]: "cancel" }));
     try {
       const response = await cancelPublicWebDiscoveryRun(run._id);
       updateRunInState(response.data);
+      setNotice(`"${run.programName || "Run"}" canceled.`);
     } catch (err) {
       setError(err.response?.data?.error || "Unable to cancel this run.");
+    } finally {
+      setRunBusy((current) => ({ ...current, [run._id]: "" }));
+    }
+  };
+  const deleteRun = async (run) => {
+    if (!window.confirm(`Delete the saved history for "${run.programName || "this run"}"? This can't be undone — its spend and results stay in Discovery's review queue, only this run record is removed.`)) return;
+    setError("");
+    setNotice("");
+    setRunBusy((current) => ({ ...current, [run._id]: "delete" }));
+    try {
+      await deletePublicWebDiscoveryRun(run._id);
+      setRuns((current) => current.filter((row) => row._id !== run._id));
+      setNotice(`"${run.programName || "Run"}" removed from Run Details.`);
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to delete this run's history.");
+      setRunBusy((current) => ({ ...current, [run._id]: "" }));
     }
   };
 
@@ -516,10 +550,11 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
               </div>
             ) : null}
             <div className="leadgen-review-actions">
-              {RUN_ACTIVE_STATUSES.has(run.status) ? <Button loading={busy === "running"} onClick={() => runOnceNow(run)}>Continue running</Button> : null}
-              {RUN_ACTIVE_STATUSES.has(run.status) ? <Button variant="outline" onClick={() => pauseRun(run)}>Pause</Button> : null}
-              {run.status === "paused" ? <Button onClick={() => resumeRun(run)}>Resume</Button> : null}
-              {!RUN_TERMINAL_STATUSES.has(run.status) ? <Button variant="outline" onClick={() => cancelRun(run)}>Cancel</Button> : null}
+              {RUN_ACTIVE_STATUSES.has(run.status) ? <Button loading={busy === "running"} disabled={Boolean(busy)} onClick={() => runOnceNow(run)}>Continue running</Button> : null}
+              {RUN_ACTIVE_STATUSES.has(run.status) ? <Button variant="outline" loading={busy === "pause"} disabled={Boolean(busy)} onClick={() => pauseRun(run)}>Pause</Button> : null}
+              {run.status === "paused" ? <Button loading={busy === "resume"} disabled={Boolean(busy)} onClick={() => resumeRun(run)}>Resume</Button> : null}
+              {!RUN_TERMINAL_STATUSES.has(run.status) ? <Button variant="outline" loading={busy === "cancel"} disabled={Boolean(busy)} onClick={() => cancelRun(run)}>Cancel</Button> : null}
+              {RUN_TERMINAL_STATUSES.has(run.status) ? <Button variant="outline" loading={busy === "delete"} disabled={Boolean(busy)} onClick={() => deleteRun(run)}>Delete history</Button> : null}
             </div>
           </div>
         )}
@@ -579,6 +614,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
         </p>
       </div>
       {error ? <p className="form-error">{error}</p> : null}
+      {notice ? <p className="discovery-notice">{notice}</p> : null}
 
       {runs.filter((run) => run.status === "draft").map(renderRun)}
 

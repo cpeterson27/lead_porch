@@ -162,6 +162,26 @@ router.post("/runs/:id/cancel", async (req, res) => {
   }
 });
 
+/**
+ * Deletes a saved run's history from Step 3's "Run Details" list — only
+ * once it's actually done (a real terminal status). A queued/running/paused
+ * run must be canceled first: deleting an in-flight checkpoint would lose
+ * real, resumable progress, not just tidy up a stale record.
+ */
+router.delete("/runs/:id", async (req, res) => {
+  try {
+    const run = await PublicWebDiscoveryRun.findOne({ _id: req.params.id, workspaceId: req.auth.workspaceId }).select("status");
+    if (!run) return res.status(404).json({ success: false, error: "Discovery run not found" });
+    if (!["completed", "stopped_at_cap", "failed", "canceled"].includes(run.status)) {
+      return res.status(400).json({ success: false, error: "Cancel this run before deleting its history — an active or paused run can't be deleted." });
+    }
+    await PublicWebDiscoveryRun.deleteOne({ _id: req.params.id, workspaceId: req.auth.workspaceId });
+    return res.json({ success: true, deleted: req.params.id });
+  } catch (_error) {
+    return res.status(500).json({ success: false, error: "Unable to delete this run's history." });
+  }
+});
+
 /** Schedules — all created (and stay) disabled until the owner explicitly flips them on. */
 router.post("/schedules", async (req, res) => {
   try {
