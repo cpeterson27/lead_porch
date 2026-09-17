@@ -20,7 +20,8 @@ const jarvisProfileService = require("../services/jarvisProfileService");
 const developmentRequestService = require("../services/developmentRequestService");
 const { compileMarketQuestion } = require("../services/marketResearchService");
 const { ingestContacts } = require("../services/contactIngestionService");
-const { isJarvisWebResearchEnabled, normalizePublicPeople, researchAndStagePublicPeople } = require("../services/publicPeopleResearchService");
+const { isJarvisWebResearchEnabled, normalizePublicPeople } = require("../services/publicPeopleResearchService");
+const vertexGroundingDiscoveryService = require("../services/vertexGroundingDiscoveryService");
 const { applyContactFieldUpdate, availableContactFields, buildContactFieldUpdatePreview } = require("../services/contactFieldUpdateService");
 const { collectMonitorSignals } = require("../services/intentSourceService");
 const imageGenerationService = require("../services/imageGenerationService");
@@ -178,78 +179,62 @@ router.post("/chat", async (req, res) => {
       && /\b(leads?|prospects?|business(?:es)?|compan(?:y|ies)|owners?|founders?|decision[- ]makers?|principals?|presidents?|ceos?|attendees?|contacts?)\b/i.test(message);
     if (leadResearchRequest) {
       const plan = await compileMarketQuestion(message);
-      if (isJarvisWebResearchEnabled()) {
-        try {
-          const requestedCount = [...message.matchAll(/\b(\d{1,2})\b/g)]
-            .map((match) => Number(match[1]))
-            .find((value) => value >= 1 && value <= 50) || 20;
-          const result = await researchAndStagePublicPeople({
-            question: message,
-            maxResults: requestedCount,
-            workspaceId: req.auth.workspaceId,
-            userId: req.auth.user?._id || null,
-          });
-          const summary = result.savedPreview.summary;
-          const answer = `I searched public sources and saved a staged preview of ${summary.total} evidence-backed decision-maker${summary.total === 1 ? "" : "s"}. ${summary.publishedEmails} visibly published email${summary.publishedEmails === 1 ? " was" : "s were"} found; those emails remain unverified. ${summary.existingContacts} existing CRM match${summary.existingContacts === 1 ? " was" : "es were"} detected. Nothing was imported and no outreach was sent. Open Jarvis Research Previews to review every person and source.`;
-          const memory = await jarvisMemoryService.recordConversation({ userMessage: message, assistantMessage: answer }).catch(() => ({ recorded: false }));
-          return res.json({
-            success: true,
-            data: {
-              answer,
-              data: {
-                researchQuestion: message,
-                previewId: result.savedPreview._id,
-                preview: summary,
-                people: result.savedPreview.people,
-                model: result.model,
-              },
-              actionsAvailable: [],
-              activity: [
-                { status: "complete", label: "Searched public web sources" },
-                { status: "complete", label: `Validated evidence for ${summary.total} people` },
-                { status: "complete", label: "Saved a staged review preview without importing contacts" },
-              ],
-              memory,
-              memorySources: [],
-            },
-          });
-        } catch (error) {
-          const fallback = await fallbackPublicAccountResearch(message).catch(() => null);
-          if (fallback) {
-            const answer = fallback.mentions.length
-              ? `OpenAI identity research was unavailable, so I completed a no-credit public-source fallback search for u/${fallback.username}. I found ${fallback.mentions.length} public mention${fallback.mentions.length === 1 ? "" : "s"} to review below. These links may provide context or another public profile, but none is treated as the same real person without direct supporting evidence. No contact was added and no outreach was sent.`
-              : `I completed a no-credit public-source fallback search for u/${fallback.username}, but found no additional indexed account or business evidence. I cannot safely connect this username to a real person. The available contact option is the original Reddit account or post.`;
-            const memory = await jarvisMemoryService.recordConversation({ userMessage: message, assistantMessage: answer }).catch(() => ({ recorded: false }));
-            return res.json({ success: true, data: { answer, data: { researchQuestion: message, fallbackResearch: true, publicAccount: `u/${fallback.username}`, mentions: fallback.mentions, sourceErrors: fallback.sourceErrors }, actionsAvailable: [], activity: [{ status: "warning", label: "OpenAI research unavailable—used public-source fallback" }, { status: "complete", label: `Checked public web and social indexes for u/${fallback.username}` }, { status: "complete", label: `Returned ${fallback.mentions.length} evidence link${fallback.mentions.length === 1 ? "" : "s"} without inferring identity` }], memory, memorySources: [] } });
-          }
-          return res.status(503).json({
-            success: false,
-            error: error.message || "Jarvis could not complete public-web lead research.",
-            data: { researchQuestion: message, plan },
-          });
-        }
-      }
-      const fallback = await fallbackPublicAccountResearch(message).catch(() => null);
-      if (fallback) {
-        const answer = fallback.mentions.length
-          ? `OpenAI research is not available, so I used Growth Operator's no-credit public-source search for u/${fallback.username}. I found ${fallback.mentions.length} public mention${fallback.mentions.length === 1 ? "" : "s"} below. Review the links for direct identity evidence; I did not assume that matching usernames belong to the same person.`
-          : `I checked no-credit public web and social indexes for u/${fallback.username}, but found no additional supported identity evidence. Use the original Reddit post or account if you choose to contact them.`;
+      try {
+        const requestedCount = [...message.matchAll(/\b(\d{1,2})\b/g)]
+          .map((match) => Number(match[1]))
+          .find((value) => value >= 1 && value <= 50) || 20;
+        // Same engine Discovery's own "Find Leads" search uses (Vertex +
+        // OpenAI web search) — a chat request for leads used to run a
+        // completely separate implementation that staged results into a
+        // different place ("Jarvis Research Previews") than every other
+        // discovery path. One engine, one review queue: results now land
+        // in the same Discovery queue regardless of how the search was
+        // started. search() itself throws GROUNDING_ALL_SOURCES_FAILED
+        // when neither provider is usable, which the catch below still
+        // turns into the same no-credit fallback as before.
+        const result = await vertexGroundingDiscoveryService.search({
+          workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, auth: req.auth,
+          query: message, resultTypes: ["person"], maxPeople: requestedCount,
+          correlationId: req.headers["x-request-id"] || "",
+        });
+        const totalFound = result.created + result.merged;
+        const answer = `I searched public sources and added ${result.created} new and updated ${result.merged} existing evidence-backed decision-maker${totalFound === 1 ? "" : "s"} in your Discovery review queue. Nothing was imported to CRM and no outreach was sent. Open Discovery's review queue to review every person and source.`;
         const memory = await jarvisMemoryService.recordConversation({ userMessage: message, assistantMessage: answer }).catch(() => ({ recorded: false }));
-        return res.json({ success: true, data: { answer, data: { researchQuestion: message, fallbackResearch: true, publicAccount: `u/${fallback.username}`, mentions: fallback.mentions, sourceErrors: fallback.sourceErrors }, actionsAvailable: [], activity: [{ status: "complete", label: "Ran no-credit public web and social-index search" }, { status: "complete", label: `Returned ${fallback.mentions.length} reviewable evidence link${fallback.mentions.length === 1 ? "" : "s"}` }], memory, memorySources: [] } });
-      }
-      return res.json({
-        success: true,
-        data: {
-          answer: `I built a lead-research plan for “${plan.name},” but live Jarvis web research is not enabled yet. Add OpenAI API billing and set JARVIS_OPENAI_ENABLED=true in the Render backend. I will not add contacts or send outreach without your approval.`,
+        return res.json({
+          success: true,
+          data: {
+            answer,
+            data: {
+              researchQuestion: message,
+              created: result.created,
+              merged: result.merged,
+              sourceErrors: result.sourceErrors,
+            },
+            actionsAvailable: ["open_lead_discovery"],
+            activity: [
+              { status: "complete", label: "Searched public web sources" },
+              { status: "complete", label: `Found ${totalFound} evidence-backed candidate${totalFound === 1 ? "" : "s"}` },
+              { status: "complete", label: "Staged in Discovery's review queue without importing contacts" },
+            ],
+            memory,
+            memorySources: [],
+          },
+        });
+      } catch (error) {
+        const fallback = await fallbackPublicAccountResearch(message).catch(() => null);
+        if (fallback) {
+          const answer = fallback.mentions.length
+            ? `OpenAI identity research was unavailable, so I completed a no-credit public-source fallback search for u/${fallback.username}. I found ${fallback.mentions.length} public mention${fallback.mentions.length === 1 ? "" : "s"} to review below. These links may provide context or another public profile, but none is treated as the same real person without direct supporting evidence. No contact was added and no outreach was sent.`
+            : `I completed a no-credit public-source fallback search for u/${fallback.username}, but found no additional indexed account or business evidence. I cannot safely connect this username to a real person. The available contact option is the original Reddit account or post.`;
+          const memory = await jarvisMemoryService.recordConversation({ userMessage: message, assistantMessage: answer }).catch(() => ({ recorded: false }));
+          return res.json({ success: true, data: { answer, data: { researchQuestion: message, fallbackResearch: true, publicAccount: `u/${fallback.username}`, mentions: fallback.mentions, sourceErrors: fallback.sourceErrors }, actionsAvailable: [], activity: [{ status: "warning", label: "OpenAI research unavailable—used public-source fallback" }, { status: "complete", label: `Checked public web and social indexes for u/${fallback.username}` }, { status: "complete", label: `Returned ${fallback.mentions.length} evidence link${fallback.mentions.length === 1 ? "" : "s"} without inferring identity` }], memory, memorySources: [] } });
+        }
+        return res.status(503).json({
+          success: false,
+          error: error.message || "Jarvis could not complete public-web lead research.",
           data: { researchQuestion: message, plan },
-          actionsAvailable: ["open_lead_discovery"],
-          activity: [
-            { status: "complete", label: "Converted your request into a reviewable lead-search plan" },
-            { status: "warning", label: "Live web research is waiting for OpenAI API billing and enablement" },
-          ],
-          memorySources: [],
-        },
-      });
+        });
+      }
     }
 
     if (developmentRequestService.isDevelopmentRequest(message)) {
