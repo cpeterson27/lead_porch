@@ -917,7 +917,7 @@ async function runApolloPersonSearchPhase({ workspaceId, userId, auth, run, self
 const PDL_ICP_SCHEMA = {
   type: "object",
   properties: {
-    titles: { type: "array", items: { type: "string" }, description: "Real, searchable professional job titles only — never skill levels, experience descriptors, or audience labels like 'beginner' or 'students'." },
+    titles: { type: "array", items: { type: "string" }, description: "Real, searchable professional job titles only — never skill levels, experience descriptors, or audience labels like 'beginner' or 'students'. Every title must describe someone who PERSONALLY IS the program's described buyer (the owner, operator, principal, or decision-maker the program text actually describes) — never an employee, analyst, or staff member at an institutional firm who merely works in the same industry or adjacent to that buyer, unless the program's own description explicitly targets people employed in that exact functional role. When the described buyer owns or personally operates something, prefer owner/operator/principal-style titles (e.g. 'Owner', 'Managing Member', 'General Partner', 'Principal', 'Founder') over generic corporate titles like 'Analyst', 'Manager', or 'Associate' that usually belong to a salaried employee, not the buyer themselves." },
     locations: { type: "array", items: { type: "string" } },
     industries: { type: "array", items: { type: "string" } },
   },
@@ -939,7 +939,7 @@ async function derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlat
   const locations = [...new Set(run.jobs.map((j) => j.locationHint).filter(Boolean))].slice(0, 10);
   const icpResult = await runAgent({
     workspaceId, userId, auth, agent: "lead", task: "derive_pdl_icp_for_public_web_discovery", correlationId,
-    operationalContext: `Program: ${clean(note.title, 200)}\n${clean(note.content, 3000)}\n${locations.length ? `Target locations: ${locations.join(", ")}\n` : ""}Extract real, searchable professional job titles (never skill levels or audience labels), locations, and industries for a structured people-database search matching this program's ideal buyer.`,
+    operationalContext: `Program: ${clean(note.title, 200)}\n${clean(note.content, 3000)}\n${locations.length ? `Target locations: ${locations.join(", ")}\n` : ""}Extract real, searchable professional job titles (never skill levels or audience labels), locations, and industries for a structured people-database search matching this program's ideal buyer. Read the program description carefully for WHO the buyer actually is (an independent owner/operator personally holding the asset or business, versus someone raising capital, versus someone still shopping for their first deal, etc.) and only include titles that describe that exact person — never pad the list with adjacent-sounding corporate/institutional employee titles (e.g. "Acquisitions Manager", "Real Estate Analyst", "Investor Relations Manager", "Portfolio Manager") just because they appear in the same industry, unless the program's own description explicitly targets people employed in that exact role.`,
     input: {}, options: { responseSchema: PDL_ICP_SCHEMA, schemaName: "public_web_discovery_pdl_icp" },
   });
   return sanitizeStudentSearchIcp({
