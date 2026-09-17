@@ -61,8 +61,34 @@ async function getStatus(workspaceId) {
   }
 }
 
-async function recordConversation() {
-  return { recorded: false, reason: "conversation_history_is_stored_in_growth_operator" };
+// Explicit-save conversation memory — the professional pattern used by
+// every serious AI assistant (ChatGPT's own memory, for one): nothing said
+// in conversation is retained automatically, but an explicit instruction
+// like "remember that Ellie only wants multifamily leads" is captured as
+// one discrete, reviewable Knowledge Center note, immediately usable by
+// Jarvis in future conversations — never a raw transcript log an assistant
+// could quietly free-associate from later. The trigger phrase IS the human
+// confirmation (the same "an explicit action is its own approval" pattern
+// already used for approved PDF uploads and hand-typed notes elsewhere in
+// this file), so this skips the draft/review queue and lands approved.
+const MEMORY_SAVE_PATTERN = /^\s*(?:jarvis[,:]?\s*)?(?:please\s+)?remember\s*(?:that|this)?\s*:?\s+(.+)$/i;
+
+async function recordConversation({ workspaceId, userId, userMessage = "" } = {}, Model = JarvisMemoryNote) {
+  const match = String(userMessage || "").match(MEMORY_SAVE_PATTERN);
+  if (!workspaceId || !match) return { recorded: false, reason: "no_explicit_save_instruction" };
+  const content = match[1].trim().replace(/[.?!]+$/, "");
+  if (content.length < 5) return { recorded: false, reason: "nothing_to_remember" };
+  const category = "decisions";
+  const title = content.length > 80 ? `${content.slice(0, 77)}...` : content;
+  const body = `# ${escapeMarkdown(title)}\n\n${escapeMarkdown(content)}\n`;
+  const contentHash = crypto.createHash("sha256").update(body).digest("hex");
+  const notePath = `${CATEGORY_FOLDERS[category]}/Conversation Notes/${safeFileName(title)}-${crypto.randomBytes(4).toString("hex")}.md`;
+  const note = await Model.create({
+    workspaceId, source: "conversation_capture", category, path: notePath, title, content: body, contentHash,
+    createdByUserId: userId, approvedByUserId: userId, status: "approved", approvedAt: new Date(), effectiveDate: new Date(),
+    version: 1, versions: [{ version: 1, title, content: body, contentHash, changeSource: "approved_memory", savedByUserId: userId }],
+  });
+  return { recorded: true, noteId: note._id, title };
 }
 
 function scoreNote(fileName, content, terms) {
@@ -146,7 +172,7 @@ async function saveApprovedMemory({ workspaceId, userId, approvalId, category, t
   const normalizedTitle = String(title || "").trim().slice(0, 200);
   const normalizedContent = String(content || "").trim().slice(0, 120000);
   if (!normalizedTitle || !normalizedContent) { const error = new Error("Memory title and content are required"); error.code = "MEMORY_CONTENT_INVALID"; throw error; }
-  const relativePath = `${CATEGORY_FOLDERS[category]}/Growth Operator/${safeFileName(normalizedTitle)}-${String(approvalId).slice(-8)}.md`;
+  const relativePath = `${CATEGORY_FOLDERS[category]}/Lead Porch/${safeFileName(normalizedTitle)}-${String(approvalId).slice(-8)}.md`;
   const body = `# ${escapeMarkdown(normalizedTitle)}\n\n${escapeMarkdown(normalizedContent)}\n`;
   if (memorySource() === "local") {
     if (!enabled() || !localWorkspaceAllowed(workspaceId)) { const error = new Error("The local Obsidian vault is not available for this workspace"); error.code = "LOCAL_VAULT_UNAVAILABLE"; throw error; }
@@ -163,7 +189,7 @@ async function saveApprovedMemory({ workspaceId, userId, approvalId, category, t
   // the human approval step for knowledge authored directly in the app, so
   // it is approved immediately, unlike an Obsidian-synced note.
   await Model.create({ workspaceId, source: "approved_memory", category, path: relativePath, title: normalizedTitle, content: body, contentHash, sourceUpdatedAt: new Date(), createdByUserId: userId, approvedByUserId: userId, status: "approved", approvedAt: new Date(), effectiveDate: new Date(), version: 1, versions: [{ version: 1, title: normalizedTitle, content: body, contentHash, changeSource: "approved_memory", savedByUserId: userId }] });
-  return { stored: true, source: "growth_operator_cloud_memory", path: relativePath, synchronizedToObsidian: false };
+  return { stored: true, source: "lead_porch_cloud_memory", path: relativePath, synchronizedToObsidian: false };
 }
 
 async function syncCloudNotes(workspaceId, notes, dependencies = {}) {

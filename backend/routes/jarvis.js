@@ -149,6 +149,26 @@ router.post("/chat", async (req, res) => {
       });
     }
 
+    // Explicit-save conversation memory ("remember that…") — checked first
+    // and returned immediately, before any LLM call, since an explicit
+    // save instruction needs a confirmation, not a generated answer. See
+    // jarvisMemoryService.recordConversation() for why this captures one
+    // reviewable note instead of a raw transcript.
+    const memoryCapture = await jarvisMemoryService.recordConversation({ workspaceId: req.auth.workspaceId, userId: req.auth.user?._id, userMessage: message }).catch(() => ({ recorded: false }));
+    if (memoryCapture.recorded) {
+      return res.json({
+        success: true,
+        data: {
+          answer: `Got it — I saved that as "${memoryCapture.title}" in your Knowledge Center. I'll use it in future conversations and searches. Review, edit, or delete it any time under Settings → Knowledge Center.`,
+          data: { savedMemoryNoteId: memoryCapture.noteId },
+          actionsAvailable: ["open_knowledge_center"],
+          activity: [{ status: "complete", label: "Saved as a Knowledge Center note" }],
+          memory: memoryCapture,
+          memorySources: [],
+        },
+      });
+    }
+
     const recurringLeadRequest = /\b(every (?:morning|day|daily)|each (?:morning|day)|daily|recurring|monitor)\b/i.test(message)
       && /\b(leads?|prospects?|potential students?|buyers?)\b/i.test(message);
     if (recurringLeadRequest) {
@@ -199,7 +219,10 @@ router.post("/chat", async (req, res) => {
         });
         const totalFound = result.created + result.merged;
         const answer = `I searched public sources and added ${result.created} new and updated ${result.merged} existing evidence-backed decision-maker${totalFound === 1 ? "" : "s"} in your Discovery review queue. Nothing was imported to CRM and no outreach was sent. Open Discovery's review queue to review every person and source.`;
-        const memory = await jarvisMemoryService.recordConversation({ userMessage: message, assistantMessage: answer }).catch(() => ({ recorded: false }));
+        // Not re-checked here for an explicit "remember that…" instruction
+        // — the top-of-handler check above already ran against this exact
+        // message and would have returned early if it matched.
+        const memory = { recorded: false };
         return res.json({
           success: true,
           data: {
@@ -226,7 +249,7 @@ router.post("/chat", async (req, res) => {
           const answer = fallback.mentions.length
             ? `OpenAI identity research was unavailable, so I completed a no-credit public-source fallback search for u/${fallback.username}. I found ${fallback.mentions.length} public mention${fallback.mentions.length === 1 ? "" : "s"} to review below. These links may provide context or another public profile, but none is treated as the same real person without direct supporting evidence. No contact was added and no outreach was sent.`
             : `I completed a no-credit public-source fallback search for u/${fallback.username}, but found no additional indexed account or business evidence. I cannot safely connect this username to a real person. The available contact option is the original Reddit account or post.`;
-          const memory = await jarvisMemoryService.recordConversation({ userMessage: message, assistantMessage: answer }).catch(() => ({ recorded: false }));
+          const memory = { recorded: false };
           return res.json({ success: true, data: { answer, data: { researchQuestion: message, fallbackResearch: true, publicAccount: `u/${fallback.username}`, mentions: fallback.mentions, sourceErrors: fallback.sourceErrors }, actionsAvailable: [], activity: [{ status: "warning", label: "OpenAI research unavailable—used public-source fallback" }, { status: "complete", label: `Checked public web and social indexes for u/${fallback.username}` }, { status: "complete", label: `Returned ${fallback.mentions.length} evidence link${fallback.mentions.length === 1 ? "" : "s"} without inferring identity` }], memory, memorySources: [] } });
         }
         return res.status(503).json({

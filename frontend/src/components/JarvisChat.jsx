@@ -454,6 +454,8 @@ export default function JarvisChat() {
         scrollToBottom();
       } else if (action === "view_development_requests") {
         navigate("/development-requests");
+      } else if (action === "open_knowledge_center") {
+        navigate("/settings/knowledge-center");
       } else if (action === "create_campaign") {
         // Create a campaign draft and add result to chat
         const result = await recommendCampaign({ templateType: "announcement" });
@@ -547,6 +549,7 @@ export default function JarvisChat() {
       launch_campaign: "🚀 Launch Campaign",
       view_development_requests: "Review Development Request",
       open_lead_discovery: "Review Lead Search",
+      open_knowledge_center: "View in Knowledge Center",
       review_research_preview: "Review Jarvis Research Preview",
       build_campaign_package: "Approve and build drafts",
     };

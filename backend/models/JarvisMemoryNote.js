@@ -16,7 +16,7 @@ const versionSchema = new mongoose.Schema({
 }, { _id: false });
 
 const jarvisMemoryNoteSchema = new mongoose.Schema({
-  source: { type: String, enum: ["obsidian_bridge", "approved_memory", "pdf_upload"], required: true, default: "obsidian_bridge", index: true },
+  source: { type: String, enum: ["obsidian_bridge", "approved_memory", "pdf_upload", "conversation_capture"], required: true, default: "obsidian_bridge", index: true },
   // Only set when source is "pdf_upload" — the original file name as
   // uploaded, preserved for provenance even though the stored path is
   // sanitized/generated (see pdfKnowledgeIngestionService.js).
