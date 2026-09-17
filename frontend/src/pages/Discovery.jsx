@@ -769,7 +769,6 @@ export default function Discovery() {
     if (reviewFilters.qualification !== "all" && (r.qualificationLabel || "unscored") !== reviewFilters.qualification) return false;
     if (reviewFilters.contactStatus === "has_email" && !effectiveEmailOf(r)) return false;
     if (reviewFilters.contactStatus === "no_email" && effectiveEmailOf(r)) return false;
-    if (!["all", "has_email", "no_email"].includes(reviewFilters.contactStatus) && contactStatusOf(r) !== reviewFilters.contactStatus) return false;
     if (reviewFilters.location.trim() && !`${r.summary || ""} ${r.organizationName || ""}`.toLowerCase().includes(reviewFilters.location.trim().toLowerCase())) return false;
     if (reviewFilters.freshness !== "all" && (r.freshnessTier || "n/a") !== reviewFilters.freshness) return false;
     if (reviewFilters.identityConfidence !== "all" && (r.identityConfidence || "low") !== reviewFilters.identityConfidence) return false;
@@ -1614,11 +1613,8 @@ export default function Discovery() {
                 </select></label>
                 <label><span>Contact status</span><select value={reviewFilters.contactStatus} onChange={(e) => setReviewFilters((c) => ({ ...c, contactStatus: e.target.value }))}>
                   <option value="all">Any contact status</option>
-                  <option value="has_email">Has a usable email already</option>
-                  <option value="no_email">No email yet — needs enrichment</option>
-                  <option value={CONTACT_STATUS.ENRICHED_APOLLO}>— specifically: enriched via Apollo (used a credit)</option>
-                  <option value={CONTACT_STATUS.ENRICHED_PDL}>— specifically: enriched via PDL (used a credit)</option>
-                  <option value={CONTACT_STATUS.NO_EMAIL_RETURNED}>— specifically: enrichment tried, found nothing</option>
+                  <option value="has_email">Has email</option>
+                  <option value="no_email">No email yet</option>
                 </select></label>
                 <label><span>Location contains</span><input type="text" value={reviewFilters.location} onChange={(e) => setReviewFilters((c) => ({ ...c, location: e.target.value }))} placeholder="e.g. Texas" /></label>
                 <label><span>Freshness</span><select value={reviewFilters.freshness} onChange={(e) => setReviewFilters((c) => ({ ...c, freshness: e.target.value }))}>
