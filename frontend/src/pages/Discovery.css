@@ -184,20 +184,14 @@
 .review-queue-grid>.review-card>.leadgen-row-actions{grid-column:8!important;grid-row:1!important;margin-top:2.5rem!important}
 .review-queue-grid>.review-card>.people-preview-footnote{grid-column:8!important}
 
-/* Expandable detail drawer for the full Apollo/PDL record — replaces the
-   old inline "View details" expand so the compact table stays compact even
-   when a lead has a large enriched profile attached. */
-.lead-detail-drawer-overlay{position:fixed;inset:0;background:rgba(20,18,32,.4);z-index:60;display:flex;justify-content:flex-end}
-.lead-detail-drawer{background:#fff;width:min(520px,100vw);height:100%;overflow-y:auto;box-shadow:-16px 0 40px rgba(20,18,32,.2)}
-.lead-detail-drawer>header{position:sticky;top:0;background:#fff;border-bottom:1px solid #ece9f2;display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:18px 20px;z-index:1}
-.lead-detail-drawer>header strong{display:block;font-size:1rem}
-.lead-detail-drawer>header small{color:#74707e;font-size:.74rem}
-.lead-detail-drawer>header small a{color:#4f2bd7;font-weight:700;text-decoration:none}.lead-detail-drawer>header small a:hover{text-decoration:underline}
-.lead-detail-drawer>header button{background:transparent;border:0;cursor:pointer;font-size:1.5rem;line-height:1;color:#6e6a7c;padding:0 .25rem}
-.lead-detail-drawer__body{padding:18px 20px;display:grid;gap:4px}
-.lead-detail-drawer__body>small{color:#6e6a7c;font-weight:800;text-transform:uppercase;font-size:.64rem;letter-spacing:.05em;margin-top:12px}
-.lead-detail-drawer__body>small:first-child{margin-top:0}
-.lead-detail-drawer__body>p{margin:2px 0 0;line-height:1.5;overflow-wrap:anywhere}
-.lead-detail-drawer__body>div:first-child{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:4px}
-@media(max-width:640px){.lead-detail-drawer{width:100vw}}
+/* Spreadsheet-style inline row expansion — a row's full record expands in
+   place directly beneath it (grid-row:2, spanning every column via
+   grid-column:1/-1 on .review-card__details, set earlier), like expanding a
+   row in a spreadsheet, instead of the old slide-over side panel. */
+.review-queue-grid>.review-card:nth-child(even){background:#fbfbfd}
+.review-queue-grid>.review-card>.review-card__details{display:grid;gap:4px}
+.review-queue-grid>.review-card>.review-card__details>small{color:#6e6a7c;font-weight:800;text-transform:uppercase;font-size:.64rem;letter-spacing:.05em;margin-top:12px}
+.review-queue-grid>.review-card>.review-card__details>small:first-child{margin-top:0}
+.review-queue-grid>.review-card>.review-card__details>p{margin:2px 0 0;line-height:1.5;overflow-wrap:anywhere}
+.review-queue-grid>.review-card>.review-card__details>div:first-child{display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:4px}
 .leadgen-signal-chips span button:hover{color:#a34d37}

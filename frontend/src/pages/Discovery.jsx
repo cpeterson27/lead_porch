@@ -3,7 +3,6 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import Button from "../components/Button.jsx";
 import DashboardCard from "../components/DashboardCard.jsx";
 import Modal from "../components/Modal.jsx";
-import { useModalLayer } from "../components/ModalLayer.jsx";
 import PublicWebDiscoveryPanel from "./PublicWebDiscoveryPanel.jsx";
 import {
   createAudienceDefinition,
@@ -426,8 +425,15 @@ export default function Discovery() {
   const [dismissAllBusy, setDismissAllBusy] = useState(false);
   const [selectedGroundingIds, setSelectedGroundingIds] = useState([]);
   const [reviewFilters, setReviewFilters] = useState({ run: "all", newOnly: false, provider: "all", qualification: "all", location: "", freshness: "all", identityConfidence: "all" });
-  const [drawerResultId, setDrawerResultId] = useState("");
-  useModalLayer(Boolean(drawerResultId));
+  // Spreadsheet-style inline row expansion — replaces the old slide-over
+  // drawer. A row's full record expands in place, directly below it, like
+  // expanding a row in a spreadsheet, instead of opening a separate panel.
+  const [expandedResultIds, setExpandedResultIds] = useState(() => new Set());
+  const toggleResultExpanded = (id) => setExpandedResultIds((current) => {
+    const next = new Set(current);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
   const [qualifySummary, setQualifySummary] = useState(null);
   const [qualifyOutcomeFilter, setQualifyOutcomeFilter] = useState("all");
   const [reviewPage, setReviewPage] = useState(1);
@@ -796,9 +802,6 @@ export default function Discovery() {
 
   const runKeyOf = (result) => result.discoverySearchId || result.discoveryRunId || "manual";
 
-  const openDetailDrawer = (id) => setDrawerResultId(id);
-  const closeDetailDrawer = () => setDrawerResultId("");
-
   const clearGroundingSelection = () => setSelectedGroundingIds([]);
 
   const researchSelectedWithApollo = async () => {
@@ -916,7 +919,6 @@ export default function Discovery() {
     pagedGroundingResults.forEach((result) => lanes[discoveryLaneOf(result)].push(result));
     return lanes;
   }, [pagedGroundingResults]);
-  const drawerResult = useMemo(() => drawerResultId ? groundingResults.find((r) => r._id === drawerResultId) || null : null, [drawerResultId, groundingResults]);
 
   useEffect(() => {
     if (activeTab !== "people") return undefined;
@@ -1936,7 +1938,7 @@ export default function Discovery() {
           {DISCOVERY_LANES.map(([laneKey, laneLabel, laneDescription]) => groundingResultsByLane[laneKey].length ? <section className={`discovery-lane lane-${laneKey}`} key={laneKey}>
             <header className="discovery-lane__header"><div><span>{laneLabel}</span><small>{laneDescription}</small></div><strong>{groundingResultsByLane[laneKey].length}</strong></header>
             <div className="review-queue-grid"><div className="lead-review-table__header" aria-hidden="true"><span>Person</span><span>Title</span><span>Company</span><span>Fit</span><span>Email</span><span>Social</span><span>Status</span><span>Next action</span></div>{groundingResultsByLane[laneKey].map((result) => {
-            const { effectiveEmail, apolloProfile, publicProfileUrls, companyWebsiteUrl, missingContactMessage, contactStatus } = computeResultDisplay(result);
+            const { effectiveEmail, apolloProfile, publicProfileUrls, companyWebsiteUrl, missingContactMessage, contactStatus, sourceLabel, corroborated, isStructuredAudienceMatch, enrichedApolloProfile, apolloOrganization } = computeResultDisplay(result);
             // Apollo is always the first, primary contact-finding action.
             // PDL only ever appears once Apollo has genuinely been tried and
             // failed (or is structurally unavailable for this workspace) —
@@ -1981,7 +1983,7 @@ export default function Discovery() {
                   {contactStatus ? <small>{contactStatus}</small> : null}
                 </div>
 
-                <button type="button" className="review-card__details-toggle" onClick={() => openDetailDrawer(result._id)}>View full record</button>
+                <button type="button" className="review-card__details-toggle" onClick={() => toggleResultExpanded(result._id)} aria-expanded={expandedResultIds.has(result._id)}>{expandedResultIds.has(result._id) ? "Hide full record ▲" : "View full record ▼"}</button>
                 {result.status === "pending_review" ? (
                   <div className="leadgen-row-actions">
                     {!result.qualificationLabel ? (
@@ -2018,6 +2020,68 @@ export default function Discovery() {
                     <Button size="sm" variant="outline" onClick={() => dismissGroundingResult(result._id)}>Not a lead</Button>
                   </div>
                 ) : <span className="people-preview-footnote">{result.status === "saved" ? "Saved" : "Dismissed"}</span>}
+                {expandedResultIds.has(result._id) ? <div className="review-card__details">
+                  <div>
+                    {result.qualificationLabel ? <span className={`review-card__qual-badge qual-${result.qualificationLabel}`}>{result.qualificationLabel.replace("_", " ")}</span> : null}
+                    <span className={`review-card__identity-badge identity-${result.identityConfidence || "low"}`}>Identity: {(result.identityConfidence || "low").replace("_", " ")}</span>
+                  </div>
+                  <small>Source</small>
+                  <p>{sourceLabel}{corroborated ? " · cross-provider corroboration" : ""}</p>
+                  <small>Contact status</small>
+                  <p>{contactStatus}{!effectiveEmail ? ` — ${missingContactMessage}` : ""}</p>
+                  {effectiveEmail ? <><small>Email</small><p><strong>{effectiveEmail.email}</strong> ({effectiveEmail.state})</p></> : null}
+                  <small>{isStructuredAudienceMatch && !result.evidenceUrls?.length ? "Why this is only a possible match" : "Why Lead Porch found this"}</small>
+                  <p>{result.fitReasons?.length ? result.fitReasons.join(" · ") : result.summary || "The provider returned this person for your selected audience rules."}</p>
+                  {isStructuredAudienceMatch && !result.evidenceUrls?.length ? <p>This is a database profile match, not proof that the person currently wants coaching. Research their public activity before outreach.</p> : null}
+                  {result.type === "person" && result.discoveryMode !== "icp_match" ? (
+                    <p>{result.evidenceDate ? `Evidence date: ${new Date(result.evidenceDate).toLocaleDateString()} (${result.evidenceAgeDays} day${result.evidenceAgeDays === 1 ? "" : "s"} old)` : "No verifiable evidence date"}{result.freshnessTier ? ` · ${result.freshnessTier}` : ""}</p>
+                  ) : null}
+                  {result.conflicts?.length ? <><small>Conflicts</small><p className="form-error">{result.conflicts.join(" ")}</p></> : null}
+                  {result.exclusionFlags?.length ? <><small>ICP exclusion flags</small><p className="form-error">{result.exclusionFlags.join(", ")}</p></> : null}
+                  {result.buyerIntentLevel ? <><small>Buyer intent</small><p>{result.buyerIntentLevel}{result.buyerIntentEvidence ? ` — ${result.buyerIntentEvidence}` : ""}</p></> : null}
+                  {result.recommendedNextAction ? <><small>Recommended next action</small><p>{result.recommendedNextAction}</p></> : null}
+                  {result.outreachRecommended && result.outreachDraft ? <><small>Draft outreach (not sent)</small><p>{result.outreachDraft}</p></> : null}
+                  <small>Discovered</small>
+                  <p>{new Date(result.createdAt).toLocaleDateString()} · via {(result.providers || []).join(", ") || "vertex_grounding"}</p>
+                  <small>Citations</small>
+                  <div className="grounding-citations">
+                    {(result.evidenceUrls || []).map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}
+                    {!result.evidenceUrls?.length && isStructuredAudienceMatch ? <span className="people-preview-footnote">Apollo or PDL matched this person to your audience. No public activity was attached.</span> : null}
+                  </div>
+                  {result.pdlEnrichment?.attempted ? (
+                    <><small>PDL enrichment</small><p>{result.pdlEnrichment.error ? `PDL error: ${result.pdlEnrichment.errorMessage || "unknown error"}` : result.pdlEnrichment.matched ? `PDL verified: ${result.pdlEnrichment.email || "match found, no email"}` : "PDL: no confident match"}</p></>
+                  ) : null}
+                  {result.apolloEnrichment?.attempted ? (
+                    <><small>Apollo enrichment</small><p>{result.apolloEnrichment.error ? `Apollo error: ${result.apolloEnrichment.errorMessage || "unknown error"}` : result.apolloEnrichment.email ? `Apollo email: ${result.apolloEnrichment.email} (${result.apolloEnrichment.emailState || "status not supplied"})` : result.apolloEnrichment.matched ? "Apollo matched the identity but returned no email" : "Apollo: no confident match"}</p></>
+                  ) : null}
+                  {result.publicWebLookup?.attempted ? (
+                    <><small>Public web search (last resort)</small><p>{result.publicWebLookup.error ? `Search error: ${result.publicWebLookup.errorMessage || "unknown error"}` : result.publicWebLookup.matched ? `Found: ${result.publicWebLookup.summary || "a real public profile"}` : "No public profile or evidence was found for this person."}</p>
+                    {result.publicWebLookup.evidenceUrls?.length ? <div className="grounding-citations">{result.publicWebLookup.evidenceUrls.map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}</div> : null}</>
+                  ) : null}
+                  {Object.keys(apolloProfile).length ? <section className="apollo-profile-details">
+                    <strong>{Object.keys(enrichedApolloProfile).length ? "Apollo enrichment details" : "Apollo search details"}</strong>
+                    <dl>
+                      {apolloProfile.matchConfidence ? <div><dt>Match confidence</dt><dd>{apolloProfile.matchConfidence}</dd></div> : null}
+                      {apolloProfile.title ? <div><dt>Title</dt><dd>{apolloProfile.title}</dd></div> : null}
+                      {apolloProfile.headline ? <div><dt>Headline</dt><dd>{apolloProfile.headline}</dd></div> : null}
+                      {apolloProfile.seniority ? <div><dt>Seniority</dt><dd>{apolloProfile.seniority}</dd></div> : null}
+                      {apolloProfile.location ? <div><dt>Location</dt><dd>{apolloProfile.location}</dd></div> : null}
+                      {apolloProfile.departments?.length ? <div><dt>Departments</dt><dd>{apolloProfile.departments.join(", ")}</dd></div> : null}
+                      {apolloProfile.subdepartments?.length ? <div><dt>Subdepartments</dt><dd>{apolloProfile.subdepartments.join(", ")}</dd></div> : null}
+                      {apolloProfile.functions?.length ? <div><dt>Functions</dt><dd>{apolloProfile.functions.join(", ")}</dd></div> : null}
+                      {apolloOrganization.industry ? <div><dt>Industry</dt><dd>{apolloOrganization.industry}</dd></div> : null}
+                      {apolloOrganization.employeeCount != null ? <div><dt>Employees</dt><dd>{Number(apolloOrganization.employeeCount).toLocaleString()}</dd></div> : null}
+                      {apolloOrganization.foundedYear ? <div><dt>Founded</dt><dd>{apolloOrganization.foundedYear}</dd></div> : null}
+                      {[apolloOrganization.city, apolloOrganization.state, apolloOrganization.country].filter(Boolean).length ? <div><dt>Company location</dt><dd>{[apolloOrganization.city, apolloOrganization.state, apolloOrganization.country].filter(Boolean).join(", ")}</dd></div> : null}
+                      {apolloOrganization.annualRevenue != null ? <div><dt>Annual revenue</dt><dd>{Number(apolloOrganization.annualRevenue).toLocaleString()}</dd></div> : null}
+                      {apolloOrganization.totalFunding != null ? <div><dt>Total funding</dt><dd>{Number(apolloOrganization.totalFunding).toLocaleString()}</dd></div> : null}
+                      {apolloOrganization.shortDescription ? <div className="is-wide"><dt>Company</dt><dd>{apolloOrganization.shortDescription}</dd></div> : null}
+                      {apolloOrganization.keywords?.length ? <div className="is-wide"><dt>Keywords</dt><dd>{apolloOrganization.keywords.join(", ")}</dd></div> : null}
+                      {apolloOrganization.technologies?.length ? <div className="is-wide"><dt>Technologies</dt><dd>{apolloOrganization.technologies.join(", ")}</dd></div> : null}
+                    </dl>
+                    {apolloProfile.employmentHistory?.length ? <details><summary>Employment history ({apolloProfile.employmentHistory.length})</summary><ul>{apolloProfile.employmentHistory.map((job, index) => <li key={`${job.organizationName}-${job.title}-${index}`}>{[job.title, job.organizationName, [job.startDate, job.endDate || (job.current ? "Present" : "")].filter(Boolean).join(" – ")].filter(Boolean).join(" · ")}</li>)}</ul></details> : null}
+                  </section> : null}
+                </div> : null}
               </article>
             );
             })}</div>
@@ -2029,84 +2093,6 @@ export default function Discovery() {
         </nav> : null}</> : <div className="table-state table-state--empty">No {groundingResultsStatus.replace("_", " ")} results match the current filters.</div>}
       </DashboardCard>
       </section>
-      {drawerResult ? (() => {
-        const { sourceLabel, corroborated, effectiveEmail, isStructuredAudienceMatch, enrichedApolloProfile, apolloProfile, apolloOrganization, companyWebsiteUrl, missingContactMessage, contactStatus } = computeResultDisplay(drawerResult);
-        return (
-          <div className="lead-detail-drawer-overlay" onClick={closeDetailDrawer}>
-            <aside className="lead-detail-drawer" onClick={(event) => event.stopPropagation()} role="dialog" aria-label={`Full record for ${drawerResult.name}`}>
-              <header>
-                <div>
-                  <strong>{drawerResult.name}</strong>
-                  <small>{companyWebsiteUrl ? <a href={companyWebsiteUrl} target="_blank" rel="noreferrer">{[drawerResult.organizationName, drawerResult.organizationDomain].filter(Boolean).join(" · ")} ↗</a> : ([drawerResult.organizationName, drawerResult.organizationDomain].filter(Boolean).join(" · ") || "No organization listed")}</small>
-                </div>
-                <button type="button" onClick={closeDetailDrawer} aria-label="Close">×</button>
-              </header>
-              <div className="lead-detail-drawer__body">
-                <div>
-                  {drawerResult.qualificationLabel ? <span className={`review-card__qual-badge qual-${drawerResult.qualificationLabel}`}>{drawerResult.qualificationLabel.replace("_", " ")}</span> : null}
-                  <span className={`review-card__identity-badge identity-${drawerResult.identityConfidence || "low"}`}>Identity: {(drawerResult.identityConfidence || "low").replace("_", " ")}</span>
-                </div>
-                <small>Source</small>
-                <p>{sourceLabel}{corroborated ? " · cross-provider corroboration" : ""}</p>
-                <small>Contact status</small>
-                <p>{contactStatus}{!effectiveEmail ? ` — ${missingContactMessage}` : ""}</p>
-                {effectiveEmail ? <><small>Email</small><p><strong>{effectiveEmail.email}</strong> ({effectiveEmail.state})</p></> : null}
-                <small>{isStructuredAudienceMatch && !drawerResult.evidenceUrls?.length ? "Why this is only a possible match" : "Why Lead Porch found this"}</small>
-                <p>{drawerResult.fitReasons?.length ? drawerResult.fitReasons.join(" · ") : drawerResult.summary || "The provider returned this person for your selected audience rules."}</p>
-                {isStructuredAudienceMatch && !drawerResult.evidenceUrls?.length ? <p>This is a database profile match, not proof that the person currently wants coaching. Research their public activity before outreach.</p> : null}
-                {drawerResult.type === "person" && drawerResult.discoveryMode !== "icp_match" ? (
-                  <p>{drawerResult.evidenceDate ? `Evidence date: ${new Date(drawerResult.evidenceDate).toLocaleDateString()} (${drawerResult.evidenceAgeDays} day${drawerResult.evidenceAgeDays === 1 ? "" : "s"} old)` : "No verifiable evidence date"}{drawerResult.freshnessTier ? ` · ${drawerResult.freshnessTier}` : ""}</p>
-                ) : null}
-                {drawerResult.conflicts?.length ? <><small>Conflicts</small><p className="form-error">{drawerResult.conflicts.join(" ")}</p></> : null}
-                {drawerResult.exclusionFlags?.length ? <><small>ICP exclusion flags</small><p className="form-error">{drawerResult.exclusionFlags.join(", ")}</p></> : null}
-                {drawerResult.buyerIntentLevel ? <><small>Buyer intent</small><p>{drawerResult.buyerIntentLevel}{drawerResult.buyerIntentEvidence ? ` — ${drawerResult.buyerIntentEvidence}` : ""}</p></> : null}
-                {drawerResult.recommendedNextAction ? <><small>Recommended next action</small><p>{drawerResult.recommendedNextAction}</p></> : null}
-                {drawerResult.outreachRecommended && drawerResult.outreachDraft ? <><small>Draft outreach (not sent)</small><p>{drawerResult.outreachDraft}</p></> : null}
-                <small>Discovered</small>
-                <p>{new Date(drawerResult.createdAt).toLocaleDateString()} · via {(drawerResult.providers || []).join(", ") || "vertex_grounding"}</p>
-                <small>Citations</small>
-                <div className="grounding-citations">
-                  {(drawerResult.evidenceUrls || []).map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}
-                  {!drawerResult.evidenceUrls?.length && isStructuredAudienceMatch ? <span className="people-preview-footnote">Apollo or PDL matched this person to your audience. No public activity was attached.</span> : null}
-                </div>
-                {drawerResult.pdlEnrichment?.attempted ? (
-                  <><small>PDL enrichment</small><p>{drawerResult.pdlEnrichment.error ? `PDL error: ${drawerResult.pdlEnrichment.errorMessage || "unknown error"}` : drawerResult.pdlEnrichment.matched ? `PDL verified: ${drawerResult.pdlEnrichment.email || "match found, no email"}` : "PDL: no confident match"}</p></>
-                ) : null}
-                {drawerResult.apolloEnrichment?.attempted ? (
-                  <><small>Apollo enrichment</small><p>{drawerResult.apolloEnrichment.error ? `Apollo error: ${drawerResult.apolloEnrichment.errorMessage || "unknown error"}` : drawerResult.apolloEnrichment.email ? `Apollo email: ${drawerResult.apolloEnrichment.email} (${drawerResult.apolloEnrichment.emailState || "status not supplied"})` : drawerResult.apolloEnrichment.matched ? "Apollo matched the identity but returned no email" : "Apollo: no confident match"}</p></>
-                ) : null}
-                {drawerResult.publicWebLookup?.attempted ? (
-                  <><small>Public web search (last resort)</small><p>{drawerResult.publicWebLookup.error ? `Search error: ${drawerResult.publicWebLookup.errorMessage || "unknown error"}` : drawerResult.publicWebLookup.matched ? `Found: ${drawerResult.publicWebLookup.summary || "a real public profile"}` : "No public profile or evidence was found for this person."}</p>
-                  {drawerResult.publicWebLookup.evidenceUrls?.length ? <div className="grounding-citations">{drawerResult.publicWebLookup.evidenceUrls.map((url) => <a key={url} href={url} target="_blank" rel="noreferrer">{url}</a>)}</div> : null}</>
-                ) : null}
-                {Object.keys(apolloProfile).length ? <section className="apollo-profile-details">
-                  <strong>{Object.keys(enrichedApolloProfile).length ? "Apollo enrichment details" : "Apollo search details"}</strong>
-                  <dl>
-                    {apolloProfile.matchConfidence ? <div><dt>Match confidence</dt><dd>{apolloProfile.matchConfidence}</dd></div> : null}
-                    {apolloProfile.title ? <div><dt>Title</dt><dd>{apolloProfile.title}</dd></div> : null}
-                    {apolloProfile.headline ? <div><dt>Headline</dt><dd>{apolloProfile.headline}</dd></div> : null}
-                    {apolloProfile.seniority ? <div><dt>Seniority</dt><dd>{apolloProfile.seniority}</dd></div> : null}
-                    {apolloProfile.location ? <div><dt>Location</dt><dd>{apolloProfile.location}</dd></div> : null}
-                    {apolloProfile.departments?.length ? <div><dt>Departments</dt><dd>{apolloProfile.departments.join(", ")}</dd></div> : null}
-                    {apolloProfile.subdepartments?.length ? <div><dt>Subdepartments</dt><dd>{apolloProfile.subdepartments.join(", ")}</dd></div> : null}
-                    {apolloProfile.functions?.length ? <div><dt>Functions</dt><dd>{apolloProfile.functions.join(", ")}</dd></div> : null}
-                    {apolloOrganization.industry ? <div><dt>Industry</dt><dd>{apolloOrganization.industry}</dd></div> : null}
-                    {apolloOrganization.employeeCount != null ? <div><dt>Employees</dt><dd>{Number(apolloOrganization.employeeCount).toLocaleString()}</dd></div> : null}
-                    {apolloOrganization.foundedYear ? <div><dt>Founded</dt><dd>{apolloOrganization.foundedYear}</dd></div> : null}
-                    {[apolloOrganization.city, apolloOrganization.state, apolloOrganization.country].filter(Boolean).length ? <div><dt>Company location</dt><dd>{[apolloOrganization.city, apolloOrganization.state, apolloOrganization.country].filter(Boolean).join(", ")}</dd></div> : null}
-                    {apolloOrganization.annualRevenue != null ? <div><dt>Annual revenue</dt><dd>{Number(apolloOrganization.annualRevenue).toLocaleString()}</dd></div> : null}
-                    {apolloOrganization.totalFunding != null ? <div><dt>Total funding</dt><dd>{Number(apolloOrganization.totalFunding).toLocaleString()}</dd></div> : null}
-                    {apolloOrganization.shortDescription ? <div className="is-wide"><dt>Company</dt><dd>{apolloOrganization.shortDescription}</dd></div> : null}
-                    {apolloOrganization.keywords?.length ? <div className="is-wide"><dt>Keywords</dt><dd>{apolloOrganization.keywords.join(", ")}</dd></div> : null}
-                    {apolloOrganization.technologies?.length ? <div className="is-wide"><dt>Technologies</dt><dd>{apolloOrganization.technologies.join(", ")}</dd></div> : null}
-                  </dl>
-                  {apolloProfile.employmentHistory?.length ? <details><summary>Employment history ({apolloProfile.employmentHistory.length})</summary><ul>{apolloProfile.employmentHistory.map((job, index) => <li key={`${job.organizationName}-${job.title}-${index}`}>{[job.title, job.organizationName, [job.startDate, job.endDate || (job.current ? "Present" : "")].filter(Boolean).join(" – ")].filter(Boolean).join(" · ")}</li>)}</ul></details> : null}
-                </section> : null}
-              </div>
-            </aside>
-          </div>
-        );
-      })() : null}
     </div> : null}
 
     {activeTab === "company" ? <><DashboardCard title="External research source">
