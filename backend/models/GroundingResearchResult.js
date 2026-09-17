@@ -213,6 +213,9 @@ const groundingResearchResultSchema = new mongoose.Schema({
   // than stored if it doesn't match a real, still-approved program.
   recommendedProgram: {
     programNoteId: { type: mongoose.Schema.Types.ObjectId, ref: "JarvisMemoryNote", default: null },
+    // Primary Find People runs target the actual CoachingProgram directly;
+    // legacy/direct-web searches still use programNoteId above.
+    coachingProgramId: { type: mongoose.Schema.Types.ObjectId, ref: "CoachingProgram", default: null },
     name: { type: String, default: "", trim: true, maxlength: 200 },
     reason: { type: String, default: "", trim: true, maxlength: 1000 },
   },

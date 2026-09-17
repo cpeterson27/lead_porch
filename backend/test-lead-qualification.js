@@ -184,6 +184,27 @@ async function testPublicDiscoveryRunKeepsItsSelectedProgramDuringQualification(
   assert.equal(rows[0].qualificationLabel, "qualified");
 }
 
+async function testPrimaryPublicDiscoveryRunMapsItsCoachingProgramDuringQualification() {
+  const rows = [{ _id: "gr-coaching-run", name: "Taylor Buyer", organizationName: "Taylor Investments", organizationDomain: "", summary: "Multifamily Investor", evidenceUrls: [], conflicts: [], providers: ["apollo_person_search"], confidence: "single_source", discoveryMode: "icp_match", discoveryRunId: "run-coaching-1", linkedinUrl: "https://linkedin.example/taylor", pdlEnrichment: {}, apolloEnrichment: {} }];
+  const GroundingResearchResult = fakeGroundingResultModel(rows);
+  const PublicWebDiscoveryRun = { find: () => leanQuery([{ _id: "run-coaching-1", programNoteId: null, coachingProgramId: "coaching-program-1", programName: "6-Week Coaching - Acquisitions" }]) };
+  const CoachingProgram = { find: () => leanQuery([{ _id: "coaching-program-1", name: "6-Week Coaching - Acquisitions" }]) };
+  const listApprovedPrograms = async () => [];
+  const runAgent = async ({ operationalContext, options }) => {
+    assert.ok(options.responseSchema.properties.qualifications.items.properties.recommendedProgramId.enum.includes("coaching:coaching-program-1"));
+    assert.ok(operationalContext.includes('"targetProgramId": "coaching:coaching-program-1"'), "the primary Find People run must carry its CoachingProgram into qualification");
+    return { output: { qualifications: [{ resultId: "gr-coaching-run", identityNotes: "Apollo profile is consistent", programFitScore: 81, programFitReasons: ["Matches the acquisitions audience"], recommendedProgramId: "none", buyerIntentLevel: "none", buyerIntentEvidence: "No public intent post", exclusionFlags: [], qualificationLabel: "needs_review", recommendedNextAction: "Review for outreach", outreachRecommended: false, outreachDraft: "" }] } };
+  };
+
+  const result = await qualifyAndRecommend({ workspaceId: "workspace-1", userId: "u1", resultIds: ["gr-coaching-run"] }, { GroundingResearchResult, PublicWebDiscoveryRun, CoachingProgram, listApprovedPrograms, runAgent });
+
+  assert.equal(result.summary.qualified, 1);
+  assert.equal(rows[0].recommendedProgram.programNoteId, null);
+  assert.equal(rows[0].recommendedProgram.coachingProgramId, "coaching-program-1");
+  assert.equal(rows[0].recommendedProgram.name, "6-Week Coaching - Acquisitions");
+  assert.equal(rows[0].qualificationLabel, "qualified");
+}
+
 async function testQualifyAndRecommendReportsAnAccurateCompletionSummary() {
   const rows = [
     { _id: "gr-a", name: "A", providers: ["vertex_grounding", "openai_web_search"], confidence: "corroborated", conflicts: [], discoveryMode: "public_web_evidence" },
@@ -480,6 +501,7 @@ async function run() {
   await testQualifyAndRecommendDiscardsAFabricatedProgramIdIfOneEverSlipsThrough();
   await testStructuredSearchKeepsItsRealTargetProgramAndQualifiesAfterIdentityMatch();
   await testPublicDiscoveryRunKeepsItsSelectedProgramDuringQualification();
+  await testPrimaryPublicDiscoveryRunMapsItsCoachingProgramDuringQualification();
   await testQualifyAndRecommendReportsAnAccurateCompletionSummary();
   await testApproveAndRunSearchGathersARankedPoolAndKeepsOnlyTheBestByFit();
   await testApproveAndRunSearchRequestsAndMergesRealApolloPagesBeyondPage1();

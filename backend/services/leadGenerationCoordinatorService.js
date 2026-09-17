@@ -38,6 +38,7 @@ const PublicWebDiscoveryRun = require("../models/PublicWebDiscoveryRun");
 const LeadMonitorSuggestion = require("../models/LeadMonitorSuggestion");
 const GroundingResearchResult = require("../models/GroundingResearchResult");
 const JarvisMemoryNote = require("../models/JarvisMemoryNote");
+const CoachingProgram = require("../models/CoachingProgram");
 const vertexGroundingDiscoveryService = require("./vertexGroundingDiscoveryService");
 const vertexGroundingService = require("./vertexGroundingService");
 const openaiWebSearchService = require("./openaiWebSearchService");
@@ -1201,6 +1202,7 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
   const Model = dependencies.GroundingResearchResult || GroundingResearchResult;
   const SearchModel = dependencies.DiscoverySearch || DiscoverySearch;
   const PublicRunModel = dependencies.PublicWebDiscoveryRun || PublicWebDiscoveryRun;
+  const CoachingProgramModel = dependencies.CoachingProgram || CoachingProgram;
   const runAgent = dependencies.runAgent || agentExecutionService.runAgent;
   const listPrograms = dependencies.listApprovedPrograms || listApprovedPrograms;
   const ids = (Array.isArray(resultIds) ? resultIds : []).slice(0, 20);
@@ -1209,8 +1211,6 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
   if (!rows.length) return { qualified: 0, requested: ids.length, summary: { processed: 0, qualified: 0, needsReview: 0, notAFit: 0, failed: ids.length } };
 
   const programs = await listPrograms({ workspaceId }, dependencies);
-  const programById = new Map(programs.map((p) => [p.noteId, p]));
-  const programIds = programs.map((p) => p.noteId);
   const searchIds = [...new Set(rows.map((row) => row.discoverySearchId).filter(Boolean).map(String))];
   const searches = searchIds.length
     ? await SearchModel.find({ _id: { $in: searchIds }, workspaceId }).select("programNoteId programName").lean()
@@ -1218,9 +1218,28 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
   const searchById = new Map(searches.map((search) => [String(search._id), search]));
   const publicRunIds = [...new Set(rows.map((row) => row.discoveryRunId).filter(Boolean).map(String))];
   const publicRuns = publicRunIds.length
-    ? await PublicRunModel.find({ _id: { $in: publicRunIds }, workspaceId }).select("programNoteId programName").lean()
+    ? await PublicRunModel.find({ _id: { $in: publicRunIds }, workspaceId }).select("programNoteId coachingProgramId programName").lean()
     : [];
   const publicRunById = new Map(publicRuns.map((run) => [String(run._id), run]));
+  // The primary high-volume search flow targets a real CoachingProgram,
+  // not the legacy Knowledge Center note selector. Add only the active
+  // programs referenced by these exact runs to the constrained program
+  // list Jarvis may choose from. The names still come from trusted DB
+  // records, never model-generated text.
+  const coachingProgramIds = [...new Set(publicRuns.map((run) => run.coachingProgramId).filter(Boolean).map(String))];
+  const coachingPrograms = coachingProgramIds.length
+    ? await CoachingProgramModel.find({ _id: { $in: coachingProgramIds }, workspaceId, status: "active" }).select("name").lean()
+    : [];
+  for (const program of coachingPrograms) {
+    programs.push({
+      noteId: `coaching:${program._id}`,
+      coachingProgramId: String(program._id),
+      title: cleanProgramTitle(program.name),
+    });
+  }
+  const coachingProgramKeyById = new Map(coachingPrograms.map((program) => [String(program._id), `coaching:${program._id}`]));
+  const programById = new Map(programs.map((p) => [p.noteId, p]));
+  const programIds = programs.map((p) => p.noteId);
 
   const candidates = rows.map((row) => {
     const deterministicFlags = detectExclusionFlags(row);
@@ -1236,7 +1255,9 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
     });
     const sourceSearch = row.discoverySearchId ? searchById.get(String(row.discoverySearchId)) : null;
     const sourcePublicRun = row.discoveryRunId ? publicRunById.get(String(row.discoveryRunId)) : null;
-    const sourceProgramId = sourceSearch?.programNoteId || sourcePublicRun?.programNoteId;
+    const sourceProgramId = sourceSearch?.programNoteId
+      || sourcePublicRun?.programNoteId
+      || coachingProgramKeyById.get(String(sourcePublicRun?.coachingProgramId || ""));
     const targetProgramId = sourceProgramId && programById.has(String(sourceProgramId))
       ? String(sourceProgramId)
       : "";
@@ -1301,7 +1322,7 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
           identityConfidence: candidate.identityConfidence,
           fitScore: programFitScore, fitReasons: (q.programFitReasons || []).slice(0, 10).map((r) => clean(r, 300)),
           fitEvaluatedAt: new Date(),
-          recommendedProgram: program ? { programNoteId: program.noteId, name: program.title, reason: clean(q.programFitReasons?.[0] || "", 1000) } : { programNoteId: null, name: "", reason: "" },
+          recommendedProgram: program ? { programNoteId: program.coachingProgramId ? null : program.noteId, coachingProgramId: program.coachingProgramId || null, name: program.title, reason: clean(q.programFitReasons?.[0] || "", 1000) } : { programNoteId: null, coachingProgramId: null, name: "", reason: "" },
           buyerIntentLevel, buyerIntentEvidence: clean(q.buyerIntentEvidence, 1000),
           qualificationLabel, exclusionFlags,
           recommendedNextAction: clean(q.recommendedNextAction, 300),
