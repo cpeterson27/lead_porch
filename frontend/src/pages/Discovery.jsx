@@ -18,14 +18,11 @@ import {
   fetchMarketResearchHistory,
   fetchPeopleResearchPreviews,
   deletePeopleResearchPreview,
-  fetchMarketResearchSources,
   fetchResearchMonitors,
   fetchResearchMonitorPresets,
   fetchResearchActivity,
   fetchIntentSignals,
-  fetchMarketResearchJob,
   saveDiscoveryTemplates,
-  startExternalMarketResearch,
   runResearchMonitor,
   updateResearchMonitor,
   updateIntentSignal,
@@ -313,9 +310,6 @@ export default function Discovery() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [researchResult, setResearchResult] = useState(null);
   const [researchOrganizations, setResearchOrganizations] = useState([]);
-  const [researchSource, setResearchSource] = useState(null);
-  const [externalJob, setExternalJob] = useState(null);
-  const [externalRunning, setExternalRunning] = useState(false);
   const [researchHistory, setResearchHistory] = useState([]);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [openingHistoryId, setOpeningHistoryId] = useState("");
@@ -1017,7 +1011,6 @@ export default function Discovery() {
       loadProspects().catch(() => setNotice("Unable to load prospects."));
       fetchCampaigns().then((items) => setCampaigns(Array.isArray(items) ? items : [])).catch(() => {});
       fetchDiscoveryTemplates().then((data) => setTemplates(data.templates || [])).catch(() => {});
-      fetchMarketResearchSources().then((data) => setResearchSource(data.sources?.[0] || null)).catch(() => {});
       fetchResearchMonitorPresets().then((data) => setMonitorPresets(data.presets || [])).catch(() => {});
       refreshResearchRef.current?.();
     };
@@ -1365,40 +1358,6 @@ export default function Discovery() {
       setNotice(error.response?.data?.error || "Lead Porch could not complete this research run.");
     } finally {
       setRunning(false);
-    }
-  };
-
-  const runExternalResearch = async () => {
-    if (!marketPlan) return setNotice("Build and review a research plan first.");
-    try {
-      setExternalRunning(true);
-      const response = await startExternalMarketResearch({ question: marketQuestion, plan: marketPlan, maxResults: 1000 });
-      setExternalJob(response.job);
-      loadResearchHistory();
-      if (response.job.status === "source_required") {
-        setNotice(response.job.error);
-        return;
-      }
-      setNotice("External research started. You can keep this page open while Lead Porch collects and deduplicates results.");
-      for (let attempt = 0; attempt < 90; attempt += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        const current = await fetchMarketResearchJob(response.job._id);
-        setExternalJob(current.job);
-        if (["completed", "failed", "source_required"].includes(current.job.status)) {
-          if (current.job.status === "completed") {
-            const resultList = await fetchMarketResearchResults(current.job.audienceId);
-            setResearchOrganizations(resultList.organizations || []);
-            setResearchResult({ organizationsFound: current.job.statistics.received, organizationsCreated: current.job.statistics.created, organizationsUpdated: current.job.statistics.updated });
-            setNotice(`Research complete: ${current.job.statistics.created} new and ${current.job.statistics.updated} refreshed organizations.`);
-            loadResearchHistory();
-          } else setNotice(current.job.error || "External research did not complete.");
-          break;
-        }
-      }
-    } catch (error) {
-      setNotice(error.response?.data?.error || "Lead Porch could not start external research.");
-    } finally {
-      setExternalRunning(false);
     }
   };
 
@@ -2116,14 +2075,7 @@ export default function Discovery() {
       </section>
     </div> : null}
 
-    {activeTab === "company" ? <><DashboardCard title="External research source">
-      <div className={`research-source-status ${researchSource?.configured ? "is-ready" : "is-needed"}`}>
-        <div><span>{researchSource?.configured ? "Connected" : "Source required"}</span><strong>{researchSource?.name || "Checking source…"}</strong><p>{researchSource?.message || "Lead Porch is checking the external-data configuration."}</p></div>
-        <Button loading={externalRunning} disabled={!marketPlan || !researchSource?.configured} onClick={runExternalResearch}>Discover up to 1,000 organizations</Button>
-      </div>
-      {externalJob ? <div className="research-job-progress"><strong>{externalJob.status.replace(/_/g, " ")}</strong><span>{externalJob.statistics?.received || 0} received · {externalJob.statistics?.created || 0} new · {externalJob.statistics?.updated || 0} refreshed · {externalJob.statistics?.duplicates || 0} duplicates</span></div> : null}
-    </DashboardCard>
-
+    {activeTab === "company" ? <>
     <DashboardCard title="Research criteria" action={<select value={targetPreset} onChange={(event) => selectTemplate(event.target.value)}><option value="custom">New profile</option>{templates.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select>}>
       <div className="target-grid">
         <label><span>Profile name</span><input value={target.name} onChange={(event) => setField("name", event.target.value)} placeholder="Sacramento event venues" /></label>
