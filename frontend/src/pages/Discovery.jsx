@@ -1613,8 +1613,8 @@ export default function Discovery() {
                 </select></label>
                 <label><span>Contact status</span><select value={reviewFilters.contactStatus} onChange={(e) => setReviewFilters((c) => ({ ...c, contactStatus: e.target.value }))}>
                   <option value="all">Any contact status</option>
-                  <option value="has_email">Has email</option>
-                  <option value="no_email">No email yet</option>
+                  <option value="has_email">Enriched (has email)</option>
+                  <option value="no_email">Not yet enriched</option>
                 </select></label>
                 <label><span>Location contains</span><input type="text" value={reviewFilters.location} onChange={(e) => setReviewFilters((c) => ({ ...c, location: e.target.value }))} placeholder="e.g. Texas" /></label>
                 <label><span>Freshness</span><select value={reviewFilters.freshness} onChange={(e) => setReviewFilters((c) => ({ ...c, freshness: e.target.value }))}>
