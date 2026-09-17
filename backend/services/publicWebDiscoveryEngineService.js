@@ -393,7 +393,10 @@ async function proposeStudentSearchPreset({ workspaceId, userId, auth, programNo
  * collection instead of this exact finalized list.
  */
 function finalizeWebJobPlan({ jobs, sources, queryLimitPerRun, pageLimitPerQuery, fallbackQueryLimit = 40, fallbackPageLimit = 2 }) {
-  const allowedSources = Array.isArray(sources) && sources.length ? sources.filter((s) => GROUNDED_SEARCH_SOURCES.includes(s)) : null;
+  // An explicit empty array means both web providers are OFF. Previously
+  // it was treated like "no preference" and silently restored every web
+  // job, making a genuinely Apollo-only run impossible.
+  const allowedSources = Array.isArray(sources) ? sources.filter((s) => GROUNDED_SEARCH_SOURCES.includes(s)) : null;
   const webJobs = (jobs || [])
     .filter((j) => JOB_CATEGORIES.includes(j.category) && String(j.query || "").trim() && GROUNDED_SEARCH_SOURCES.includes(j.source))
     .filter((j) => !allowedSources || allowedSources.includes(j.source));
@@ -473,7 +476,7 @@ async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, 
   // regardless of client state, so a stale/edited job list can never
   // silently re-enable or disable it. `sources`/queryLimitPerRun apply only
   // to the real web (Vertex/OpenAI) query list, via finalizeWebJobPlan.
-  const allowedSources = Array.isArray(sources) && sources.length ? sources.filter((s) => GROUNDED_SEARCH_SOURCES.includes(s)) : null;
+  const allowedSources = Array.isArray(sources) ? sources.filter((s) => GROUNDED_SEARCH_SOURCES.includes(s)) : null;
   const submittedJobs = Array.isArray(jobs) && jobs.length ? jobs : run.jobs;
   run.jobs = finalizeWebJobPlan({
     jobs: submittedJobs, sources,
@@ -481,7 +484,10 @@ async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, 
     pageLimitPerQuery: pageLimitPerQuery != null ? pageLimitPerQuery : run.pageLimitPerQuery,
     fallbackQueryLimit: run.queryLimitPerRun, fallbackPageLimit: run.pageLimitPerQuery,
   });
-  if (!run.jobs.length) { const error = new Error("At least one search-family query is required to approve this run"); error.code = "DISCOVERY_RUN_NO_JOBS"; throw error; }
+  const directPeopleSourceEnabled = (includeApolloPersonSearch != null ? Boolean(includeApolloPersonSearch) : Boolean(run.includeApolloPersonSearch))
+    || (includePdlPersonSearch != null ? Boolean(includePdlPersonSearch) : Boolean(run.includePdlPersonSearch))
+    || (includePdlCrossReference != null ? Boolean(includePdlCrossReference) : Boolean(run.includePdlCrossReference));
+  if (!run.jobs.length && !directPeopleSourceEnabled) { const error = new Error("Enable Apollo, PDL, or at least one web-search query before approving this run"); error.code = "DISCOVERY_RUN_NO_JOBS"; throw error; }
 
   if (dailyCandidateTarget != null) run.dailyCandidateTarget = Math.max(1, Math.min(500, Number(dailyCandidateTarget) || run.dailyCandidateTarget));
   if (pageLimitPerQuery != null) run.pageLimitPerQuery = Math.max(1, Math.min(10, Number(pageLimitPerQuery) || run.pageLimitPerQuery));
@@ -501,7 +507,7 @@ async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, 
       industries: (Array.isArray(apolloPdlIcp.industries) ? apolloPdlIcp.industries : []).map((i) => clean(i, 120)).filter(Boolean).slice(0, 30),
     });
   }
-  run.enabledSources = allowedSources || run.enabledSources || ["vertex", "openai_web_search"];
+  run.enabledSources = allowedSources !== null ? allowedSources : (run.enabledSources || ["vertex", "openai_web_search"]);
 
   run.nextJobIndex = 0;
   run.status = "queued";

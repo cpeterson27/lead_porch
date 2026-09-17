@@ -404,6 +404,17 @@ async function testApproveWithNoIcpFieldLeavesTheProposedIcpUnchanged() {
   console.log("PASS testApproveWithNoIcpFieldLeavesTheProposedIcpUnchanged");
 }
 
+async function testApproveAllowsAnApolloOnlyRunWithBothWebProvidersOff() {
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([{ _id: "run-apollo-only", workspaceId: WORKSPACE_ID, status: "draft", jobs: [{ category: "people", query: "q", source: "vertex", status: "pending", page: 0, maxPages: 1, attempts: 0 }], dailyCandidateTarget: 100, pageLimitPerQuery: 1, queryLimitPerRun: 1, providerCreditCapUsd: 0, includeApolloPersonSearch: true, maxApolloPersonSearchCredits: 300, includePdlPersonSearch: false, includePdlCrossReference: false, retryPolicy: { maxAttemptsPerJob: 1 } }]);
+  const run = await approvePublicWebDiscoveryRun(
+    { workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-apollo-only", jobs: PublicWebDiscoveryRunModel.rows[0].jobs, sources: [], includeApolloPersonSearch: true, includePdlPersonSearch: false, includePdlCrossReference: false },
+    { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel },
+  );
+  assert.equal(run.status, "queued");
+  assert.deepEqual(run.jobs, [], "both web providers off must produce no web jobs, not silently restore the submitted Vertex job");
+  assert.deepEqual(run.enabledSources, []);
+}
+
 async function testApprovePublicWebDiscoveryRunAppliesEditsAndQueues() {
   const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([{ _id: "run-1", workspaceId: WORKSPACE_ID, status: "draft", jobs: [{ category: "people", query: "old query", source: "vertex", status: "pending", page: 0, maxPages: 1, attempts: 0 }], dailyCandidateTarget: 25, pageLimitPerQuery: 2, queryLimitPerRun: 40, providerCreditCapUsd: 5, includePdlCrossReference: true, retryPolicy: { maxAttemptsPerJob: 3 } }]);
   const run = await approvePublicWebDiscoveryRun(
@@ -1332,6 +1343,7 @@ async function run() {
   await testPhasesReuseTheStoredIcpInsteadOfReDerivingIt();
   await testApprovePublicWebDiscoveryRunPersistsAnOwnerEditedIcp();
   await testApproveWithNoIcpFieldLeavesTheProposedIcpUnchanged();
+  await testApproveAllowsAnApolloOnlyRunWithBothWebProvidersOff();
   await testApprovePublicWebDiscoveryRunAppliesEditsAndQueues();
   await testApprovePublicWebDiscoveryRunRejectsNonDraft();
   await testProcessNextBatchAdvancesCheckpointAndStagesResults();

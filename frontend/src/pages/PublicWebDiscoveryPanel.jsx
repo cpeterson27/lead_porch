@@ -201,7 +201,11 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
   const updateRunField = (run, field, value) => updateRunInState({ ...run, [field]: value });
   const toggleRunSource = (run, source) => {
     const sources = run.sources?.includes(source) ? run.sources.filter((s) => s !== source) : [...(run.sources || ["vertex", "openai_web_search"]), source];
-    updateRunInState({ ...run, sources, jobs: run.jobs.filter((j) => sources.includes(j.source)) });
+    // Keep the generated jobs intact while a provider is off. Approval's
+    // finalization filters by `sources`; preserving the draft jobs means an
+    // owner can turn a provider back on without ending up in the impossible
+    // state "provider enabled, but all of its queries were already deleted."
+    updateRunInState({ ...run, sources });
   };
 
   const approveRun = async (run) => {
@@ -467,7 +471,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
                   const disabledPill = availability && !availability.available;
                   return (
                     <button key={source} type="button" disabled={disabledPill} className={`leadgen-pill${sources.includes(source) ? " is-selected" : ""}${disabledPill ? " is-disabled" : ""}`} aria-pressed={sources.includes(source)} onClick={() => toggleRunSource(run, source)}>
-                      {SOURCE_LABELS[source]}{disabledPill ? ` (${availability.reason})` : ""}
+                      {SOURCE_LABELS[source]}: {sources.includes(source) ? "ON" : "OFF"}{disabledPill ? ` (${availability.reason})` : ""}
                     </button>
                   );
                 })}

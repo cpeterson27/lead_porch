@@ -49,6 +49,8 @@ assert.ok(/RUN_ACTIVE_STATUSES\.has\(run\.status\) \? <Button loading=\{busy ===
 
 assert.ok(panelSrc.includes('loading={busy === "pause"} disabled={Boolean(busy) && busy !== "running"} onClick={() => pauseRun(run)}>Pause</Button>'), "Pause must remain clickable while Continue is marked running — process-next-batch can take up to 75 seconds and the backend explicitly preserves a concurrent pause request");
 assert.ok(panelSrc.includes("providerRejectionBreakdown(entry)"), "the provider table must show why found Apollo/PDL people were not accepted, rather than only showing a confusing found/accepted gap");
+assert.ok(panelSrc.includes("updateRunInState({ ...run, sources });"), "turning a web provider off must not destructively delete its generated queries; turning it back on must remain reversible");
+assert.ok(panelSrc.includes('{SOURCE_LABELS[source]}: {sources.includes(source) ? "ON" : "OFF"}'), "provider controls must say ON/OFF explicitly rather than relying only on ambiguous pill color");
 
 // ---- 5. The backend list endpoint returns real, resumable data: jobs included, drafts excluded ----
 
