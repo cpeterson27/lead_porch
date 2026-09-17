@@ -12,7 +12,7 @@
 // writes" constraint.
 require("dotenv").config();
 const assert = require("node:assert/strict");
-const { recordConversation } = require("./services/jarvisMemoryService");
+const { recordConversation, retrieveCloudNotes } = require("./services/jarvisMemoryService");
 
 function fakeNoteModel(store) {
   return {
@@ -86,12 +86,38 @@ async function testTitleIsTruncatedForALongInstructionButFullTextIsKept() {
   console.log("PASS testTitleIsTruncatedForALongInstructionButFullTextIsKept");
 }
 
+// Regression: a note saved via recordConversation() must actually be
+// retrievable by Jarvis afterward. The retrieval filter was found to still
+// list only the three original source values ("obsidian_bridge",
+// "approved_memory", "pdf_upload") — a real bug that would have made every
+// "remember that…" note permanently invisible to Jarvis despite the chat
+// reply promising "I'll use it in future conversations and searches."
+async function testAConversationCapturedNoteIsActuallyRetrievable() {
+  const Model = {
+    find: (filter) => ({
+      select: () => ({
+        lean: async () => [{
+          path: "08 Decisions/x.md", title: "Ellie only wants multifamily leads", content: "Ellie only wants multifamily leads, never single-family",
+          category: "decisions", source: "conversation_capture", approvedAt: new Date(), effectiveDate: null, reviewDate: null,
+        }].filter((note) => filter.source.$in.includes(note.source)),
+      }),
+    }),
+  };
+  const result = await retrieveCloudNotes("multifamily leads", { workspaceId: "workspace-1" }, Model);
+  assert.equal(result.available, true);
+  assert.equal(result.citations.length, 1, "a conversation_capture note matching the query must come back from retrieval, not be silently filtered out by source");
+  assert.equal(result.citations[0].source, "conversation_capture");
+  assert.ok(result.context.includes("Ellie only wants multifamily leads"));
+  console.log("PASS testAConversationCapturedNoteIsActuallyRetrievable");
+}
+
 (async () => {
   await testRemembersAnExplicitInstructionAsAnApprovedNote();
   await testRecognizesSeveralNaturalPhrasings();
   await testDoesNotFireOnOrdinaryMessagesThatMerelyContainTheWordRemember();
   await testRejectsAnEmptyOrTooShortInstructionWithoutCreatingAJunkNote();
   await testNeverRecordsWithoutAWorkspaceId();
+  await testAConversationCapturedNoteIsActuallyRetrievable();
   await testTitleIsTruncatedForALongInstructionButFullTextIsKept();
   console.log("\nAll Jarvis conversation-memory tests passed.");
 })().catch((error) => {
