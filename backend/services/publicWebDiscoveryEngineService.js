@@ -247,6 +247,7 @@ async function proposePublicWebDiscoveryRun({ workspaceId, userId, auth, program
   // preserves web-only-unless-opted-in behavior for Apollo too.
   const includeApolloPersonSearch = false;
   const maxApolloPersonSearchCredits = 25;
+  const apolloPdlIcp = await deriveInitialIcpForRun({ workspaceId, userId, auth, programNoteId, jobs, correlationId }, dependencies);
 
   // Set explicitly rather than relying on the schema's own nested-subdocument
   // defaults — keeps a freshly-created run's document fully self-describing
@@ -268,7 +269,7 @@ async function proposePublicWebDiscoveryRun({ workspaceId, userId, auth, program
     spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, pdlPersonSearchCredits: 0, pdlCrossReferenceCredits: 0, apolloPersonSearchCredits: 0, estimatedUsd: 0 },
     runSummary: emptyRunSummary(),
     includePdlPersonSearch, maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits,
-    includeApolloPersonSearch, maxApolloPersonSearchCredits,
+    includeApolloPersonSearch, maxApolloPersonSearchCredits, apolloPdlIcp,
     pdlCrossReferenceDone: false, includePdlCrossReference: true,
     enabledSources: ["vertex", "openai_web_search"],
     createdByUserId: userId, correlationId: clean(correlationId, 255),
@@ -325,6 +326,7 @@ async function proposeStudentSearchPreset({ workspaceId, userId, auth, programNo
   // part of the "find prospective students" flow, not just PDL.
   const includeApolloPersonSearch = true;
   const maxApolloPersonSearchCredits = 25;
+  const apolloPdlIcp = await deriveInitialIcpForRun({ workspaceId, userId, auth, programNoteId, jobs, correlationId }, dependencies);
 
   const run = await Model.create({
     workspaceId, programNoteId, programName, status: "draft", jobs, nextJobIndex: 0,
@@ -345,7 +347,7 @@ async function proposeStudentSearchPreset({ workspaceId, userId, auth, programNo
     spend: { vertexCalls: 0, openaiCalls: 0, pdlCandidates: 0, pdlPersonSearchCredits: 0, pdlCrossReferenceCredits: 0, apolloPersonSearchCredits: 0, estimatedUsd: 0 },
     runSummary: emptyRunSummary(),
     includePdlPersonSearch, maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits,
-    includeApolloPersonSearch, maxApolloPersonSearchCredits,
+    includeApolloPersonSearch, maxApolloPersonSearchCredits, apolloPdlIcp,
     pdlCrossReferenceDone: false, includePdlCrossReference: false, // PDL already runs directly — cross-reference would be redundant here.
     enabledSources: ["vertex", "openai_web_search"],
     createdByUserId: userId, correlationId: clean(correlationId, 255),
@@ -443,7 +445,7 @@ function computeRunPlanPreview({ jobs, sources, queryLimitPerRun, pageLimitPerQu
   };
 }
 
-async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, dailyCandidateTarget, pageLimitPerQuery, queryLimitPerRun, providerCreditCapUsd, includePdlCrossReference, includePdlPersonSearch, maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits, includeApolloPersonSearch, maxApolloPersonSearchCredits, sources, maxAttemptsPerJob }, dependencies = {}) {
+async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, dailyCandidateTarget, pageLimitPerQuery, queryLimitPerRun, providerCreditCapUsd, includePdlCrossReference, includePdlPersonSearch, maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits, includeApolloPersonSearch, maxApolloPersonSearchCredits, sources, maxAttemptsPerJob, apolloPdlIcp }, dependencies = {}) {
   const Model = dependencies.PublicWebDiscoveryRun || PublicWebDiscoveryRun;
   const run = await Model.findOne({ _id: runId, workspaceId });
   if (!run) { const error = new Error("Discovery run not found"); error.code = "DISCOVERY_RUN_NOT_FOUND"; throw error; }
@@ -476,6 +478,13 @@ async function approvePublicWebDiscoveryRun({ workspaceId, userId, runId, jobs, 
   if (includeApolloPersonSearch != null) run.includeApolloPersonSearch = Boolean(includeApolloPersonSearch);
   if (maxApolloPersonSearchCredits != null) run.maxApolloPersonSearchCredits = Math.max(0, Math.min(500, Number(maxApolloPersonSearchCredits) || 0));
   if (maxAttemptsPerJob != null) run.retryPolicy.maxAttemptsPerJob = Math.max(1, Math.min(10, Number(maxAttemptsPerJob) || run.retryPolicy.maxAttemptsPerJob));
+  if (apolloPdlIcp) {
+    run.apolloPdlIcp = {
+      titles: (Array.isArray(apolloPdlIcp.titles) ? apolloPdlIcp.titles : []).map((t) => clean(t, 120)).filter(Boolean).slice(0, 30),
+      locations: (Array.isArray(apolloPdlIcp.locations) ? apolloPdlIcp.locations : []).map((l) => clean(l, 120)).filter(Boolean).slice(0, 30),
+      industries: (Array.isArray(apolloPdlIcp.industries) ? apolloPdlIcp.industries : []).map((i) => clean(i, 120)).filter(Boolean).slice(0, 30),
+    };
+  }
   run.enabledSources = allowedSources || run.enabledSources || ["vertex", "openai_web_search"];
 
   run.nextJobIndex = 0;
@@ -694,7 +703,7 @@ async function runPdlPersonSearchPhase({ workspaceId, userId, auth, run, selfSig
   }
 
   try {
-    const icp = await derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlationId }, dependencies);
+    const icp = await icpForRun({ workspaceId, userId, auth, run, correlationId }, dependencies);
     const sql = leadGenerationCoordinatorService.buildPdlSql(icp);
     if (!sql) throw Object.assign(new Error("No realistic ICP criteria (titles, locations, or industries) could be derived from the program for PDL."), { code: "PDL_ICP_EMPTY" });
     perSourceEntry.queriesRun = 1;
@@ -772,7 +781,7 @@ async function runApolloPersonSearchPhase({ workspaceId, userId, auth, run, self
   }
 
   try {
-    const icp = await derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlationId }, dependencies);
+    const icp = await icpForRun({ workspaceId, userId, auth, run, correlationId }, dependencies);
     const filters = leadGenerationCoordinatorService.buildApolloFilters(icp);
     if (!Object.keys(filters).length) throw Object.assign(new Error("No realistic ICP criteria (titles or locations) could be derived from the program for Apollo."), { code: "APOLLO_ICP_EMPTY" });
     perSourceEntry.queriesRun = 1;
@@ -855,6 +864,35 @@ async function derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlat
 }
 
 /**
+ * Computes the run's apolloPdlIcp ONCE, at propose time, so the owner can
+ * review/edit it before anything runs and so the Apollo/PDL/cross-reference
+ * phases all use the exact same criteria instead of each independently
+ * re-deriving (and potentially disagreeing on) it. Never fails the whole
+ * propose call — a derivation error just leaves the ICP empty, matching
+ * this engine's existing "never invent, degrade honestly" pattern; each
+ * phase's own fallback (see the phases below) re-derives fresh if it finds
+ * an empty apolloPdlIcp on the run.
+ */
+async function deriveInitialIcpForRun({ workspaceId, userId, auth, programNoteId, jobs, correlationId }, dependencies = {}) {
+  try {
+    return await derivePdlIcpForProgram({ workspaceId, userId, auth, run: { programNoteId, jobs }, correlationId }, dependencies);
+  } catch {
+    return { titles: [], locations: [], industries: [] };
+  }
+}
+
+/** The Apollo/PDL/cross-reference phases all call this instead of deriving
+ * their own ICP — prefers the run's own apolloPdlIcp (computed once at
+ * propose time, reviewable/editable by the owner before approval); falls
+ * back to a fresh derivation only for an older run that predates this
+ * field, or one where derivation happened to fail at propose time. */
+async function icpForRun({ workspaceId, userId, auth, run, correlationId }, dependencies = {}) {
+  const stored = run.apolloPdlIcp;
+  if (stored && ((stored.titles || []).length || (stored.locations || []).length || (stored.industries || []).length)) return stored;
+  return derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlationId }, dependencies);
+}
+
+/**
  * Cross-references PDL Person Search against this run's OWN accumulated
  * public-web evidence: a PDL candidate that matches an already-created
  * web-evidence row for the same name+company is merged into it (raising
@@ -885,7 +923,7 @@ async function runPdlCrossReference({ workspaceId, userId, auth, run, selfSignal
 
   let icp;
   try {
-    icp = await derivePdlIcpForProgram({ workspaceId, userId, auth, run, correlationId }, dependencies);
+    icp = await icpForRun({ workspaceId, userId, auth, run, correlationId }, dependencies);
   } catch (error) {
     perSourceEntry.error = clean(error.message, 300);
     run.runSummary.perSource = [...(run.runSummary.perSource || []), perSourceEntry];
@@ -1286,6 +1324,7 @@ module.exports = {
   proposePublicWebDiscoveryRun,
   proposeStudentSearchPreset,
   approvePublicWebDiscoveryRun,
+  runPdlPersonSearchPhase,
   finalizeWebJobPlan,
   computeRunPlanPreview,
   processNextBatch,

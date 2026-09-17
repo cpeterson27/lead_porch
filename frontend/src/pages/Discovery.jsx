@@ -49,12 +49,8 @@ import {
   enrichVertexGroundingResultWithPdl,
   searchPublicWebForVertexGroundingResult,
   fetchLeadGenerationProviderAvailability,
-  fetchLeadGenerationPrograms,
-  proposeLeadGenerationSearch,
-  approveLeadGenerationSearch,
   enrichVertexGroundingResultWithApollo,
   qualifyLeadGenerationResults,
-  proposeLeadGenerationMonitor,
 } from "../services/api.js";
 import "./Discovery.css";
 import { draftFromMonitorPreset, sourcesFromMonitorPreset } from "../utils/researchMonitorPreset.js";
@@ -79,25 +75,15 @@ const splitValues = (value) => String(value || "")
   .map((item) => item.trim())
   .filter(Boolean);
 
-const MONITOR_SOURCE_DEFAULTS = { buyer_intent: ["bing_web", "reddit_rss"], investor_profile: ["bing_web", "reddit_rss"], community_partner: ["linkedin_public", "facebook_public", "meetup_public", "community_directories", "bing_web"] };
+// Kept in sync with routes/audience.js's MONITOR_SOURCE_DEFAULTS on the
+// backend — bing_web measured at 0.004% signal-to-live-lead vs.
+// reddit_rss's 33.5% in this workspace, so it's no longer a buyer_intent/
+// investor_profile default; sec_form_d (real SEC EDGAR capital-raise
+// filings) is investor_profile-only.
+const MONITOR_SOURCE_DEFAULTS = { buyer_intent: ["reddit_rss", "bluesky"], investor_profile: ["reddit_rss", "bluesky", "sec_form_d"], community_partner: ["linkedin_public", "facebook_public", "meetup_public", "community_directories", "bing_web"] };
 const monitorSources = (type) => [...(MONITOR_SOURCE_DEFAULTS[type] || MONITOR_SOURCE_DEFAULTS.buyer_intent)];
 const SOURCE_OPTIONS = [["linkedin_public", "LinkedIn public group/page metadata", "community"], ["facebook_public", "Facebook public group/page metadata", "community"], ["meetup_public", "Meetup public group metadata", "community"], ["community_directories", "REIA and club directories", "community"], ["bing_web", "Bing public web discussions", "all"], ["bing_news", "Bing News · organization context", "nonstudent"], ["sec_form_d", "SEC Form D · experimental, never student intent", "disabled"], ["hacker_news", "Hacker News public discussions", "all"], ["stack_exchange", "Stack Exchange public questions", "all"], ["reddit_rss", "Reddit public discussions · best effort", "all"], ["google_web", "Google · unavailable for new projects", "all"], ["gdelt", "GDELT news · unreliable", "nonstudent"], ["bluesky", "Bluesky public posts · unreliable", "all"], ["duckduckgo", "DuckDuckGo web · unreliable", "all"]];
 const UNSTABLE_MONITOR_SOURCES = new Set(["google_web", "gdelt", "bluesky", "duckduckgo"]);
-const LEADGEN_PROVIDERS = [
-  ["vertex", "Vertex Grounding"],
-  ["openai_web_search", "OpenAI Web Search"],
-  ["pdl_person_search", "PDL Person Search"],
-  ["apollo_person_search", "Apollo People Search"],
-];
-// Matches backend leadGenerationCoordinatorService.js's MAX_REQUESTED_COUNT
-// (500) — confirmed live that Apollo's real database easily supports this
-// (1,300+ distinct real people found in 15 pages for one broad search), so
-// the ceiling here reflects Apollo's real capacity, not an arbitrary cap.
-const LEADGEN_COUNT_OPTIONS = [5, 10, 25, 50, 100, 250, 500];
-const EMPTY_ICP_DRAFT = { titles: "", industries: "", locations: "", keywords: "", seniority: "", companySizeRange: "", exclusions: "" };
-const icpArrayToDraftString = (values) => (values || []).join(", ");
-const icpDraftStringToArray = (value) => String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
-
 const displayText = (value) => String(value || "")
   .replace(/<[^>]*>/g, " ")
   .replace(/&(?:#32|nbsp);/gi, " ")
@@ -401,25 +387,10 @@ export default function Discovery() {
   const [groundingSourceErrors, setGroundingSourceErrors] = useState([]);
   const [suggestedSearches, setSuggestedSearches] = useState([]);
   const [leadGenProviderAvailability, setLeadGenProviderAvailability] = useState(null);
-  const [leadGenSelectedSources, setLeadGenSelectedSources] = useState([]);
-  const [leadGenRequestedCount, setLeadGenRequestedCount] = useState(10);
-  const [leadGenIcpDraft, setLeadGenIcpDraft] = useState(EMPTY_ICP_DRAFT);
-  const [leadGenPrograms, setLeadGenPrograms] = useState([]);
-  // "" = nothing chosen yet (the required default); "all" = the "All
-  // programs" pill; otherwise a specific program's noteId.
-  const [selectedProgramPillKey, setSelectedProgramPillKey] = useState("");
-  const [selectedProgramNoteId, setSelectedProgramNoteId] = useState("");
-  const [leadGenRequest, setLeadGenRequest] = useState("Find likely buyers for our approved programs");
-  const [leadGenProposeBusy, setLeadGenProposeBusy] = useState(false);
-  const [leadGenProposal, setLeadGenProposal] = useState(null);
-  const [leadGenApproveBusy, setLeadGenApproveBusy] = useState(false);
-  const [leadGenError, setLeadGenError] = useState("");
   const [apolloEnrichBusyId, setApolloEnrichBusyId] = useState("");
   const [apolloBulkEnrichBusy, setApolloBulkEnrichBusy] = useState(false);
   const [apolloBulkOutcome, setApolloBulkOutcome] = useState(null);
   const [qualifyBusy, setQualifyBusy] = useState(false);
-  const [monitorSuggestion, setMonitorSuggestion] = useState(null);
-  const [monitorProposeBusy, setMonitorProposeBusy] = useState(false);
   const [groundingResults, setGroundingResults] = useState([]);
   const [groundingResultsLoading, setGroundingResultsLoading] = useState(false);
   const [groundingResultsStatus, setGroundingResultsStatus] = useState("pending_review");
@@ -519,118 +490,15 @@ export default function Discovery() {
     setGroundingTypes((current) => current.includes("person") ? current : [...current, "person"]);
   };
 
-  const loadLeadGenPrograms = async () => {
-    try {
-      const response = await fetchLeadGenerationPrograms();
-      setLeadGenPrograms(response.data || []);
-    } catch {
-      setLeadGenPrograms([]);
-    }
-  };
-
   const loadLeadGenProviderAvailability = async () => {
     try {
       const response = await fetchLeadGenerationProviderAvailability();
-      const availability = response.data || {};
-      setLeadGenProviderAvailability(availability);
-      // Default-select only providers that are currently enabled and configured.
-      setLeadGenSelectedSources(LEADGEN_PROVIDERS.filter(([key]) => availability[key]?.available).map(([key]) => key));
+      setLeadGenProviderAvailability(response.data || {});
     } catch {
       setLeadGenProviderAvailability({});
-      setLeadGenSelectedSources([]);
     }
   };
 
-  // Changing sources/count after a plan was already proposed would make the
-  // shown credit estimate stale, so either invalidates the current proposal
-  // rather than silently leaving a mismatched estimate on screen — the
-  // owner just clicks "Ask Jarvis" again for a fresh, accurate one.
-  const toggleLeadGenSource = (key) => {
-    setLeadGenSelectedSources((current) => current.includes(key) ? current.filter((source) => source !== key) : [...current, key]);
-    setLeadGenProposal(null);
-  };
-
-  const selectLeadGenCount = (count) => {
-    setLeadGenRequestedCount(count);
-    setLeadGenProposal(null);
-  };
-
-  const selectLeadGenProgram = (program) => {
-    setSelectedProgramPillKey(program.noteId);
-    setSelectedProgramNoteId(program.noteId);
-    setLeadGenProposal(null);
-    setLeadGenRequest(`Find likely buyers for ${program.title}`);
-  };
-
-  const selectAllPrograms = () => {
-    setSelectedProgramPillKey("all");
-    setSelectedProgramNoteId("");
-    setLeadGenProposal(null);
-    setLeadGenRequest("Find likely buyers for our approved programs");
-  };
-
-  const proposeLeadGenSearch = async () => {
-    if (!leadGenRequest.trim() || leadGenProposeBusy || !leadGenSelectedSources.length) return;
-    setLeadGenProposeBusy(true);
-    setLeadGenError("");
-    setMonitorSuggestion(null);
-    try {
-      const response = await proposeLeadGenerationSearch({
-        naturalLanguageRequest: leadGenRequest, programNoteId: selectedProgramNoteId || undefined,
-        sources: leadGenSelectedSources, requestedCount: leadGenRequestedCount,
-      });
-      setLeadGenProposal(response.data);
-      const icp = response.data.icp || {};
-      setLeadGenIcpDraft({
-        titles: icpArrayToDraftString(icp.titles), industries: icpArrayToDraftString(icp.industries),
-        locations: icpArrayToDraftString(icp.locations), keywords: icpArrayToDraftString(icp.keywords),
-        seniority: icpArrayToDraftString(icp.seniority), companySizeRange: icp.companySizeRange || "",
-        exclusions: icpArrayToDraftString(icp.exclusions),
-      });
-    } catch (err) {
-      setLeadGenError(err.response?.data?.error || "Unable to propose this search.");
-      setLeadGenProposal(null);
-    } finally {
-      setLeadGenProposeBusy(false);
-    }
-  };
-
-  const updateLeadGenIcpDraft = (field, value) => setLeadGenIcpDraft((current) => ({ ...current, [field]: value }));
-  const removeLeadGenKeyword = (keyword) =>
-    updateLeadGenIcpDraft(
-      "keywords",
-      icpDraftStringToArray(leadGenIcpDraft.keywords).filter((item) => item !== keyword).join(", "),
-    );
-
-  const approveLeadGenSearch = async () => {
-    if (!leadGenProposal?._id || leadGenApproveBusy) return;
-    setLeadGenApproveBusy(true);
-    setLeadGenError("");
-    try {
-      const icpOverride = {
-        titles: icpDraftStringToArray(leadGenIcpDraft.titles), industries: icpDraftStringToArray(leadGenIcpDraft.industries),
-        locations: icpDraftStringToArray(leadGenIcpDraft.locations), keywords: icpDraftStringToArray(leadGenIcpDraft.keywords),
-        seniority: icpDraftStringToArray(leadGenIcpDraft.seniority), companySizeRange: leadGenIcpDraft.companySizeRange,
-        exclusions: icpDraftStringToArray(leadGenIcpDraft.exclusions),
-      };
-      const response = await approveLeadGenerationSearch(leadGenProposal._id, { icp: icpOverride, requestedCount: leadGenRequestedCount, sources: leadGenSelectedSources });
-      const summary = response.data.runSummary || {};
-      // The explanation already states the true survived count and why —
-      // see the per-provider breakdown table rendered below for detail —
-      // so the notice never leads with a generic count that could imply
-      // the full requested amount was found.
-      setNotice(`Search ${response.data.status}: ${summary.explanation || `${summary.created || 0} new, ${summary.merged || 0} merged, ${summary.withConflicts || 0} flagged with conflicts.`}`);
-      setLeadGenProposal(response.data);
-      setGroundingResultsStatus("pending_review");
-      await loadGroundingResults("pending_review");
-    } catch (err) {
-      setLeadGenError(err.response?.data?.error || "Unable to run this search.");
-    } finally {
-      setLeadGenApproveBusy(false);
-    }
-  };
-
-  const discardLeadGenProposal = () => { setLeadGenProposal(null); setLeadGenIcpDraft(EMPTY_ICP_DRAFT); setLeadGenError(""); };
 
   const enrichGroundingResultWithApollo = async (id) => {
     if (apolloEnrichBusyId) return;
@@ -680,19 +548,6 @@ export default function Discovery() {
   };
 
   const qualifySelectedGroundingResults = () => qualifyGroundingResults(selectedGroundingIds);
-
-  const proposeMonitorForLeadGenSearch = async () => {
-    if (!leadGenProposal?._id || monitorProposeBusy) return;
-    setMonitorProposeBusy(true);
-    try {
-      const res = await proposeLeadGenerationMonitor(leadGenProposal._id);
-      setMonitorSuggestion(res.data);
-    } catch (err) {
-      setNotice(err.response?.data?.error || "Unable to propose a monitor for this search.");
-    } finally {
-      setMonitorProposeBusy(false);
-    }
-  };
 
   const runGroundingSearch = async () => {
     if (!groundingQuery.trim() || groundingBusy || !groundingTypes.length) return;
@@ -925,7 +780,7 @@ export default function Discovery() {
 
   useEffect(() => {
     if (activeTab !== "people") return undefined;
-    const timer = window.setTimeout(() => { loadGroundingResults(); loadSuggestedSearches(); loadLeadGenPrograms(); loadLeadGenProviderAvailability(); }, 0);
+    const timer = window.setTimeout(() => { loadGroundingResults(); loadSuggestedSearches(); loadLeadGenProviderAvailability(); }, 0);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab]);
@@ -1614,198 +1469,19 @@ export default function Discovery() {
         })}</div> : <div className="table-state table-state--empty">No staged people previews yet. Ask Jarvis to find public-web decision-makers; the preview will appear here automatically.</div>}
       </DashboardCard></details>
 
-      <section className="discovery-workflow-section" aria-labelledby="find-leads-heading"><header><span>Step 1</span><h2 id="find-leads-heading">What are you selling?</h2><p>Choose the program you want students or buyers for. That is all you need to start.</p></header>
-      <DashboardCard title="Choose a program">
-        <p className="people-preview-intro">
-          Jarvis reads the approved program details and creates the audience, keywords, and buying signals automatically. <strong>You will see the exact plan and estimated cost before anything runs.</strong>
-        </p>
 
-        <div className="leadgen-field-group">
-          <span className="leadgen-field-label">Program {leadGenPrograms.length ? `(${leadGenPrograms.length} approved)` : ""}</span>
-          <div className="leadgen-pill-row" role="group" aria-label="Choose an approved program">
-            <button type="button" className={`leadgen-pill${selectedProgramPillKey === "all" ? " is-selected" : ""}`} aria-pressed={selectedProgramPillKey === "all"} onClick={selectAllPrograms}>
-              All programs
-            </button>
-            {leadGenPrograms.map((program) => (
-              <button key={program.noteId} type="button" className={`leadgen-pill${selectedProgramPillKey === program.noteId ? " is-selected" : ""}`} aria-pressed={selectedProgramPillKey === program.noteId} onClick={() => selectLeadGenProgram(program)}>
-                {program.title}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <details className="leadgen-search-settings">
-          <summary>Search settings <small>Optional — the recommended choices are already selected</small></summary>
-        <div className="leadgen-field-group">
-          <span className="leadgen-field-label">Where Lead Porch can look</span>
-          <div className="leadgen-pill-row" role="group" aria-label="Choose sourcing providers">
-            {LEADGEN_PROVIDERS.map(([key, label]) => {
-              const availability = leadGenProviderAvailability?.[key];
-              const isAvailable = Boolean(availability?.available);
-              const isSelected = leadGenSelectedSources.includes(key);
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  className={`leadgen-pill${isSelected ? " is-selected" : ""}${isAvailable ? "" : " is-disabled"}`}
-                  aria-pressed={isSelected}
-                  disabled={leadGenProposeBusy}
-                  title={isAvailable ? "" : (availability?.reason || "Not currently available")}
-                  onClick={() => isAvailable ? toggleLeadGenSource(key) : navigate("/settings/ai-acquisition")}
-                >
-                  {label}{isAvailable ? "" : " · Set up"}
-                </button>
-              );
-            })}
-          </div>
-          {LEADGEN_PROVIDERS.some(([key]) => !leadGenProviderAvailability?.[key]?.available) ? (
-            <small className="leadgen-provider-reasons">
-              {LEADGEN_PROVIDERS.filter(([key]) => !leadGenProviderAvailability?.[key]?.available).map(([key, label]) => (
-                <span key={key}>{label} — {leadGenProviderAvailability?.[key]?.reason || "Not currently available"}</span>
-              ))}
-            </small>
-          ) : null}
-        </div>
-
-        <div className="leadgen-field-group">
-          <span className="leadgen-field-label">Maximum number of people</span>
-          <div className="leadgen-pill-row" role="group" aria-label="Choose how many people to find">
-            {LEADGEN_COUNT_OPTIONS.map((count) => (
-              <button key={count} type="button" className={`leadgen-pill${leadGenRequestedCount === count ? " is-selected" : ""}`} aria-pressed={leadGenRequestedCount === count} onClick={() => selectLeadGenCount(count)}>
-                {count}
-              </button>
-            ))}
-          </div>
-        </div>
-        </details>
-
-        <div className="people-search-launcher">
-          <label className="leadgen-audience-focus"><span>Audience focus</span><small>Jarvis filled this from your chosen program. Change it only when you want a narrower search.</small><input value={leadGenRequest} onChange={(event) => setLeadGenRequest(event.target.value)} placeholder="Who should Jarvis find?" disabled={leadGenProposeBusy} /></label>
-          <div>
-            <Button disabled={!leadGenRequest.trim() || !leadGenSelectedSources.length} loading={leadGenProposeBusy} onClick={proposeLeadGenSearch}>
-              {leadGenProposeBusy ? "Building your plan…" : "Build my search plan"}
-            </Button>
-          </div>
-          {!leadGenSelectedSources.length ? <p className="leadgen-source-step"><strong>Choose a research source to continue</strong><span>Open Search settings and select any available provider. Unavailable providers remain disabled automatically.</span></p> : null}
-          {leadGenError ? <p className="form-error">{leadGenError}</p> : null}
-        </div>
-
-        {leadGenProposal ? (
-          <section className="leadgen-review-panel" role="region" aria-labelledby="leadgen-review-heading" aria-live="polite">
-            <h4 id="leadgen-review-heading">{leadGenProposal.status === "proposed" ? "Review before running — nothing spent yet" : `Search ${leadGenProposal.status}`}</h4>
-
-            {leadGenProposal.status === "proposed" ? (
-              <><section className="leadgen-signal-editor"><header><span>#</span><div><strong>Keywords and relevant topics</strong><small>Auto-generated from the selected program. Remove or edit anything that is not useful.</small></div></header><div className="leadgen-signal-chips">{icpDraftStringToArray(leadGenIcpDraft.keywords).map((keyword) => <span key={keyword}>{keyword}<button type="button" aria-label={`Remove ${keyword}`} onClick={() => removeLeadGenKeyword(keyword)}>×</button></span>)}</div></section><div className="leadgen-review-grid">
-                <label><span>Program</span><input type="text" value={leadGenProposal.programName || "(not specified)"} readOnly /></label>
-                <label><span>Titles</span><input type="text" value={leadGenIcpDraft.titles} onChange={(event) => updateLeadGenIcpDraft("titles", event.target.value)} placeholder="comma-separated" /></label>
-                <label><span>Industries</span><input type="text" value={leadGenIcpDraft.industries} onChange={(event) => updateLeadGenIcpDraft("industries", event.target.value)} placeholder="comma-separated" /></label>
-                <label><span>Locations</span><input type="text" value={leadGenIcpDraft.locations} onChange={(event) => updateLeadGenIcpDraft("locations", event.target.value)} placeholder="comma-separated" /></label>
-                <label><span>Keywords</span><input type="text" value={leadGenIcpDraft.keywords} onChange={(event) => updateLeadGenIcpDraft("keywords", event.target.value)} placeholder="comma-separated" /></label>
-                <label><span>Seniority</span><input type="text" value={leadGenIcpDraft.seniority} onChange={(event) => updateLeadGenIcpDraft("seniority", event.target.value)} placeholder="comma-separated" /></label>
-                <label><span>Company size</span><input type="text" value={leadGenIcpDraft.companySizeRange} onChange={(event) => updateLeadGenIcpDraft("companySizeRange", event.target.value)} /></label>
-                <label><span>Exclusions</span><input type="text" value={leadGenIcpDraft.exclusions} onChange={(event) => updateLeadGenIcpDraft("exclusions", event.target.value)} placeholder="comma-separated, e.g. current customers" /></label>
-              </div></>
-            ) : (
-              <dl className="leadgen-review-grid">
-                <dt>Program</dt><dd>{leadGenProposal.programName || "(not specified)"}</dd>
-                <dt>Titles</dt><dd>{leadGenProposal.icp?.titles?.join(", ") || "(broad)"}</dd>
-                <dt>Exclusions</dt><dd>{leadGenProposal.icp?.exclusions?.join(", ") || "None"}</dd>
-              </dl>
-            )}
-
-            <p className="leadgen-run-explanation">Searching for up to <strong>{leadGenProposal.requestedCount} people</strong>, best-fit first — nothing is imported into the CRM automatically.</p>
-            <details className="leadgen-search-settings">
-              <summary>Search details <small>Freshness, sources, and estimated cost</small></summary>
-              <dl className="leadgen-review-summary">
-                <dt>Freshness</dt><dd>Public-web evidence within {leadGenProposal.freshnessDays} days</dd>
-                <dt>Sources</dt><dd>{leadGenProposal.sources.join(", ")}</dd>
-                <dt>Requested count</dt><dd>Up to {leadGenProposal.requestedCount} people</dd>
-                <dt>Estimated credit use</dt>
-                <dd>
-                  {leadGenProposal.estimatedCreditUse?.pdl ? `PDL: up to ${leadGenProposal.estimatedCreditUse.pdl} · ` : ""}
-                  {leadGenProposal.estimatedCreditUse?.apollo ? `Apollo: up to ${leadGenProposal.estimatedCreditUse.apollo} · ` : ""}
-                  {leadGenProposal.estimatedCreditUse?.vertex || ""} {leadGenProposal.estimatedCreditUse?.openai || ""}
-                  <br /><small>{leadGenProposal.estimatedCreditUse?.note}</small>
-                </dd>
-                <dt>Destination</dt><dd>Review queue below — nothing is imported into the CRM automatically.</dd>
-              </dl>
-            </details>
-
-            {leadGenProposal.status !== "proposed" && leadGenProposal.runSummary ? (
-              <div className="leadgen-run-summary">
-                <p className="leadgen-run-explanation">{leadGenProposal.runSummary.explanation || `${leadGenProposal.runSummary.created || 0} new, ${leadGenProposal.runSummary.merged || 0} merged.`}</p>
-                {leadGenProposal.runSummary.providerBreakdown?.length ? (
-                  <details className="leadgen-search-settings">
-                    <summary>Show provider details <small>Per-source counts — requested, returned, rejected, accepted</small></summary>
-                    <div className="leadgen-provider-breakdown-wrap">
-                      <table className="leadgen-provider-breakdown">
-                        <thead>
-                          <tr><th>Provider</th><th>Requested</th><th>Returned</th><th>Rejected: self</th><th>Rejected: freshness</th><th>Matched existing</th><th>Over limit</th><th>Ranked lower</th><th>Accepted</th><th>Status</th></tr>
-                        </thead>
-                        <tbody>
-                          {leadGenProposal.runSummary.providerBreakdown.map((row, index) => (
-                            <tr key={`${row.provider}-${index}`}>
-                              <td>{row.provider}</td>
-                              <td>{row.requested}</td>
-                              <td>{row.returned}</td>
-                              <td>{row.rejectedSelf}</td>
-                              <td>{row.rejectedFreshness}</td>
-                              <td>{row.rejectedDedup}</td>
-                              <td>{row.rejectedForCapacity || 0}</td>
-                              <td title="Found and scored, but a higher-fit candidate filled the requested count instead">{row.rejectedForRanking || 0}</td>
-                              <td>{row.accepted}</td>
-                              <td>{row.error ? <span className="form-error">{row.error}</span> : "—"}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </details>
-                ) : null}
-              </div>
-            ) : null}
-
-            {leadGenProposal.status === "proposed" ? (
-              <div className="leadgen-review-actions">
-                <Button loading={leadGenApproveBusy} onClick={approveLeadGenSearch}>Approve &amp; find people</Button>
-                <Button variant="outline" onClick={discardLeadGenProposal}>Discard</Button>
-                {leadGenApproveBusy && leadGenProposal.requestedCount > 25 ? (
-                  <p className="leadgen-run-disclosure">A search this size (with automatic email enrichment on the best candidates) can take a minute or two — this isn't frozen.</p>
-                ) : null}
-              </div>
-            ) : (
-              <div>
-                {!monitorSuggestion ? (
-                  <div>
-                    <Button size="sm" variant="outline" loading={monitorProposeBusy} onClick={proposeMonitorForLeadGenSearch}>Save this search as a disabled recurring monitor</Button>
-                    <p className="leadgen-run-disclosure">Saving spends nothing and does not run until you separately enable it.</p>
-                  </div>
-                ) : (
-                  <div className="leadgen-monitor-suggestion">
-                    <strong>Saved — disabled recurring monitor</strong>
-                    <p>{monitorSuggestion.name}</p>
-                    <small>
-                      Query: {monitorSuggestion.query} · Providers: {monitorSuggestion.sources.join(", ")} · Schedule: {monitorSuggestion.scheduleDescription} ·
-                      Cap: {monitorSuggestion.capPerRun}/run · Destination: {monitorSuggestion.destination.replace("_", " ")}
-                    </small>
-                    <p className="form-error">Saving spends nothing and does not run until separately enabled. Scheduled execution for this monitor type isn&apos;t built yet — this suggestion stays disabled; enabling it does not run anything.</p>
-                  </div>
-                )}
-              </div>
-            )}
-          </section>
-        ) : null}
-      </DashboardCard>
+      <section className="discovery-workflow-section" aria-labelledby="find-leads-heading"><header><span>Step 1</span><h2 id="find-leads-heading">Find people</h2><p>One search — pick a program, review the plan, run it. Combines Apollo, PDL, and public web discovery.</p></header>
+      <PublicWebDiscoveryPanel onResultsChanged={() => { loadGroundingResults("pending_review"); setGroundingResultsStatus("pending_review"); }} />
 
       <details className="discovery-specialized-tools">
         <summary>Advanced research lab <small>Custom provider searches for research teams</small></summary>
-        <p>These are direct provider controls for research professionals. They are separate from the guided program search above and are hidden so they do not interrupt the normal workflow.</p>
+        <p>A direct, manual provider search for research professionals — separate from the guided search above, and hidden so it does not interrupt the normal workflow.</p>
       <details className="leadgen-advanced-search">
         <summary>Direct public-web search</summary>
         <div className="leadgen-advanced-search__body">
           <p className="people-preview-intro">
             Search the public web directly with your own query and source choice — the same Vertex/OpenAI
-            pipeline Jarvis uses above, without the guided ICP planning step. <strong>Up to 5 new people per
+            pipeline the guided search above uses, without any planning step. <strong>Up to 5 new people per
             search.</strong> PDL enrichment, CRM import, monitors, and outreach still all require your own
             explicit action below, every time.
           </p>
@@ -1863,8 +1539,6 @@ export default function Discovery() {
           </div>
         </div>
       </details>
-
-      <PublicWebDiscoveryPanel onResultsChanged={() => { loadGroundingResults("pending_review"); setGroundingResultsStatus("pending_review"); }} />
       </details>
       </section>
 

@@ -17,7 +17,7 @@ const { JOB_CATEGORIES } = require("./models/PublicWebDiscoveryRun");
 
 const { parseRobotsTxt, evaluateCrawlability, fetchPage, isNeverCrawlHost, looksLikeLoginWall, stripHtmlToText } = webCrawlerService;
 const {
-  computeFreshnessTier, extractIntentSignals, mergeDiscoveryCandidate, proposePublicWebDiscoveryRun, approvePublicWebDiscoveryRun, processNextBatch, runDueDiscoverySchedules,
+  computeFreshnessTier, extractIntentSignals, mergeDiscoveryCandidate, proposePublicWebDiscoveryRun, approvePublicWebDiscoveryRun, processNextBatch, runDueDiscoverySchedules, runPdlPersonSearchPhase,
   proposeStudentSearchPreset, interleaveJobsRoundRobin, roundRobinBySourceGlobally, estimateExpectedCounts, computeBudgetWarning, isLikelySellerOrVendor, isStudentSearchContext, acceptedCountForTarget,
   reconcileUnexplainedRejections, buildRunExplanation, explainZeroCallProviders, computeRunPlanPreview,
 } = publicWebDiscoveryEngineService;
@@ -340,6 +340,68 @@ async function testProposePublicWebDiscoveryRunBuildsJobsFromGeneratedFamilies()
   assert.equal(run.jobs.length, 2);
   assert.ok(run.jobs.every((j) => JOB_CATEGORIES.includes(j.category)));
   assert.ok(run.estimatedCreditUse.estimatedUsd >= 0);
+}
+
+async function testProposePublicWebDiscoveryRunDerivesApolloPdlIcpOnceUpFront() {
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel();
+  const generateSearchFamilies = async () => ({
+    programName: "Multifamily Bootcamp",
+    families: [{ category: "people", queries: [{ query: "prospective multifamily investors", locationHint: "Texas", source: "vertex" }] }],
+  });
+  const JarvisMemoryNote = { findOne: () => ({ select: () => ({ lean: async () => ({ title: "Multifamily Bootcamp", content: "For W-2 professionals wanting passive income." }) }) }) };
+  let runAgentCalls = 0;
+  const runAgent = async () => { runAgentCalls += 1; return { output: { titles: ["Property Manager"], locations: ["Texas"], industries: ["Real Estate"] } }; };
+  const run = await proposePublicWebDiscoveryRun(
+    { workspaceId: WORKSPACE_ID, userId: "u1", programNoteId: "note-1", locations: ["Texas"] },
+    { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, generateSearchFamilies, JarvisMemoryNote, runAgent },
+  );
+  assert.equal(runAgentCalls, 1, "ICP derivation must happen exactly once at propose time");
+  assert.deepEqual(run.apolloPdlIcp.titles, ["Property Manager"]);
+  assert.deepEqual(run.apolloPdlIcp.industries, ["Real Estate"]);
+  console.log("PASS testProposePublicWebDiscoveryRunDerivesApolloPdlIcpOnceUpFront");
+}
+
+async function testProposePublicWebDiscoveryRunLeavesIcpEmptyRatherThanFailingWhenDerivationErrors() {
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel();
+  const generateSearchFamilies = async () => ({ programName: "X", families: [{ category: "people", queries: [{ query: "q", locationHint: "", source: "vertex" }] }] });
+  const run = await proposePublicWebDiscoveryRun(
+    { workspaceId: WORKSPACE_ID, userId: "u1", programNoteId: "note-1", locations: [] },
+    { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel, generateSearchFamilies, JarvisMemoryNote: { findOne: () => ({ select: () => ({ lean: async () => null }) }) } },
+  );
+  assert.equal(run.status, "draft", "a failed ICP derivation must never fail the whole propose call");
+  assert.deepEqual(run.apolloPdlIcp, { titles: [], locations: [], industries: [] });
+  console.log("PASS testProposePublicWebDiscoveryRunLeavesIcpEmptyRatherThanFailingWhenDerivationErrors");
+}
+
+async function testPhasesReuseTheStoredIcpInsteadOfReDerivingIt() {
+  const seededRun = { _id: "run-1", workspaceId: WORKSPACE_ID, status: "queued", jobs: [], maxPdlPersonSearchCredits: 25, spend: { pdlPersonSearchCredits: 0 }, dailyCandidateTarget: 25, runSummary: { perSource: [] }, includePdlPersonSearch: true, apolloPdlIcp: { titles: ["Broker"], locations: ["Texas"], industries: [] } };
+  let runAgentCalls = 0;
+  const runAgent = async () => { runAgentCalls += 1; return { output: { titles: [], locations: [], industries: [] } }; };
+  const pdl = { searchPeople: async () => ({ people: [] }) };
+  await runPdlPersonSearchPhase(
+    { workspaceId: WORKSPACE_ID, userId: "u1", run: seededRun, selfSignals: { names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() }, correlationId: "" },
+    { peopleDataLabsService: pdl, runAgent },
+  );
+  assert.equal(runAgentCalls, 0, "a run with a real, non-empty apolloPdlIcp must never re-derive it via a second AI call");
+  console.log("PASS testPhasesReuseTheStoredIcpInsteadOfReDerivingIt");
+}
+
+async function testApprovePublicWebDiscoveryRunPersistsAnOwnerEditedIcp() {
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([{ _id: "run-1", workspaceId: WORKSPACE_ID, status: "draft", jobs: [{ category: "people", query: "q", source: "vertex", status: "pending", page: 0, maxPages: 1, attempts: 0 }], dailyCandidateTarget: 25, pageLimitPerQuery: 2, queryLimitPerRun: 40, providerCreditCapUsd: 5, includePdlCrossReference: true, retryPolicy: { maxAttemptsPerJob: 3 }, apolloPdlIcp: { titles: ["Old Title"], locations: [], industries: [] } }]);
+  const run = await approvePublicWebDiscoveryRun(
+    { workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-1", apolloPdlIcp: { titles: ["Asset Manager", "Broker"], locations: ["Austin, TX"], industries: ["Real Estate"] } },
+    { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel },
+  );
+  assert.deepEqual(run.apolloPdlIcp.titles, ["Asset Manager", "Broker"]);
+  assert.deepEqual(run.apolloPdlIcp.locations, ["Austin, TX"]);
+  console.log("PASS testApprovePublicWebDiscoveryRunPersistsAnOwnerEditedIcp");
+}
+
+async function testApproveWithNoIcpFieldLeavesTheProposedIcpUnchanged() {
+  const PublicWebDiscoveryRunModel = fakePublicWebDiscoveryRunModel([{ _id: "run-1", workspaceId: WORKSPACE_ID, status: "draft", jobs: [{ category: "people", query: "q", source: "vertex", status: "pending", page: 0, maxPages: 1, attempts: 0 }], dailyCandidateTarget: 25, pageLimitPerQuery: 2, queryLimitPerRun: 40, providerCreditCapUsd: 5, includePdlCrossReference: true, retryPolicy: { maxAttemptsPerJob: 3 }, apolloPdlIcp: { titles: ["Kept As-Is"], locations: [], industries: [] } }]);
+  const run = await approvePublicWebDiscoveryRun({ workspaceId: WORKSPACE_ID, userId: "u1", runId: "run-1" }, { PublicWebDiscoveryRun: PublicWebDiscoveryRunModel });
+  assert.deepEqual(run.apolloPdlIcp.titles, ["Kept As-Is"]);
+  console.log("PASS testApproveWithNoIcpFieldLeavesTheProposedIcpUnchanged");
 }
 
 async function testApprovePublicWebDiscoveryRunAppliesEditsAndQueues() {
@@ -1215,6 +1277,11 @@ async function run() {
   await testMergeDiscoveryCandidateEscalatesToHighWhenLaterEnrichmentVerifiesEmail();
   await testMergeDiscoveryCandidateLabelsFreshnessTierInsteadOfDroppingOldResults();
   await testProposePublicWebDiscoveryRunBuildsJobsFromGeneratedFamilies();
+  await testProposePublicWebDiscoveryRunDerivesApolloPdlIcpOnceUpFront();
+  await testProposePublicWebDiscoveryRunLeavesIcpEmptyRatherThanFailingWhenDerivationErrors();
+  await testPhasesReuseTheStoredIcpInsteadOfReDerivingIt();
+  await testApprovePublicWebDiscoveryRunPersistsAnOwnerEditedIcp();
+  await testApproveWithNoIcpFieldLeavesTheProposedIcpUnchanged();
   await testApprovePublicWebDiscoveryRunAppliesEditsAndQueues();
   await testApprovePublicWebDiscoveryRunRejectsNonDraft();
   await testProcessNextBatchAdvancesCheckpointAndStagesResults();

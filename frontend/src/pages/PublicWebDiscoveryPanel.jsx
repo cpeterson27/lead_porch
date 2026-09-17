@@ -43,6 +43,15 @@ const FREQUENCY_OPTIONS = [
 ];
 const RUN_ACTIVE_STATUSES = new Set(["queued", "running"]);
 const RUN_TERMINAL_STATUSES = new Set(["completed", "stopped_at_cap", "failed", "canceled"]);
+// icpDraft holds plain comma-separated STRINGS while the owner is editing
+// (never re-split/re-joined on every keystroke, so a trailing comma or
+// space while typing a multi-item list is never silently eaten) — only
+// converted to the real array shape at approve time, in approveRun() below.
+const icpArrayToText = (values) => (values || []).join(", ");
+const icpTextToArray = (value) => String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+const icpDraftFromRun = (run) => ({
+  titles: icpArrayToText(run.apolloPdlIcp?.titles), locations: icpArrayToText(run.apolloPdlIcp?.locations), industries: icpArrayToText(run.apolloPdlIcp?.industries),
+});
 // "stopped_at_cap" must never render as "Completed" — the run stopped early
 // because the provider credit cap was reached, not because it finished all
 // its queued work (see publicWebDiscoveryEngineService.js's buildRunExplanation).
@@ -97,7 +106,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
     // or redeployment instead of only ever existing in this component's
     // in-memory state — this fires before any propose/preset click could
     // add a session-local draft, so a plain prepend is safe here.
-    fetchPublicWebDiscoveryRuns().then((res) => setRuns((current) => [...(res.data || []), ...current])).catch(() => {});
+    fetchPublicWebDiscoveryRuns().then((res) => setRuns((current) => [...(res.data || []).map((run) => ({ ...run, icpDraft: icpDraftFromRun(run) })), ...current])).catch(() => {});
   }, []);
 
   // Recomputes the pre-run plan preview from the SAME finalization the
@@ -156,7 +165,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
       const created = [];
       for (const programNoteId of selectedProgramNoteIds) {
         const response = await proposeFn({ programNoteId, locations });
-        created.push(response.data);
+        created.push({ ...response.data, icpDraft: icpDraftFromRun(response.data) });
       }
       setRuns((current) => [...created, ...current]);
     } catch (err) {
@@ -197,6 +206,9 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
       maxApolloPersonSearchCredits: run.maxApolloPersonSearchCredits,
       maxAttemptsPerJob: run.retryPolicy?.maxAttemptsPerJob,
       sources: run.sources,
+      apolloPdlIcp: run.icpDraft ? {
+        titles: icpTextToArray(run.icpDraft.titles), locations: icpTextToArray(run.icpDraft.locations), industries: icpTextToArray(run.icpDraft.industries),
+      } : undefined,
     });
     updateRunInState(response.data);
     return response.data;
@@ -447,6 +459,16 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
                   );
                 })}
               </div>
+            </div>
+
+            <div className="leadgen-field-group leadgen-icp-editor">
+              <span className="leadgen-field-label">Who Apollo &amp; PDL should search for — AI-drafted from the program, review before running</span>
+              <div className="leadgen-review-grid">
+                <label><span>Job titles</span><input type="text" value={run.icpDraft?.titles ?? ""} onChange={(event) => updateRunInState({ ...run, icpDraft: { ...run.icpDraft, titles: event.target.value } })} placeholder="Property Manager, Real Estate Broker" /></label>
+                <label><span>Locations</span><input type="text" value={run.icpDraft?.locations ?? ""} onChange={(event) => updateRunInState({ ...run, icpDraft: { ...run.icpDraft, locations: event.target.value } })} placeholder="Austin, TX" /></label>
+                <label><span>Industries</span><input type="text" value={run.icpDraft?.industries ?? ""} onChange={(event) => updateRunInState({ ...run, icpDraft: { ...run.icpDraft, industries: event.target.value } })} placeholder="Real Estate, Property Management" /></label>
+              </div>
+              <p className="leadgen-run-disclosure">Comma-separated. The same criteria drive both the Apollo and PDL phases below — edit freely, this is what actually runs when you approve.</p>
             </div>
 
             <div className="leadgen-field-group">

@@ -113,6 +113,19 @@ const publicWebDiscoveryRunSchema = new mongoose.Schema({
   includeApolloPersonSearch: { type: Boolean, default: true },
   apolloPersonSearchDone: { type: Boolean, default: false },
   maxApolloPersonSearchCredits: { type: Number, default: 25, min: 0, max: 500 },
+  // The structured people-database search criteria (titles/locations/
+  // industries) that drive BOTH the Apollo and PDL phases — computed once
+  // at propose time (see proposePublicWebDiscoveryRun/proposeStudentSearchPreset)
+  // instead of each phase separately re-deriving it via its own AI call
+  // (which used to mean up to 3 different AI-derived ICPs for one run, and
+  // 3x the derivation cost). Shown to the owner as an editable review step
+  // before approval — the one real capability the older, now-retired
+  // "Build my search plan" flow had that this engine didn't expose.
+  apolloPdlIcp: {
+    titles: { type: [String], default: [] },
+    locations: { type: [String], default: [] },
+    industries: { type: [String], default: [] },
+  },
   // The owner's provider selection at approval time, persisted so a
   // completed/capped run can honestly report WHY an enabled provider ended
   // up with zero calls (query limit, edits, cap, or every query failing)

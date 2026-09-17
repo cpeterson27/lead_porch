@@ -550,6 +550,16 @@
   font-weight: 800;
 }
 
+.leadgen-icp-editor {
+  background: #eef6f1;
+  border: 1.5px solid #9ccbab;
+  border-radius: 12px;
+  padding: 0.9rem 1rem;
+}
+.leadgen-icp-editor .leadgen-field-label {
+  color: #1d5c37;
+}
+
 .leadgen-pill-row {
   display: flex;
   flex-wrap: wrap;

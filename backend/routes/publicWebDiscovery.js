@@ -106,7 +106,7 @@ router.post("/runs/:id/approve", async (req, res) => {
       includePdlCrossReference: req.body?.includePdlCrossReference, includePdlPersonSearch: req.body?.includePdlPersonSearch,
       maxPdlPersonSearchCredits: req.body?.maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: req.body?.maxPdlCrossReferenceCredits,
       includeApolloPersonSearch: req.body?.includeApolloPersonSearch, maxApolloPersonSearchCredits: req.body?.maxApolloPersonSearchCredits,
-      sources: req.body?.sources, maxAttemptsPerJob: req.body?.maxAttemptsPerJob,
+      sources: req.body?.sources, maxAttemptsPerJob: req.body?.maxAttemptsPerJob, apolloPdlIcp: req.body?.apolloPdlIcp,
     });
     return res.json({ success: true, data });
   } catch (error) {
