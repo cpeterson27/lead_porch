@@ -34,6 +34,7 @@
  * proposeMonitorSuggestion() below (always creates a disabled suggestion).
  */
 const DiscoverySearch = require("../models/DiscoverySearch");
+const PublicWebDiscoveryRun = require("../models/PublicWebDiscoveryRun");
 const LeadMonitorSuggestion = require("../models/LeadMonitorSuggestion");
 const GroundingResearchResult = require("../models/GroundingResearchResult");
 const JarvisMemoryNote = require("../models/JarvisMemoryNote");
@@ -1199,6 +1200,7 @@ function computeQualificationOutcome({ identityConfidence, programFitScore, reco
 async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, correlationId = "" }, dependencies = {}) {
   const Model = dependencies.GroundingResearchResult || GroundingResearchResult;
   const SearchModel = dependencies.DiscoverySearch || DiscoverySearch;
+  const PublicRunModel = dependencies.PublicWebDiscoveryRun || PublicWebDiscoveryRun;
   const runAgent = dependencies.runAgent || agentExecutionService.runAgent;
   const listPrograms = dependencies.listApprovedPrograms || listApprovedPrograms;
   const ids = (Array.isArray(resultIds) ? resultIds : []).slice(0, 20);
@@ -1214,6 +1216,11 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
     ? await SearchModel.find({ _id: { $in: searchIds }, workspaceId }).select("programNoteId programName").lean()
     : [];
   const searchById = new Map(searches.map((search) => [String(search._id), search]));
+  const publicRunIds = [...new Set(rows.map((row) => row.discoveryRunId).filter(Boolean).map(String))];
+  const publicRuns = publicRunIds.length
+    ? await PublicRunModel.find({ _id: { $in: publicRunIds }, workspaceId }).select("programNoteId programName").lean()
+    : [];
+  const publicRunById = new Map(publicRuns.map((run) => [String(run._id), run]));
 
   const candidates = rows.map((row) => {
     const deterministicFlags = detectExclusionFlags(row);
@@ -1228,14 +1235,16 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
       verifiedIdentifier: row.pdlEnrichment?.matched || row.apolloEnrichment?.matched || row.emailVerificationStatus === "verified",
     });
     const sourceSearch = row.discoverySearchId ? searchById.get(String(row.discoverySearchId)) : null;
-    const targetProgramId = sourceSearch?.programNoteId && programById.has(String(sourceSearch.programNoteId))
-      ? String(sourceSearch.programNoteId)
+    const sourcePublicRun = row.discoveryRunId ? publicRunById.get(String(row.discoveryRunId)) : null;
+    const sourceProgramId = sourceSearch?.programNoteId || sourcePublicRun?.programNoteId;
+    const targetProgramId = sourceProgramId && programById.has(String(sourceProgramId))
+      ? String(sourceProgramId)
       : "";
     return {
       resultId: String(row._id), name: row.name, organizationName: row.organizationName, organizationDomain: row.organizationDomain,
       summary: row.summary, evidenceUrls: row.evidenceUrls, conflicts: row.conflicts || [],
       discoveryMode: row.discoveryMode, identityConfidence, preScreenedExclusionFlags: deterministicFlags,
-      targetProgramId, targetProgramName: targetProgramId ? programById.get(targetProgramId)?.title || sourceSearch?.programName || "" : "",
+      targetProgramId, targetProgramName: targetProgramId ? programById.get(targetProgramId)?.title || sourceSearch?.programName || sourcePublicRun?.programName || "" : "",
     };
   });
 

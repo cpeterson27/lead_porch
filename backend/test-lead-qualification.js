@@ -166,6 +166,24 @@ async function testStructuredSearchKeepsItsRealTargetProgramAndQualifiesAfterIde
   assert.equal(rows[0].qualificationLabel, "qualified");
 }
 
+async function testPublicDiscoveryRunKeepsItsSelectedProgramDuringQualification() {
+  const rows = [{ _id: "gr-public-run", name: "Morgan Buyer", organizationName: "Morgan Investments", organizationDomain: "", summary: "Real Estate Investor", evidenceUrls: [], conflicts: [], providers: ["apollo_person_search"], confidence: "single_source", discoveryMode: "icp_match", discoveryRunId: "run-1", linkedinUrl: "https://linkedin.example/morgan", pdlEnrichment: {}, apolloEnrichment: {} }];
+  const GroundingResearchResult = fakeGroundingResultModel(rows);
+  const PublicWebDiscoveryRun = { find: () => leanQuery([{ _id: "run-1", programNoteId: "note-real-1", programName: "6-Week Coaching - Acquisitions" }]) };
+  const listApprovedPrograms = async () => [{ noteId: "note-real-1", title: "6-Week Coaching - Acquisitions" }];
+  const runAgent = async ({ operationalContext }) => {
+    assert.ok(operationalContext.includes('"targetProgramId": "note-real-1"'), "the high-volume run's selected program must be supplied to Jarvis instead of an empty target");
+    return { output: { qualifications: [{ resultId: "gr-public-run", identityNotes: "Apollo profile is consistent", programFitScore: 80, programFitReasons: ["Matches the acquisitions audience"], recommendedProgramId: "none", buyerIntentLevel: "none", buyerIntentEvidence: "No public intent post", exclusionFlags: [], qualificationLabel: "needs_review", recommendedNextAction: "Review for outreach", outreachRecommended: false, outreachDraft: "" }] } };
+  };
+
+  const result = await qualifyAndRecommend({ workspaceId: "workspace-1", userId: "u1", resultIds: ["gr-public-run"] }, { GroundingResearchResult, PublicWebDiscoveryRun, listApprovedPrograms, runAgent });
+
+  assert.equal(result.summary.qualified, 1, "a strong structured Apollo match must qualify against the program selected by its public discovery run");
+  assert.equal(rows[0].recommendedProgram.programNoteId, "note-real-1");
+  assert.equal(rows[0].recommendedProgram.name, "6-Week Coaching - Acquisitions");
+  assert.equal(rows[0].qualificationLabel, "qualified");
+}
+
 async function testQualifyAndRecommendReportsAnAccurateCompletionSummary() {
   const rows = [
     { _id: "gr-a", name: "A", providers: ["vertex_grounding", "openai_web_search"], confidence: "corroborated", conflicts: [], discoveryMode: "public_web_evidence" },
@@ -461,6 +479,7 @@ async function run() {
   await testQualifyAndRecommendPersistsOnlyARealApprovedProgramId();
   await testQualifyAndRecommendDiscardsAFabricatedProgramIdIfOneEverSlipsThrough();
   await testStructuredSearchKeepsItsRealTargetProgramAndQualifiesAfterIdentityMatch();
+  await testPublicDiscoveryRunKeepsItsSelectedProgramDuringQualification();
   await testQualifyAndRecommendReportsAnAccurateCompletionSummary();
   await testApproveAndRunSearchGathersARankedPoolAndKeepsOnlyTheBestByFit();
   await testApproveAndRunSearchRequestsAndMergesRealApolloPagesBeyondPage1();
