@@ -659,7 +659,17 @@ async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlati
       linkedinUrl: candidate.linkedinUrl, summary: candidate.summary,
       evidenceUrls: [], evidenceDate: null, confidence: "single_source",
       discoveryMode: "icp_match", providers: [candidate.provider], discoverySearchId: searchId,
-      identityConfidence: candidate.emailState === "verified" ? "medium" : "low",
+      // Same shared rules every discovery path uses (see
+      // identityConfidenceService.js): a provider-VERIFIED email earns
+      // "high" even from a single provider, same as it would anywhere else
+      // in this app — a verified deliverable email is itself strong
+      // identity evidence, not merely "medium". This is actually a
+      // corroboration-accuracy fix versus the old inline logic here, which
+      // capped a verified single-provider email at "medium".
+      identityConfidence: vertexGroundingDiscoveryService.computeIdentityConfidence({
+        providers: [candidate.provider], confidence: "single_source", linkedinUrl: candidate.linkedinUrl, organizationName: candidate.organizationName,
+        verifiedIdentifier: candidate.emailState === "verified",
+      }),
       // Deterministic ICP keyword/title/location fit computed at gather
       // time (see computeIcpFitScore) — cheap enough to run on every
       // candidate, unlike the opt-in OpenAI qualify step's fitScore, which
@@ -703,10 +713,12 @@ async function mergeIcpMatchCandidate({ workspaceId, userId, searchId, correlati
   // Confidence rises only on real agreement between independent providers —
   // never just because a second provider ALSO happened to mention this
   // person while disagreeing on a field.
-  if (providers.length >= 2 && !conflicts.length) {
-    existing.confidence = "corroborated";
-    existing.identityConfidence = bothVerified ? "high" : "medium";
-  }
+  if (providers.length >= 2 && !conflicts.length) existing.confidence = "corroborated";
+  existing.identityConfidence = vertexGroundingDiscoveryService.computeIdentityConfidence({
+    providers, confidence: existing.confidence, conflicts: existing.conflicts,
+    linkedinUrl: existing.linkedinUrl, organizationName: existing.organizationName,
+    verifiedIdentifier: bothVerified,
+  });
   await existing.save();
   return { created: false, row: existing };
 }

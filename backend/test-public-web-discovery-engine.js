@@ -269,6 +269,41 @@ async function testMergeDiscoveryCandidateMergesIntoExistingPendingReviewRow() {
   assert.equal(GroundingResearchResult.rows.length, 1);
   assert.deepEqual(new Set(result.row.evidenceUrls), new Set(["https://old.example.com", "https://new.example.com"]));
   assert.equal(result.row.confidence, "corroborated", "two independent providers on the same identity must raise confidence");
+  assert.equal(result.row.identityConfidence, "high", "two independent providers agreeing on the same identity must be reflected in identityConfidence immediately, at merge time, without waiting for a paid AI qualify step");
+}
+
+async function testMergeDiscoveryCandidateComputesIdentityConfidenceOnCreateNotJustSchemaDefault() {
+  const run = { _id: "run-x", jobs: [] };
+  const GroundingResearchResult = fakeGroundingResultModel();
+  const Contact = fakeLookupModel([]);
+  const Organization = fakeLookupModel([]);
+  // Single provider, complete identifiers (LinkedIn + org) — must land at
+  // "medium", never silently left at the schema's "low" default the way it
+  // would before this engine ever called computeIdentityConfidence().
+  const result = await mergeDiscoveryCandidate(
+    { workspaceId: WORKSPACE_ID, userId: "u1", run, candidate: { type: "person", name: "Single Source Lead", organizationName: "Acme LLC", organizationDomain: "acme.com", linkedinUrl: "https://linkedin.com/in/single-source", providers: ["vertex_grounding"] }, selfSignals: { names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() } },
+    { GroundingResearchResult, Contact, Organization },
+  );
+  assert.equal(result.outcome, "created");
+  assert.equal(result.row.identityConfidence, "medium");
+}
+
+async function testMergeDiscoveryCandidateEscalatesToHighWhenLaterEnrichmentVerifiesEmail() {
+  const run = { _id: "run-x", jobs: [] };
+  // Already single_source/low from a prior public-web find; simulates a
+  // later PDL/Apollo enrichment cross-check (pdlEnrichment.matched) having
+  // since verified this exact identity — must escalate to "high" the next
+  // time this row is merged, exactly as the standalone Vertex path already
+  // does, since a verified identifier is itself strong identity evidence.
+  const GroundingResearchResult = fakeGroundingResultModel([{ _id: "gr-existing", workspaceId: WORKSPACE_ID, type: "person", name: "Enriched Lead", organizationDomain: "acme.com", status: "pending_review", evidenceUrls: [], providers: ["vertex_grounding"], confidence: "single_source", identityConfidence: "low", pdlEnrichment: { matched: true } }]);
+  const Contact = fakeLookupModel([]);
+  const Organization = fakeLookupModel([]);
+  const result = await mergeDiscoveryCandidate(
+    { workspaceId: WORKSPACE_ID, userId: "u1", run, candidate: { type: "person", name: "Enriched Lead", organizationDomain: "acme.com", evidenceUrls: ["https://example.com/again"], providers: ["vertex_grounding"] }, selfSignals: { names: new Set(), emails: new Set(), domains: new Set(), businessNames: new Set() } },
+    { GroundingResearchResult, Contact, Organization },
+  );
+  assert.equal(result.outcome, "merged");
+  assert.equal(result.row.identityConfidence, "high");
 }
 
 async function testMergeDiscoveryCandidateLabelsFreshnessTierInsteadOfDroppingOldResults() {
@@ -1176,6 +1211,8 @@ async function run() {
   await testMergeDiscoveryCandidateRejectsExistingCrmContact();
   await testMergeDiscoveryCandidateNeverResurfacesADismissedRow();
   await testMergeDiscoveryCandidateMergesIntoExistingPendingReviewRow();
+  await testMergeDiscoveryCandidateComputesIdentityConfidenceOnCreateNotJustSchemaDefault();
+  await testMergeDiscoveryCandidateEscalatesToHighWhenLaterEnrichmentVerifiesEmail();
   await testMergeDiscoveryCandidateLabelsFreshnessTierInsteadOfDroppingOldResults();
   await testProposePublicWebDiscoveryRunBuildsJobsFromGeneratedFamilies();
   await testApprovePublicWebDiscoveryRunAppliesEditsAndQueues();

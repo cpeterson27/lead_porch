@@ -39,6 +39,7 @@ const workspaceSelfExclusionService = require("./workspaceSelfExclusionService")
 const webCrawlerService = require("./webCrawlerService");
 const searchFamilyGenerationService = require("./searchFamilyGenerationService");
 const leadGenerationCoordinatorService = require("./leadGenerationCoordinatorService");
+const { computeIdentityConfidence } = require("./identityConfidenceService");
 const { JOB_CATEGORIES, JOB_SOURCES } = require("../models/PublicWebDiscoveryRun");
 // The two grounded-search providers a search-family QUERY can run
 // through — PDL is a valid job source but is never assigned a natural-
@@ -530,17 +531,30 @@ async function mergeDiscoveryCandidate({ workspaceId, userId, run, candidate, se
     }
     if (candidate.intentSignals?.length) existing.intentSignals = [...new Set([...(existing.intentSignals || []), ...candidate.intentSignals])].slice(0, 10);
     if (mergedProviders.length >= 2) existing.confidence = "corroborated";
+    // Deterministic, zero-AI-cost, recomputed on every merge — a lead this
+    // engine finds through 2+ independent providers (Vertex+OpenAI web
+    // search, or a later PDL/Apollo enrichment cross-check) must show that
+    // corroboration in the review queue's Identity confidence badge/filter
+    // immediately, not only after someone spends AI credit qualifying it.
+    existing.identityConfidence = computeIdentityConfidence({
+      providers: mergedProviders, confidence: existing.confidence, conflicts: existing.conflicts,
+      linkedinUrl: existing.linkedinUrl, organizationName: existing.organizationName,
+      verifiedIdentifier: existing.pdlEnrichment?.matched || existing.apolloEnrichment?.matched || existing.emailVerificationStatus === "verified",
+    });
     existing.discoveryRunId = existing.discoveryRunId || run._id;
     await existing.save();
     return { outcome: "merged", row: existing };
   }
 
+  const initialProviders = candidate.providers || (candidate.provider ? [candidate.provider] : []);
+  const initialConfidence = candidate.confidence || "single_source";
   const created = await Model.create({
     workspaceId, query: candidate.query || `discovery_run:${run._id}:${candidate.discoveryCategory || ""}`, type: candidate.type, name: candidate.name,
     organizationName: candidate.organizationName || "", organizationDomain: candidate.organizationDomain || "",
     email: candidate.email || "", emailState: candidate.emailState || "",
     summary: candidate.summary || "", evidenceUrls: candidate.evidenceUrls || [], evidenceDate: candidate.evidenceDate || null,
-    confidence: candidate.confidence || "single_source", providers: candidate.providers || (candidate.provider ? [candidate.provider] : []),
+    confidence: initialConfidence, providers: initialProviders,
+    identityConfidence: computeIdentityConfidence({ providers: initialProviders, confidence: initialConfidence, linkedinUrl: candidate.linkedinUrl, organizationName: candidate.organizationName }),
     discoveryMode: "public_web_high_volume", discoveryCategory: candidate.discoveryCategory || "",
     freshnessTier, intentSignals: (candidate.intentSignals || []).slice(0, 10),
     linkedinUrl: candidate.linkedinUrl || "", discoveryRunId: run._id,

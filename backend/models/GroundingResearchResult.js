@@ -195,7 +195,10 @@ const groundingResearchResultSchema = new mongoose.Schema({
   // human decision. Computed deterministically from real signals
   // (provider count, evidence corroboration, verified identifiers,
   // conflicts) — see computeIdentityConfidence() in
-  // vertexGroundingDiscoveryService.js — never trusted from an LLM guess.
+  // services/identityConfidenceService.js, the one shared implementation
+  // every discovery path (Vertex/OpenAI, Apollo/PDL ICP match, and the
+  // high-volume public-web engine) calls at merge time — never trusted from
+  // an LLM guess.
   identityConfidence: { type: String, enum: ["low", "medium", "high", "conflict"], default: "low" },
   // Field-level disagreements between providers on the same merged
   // identity (e.g. differing company/title) — a non-empty list keeps the

@@ -108,35 +108,14 @@ const RANK_RESPONSE_SCHEMA = {
   additionalProperties: false,
 };
 
-/**
- * Deterministic identity-confidence rules — never trusted from an LLM
- * guess, computed the same way for every discovery mode (public-web
- * evidence here; PDL/Apollo ICP matches in
- * leadGenerationCoordinatorService.js's mergeIcpMatchCandidate() use the
- * same categories via their own verified-identifier signals):
- *   - "conflict": providers disagree on a material identity field.
- *   - "high": strong identity agreement from multiple INDEPENDENT
- *     providers, or a verified contact/profile identifier that
- *     consistently matches name and company.
- *   - "medium": one provider with strong matching public evidence
- *     (independently-corroborated citations) or sufficiently complete
- *     matching identifiers (e.g. a LinkedIn profile plus organization).
- *   - "low": one uncorroborated structured record, or incomplete
- *     identifiers.
- * This is why a row found by both Vertex and OpenAI, or backed by 2+
- * independent citation domains, must never be left at the schema's "low"
- * default — a row that never runs through here (or whose providers/
- * confidence/conflicts never change) simply never gets upgraded, which is
- * the exact bug this function exists to fix.
- */
-function computeIdentityConfidence({ providers = [], confidence, conflicts = [], linkedinUrl = "", organizationName = "", verifiedIdentifier = false }) {
-  if ((conflicts || []).length) return "conflict";
-  const uniqueProviderCount = new Set(providers).size;
-  const hasCompleteIdentifiers = Boolean(linkedinUrl) && Boolean(organizationName);
-  if (uniqueProviderCount >= 2 || verifiedIdentifier) return "high";
-  if (confidence === "corroborated" || hasCompleteIdentifiers) return "medium";
-  return "low";
-}
+// Moved to services/identityConfidenceService.js so
+// publicWebDiscoveryEngineService.js's mergeDiscoveryCandidate() can share
+// this exact scoring logic too, without requiring this whole file (its own
+// header explicitly documents never calling into this file's orchestration
+// logic) — see that module for the full rules and every path that uses it.
+// Re-exported below under the same name so every existing caller
+// (leadGenerationCoordinatorService.js included) is unaffected.
+const { computeIdentityConfidence } = require("./identityConfidenceService");
 
 function fingerprintKey({ type, name, organizationDomain }) {
   return `${type}:${String(name || "").trim().toLowerCase()}:${String(organizationDomain || "").trim().toLowerCase()}`;
