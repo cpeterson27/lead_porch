@@ -23,6 +23,7 @@
     "test:campaign-template-routing-ui": "node test-campaign-template-routing-ui.js",
     "test:campaign-card-metrics-ui": "node test-campaign-card-metrics-ui.js",
     "test:campaign-email-studio-ui": "node test-campaign-email-studio-ui.js",
+    "test:api-csrf-recovery": "node test-api-csrf-recovery.js",
     "test:coaching-history-ui": "node test-coaching-history-ui.js",
     "test:referrals-commissions-ui": "node test-referrals-commissions-ui.js",
     "test:google-calendar-ui": "node test-google-calendar-ui.js",

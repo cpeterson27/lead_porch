@@ -61,6 +61,7 @@
     "test:acquisition-reliability": "node test-acquisition-reliability.js",
     "test:biggerpockets-policy": "node test-biggerpockets-engagement-policy.js",
     "test:campaign-email-branding": "node test-campaign-email-branding.js",
+    "test:program-email-cta": "node test-program-email-cta.js",
     "test:meetup": "node test-meetup-integration.js",
     "test:square-payments": "node test-square-payments.js",
     "test:payment-plans": "node test-payment-plans.js",

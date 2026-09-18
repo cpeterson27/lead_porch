@@ -127,10 +127,15 @@ function generateOutreachDraft(contact, campaign) {
     "manual";
 
 
+  const websiteUrl = String(campaign.brand?.websiteUrl || "").trim();
+  const normalizedWebsiteUrl = websiteUrl && !/^https?:\/\//i.test(websiteUrl) ? `https://${websiteUrl}` : websiteUrl;
+  const programApplicationUrl = campaign.campaignKind === "program" && normalizedWebsiteUrl
+    ? `${normalizedWebsiteUrl.replace(/\/$/, "")}/apply`
+    : "";
   const eventLink =
     campaign.registrationLinks?.eventbrite?.url ||
     campaign.content?.callToActionUrl ||
-    "";
+    programApplicationUrl;
 
   const meetupLink =
     campaign.registrationLinks?.meetup?.url || "";

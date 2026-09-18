@@ -201,6 +201,34 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Cookies are shared across tabs, while sessionStorage (including the CSRF
+// token) is tab-local. A newly opened or restored tab can therefore have a
+// perfectly valid login cookie but a missing/stale CSRF token. Recover once
+// from that exact failure by asking the authenticated session endpoint for
+// the current token, then replay the original mutation. Never retry other
+// 403s (role/capability failures), and never loop a failed recovery request.
+let csrfRecoveryPromise = null;
+api.interceptors.response.use(undefined, async (error) => {
+  const original = error.config || {};
+  if (error.response?.data?.code !== "CSRF_INVALID" || original.__csrfRetried || original.__skipCsrfRecovery) {
+    return Promise.reject(error);
+  }
+  original.__csrfRetried = true;
+  if (!csrfRecoveryPromise) {
+    csrfRecoveryPromise = api.get("/auth/session", { __skipCsrfRecovery: true })
+      .then(({ data }) => {
+        if (!data?.csrfToken) throw error;
+        sessionStorage.setItem("ellie-csrf-token", data.csrfToken);
+        return data.csrfToken;
+      })
+      .finally(() => { csrfRecoveryPromise = null; });
+  }
+  const csrfToken = await csrfRecoveryPromise;
+  original.headers = original.headers || {};
+  original.headers["X-CSRF-Token"] = csrfToken;
+  return api.request(original);
+});
+
 export const fetchWorkspaceConfig = () =>
   api.get("/workspace").then((res) => res.data);
 
