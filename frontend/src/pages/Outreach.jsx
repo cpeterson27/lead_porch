@@ -88,6 +88,7 @@ export default function Outreach() {
   const [deletePendingOpen, setDeletePendingOpen] = useState(false);
   const [consentConfirmOpen, setConsentConfirmOpen] = useState(false);
   const [allowUnverified, setAllowUnverified] = useState(false);
+  const [selectedOutreachIds, setSelectedOutreachIds] = useState([]);
   const [bulkCorrecting, setBulkCorrecting] = useState(false);
   const correctionFileRef = useRef(null);
   const [loading, setLoading] = useState(true);
@@ -186,6 +187,16 @@ export default function Outreach() {
   const pageSize = 15;
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const visibleItems = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const selectableItems = useMemo(
+    () => filtered.filter((item) => ["pending", "approved"].includes(item.status)),
+    [filtered],
+  );
+  const selectedOutreach = useMemo(
+    () => items.filter((item) => selectedOutreachIds.includes(item._id)),
+    [items, selectedOutreachIds],
+  );
+  const selectedPendingCount = selectedOutreach.filter((item) => item.status === "pending").length;
+  const selectedApprovedCount = selectedOutreach.filter((item) => item.status === "approved").length;
   useEffect(() => {
     const resetPage = window.setTimeout(() => setPage(1), 0);
     return () => window.clearTimeout(resetPage);
@@ -257,6 +268,21 @@ export default function Outreach() {
       setError(
         err.response?.data?.error || "Unable to approve pending drafts.",
       );
+    } finally {
+      setSaving(false);
+    }
+  };
+  const approveSelected = async () => {
+    const ids = selectedOutreach.filter((item) => item.status === "pending").map((item) => item._id);
+    if (!selected || !ids.length) return setError("Select one or more pending drafts to approve.");
+    try {
+      setSaving(true);
+      setError("");
+      const result = await approveAllOutreach(selected._id, ids);
+      await loadItems(selected);
+      setNotice(result.message || `${ids.length} selected drafts approved. They remain selected and are ready to send.`);
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to approve the selected drafts.");
     } finally {
       setSaving(false);
     }
@@ -351,14 +377,16 @@ export default function Outreach() {
     }
   };
   const send = async () => {
-    const ids = items.filter((x) => x.status === "approved").map((x) => x._id);
+    const ids = selectedOutreach.filter((item) => item.status === "approved").map((item) => item._id);
     if (!ids.length)
-      return setError("Approve one or more drafts before sending.");
+      return setError("Select approved drafts before sending. Use Select next 25 or Select next 50 below.");
     try {
       setSaving(true);
       setError("");
       const result = await sendEmails(ids, { allowUnverified });
+      setSelectedOutreachIds((current) => current.filter((id) => !ids.includes(id)));
       await loadItems(selected);
+      if (!result.failedCount) setNotice(`${result.sentCount} selected email${result.sentCount === 1 ? "" : "s"} sent. No other approved drafts were touched.`);
       if (result.failedCount)
         setError(
           result.sentCount +
@@ -484,7 +512,7 @@ export default function Outreach() {
           </Button>
           <Button loading={saving} onClick={send}>
             <FiMail />
-            Send approved · {counts.approved || 0}
+            Send selected · {selectedApprovedCount}
           </Button>
         </div>
       </header>
@@ -512,6 +540,7 @@ export default function Outreach() {
               const next =
                 campaigns.find((c) => c._id === e.target.value) || null;
               setSelected(next);
+              setSelectedOutreachIds([]);
               await loadItems(next);
             }}
           >
@@ -564,6 +593,32 @@ export default function Outreach() {
             <span><FiSearch aria-hidden="true" /><input className="select-input" aria-label={`Search ${labels[filter] || "outreach"}`} placeholder={filter === "sent" ? "Search sent mail" : `Search ${String(labels[filter] || "outreach").toLowerCase()}`} value={search} onChange={(e) => setSearch(e.target.value)} /></span>
           </label>
         </div>
+        {selectableItems.length ? (
+          <div className="outreach-batch-tools" aria-label="Batch selection controls">
+            <div>
+              <strong>{selectedOutreach.length} selected</strong>
+              <span>{selectedPendingCount} pending · {selectedApprovedCount} approved</span>
+            </div>
+            <Button variant="outline" size="sm" onClick={() => setSelectedOutreachIds(selectableItems.slice(0, 25).map((item) => item._id))}>
+              Select next {Math.min(25, selectableItems.length)}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setSelectedOutreachIds(selectableItems.slice(0, 50).map((item) => item._id))}>
+              Select next {Math.min(50, selectableItems.length)}
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => setSelectedOutreachIds(visibleItems.filter((item) => ["pending", "approved"].includes(item.status)).map((item) => item._id))}>
+              Select this page
+            </Button>
+            <Button variant="outline" size="sm" disabled={!selectedOutreach.length} onClick={() => setSelectedOutreachIds([])}>
+              Clear
+            </Button>
+            <Button size="sm" loading={saving} disabled={!selectedPendingCount} onClick={approveSelected}>
+              Approve selected · {selectedPendingCount}
+            </Button>
+            <Button size="sm" loading={saving} disabled={!selectedApprovedCount} onClick={send}>
+              <FiMail /> Send selected · {selectedApprovedCount}
+            </Button>
+          </div>
+        ) : null}
         {viewGuidance[filter] ? <aside className={`outreach-guidance outreach-guidance--${filter}`}><strong>{viewGuidance[filter].title}</strong><span>{viewGuidance[filter].body}</span></aside> : null}
         {loading ? (
           <p>Loading outreach…</p>
@@ -574,7 +629,18 @@ export default function Outreach() {
             </div>
             <div className="outreach-list">
             {visibleItems.map((item) => (
-              <article key={item._id} className="outreach-item">
+              <article key={item._id} className={`outreach-item ${["pending", "approved"].includes(item.status) && selectedOutreachIds.includes(item._id) ? "is-selected" : ""}`}>
+                {["pending", "approved"].includes(item.status) ? (
+                  <label className="outreach-item__select">
+                    <input
+                      type="checkbox"
+                      checked={selectedOutreachIds.includes(item._id)}
+                      onChange={() => setSelectedOutreachIds((current) => current.includes(item._id) ? current.filter((id) => id !== item._id) : [...current, item._id])}
+                      aria-label={`Select ${item.contactName || item.contactEmail || "recipient"}`}
+                    />
+                    <span>Select recipient</span>
+                  </label>
+                ) : null}
                 <div className="outreach-item__main">
                   <div className="outreach-item__recipient">
                     <strong>{item.contactName || item.contactEmail || "Contact"}</strong>

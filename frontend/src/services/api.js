@@ -1595,8 +1595,11 @@ export const replaceBouncedOutreachEmail = (
     .post(`/outreach/${id}/replace-email`, { email, confirmDirectSource })
     .then((res) => res.data);
 
-export const approveAllOutreach = (campaignId) =>
-  api.patch("/outreach/bulk/approve", { campaignId }).then((res) => res.data);
+export const approveAllOutreach = (campaignId, outreachIds) =>
+  api.patch("/outreach/bulk/approve", {
+    campaignId,
+    ...(Array.isArray(outreachIds) ? { outreachIds } : {}),
+  }).then((res) => res.data);
 
 export const deletePendingOutreach = (campaignId) =>
   api

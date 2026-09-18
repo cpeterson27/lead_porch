@@ -333,10 +333,18 @@ router.post("/generate", async (req,res)=>{
 
 router.patch("/bulk/approve", async (req, res) => {
   try {
-    const { campaignId } = req.body || {};
+    const { campaignId, outreachIds } = req.body || {};
     if (!campaignId) return res.status(400).json({ error: "campaignId required" });
+    if (outreachIds !== undefined && !Array.isArray(outreachIds)) {
+      return res.status(400).json({ error: "outreachIds must be an array" });
+    }
+    const filter = { campaignId, status: "pending" };
+    if (Array.isArray(outreachIds)) {
+      if (!outreachIds.length) return res.status(400).json({ error: "Select at least one draft" });
+      filter._id = { $in: outreachIds };
+    }
     const result = await Outreach.updateMany(
-      { campaignId, status: "pending" },
+      filter,
       { $set: { status: "approved", errorMessage: "" } },
     );
     return res.json({

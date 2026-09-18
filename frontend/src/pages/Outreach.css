@@ -185,6 +185,19 @@
 .outreach-list-tools .outreach-search { display: block; }
 .outreach-list-tools .outreach-search > span { width: 100%; }
 .outreach-list-tools .outreach-search input { min-width: 0; }
+.outreach-batch-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0 0 0.9rem;
+  padding: 0.75rem;
+  border: 1px solid #cbd9d5;
+  border-radius: 10px;
+  background: #f3f7f5;
+}
+.outreach-batch-tools > div { display: grid; gap: 0.08rem; margin-right: auto; }
+.outreach-batch-tools > div span { color: var(--text-muted); font-size: 0.76rem; }
 .outreach-guidance {
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr);
@@ -499,6 +512,23 @@
   background: #fff;
   box-shadow: 0 8px 24px rgba(24, 33, 30, 0.07);
 }
+.outreach-mailbox .outreach-item.is-selected {
+  border-color: #347565;
+  background: #f0f8f5;
+  box-shadow: 0 0 0 2px rgba(52, 117, 101, 0.12);
+}
+.outreach-item__select {
+  grid-column: 1 / -1;
+  display: inline-flex;
+  align-items: center;
+  width: max-content;
+  gap: 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.outreach-item__select input { width: 1rem; height: 1rem; accent-color: #347565; }
 .outreach-mailbox .outreach-item__main {
   grid-column: 1 / -1;
   display: grid;
