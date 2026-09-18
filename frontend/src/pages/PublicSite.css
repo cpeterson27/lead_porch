@@ -1941,6 +1941,20 @@ button.public-text-link {
 .public-inner > .public-button {
   margin-top: 32px;
 }
+.public-discovery-call-cta {
+  display: flex;
+  justify-content: center;
+  padding: 0 24px 48px;
+}
+.discovery-call-page__video {
+  max-width: 640px;
+  margin: 0 0 32px;
+}
+.discovery-call-page__pending {
+  color: var(--public-muted);
+  font-size: 16px;
+  margin-top: 24px;
+}
 .public-inner > p {
   color: var(--public-muted);
   margin-top: 14px;

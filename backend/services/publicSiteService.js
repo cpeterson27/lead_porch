@@ -117,6 +117,10 @@ function defaults(workspace) {
             "Hear how Ellie Coaching approaches education, accountability, and the work of becoming an operator.",
           primaryCtaLabel: "Apply to join",
           primaryCtaUrl: "/apply",
+          discoveryCallHeading: "Book a Discovery Call",
+          discoveryCallCopy:
+            "Not sure where to start? Book a free discovery call and we'll help you find the right next step.",
+          discoveryCallButtonLabel: "Book a Discovery Call",
           finalCtaEyebrow: "Your next move",
           finalCtaTitle:
             "Choose the program that fits your goals, then tell us where you are today.",
@@ -359,6 +363,17 @@ function sanitizedConfig(workspace, config) {
       introVideoCopy: String(
         p.introVideoCopy || base.publicSite.introVideoCopy || "",
       ).slice(0, 1200),
+      discoveryCallEnabled: Boolean(p.discoveryCallEnabled),
+      discoveryCallHeading: String(
+        p.discoveryCallHeading || base.publicSite.discoveryCallHeading || "",
+      ).slice(0, 300),
+      discoveryCallCopy: String(p.discoveryCallCopy || "").slice(0, 1200),
+      discoveryCallVideoUrl: safeUrl(p.discoveryCallVideoUrl),
+      discoveryCallVideoPosterUrl: safeUrl(p.discoveryCallVideoPosterUrl),
+      discoveryCallButtonLabel: String(
+        p.discoveryCallButtonLabel || base.publicSite.discoveryCallButtonLabel || "",
+      ).slice(0, 80),
+      discoveryCallBookingUrl: safeUrl(p.discoveryCallBookingUrl),
       primaryCtaLabel: String(
         p.primaryCtaLabel || base.publicSite.primaryCtaLabel,
       ).slice(0, 80),

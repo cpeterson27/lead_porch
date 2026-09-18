@@ -246,6 +246,20 @@ const workspaceConfigSchema = new mongoose.Schema(
         ],
         default: [],
       },
+      // "Book a Discovery Call" — a homepage CTA that sends the visitor to
+      // its own public page (see PublicSite.jsx's DiscoveryCallPage) with
+      // an optional intro video and a link to the owner's own real-time
+      // Google Calendar booking page. bookingUrl is intentionally a plain
+      // link the owner pastes in (Google Calendar's own "Appointment
+      // schedule" feature generates one) — never a third-party scheduling
+      // tool, and never a Lead Porch-hosted calendar integration.
+      discoveryCallEnabled: { type: Boolean, default: false },
+      discoveryCallHeading: { type: String, default: "Book a Discovery Call", maxlength: 300 },
+      discoveryCallCopy: { type: String, default: "", maxlength: 1200 },
+      discoveryCallVideoUrl: { type: String, default: "", maxlength: 1000 },
+      discoveryCallVideoPosterUrl: { type: String, default: "", maxlength: 1000 },
+      discoveryCallButtonLabel: { type: String, default: "Book a Discovery Call", maxlength: 80 },
+      discoveryCallBookingUrl: { type: String, default: "", maxlength: 1000 },
       contactEmail: { type: String, default: "", maxlength: 320 },
       contactPhone: { type: String, default: "", maxlength: 80 },
       footerText: { type: String, default: "", maxlength: 1000 },

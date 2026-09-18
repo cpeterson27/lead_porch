@@ -41,6 +41,7 @@ const Login = lazy(() => import("./pages/Login.jsx"));
 const AcceptInvitation = lazy(() => import("./pages/AcceptInvitation.jsx"));
 const PublicHome = lazy(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.PublicHome })));
 const TestimonialsPage = lazy(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.TestimonialsPage })));
+const DiscoveryCallPage = lazy(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.DiscoveryCallPage })));
 const ContactPage = lazy(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.ContactPage })));
 const PublicProfilePage = lazy(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.PublicProfilePage })));
 const PublicApplication = lazy(() => import("./pages/PublicApplication.jsx"));
@@ -87,7 +88,7 @@ function PublicPageTracking() {
   const location = useLocation();
   const lastPath = useRef("");
   useEffect(() => {
-    const publicPath = /^(?:\/$|\/(?:testimonials|contact|privacy|privacy-policy|terms|data-deletion|apply)(?:\/)?$|\/(?:people|ref)\/)/.test(location.pathname);
+    const publicPath = /^(?:\/$|\/(?:testimonials|contact|privacy|privacy-policy|terms|data-deletion|apply|book-a-call)(?:\/)?$|\/(?:people|ref)\/)/.test(location.pathname);
     if (!publicPath) return;
     const path = `${location.pathname}${location.search}`;
     if (lastPath.current === path) return;
@@ -242,6 +243,7 @@ function App() {
             <Route path="/coaching-programs" element={<Navigate replace to="/#programs" />} />
             <Route path="/coaching-programs/:slug" element={<Navigate replace to="/#programs" />} />
             <Route path="/testimonials" element={<TestimonialsPage />} />
+            <Route path="/book-a-call" element={<DiscoveryCallPage />} />
             <Route path="/contact" element={<ContactPage />} />
             <Route path="/people/:slug" element={<PublicProfilePage />} />
             <Route path="/privacy" element={<PrivacyPage />} />

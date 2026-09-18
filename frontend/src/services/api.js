@@ -391,6 +391,45 @@ export const uploadHomepageVideo = async (file) => {
     duration: upload.data.duration,
   };
 };
+export const uploadDiscoveryCallVideo = async (file) => {
+  const signed = await api
+    .post("/public-management/discovery-call-media-signature")
+    .then((res) => res.data.data);
+  const allowedTypes = new Set([
+    "video/mp4",
+    "video/webm",
+    "video/quicktime",
+  ]);
+  const hasSupportedExtension = /\.(mp4|webm|mov)$/i.test(file?.name || "");
+  if (!file || file.size <= 0) {
+    throw new Error("Choose a video file that is not empty.");
+  }
+  if (!allowedTypes.has(file.type) && !(file.type === "" && hasSupportedExtension)) {
+    throw new Error("Choose an MP4, WEBM, or MOV video.");
+  }
+  if (file.size > signed.maxBytes) {
+    throw new Error(
+      `This video is too large. The upload limit is ${Math.round(signed.maxBytes / 1024 / 1024)} MB.`,
+    );
+  }
+  const body = new FormData();
+  body.append("file", file);
+  body.append("api_key", signed.apiKey);
+  body.append("timestamp", String(signed.timestamp));
+  body.append("folder", signed.folder);
+  body.append("signature", signed.signature);
+  const upload = await axios.post(
+    `https://api.cloudinary.com/v1_1/${signed.cloudName}/video/upload`,
+    body,
+  );
+  return {
+    url: upload.data.secure_url,
+    publicId: upload.data.public_id,
+    width: upload.data.width,
+    height: upload.data.height,
+    duration: upload.data.duration,
+  };
+};
 export const fetchWorkspaceMedia = () =>
   api.get("/social-workspace/media").then((res) => res.data);
 export const fetchManagedProfiles = () =>

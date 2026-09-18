@@ -962,6 +962,14 @@ export function PublicHome() {
           ) : null}
         </section>
 
+        {p.discoveryCallEnabled && p.discoveryCallBookingUrl ? (
+          <section className="public-discovery-call-cta">
+            <Link className="public-button" to="/book-a-call">
+              {p.discoveryCallButtonLabel || "Book a Discovery Call"}
+            </Link>
+          </section>
+        ) : null}
+
         <section className="public-why-section" id="about">
           <div className="public-why-title-block">
             <h2 className="public-why-title">
@@ -1352,6 +1360,44 @@ export function ContactPage() {
             )}
           </div>
         </div>
+      </main>
+    </PublicLayout>
+  );
+}
+export function DiscoveryCallPage() {
+  const { site } = useWorkspaceTheme(),
+    p = site?.publicSite || {},
+    workspaceName = site?.branding?.publicSiteName || site?.workspace?.name || "us";
+  return (
+    <PublicLayout>
+      <main id="main-content" className="public-inner discovery-call-page">
+        <p className="public-kicker">Discovery call</p>
+        <h1>{p.discoveryCallHeading || "Book a Discovery Call"}</h1>
+        {p.discoveryCallCopy ? <p className="public-lead">{p.discoveryCallCopy}</p> : null}
+        {p.discoveryCallVideoUrl ? (
+          <div className="discovery-call-page__video">
+            <TestimonialVideoPlayer
+              videoUrl={p.discoveryCallVideoUrl}
+              coverUrl={p.discoveryCallVideoPosterUrl}
+            />
+          </div>
+        ) : null}
+        {p.discoveryCallBookingUrl ? (
+          <a
+            className="public-button"
+            href={p.discoveryCallBookingUrl}
+            target="_blank"
+            rel="noreferrer"
+            onClick={() => trackSiteEvent("discovery_call_booking_click", {})}
+          >
+            {p.discoveryCallButtonLabel || "Book a Discovery Call"}
+            <FiExternalLink />
+          </a>
+        ) : (
+          <p className="discovery-call-page__pending">
+            Booking isn't set up yet. Contact {workspaceName} directly to schedule a call.
+          </p>
+        )}
       </main>
     </PublicLayout>
   );

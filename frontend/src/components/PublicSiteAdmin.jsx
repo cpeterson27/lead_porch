@@ -20,6 +20,7 @@ import {
   updatePublicManagementConfig,
   uploadEventImage,
   uploadHomepageVideo as uploadHomepageVideoAsset,
+  uploadDiscoveryCallVideo as uploadDiscoveryCallVideoAsset,
 } from "../services/api.js";
 import "./PublicSiteAdmin.css";
 
@@ -344,6 +345,55 @@ export default function PublicSiteAdmin({ section = "website" }) {
       setUploading("");
     }
   };
+  const uploadDiscoveryCallVideo = async (file) => {
+    if (!file) return;
+    const supportedType = [
+      "video/mp4",
+      "video/webm",
+      "video/quicktime",
+    ].includes(file.type);
+    const supportedExtension =
+      file.type === "" && /\.(mp4|webm|mov)$/i.test(file.name);
+    if (
+      file.size <= 0 ||
+      (!supportedType && !supportedExtension) ||
+      file.size > 75 * 1024 * 1024
+    )
+      return setError("Choose an MP4, WEBM, or MOV video up to 75 MB.");
+    try {
+      setUploading("discoveryCallVideoUrl");
+      setError("");
+      const asset = await uploadDiscoveryCallVideoAsset(file);
+      patchPublic("discoveryCallVideoUrl", asset.url);
+      setMessage("Discovery call video uploaded. Save to publish the change.");
+    } catch (err) {
+      const uploadError = err.response?.data?.error;
+      setError(
+        (typeof uploadError === "string" ? uploadError : uploadError?.message) ||
+          err.message ||
+          "Unable to upload the discovery call video.",
+      );
+    } finally {
+      setUploading("");
+    }
+  };
+  const captureDiscoveryCallCover = async (dataUrl) => {
+    try {
+      setUploading("discoveryCallVideoPosterUrl");
+      setError("");
+      const asset = await uploadEventImage({
+        file: dataUrl,
+        filename: "discovery-call-video-cover.jpg",
+      });
+      patchPublic("discoveryCallVideoPosterUrl", asset.url);
+      setMessage("Discovery call cover frame selected. Save to publish the change.");
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to save the discovery call cover frame.");
+      throw err;
+    } finally {
+      setUploading("");
+    }
+  };
   const uploadProfilePhoto = async (id, file) => {
     if (!file) return;
     if (
@@ -488,7 +538,7 @@ export default function PublicSiteAdmin({ section = "website" }) {
       {message ? <p className="discovery-notice">{message}</p> : null}
       {section === "website" ? (
         <nav aria-label="Website settings sections">
-          {["brand", "homepage", "video", "sections"].map((item) => (
+          {["brand", "homepage", "video", "discoveryCall", "sections"].map((item) => (
             <button
               type="button"
               className={tab === item ? "is-active" : ""}
@@ -499,9 +549,11 @@ export default function PublicSiteAdmin({ section = "website" }) {
                 ? "Branding"
                 : item === "video"
                   ? "Homepage video"
-                  : item === "sections"
-                    ? "Visible sections"
-                    : "Homepage"}
+                  : item === "discoveryCall"
+                    ? "Discovery call"
+                    : item === "sections"
+                      ? "Visible sections"
+                      : "Homepage"}
             </button>
           ))}
         </nav>
@@ -1045,6 +1097,115 @@ export default function PublicSiteAdmin({ section = "website" }) {
           </div>
           <Button loading={saving} onClick={saveConfig}>
             Save video settings
+          </Button>
+        </section>
+      ) : null}
+      {tab === "discoveryCall" ? (
+        <section className="homepage-media-editor">
+          <p className="public-admin__help">
+            A "Book a Discovery Call" button on your homepage sends visitors to their own page with an optional
+            intro video and a link to book a real time slot on your calendar. This uses your own Google Calendar —
+            not Calendly or any other scheduling tool. To get the booking link: open Google Calendar, click Create
+            &gt; Appointment schedule, set up your availability, then copy the booking page link it gives you and
+            paste it below.
+          </p>
+          <div className="public-admin__grid">
+            <label className="website-toggle">
+              <input
+                type="checkbox"
+                checked={config.publicSite.discoveryCallEnabled === true}
+                onChange={(e) => patchPublic("discoveryCallEnabled", e.target.checked)}
+              />
+              <span>Show the "Book a Discovery Call" button on the homepage</span>
+            </label>
+          </div>
+          <div className="homepage-media-uploads">
+            <article>
+              <div className="homepage-media-preview is-video">
+                {config.publicSite.discoveryCallVideoPosterUrl ? (
+                  <img
+                    src={config.publicSite.discoveryCallVideoPosterUrl}
+                    alt="Discovery call video poster"
+                  />
+                ) : (
+                  <span>Video</span>
+                )}
+              </div>
+              <div>
+                <h4>Intro video (optional)</h4>
+                <p>MP4, WEBM, or MOV up to 75 MB. Shown on the discovery call page above the booking link.</p>
+                <label className="website-upload-button">
+                  {uploading === "discoveryCallVideoUrl"
+                    ? "Uploading…"
+                    : config.publicSite.discoveryCallVideoUrl
+                      ? "Replace video"
+                      : "Upload video"}
+                  <input
+                    disabled={Boolean(uploading)}
+                    type="file"
+                    accept="video/mp4,video/webm,video/quicktime"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      uploadDiscoveryCallVideo(file);
+                    }}
+                  />
+                </label>
+              </div>
+            </article>
+            {config.publicSite.discoveryCallVideoUrl ? (
+              <article className="homepage-cover-picker-card">
+                <div>
+                  <h4>Choose a cover frame</h4>
+                  <p>
+                    Scrub through the uploaded video and select the exact frame
+                    visitors see before pressing play.
+                  </p>
+                  <HomepageVideoCoverPicker
+                    videoUrl={config.publicSite.discoveryCallVideoUrl}
+                    coverUrl={config.publicSite.discoveryCallVideoPosterUrl}
+                    onCapture={captureDiscoveryCallCover}
+                  />
+                </div>
+              </article>
+            ) : null}
+          </div>
+          <div className="public-admin__grid">
+            <label>
+              Homepage button text
+              <input
+                value={config.publicSite.discoveryCallButtonLabel || ""}
+                onChange={(e) => patchPublic("discoveryCallButtonLabel", e.target.value)}
+                placeholder="Book a Discovery Call"
+              />
+            </label>
+            <label className="wide">
+              Page heading
+              <input
+                value={config.publicSite.discoveryCallHeading || ""}
+                onChange={(e) => patchPublic("discoveryCallHeading", e.target.value)}
+                placeholder="Book a Discovery Call"
+              />
+            </label>
+            <label className="wide">
+              Page copy
+              <textarea
+                value={config.publicSite.discoveryCallCopy || ""}
+                onChange={(e) => patchPublic("discoveryCallCopy", e.target.value)}
+                placeholder="Not sure where to start? Book a free discovery call and we'll help you find the right next step."
+              />
+            </label>
+            <label className="wide">
+              Your Google Calendar booking link
+              <input
+                value={config.publicSite.discoveryCallBookingUrl || ""}
+                onChange={(e) => patchPublic("discoveryCallBookingUrl", e.target.value)}
+                placeholder="https://calendar.app.google/..."
+              />
+            </label>
+          </div>
+          <Button loading={saving} onClick={saveConfig}>
+            Save discovery call settings
           </Button>
         </section>
       ) : null}

@@ -420,8 +420,9 @@ automated `npm test` suite.
   by the customer and set `GOOGLE_TAG_MANAGER_ID=GTM-...` on the backend. The
   container is not loaded while this variable is empty. Configure GA4 inside
   GTM and map the app's `virtual_page_view`, `application_open`,
-  `application_start`, `program_select`, and `application_submit` data-layer
-  events without collecting form fields or other personal information.
+  `application_start`, `program_select`, `application_submit`, and
+  `discovery_call_booking_click` data-layer events without collecting form
+  fields or other personal information.
 - If a dedicated worker is deployed, run `npm run start:worker` and set
   `RESEARCH_WORKER_MODE=external` on the web service.
 - Configure provider callback and webhook URLs only after the final public

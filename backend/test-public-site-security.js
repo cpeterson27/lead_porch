@@ -33,6 +33,25 @@ assert.deepEqual(
 assert.equal(service.safeColor("red", "#000000"), "#000000");
 assert.equal(service.safeUrl("javascript:alert(1)"), "");
 assert.equal(service.safeUrl("/apply", { relative: true }), "/apply");
+
+// Discovery call booking link — must actually round-trip (a repeat of the
+// exact "saved but never read/returned" bug already found once this
+// session for the application-page hero image), stay off by default, and
+// never let through an unsafe URL scheme.
+assert.equal(ellie.publicSite.discoveryCallEnabled, undefined, "off by default — not set until the owner explicitly turns it on and saves");
+assert.equal(ellie.publicSite.discoveryCallHeading, "Book a Discovery Call");
+assert.equal(ellie.publicSite.discoveryCallButtonLabel, "Book a Discovery Call");
+const withDiscoveryCall = service.sanitizedConfig(
+  { slug: "ellie", name: "Ellie" },
+  { publicSite: { discoveryCallEnabled: true, discoveryCallBookingUrl: "https://calendar.app.google/abc123" } },
+);
+assert.equal(withDiscoveryCall.publicSite.discoveryCallEnabled, true);
+assert.equal(withDiscoveryCall.publicSite.discoveryCallBookingUrl, "https://calendar.app.google/abc123");
+assert.equal(
+  service.sanitizedConfig({ slug: "ellie", name: "Ellie" }, { publicSite: { discoveryCallBookingUrl: "javascript:alert(1)" } }).publicSite.discoveryCallBookingUrl,
+  "",
+  "an unsafe URL scheme must never reach the public discovery-call booking link",
+);
 const profile = {
   slug: "sherry",
   ownerType: "coach",

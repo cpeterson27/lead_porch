@@ -82,6 +82,7 @@ function pathSettings(pathname, siteName, defaultDescription) {
     "/terms": { title: `Terms of Service | ${siteName}`, description: `Terms of service for ${siteName}.`, indexable: true },
     "/data-deletion": { title: `Data Deletion | ${siteName}`, description: `Data deletion instructions for ${siteName}.`, indexable: true },
     "/apply": { title: `Apply to a Coaching Program | ${siteName}`, description: `Apply to a ${siteName} coaching program.`, indexable: false },
+    "/book-a-call": { title: `Book a Discovery Call | ${siteName}`, description: `Book a free discovery call with ${siteName}.`, indexable: true },
   };
   return { path, ...(fixed[path] || { title: siteName, description: defaultDescription, indexable: false }) };
 }

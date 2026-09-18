@@ -57,6 +57,7 @@ router.get("/sitemap.xml", async (req, res, next) => {
       "/privacy",
       "/terms",
       "/data-deletion",
+      ...(site.publicSite?.discoveryCallEnabled && site.publicSite?.discoveryCallBookingUrl ? ["/book-a-call"] : []),
       ...(site.team || []).map((profile) => `/people/${encodeURIComponent(profile.slug)}`),
     ];
     const uniquePaths = [...new Set(paths)];
