@@ -17,7 +17,8 @@ const draft = generateOutreachDraft(
   },
 );
 
-assert.match(draft.htmlBody, /href="https:\/\/elliescoaching\.com\/apply"/);
+assert.match(draft.htmlBody, /href="https:\/\/elliescoaching\.com\/"/);
+assert.doesNotMatch(draft.htmlBody, /elliescoaching\.com\/apply/);
 assert.doesNotMatch(draft.htmlBody, /href=""/);
 assert.doesNotMatch(draft.htmlBody, /\{\{eventLink\}\}/);
 console.log("Program email CTA fallback tests passed.");
