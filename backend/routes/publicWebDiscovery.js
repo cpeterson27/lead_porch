@@ -11,6 +11,7 @@ const router = express.Router();
 const publicWebDiscoveryEngineService = require("../services/publicWebDiscoveryEngineService");
 const PublicWebDiscoveryRun = require("../models/PublicWebDiscoveryRun");
 const DiscoverySchedule = require("../models/DiscoverySchedule");
+const { nextScheduledRun, validTimezone } = require("../services/discoveryScheduleTimeService");
 
 /** Free — generates editable search families for an approved program. No provider call is made here. */
 router.post("/runs/propose", async (req, res) => {
@@ -185,16 +186,22 @@ router.delete("/runs/:id", async (req, res) => {
 /** Schedules — all created (and stay) disabled until the owner explicitly flips them on. */
 router.post("/schedules", async (req, res) => {
   try {
+    const timezone = String(req.body?.timezone || "UTC");
+    if (!validTimezone(timezone)) return res.status(400).json({ success: false, error: "Choose a valid timezone." });
+    const enabled = req.body?.enabled === true;
     const schedule = await DiscoverySchedule.create({
       workspaceId: req.auth.workspaceId, name: req.body?.name || "Discovery schedule", programNoteId: req.body?.programNoteId || null,
       coachingProgramId: req.body?.coachingProgramId || null,
-      programName: req.body?.programName || "", intervalMinutes: req.body?.intervalMinutes, dailyCandidateTarget: req.body?.dailyCandidateTarget,
+      programName: req.body?.programName || "", targetType: req.body?.targetType, intervalMinutes: req.body?.intervalMinutes, dailyCandidateTarget: req.body?.dailyCandidateTarget,
       pageLimitPerQuery: req.body?.pageLimitPerQuery, queryLimitPerRun: req.body?.queryLimitPerRun, providerCreditCapUsd: req.body?.providerCreditCapUsd,
       sources: req.body?.sources, includePdlCrossReference: req.body?.includePdlCrossReference, includePdlPersonSearch: req.body?.includePdlPersonSearch,
       maxPdlPersonSearchCredits: req.body?.maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: req.body?.maxPdlCrossReferenceCredits,
       includeApolloPersonSearch: req.body?.includeApolloPersonSearch, maxApolloPersonSearchCredits: req.body?.maxApolloPersonSearchCredits,
       maxAttemptsPerJob: req.body?.maxAttemptsPerJob,
-      enabled: false, // Never honors a client-supplied enabled:true — the owner must flip it on via /enable below.
+      cadence: req.body?.cadence, dayOfWeek: req.body?.dayOfWeek, timeOfDay: req.body?.timeOfDay, timezone,
+      jobs: Array.isArray(req.body?.jobs) ? req.body.jobs : [], apolloPdlIcp: req.body?.apolloPdlIcp,
+      enabled,
+      nextRunAt: enabled ? nextScheduledRun(req.body, new Date()) : null,
       createdByUserId: req.auth.user?._id,
     });
     return res.json({ success: true, data: schedule });
@@ -214,7 +221,9 @@ router.get("/schedules", async (req, res) => {
 
 router.post("/schedules/:id/enable", async (req, res) => {
   try {
-    const schedule = await DiscoverySchedule.findOneAndUpdate({ _id: req.params.id, workspaceId: req.auth.workspaceId }, { $set: { enabled: true, nextRunAt: new Date() } }, { new: true });
+    const existing = await DiscoverySchedule.findOne({ _id: req.params.id, workspaceId: req.auth.workspaceId });
+    if (!existing) return res.status(404).json({ success: false, error: "Schedule not found" });
+    const schedule = await DiscoverySchedule.findOneAndUpdate({ _id: existing._id, workspaceId: req.auth.workspaceId }, { $set: { enabled: true, nextRunAt: nextScheduledRun(existing, new Date()) } }, { new: true });
     if (!schedule) return res.status(404).json({ success: false, error: "Schedule not found" });
     return res.json({ success: true, data: schedule });
   } catch (_error) {

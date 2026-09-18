@@ -26,8 +26,17 @@ const discoveryScheduleSchema = new mongoose.Schema({
   // "Direct public-web search" advanced tool.
   coachingProgramId: { type: mongoose.Schema.Types.ObjectId, ref: "CoachingProgram", default: null },
   programName: { type: String, default: "", trim: true, maxlength: 200 },
+  targetType: { type: String, enum: ["all", "person"], default: "person" },
   enabled: { type: Boolean, default: false },
   intervalMinutes: { type: Number, default: 1440, min: 60, max: 43200 },
+  cadence: { type: String, enum: ["daily", "weekly"], default: "weekly" },
+  dayOfWeek: { type: String, enum: ["sun", "mon", "tue", "wed", "thu", "fri", "sat"], default: "mon" },
+  timeOfDay: { type: String, default: "09:00", match: /^([01]\d|2[0-3]):[0-5]\d$/ },
+  timezone: { type: String, default: "UTC", trim: true, maxlength: 100 },
+  jobs: { type: [mongoose.Schema.Types.Mixed], default: [] },
+  apolloPdlIcp: {
+    titles: { type: [String], default: [] }, locations: { type: [String], default: [] }, industries: { type: [String], default: [] },
+  },
   // The run configuration applied each time this schedule fires — same
   // fields/limits as PublicWebDiscoveryRun's own owner-editable controls.
   dailyCandidateTarget: { type: Number, default: 25, min: 1, max: 500 },

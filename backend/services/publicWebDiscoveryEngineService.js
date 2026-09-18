@@ -25,6 +25,7 @@
  */
 const PublicWebDiscoveryRun = require("../models/PublicWebDiscoveryRun");
 const DiscoverySchedule = require("../models/DiscoverySchedule");
+const { nextScheduledRun } = require("./discoveryScheduleTimeService");
 const GroundingResearchResult = require("../models/GroundingResearchResult");
 const JarvisMemoryNote = require("../models/JarvisMemoryNote");
 const Contact = require("../models/Contact");
@@ -1370,7 +1371,12 @@ async function runDueDiscoverySchedules(dependencies = {}) {
     const RunModel = dependencies.PublicWebDiscoveryRun || PublicWebDiscoveryRun;
     const now = new Date();
     await ScheduleModel.updateMany({ leaseExpiresAt: { $lte: now }, leaseOwner: { $ne: "" } }, { $set: { leaseOwner: "", leaseExpiresAt: null } });
-    const due = await ScheduleModel.find({ enabled: true, $and: [{ $or: [{ runRequestedAt: { $lte: now } }, { nextRunAt: { $lte: now } }] }, { $or: [{ leaseExpiresAt: null }, { leaseExpiresAt: { $lte: now } }] }] }).limit(10);
+    const due = await ScheduleModel.find({
+      $and: [
+        { $or: [{ runRequestedAt: { $lte: now } }, { enabled: true, nextRunAt: { $lte: now } }] },
+        { $or: [{ leaseExpiresAt: null }, { leaseExpiresAt: { $lte: now } }] },
+      ],
+    }).limit(10);
     for (const schedule of due) {
       // eslint-disable-next-line no-await-in-loop
       const claimed = await ScheduleModel.findOneAndUpdate({ _id: schedule._id, $or: [{ leaseExpiresAt: null }, { leaseExpiresAt: { $lte: now } }] }, { $set: { leaseOwner: WORKER_ID, leaseExpiresAt: new Date(Date.now() + LEASE_MS) }, $unset: { runRequestedAt: 1 } }, { new: true });
@@ -1379,22 +1385,26 @@ async function runDueDiscoverySchedules(dependencies = {}) {
         let run = claimed.currentRunId ? await RunModel.findOne({ _id: claimed.currentRunId, workspaceId: claimed.workspaceId, status: { $in: ["queued", "running"] } }) : null;
         if (!run) {
           // eslint-disable-next-line no-await-in-loop
-          run = await proposePublicWebDiscoveryRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, programNoteId: claimed.programNoteId, coachingProgramId: claimed.coachingProgramId, locations: [] }, dependencies);
+          const proposeScheduledRun = claimed.targetType === "person" ? proposeStudentSearchPreset : proposePublicWebDiscoveryRun;
+          run = await proposeScheduledRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, programNoteId: claimed.programNoteId, coachingProgramId: claimed.coachingProgramId, locations: claimed.apolloPdlIcp?.locations || [] }, dependencies);
           // eslint-disable-next-line no-await-in-loop
-          run = await approvePublicWebDiscoveryRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, runId: run._id, dailyCandidateTarget: claimed.dailyCandidateTarget, pageLimitPerQuery: claimed.pageLimitPerQuery, queryLimitPerRun: claimed.queryLimitPerRun, providerCreditCapUsd: claimed.providerCreditCapUsd, includePdlCrossReference: claimed.includePdlCrossReference, includePdlPersonSearch: claimed.includePdlPersonSearch, maxPdlPersonSearchCredits: claimed.maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: claimed.maxPdlCrossReferenceCredits, includeApolloPersonSearch: claimed.includeApolloPersonSearch, maxApolloPersonSearchCredits: claimed.maxApolloPersonSearchCredits, sources: claimed.sources, maxAttemptsPerJob: claimed.maxAttemptsPerJob }, dependencies);
+          run = await approvePublicWebDiscoveryRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, runId: run._id, jobs: claimed.jobs?.length ? claimed.jobs : undefined, dailyCandidateTarget: claimed.dailyCandidateTarget, pageLimitPerQuery: claimed.pageLimitPerQuery, queryLimitPerRun: claimed.queryLimitPerRun, providerCreditCapUsd: claimed.providerCreditCapUsd, includePdlCrossReference: claimed.includePdlCrossReference, includePdlPersonSearch: claimed.includePdlPersonSearch, maxPdlPersonSearchCredits: claimed.maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: claimed.maxPdlCrossReferenceCredits, includeApolloPersonSearch: claimed.includeApolloPersonSearch, maxApolloPersonSearchCredits: claimed.maxApolloPersonSearchCredits, sources: claimed.sources, maxAttemptsPerJob: claimed.maxAttemptsPerJob, apolloPdlIcp: claimed.apolloPdlIcp }, dependencies);
           claimed.currentRunId = run._id;
         }
         // eslint-disable-next-line no-await-in-loop
         const outcome = await processNextBatch({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, runId: run._id, batchSize: 3 }, dependencies);
         claimed.lastRunAt = now;
-        claimed.lastRunStatus = outcome.run?.status === "completed" ? "completed" : "partial";
+        const terminal = ["completed", "stopped_at_cap", "failed", "canceled"].includes(outcome.run?.status);
+        claimed.lastRunStatus = outcome.run?.status === "completed" || outcome.run?.status === "stopped_at_cap" ? "completed" : terminal ? "failed" : "partial";
         claimed.lastRunMessage = outcome.run?.runSummary?.explanation || "In progress — resumes next tick.";
-        claimed.nextRunAt = outcome.run?.status === "completed" ? new Date(Date.now() + claimed.intervalMinutes * 60000) : new Date(Date.now() + 60000);
-        if (outcome.run?.status === "completed") claimed.currentRunId = null;
+        claimed.nextRunAt = terminal
+          ? (claimed.enabled ? nextScheduledRun(claimed, now) : null)
+          : new Date(Date.now() + 60000);
+        if (terminal) claimed.currentRunId = null;
       } catch (error) {
         claimed.lastRunStatus = "failed";
         claimed.lastRunMessage = error.message;
-        claimed.nextRunAt = new Date(Date.now() + Math.max(15, claimed.intervalMinutes) * 60000);
+        claimed.nextRunAt = claimed.enabled ? nextScheduledRun(claimed, now) : null;
       }
       claimed.leaseOwner = "";
       claimed.leaseExpiresAt = null;

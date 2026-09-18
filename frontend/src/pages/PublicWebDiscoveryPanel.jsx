@@ -36,12 +36,8 @@ const JOB_CATEGORIES = [
   ["intent_discussions", "Recent problem/intent discussions"],
 ];
 const SOURCE_LABELS = { vertex: "Vertex", openai_web_search: "OpenAI Web Search" };
-const FREQUENCY_OPTIONS = [
-  { label: "Every 12 hours", value: 720 },
-  { label: "Every 24 hours", value: 1440 },
-  { label: "Every 3 days", value: 4320 },
-  { label: "Weekly", value: 10080 },
-];
+const WEEKDAYS = [["sun", "Sunday"], ["mon", "Monday"], ["tue", "Tuesday"], ["wed", "Wednesday"], ["thu", "Thursday"], ["fri", "Friday"], ["sat", "Saturday"]];
+const LOCAL_TIMEZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
 const RUN_ACTIVE_STATUSES = new Set(["queued", "running"]);
 const RUN_TERMINAL_STATUSES = new Set(["completed", "stopped_at_cap", "failed", "canceled"]);
 // icpDraft holds plain comma-separated STRINGS while the owner is editing
@@ -359,23 +355,30 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
     }
   };
 
-  const [frequencyByRun, setFrequencyByRun] = useState({});
-  const saveScheduleDisabled = async (run) => {
+  const [scheduleDraftByRun, setScheduleDraftByRun] = useState({});
+  const scheduleDraft = (run) => scheduleDraftByRun[run._id] || { cadence: "weekly", dayOfWeek: "mon", timeOfDay: "09:00", timezone: LOCAL_TIMEZONE };
+  const updateScheduleDraft = (runId, patch) => setScheduleDraftByRun((current) => ({ ...current, [runId]: { ...(current[runId] || { cadence: "weekly", dayOfWeek: "mon", timeOfDay: "09:00", timezone: LOCAL_TIMEZONE }), ...patch } }));
+  const saveEnabledSchedule = async (run) => {
     setScheduleBusy((current) => ({ ...current, [run._id]: "saving" }));
+    setError("");
+    setNotice("");
     try {
+      const timing = scheduleDraft(run);
       const response = await createDiscoverySchedule({
         name: `${run.programName || "Program"} — recurring discovery`,
-        programNoteId: run.programNoteId, coachingProgramId: run.coachingProgramId, programName: run.programName,
-        intervalMinutes: frequencyByRun[run._id] || 1440,
+        programNoteId: run.programNoteId, coachingProgramId: run.coachingProgramId, programName: run.programName, targetType: run.targetType,
+        ...timing, enabled: true,
         dailyCandidateTarget: run.dailyCandidateTarget, pageLimitPerQuery: run.pageLimitPerQuery,
         queryLimitPerRun: run.queryLimitPerRun, providerCreditCapUsd: run.providerCreditCapUsd,
         includePdlCrossReference: run.includePdlCrossReference, includePdlPersonSearch: run.includePdlPersonSearch,
         maxPdlPersonSearchCredits: run.maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: run.maxPdlCrossReferenceCredits,
         includeApolloPersonSearch: run.includeApolloPersonSearch, maxApolloPersonSearchCredits: run.maxApolloPersonSearchCredits,
         maxAttemptsPerJob: run.retryPolicy?.maxAttemptsPerJob,
-        sources: run.sources,
+        sources: run.sources, jobs: run.jobs,
+        apolloPdlIcp: run.icpDraft ? { titles: icpTextToArray(run.icpDraft.titles), locations: icpTextToArray(run.icpDraft.locations), industries: icpTextToArray(run.icpDraft.industries) } : run.apolloPdlIcp,
       });
       setSchedules((current) => [response.data, ...current]);
+      setNotice(`Scheduled search saved and turned on. Next run: ${new Date(response.data.nextRunAt).toLocaleString()}.`);
     } catch (err) {
       setError(err.response?.data?.error || "Unable to save this schedule.");
     } finally {
@@ -446,7 +449,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
     const preview = planPreviewByRun[run._id];
     const totalJobs = run.jobs.length;
     const currentJob = run.jobs[run.nextJobIndex];
-    const schedule = schedules.find((s) => s.programNoteId === run.programNoteId);
+    const schedule = schedules.find((s) => String(s.coachingProgramId || "") === String(run.coachingProgramId || "") && String(s.programNoteId || "") === String(run.programNoteId || ""));
     return (
       <section key={run._id} className="leadgen-run-panel" aria-label={`Discovery run for ${run.programName}`}>
         <div className="leadgen-run-panel__header">
@@ -549,12 +552,13 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
             </div>
 
             <div className="leadgen-schedule-form">
-              <span className="leadgen-field-label">Schedule (optional)</span>
-              <select value={frequencyByRun[run._id] || 1440} onChange={(event) => setFrequencyByRun((current) => ({ ...current, [run._id]: Number(event.target.value) }))}>
-                {FREQUENCY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-              <Button size="sm" variant="outline" loading={scheduleBusy[run._id] === "saving"} onClick={() => saveScheduleDisabled(run)}>Save disabled</Button>
-              <p className="leadgen-run-disclosure">A saved schedule never runs on its own — it stays disabled until you explicitly enable it below.</p>
+              <span className="leadgen-field-label">Or schedule this exact search</span>
+              <label><span>Repeats</span><select value={scheduleDraft(run).cadence} onChange={(event) => updateScheduleDraft(run._id, { cadence: event.target.value })}><option value="daily">Every day</option><option value="weekly">Every week</option></select></label>
+              {scheduleDraft(run).cadence === "weekly" ? <label><span>Day</span><select value={scheduleDraft(run).dayOfWeek} onChange={(event) => updateScheduleDraft(run._id, { dayOfWeek: event.target.value })}>{WEEKDAYS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label> : null}
+              <label><span>Time</span><input type="time" value={scheduleDraft(run).timeOfDay} onChange={(event) => updateScheduleDraft(run._id, { timeOfDay: event.target.value })} /></label>
+              <label><span>Timezone</span><input type="text" value={scheduleDraft(run).timezone} onChange={(event) => updateScheduleDraft(run._id, { timezone: event.target.value })} /></label>
+              <Button size="sm" loading={scheduleBusy[run._id] === "saving"} onClick={() => saveEnabledSchedule(run)}>Save and turn on schedule</Button>
+              <p className="leadgen-run-disclosure">This saves the search settings above and turns the schedule on. You can pause it, run it immediately, or delete it below.</p>
             </div>
           </>
         ) : (
@@ -619,10 +623,10 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
 
         {schedule ? (
           <div className="leadgen-monitor-suggestion">
-            <p>Schedule "{schedule.name}": <strong>{schedule.enabled ? "enabled" : "disabled"}</strong> — every {schedule.intervalMinutes >= 1440 ? `${Math.round(schedule.intervalMinutes / 1440)} day(s)` : `${schedule.intervalMinutes} min`}. {schedule.nextRunAt ? `Next run: ${new Date(schedule.nextRunAt).toLocaleString()}.` : ""} {schedule.lastRunMessage ? `Last run: ${schedule.lastRunMessage}` : ""}</p>
+            <p>Scheduled search "{schedule.name}": <strong>{schedule.enabled ? "on" : "paused"}</strong> — {schedule.cadence === "daily" ? "every day" : `every ${WEEKDAYS.find(([value]) => value === schedule.dayOfWeek)?.[1] || schedule.dayOfWeek}`} at {schedule.timeOfDay} ({schedule.timezone}). {schedule.nextRunAt ? `Next run: ${new Date(schedule.nextRunAt).toLocaleString()}.` : ""} {schedule.lastRunMessage ? `Last run: ${schedule.lastRunMessage}` : ""}</p>
             <div className="leadgen-review-actions">
-              {!schedule.enabled ? <Button size="sm" loading={scheduleBusy[schedule._id] === "enabling"} onClick={() => enableSchedule(schedule)}>Enable schedule</Button> : <Button size="sm" variant="outline" loading={scheduleBusy[schedule._id] === "disabling"} onClick={() => disableSchedule(schedule)}>Disable schedule</Button>}
-              <Button size="sm" variant="outline" loading={scheduleBusy[schedule._id] === "running"} onClick={() => runScheduleNow(schedule)}>Run schedule now</Button>
+              {!schedule.enabled ? <Button size="sm" loading={scheduleBusy[schedule._id] === "enabling"} onClick={() => enableSchedule(schedule)}>Turn schedule on</Button> : <Button size="sm" variant="outline" loading={scheduleBusy[schedule._id] === "disabling"} onClick={() => disableSchedule(schedule)}>Pause schedule</Button>}
+              <Button size="sm" variant="outline" loading={scheduleBusy[schedule._id] === "running"} onClick={() => runScheduleNow(schedule)}>Run once now</Button>
               <Button size="sm" variant="outline" loading={scheduleBusy[schedule._id] === "deleting"} onClick={() => removeSchedule(schedule)}>Delete schedule</Button>
             </div>
           </div>
@@ -698,6 +702,20 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
           {runs.filter((run) => run.status !== "draft").map(renderRun)}
         </details>
       ) : null}
+
+      <details className="leadgen-recent-runs discovery-run-details" open={Boolean(schedules.length)}>
+        <summary><span><b>Scheduled searches</b></span><small>{schedules.length} saved · confirm the next run, pause it, or run it once immediately</small></summary>
+        {!schedules.length ? <p className="leadgen-run-disclosure">No scheduled searches have been saved yet.</p> : schedules.map((schedule) => (
+          <div className="leadgen-monitor-suggestion" key={schedule._id}>
+            <p><strong>{schedule.name}</strong> · {schedule.enabled ? "On" : "Paused"} · {schedule.cadence === "daily" ? "Every day" : `Every ${WEEKDAYS.find(([value]) => value === schedule.dayOfWeek)?.[1] || schedule.dayOfWeek}`} at {schedule.timeOfDay} ({schedule.timezone}). {schedule.nextRunAt ? `Next run: ${new Date(schedule.nextRunAt).toLocaleString()}.` : "No automatic run is queued."}</p>
+            <div className="leadgen-review-actions">
+              {!schedule.enabled ? <Button size="sm" loading={scheduleBusy[schedule._id] === "enabling"} onClick={() => enableSchedule(schedule)}>Turn schedule on</Button> : <Button size="sm" variant="outline" loading={scheduleBusy[schedule._id] === "disabling"} onClick={() => disableSchedule(schedule)}>Pause schedule</Button>}
+              <Button size="sm" variant="outline" loading={scheduleBusy[schedule._id] === "running"} onClick={() => runScheduleNow(schedule)}>Run once now</Button>
+              <Button size="sm" variant="outline" loading={scheduleBusy[schedule._id] === "deleting"} onClick={() => removeSchedule(schedule)}>Delete schedule</Button>
+            </div>
+          </div>
+        ))}
+      </details>
     </DashboardCard>
   );
 }

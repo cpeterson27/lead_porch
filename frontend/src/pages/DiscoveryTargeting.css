@@ -1018,6 +1018,26 @@
   font-size: 0.85rem;
 }
 
+.leadgen-schedule-form label {
+  display: grid;
+  gap: 0.25rem;
+  color: #46534f;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.leadgen-schedule-form input {
+  min-height: 38px;
+  border: 1px solid #ccd7d2;
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  font: inherit;
+}
+
+.leadgen-schedule-form .leadgen-run-disclosure {
+  flex-basis: 100%;
+}
+
 .leadgen-run-status-detail p {
   margin: 0 0 0.4rem;
   font-size: 0.9rem;

@@ -30,6 +30,7 @@
     "test:social-publishing": "node test-social-publishing.js",
     "test:linkedin-oauth": "node test-social-oauth-security.js",
     "test:linkedin-outreach": "node test-linkedin-outreach.js",
+    "test:discovery-schedule": "node test-discovery-schedule-time.js",
     "test:automation-analytics": "node test-automation-analytics.js",
     "test:security-rbac": "node test-security-rbac.js",
     "test:multi-role-capabilities": "node test-multi-role-capabilities.js",
