@@ -1477,6 +1477,8 @@ export const createPartner = (data) =>
   api.post("/partners", data).then((res) => res.data);
 export const updatePartner = (partnerId, data) =>
   api.patch(`/partners/${partnerId}`, data).then((res) => res.data);
+export const deletePartner = (partnerId) =>
+  api.delete(`/partners/${partnerId}`).then((res) => res.data);
 export const createEventbriteAffiliateLink = (data) =>
   api.post("/partners/eventbrite-links", data).then((res) => res.data);
 export const syncEventbriteAffiliate = (partnerId) =>

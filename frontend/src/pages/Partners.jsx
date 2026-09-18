@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Button from "../components/Button.jsx";
 import DashboardCard from "../components/DashboardCard.jsx";
 import Modal from "../components/Modal.jsx";
-import { configureEventbriteWebhook, createEventbriteAffiliateLink, fetchEventbriteAffiliateSales, fetchEventbriteWebhookStatus, fetchEvents, fetchPartners, linkExistingEventbriteAffiliate, updatePartner, verifyEventbriteAffiliate } from "../services/api.js";
+import { configureEventbriteWebhook, createEventbriteAffiliateLink, deletePartner, fetchEventbriteAffiliateSales, fetchEventbriteWebhookStatus, fetchEvents, fetchPartners, linkExistingEventbriteAffiliate, updatePartner, verifyEventbriteAffiliate } from "../services/api.js";
 import "./Partners.css";
 
 const blank = { name: "", company: "", email: "", phone: "", type: "affiliate", referralCode: "", referralLink: "", localEventId: "", commissionRate: "", notes: "" };
@@ -78,6 +78,12 @@ export default function Partners() {
     try { await navigator.clipboard.writeText(partner.referralLink); setSuccess(`${partner.name}’s affiliate link was copied.`); }
     catch { setError("Your browser blocked copying. Open Edit and copy the link manually."); }
   };
+  const removePartner = async (partner) => {
+    if (!window.confirm(`Delete ${partner.name}? This removes their affiliate link and cannot be undone.`)) return;
+    setError(""); setSuccess("");
+    try { await deletePartner(partner._id); setPartners((current) => current.filter((item) => item._id !== partner._id)); setSuccess(`${partner.name} was deleted.`); }
+    catch (err) { setError(err.response?.data?.message || "Unable to delete this partner."); }
+  };
   const openLinkExisting = (partner) => {
     setError(""); setSuccess("");
     setForm({ ...partner, linkExisting: true, localEventId: String(connectedEvents[0]?._id || ""), referralLink: partner.referralLink || "", referralCode: partner.referralCode || slug(partner.name) });
@@ -140,7 +146,7 @@ export default function Partners() {
             <div className="affiliate-metrics"><div><span>Tickets</span><strong>{partner.ticketsSold || 0}</strong></div><div><span>Revenue</span><strong>{partner.revenue || money(0, partner.currency)}</strong></div><div><span>Commission</span><strong>{commissionDue(partner)}</strong><small>{partner.commissionRate || 0}% rate</small></div></div>
             <div className="affiliate-tracking-summary"><span>TRACKING STATUS</span><strong>{confirmed ? "End-to-end confirmed" : result?.checking ? "Checking Eventbrite automatically…" : result?.checks?.eventbriteSync && webhookStatus?.configured ? "Connected and monitoring" : linked ? "Connection needs attention" : "Not connected"}</strong><p>{confirmed ? `Eventbrite returned a completed purchase attributed to ${partner.name} on ${new Date(partner.lastSaleAt).toLocaleString()}.` : result?.checking ? "Lead Porch is checking the event, affiliate code, sales feed, and automatic order updates now." : result?.checks?.eventbriteSync && webhookStatus?.configured ? `Everything is connected. No completed Eventbrite order attributed to ${partner.name} has appeared yet.` : result?.error || (linked ? "Lead Porch could not confirm every Eventbrite connection check." : "Connect the existing Eventbrite link before sharing.")}</p></div>
             {result?.checks ? <div className={`affiliate-check-result ${result.checks.eventbriteSync && webhookStatus?.configured ? "is-pass" : "is-fail"}`}><strong>{result.checks.eventbriteSync && webhookStatus?.configured ? "Automatic monitoring is active" : "Tracking needs attention"}</strong><ul><li className={result.checks.validEventbriteLink ? "pass" : "fail"}>Eventbrite checkout link</li><li className={result.checks.trackingCodeMatches ? "pass" : "fail"}>Unique partner code</li><li className={result.checks.sameEventPage ? "pass" : "fail"}>Correct bootcamp checkout</li><li className={result.checks.eventConnected ? "pass" : "fail"}>Bootcamp event connection</li><li className={result.checks.eventbriteSync ? "pass" : "fail"}>Eventbrite sales connection</li><li className={webhookStatus?.configured ? "pass" : "fail"}>Automatic purchase updates</li></ul></div> : null}
-            <div className="affiliate-card-actions"><Button size="sm" variant="outline" onClick={() => { setError(""); setForm({ ...partner, linkExisting: false, localEventId: String(partner.localEventId || "") }); }}>Edit partner</Button></div>
+            <div className="affiliate-card-actions"><Button size="sm" variant="outline" onClick={() => { setError(""); setForm({ ...partner, linkExisting: false, localEventId: String(partner.localEventId || "") }); }}>Edit partner</Button><Button size="sm" variant="outline" className="btn-danger" onClick={() => removePartner(partner)}>Delete</Button></div>
             <small className="affiliate-last-sync">{partner.lastSyncedAt ? `Last checked ${new Date(partner.lastSyncedAt).toLocaleString()}` : "Not checked yet"}</small>
           </aside>
         </article>;
