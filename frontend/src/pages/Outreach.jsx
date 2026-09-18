@@ -101,25 +101,34 @@ export default function Outreach() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [deliverySyncedAt, setDeliverySyncedAt] = useState(null);
+  const refreshItems = useCallback(async (campaign) => {
+    if (!campaign?._id) {
+      setItems([]);
+      return [];
+    }
+    const result = await fetchOutreach(campaign._id);
+    const next = Array.isArray(result) ? result : result.outreach || [];
+    setItems(next);
+    setDeliverySyncedAt(new Date());
+    return next;
+  }, []);
   const loadItems = useCallback(async (campaign) => {
     if (!campaign?._id) {
       setItems([]);
       return;
     }
     await syncGmailOutreachReplies().catch(() => null);
-    const existing = await fetchOutreach(campaign._id);
-    setItems(Array.isArray(existing) ? existing : existing.outreach || []);
+    await refreshItems(campaign);
     try {
       await generateOutreach(campaign._id, true);
-      const refreshed = await fetchOutreach(campaign._id);
-      setItems(Array.isArray(refreshed) ? refreshed : refreshed.outreach || []);
+      await refreshItems(campaign);
     } catch (err) {
       setError(
         err.response?.data?.error ||
           "Existing outreach loaded, but new drafts could not be prepared.",
       );
     }
-  }, []);
+  }, [refreshItems]);
   const load = useCallback(async () => {
     try {
       setLoading(true);
@@ -239,7 +248,7 @@ export default function Outreach() {
       setSaving(true);
       setError("");
       const result = await generateOutreach(selected._id);
-      await loadItems(selected);
+      await refreshItems(selected);
       const routing = Object.entries(result.routingSummary || {});
       setNotice(routing.length
         ? `Draft routing complete: ${routing.map(([label, count]) => `${count} ${label}`).join(" · ")}. Review is still required before sending.`
@@ -270,7 +279,7 @@ export default function Outreach() {
       setError("");
       await approveAllOutreach(selected._id);
       setApproveAllOpen(false);
-      await loadItems(selected);
+      await refreshItems(selected);
     } catch (err) {
       setError(
         err.response?.data?.error || "Unable to approve pending drafts.",
@@ -286,7 +295,7 @@ export default function Outreach() {
       setSaving(true);
       setError("");
       const result = await approveAllOutreach(selected._id, ids);
-      await loadItems(selected);
+      await refreshItems(selected);
       setNotice(result.message || `${ids.length} selected drafts approved. They remain selected and are ready to send.`);
     } catch (err) {
       setError(err.response?.data?.error || "Unable to approve the selected drafts.");
@@ -316,7 +325,7 @@ export default function Outreach() {
       setError("");
       const result = await recordCampaignConsent(selected._id, { attested: true });
       setConsentConfirmOpen(false);
-      await loadItems(selected);
+      await refreshItems(selected);
       setNotice(result.message || `Recorded permission for ${result.updatedCount || 0} contact${result.updatedCount === 1 ? "" : "s"}.`);
     } catch (err) {
       setError(err.response?.data?.error || "Unable to record permission for these contacts.");
@@ -349,7 +358,7 @@ export default function Outreach() {
         emailCorrection.confirmDirectSource,
       );
       setEmailCorrection(null);
-      await loadItems(selected);
+      await refreshItems(selected);
       setPreview({
         ...result.draft,
         replacementDraft: true,
@@ -375,7 +384,7 @@ export default function Outreach() {
       }
       setPreview(null);
       setNotice(`Replacement sent to ${approved.contactEmail}. Lead Porch will update its delivery status automatically.`);
-      await loadItems(selected);
+      await refreshItems(selected);
       setFilter("processing");
     } catch (err) {
       setReplacementSendError(err.response?.data?.error || err.message || "Unable to send the replacement email.");
@@ -396,9 +405,8 @@ export default function Outreach() {
         prospectingAttested: deliveryPurpose === "business_prospecting",
       });
       setSelectedOutreachIds((current) => current.filter((id) => !ids.includes(id)));
-      await loadItems(selected);
-      if (!result.failedCount) setNotice(`${result.sentCount} selected email${result.sentCount === 1 ? "" : "s"} sent. No other approved drafts were touched.`);
-      if (result.failedCount)
+      if (!result.failedCount) setNotice(`${result.sentCount} email${result.sentCount === 1 ? "" : "s"} accepted by Resend. Delivery updates will appear automatically; no other approved drafts were touched.`);
+      if (result.failedCount) {
         setError(
           result.sentCount +
             " sent. " +
@@ -409,6 +417,13 @@ export default function Outreach() {
               result.failures[0].message) ||
               "Review failed records."),
         );
+        setNotice(`${result.sentCount} email${result.sentCount === 1 ? "" : "s"} accepted by Resend; ${result.failedCount} stayed in Needs attention.`);
+      }
+      // Sending is complete at this point. Release the UI immediately; the
+      // lightweight fetch below updates cards without Gmail sync or draft
+      // regeneration, and the delivery poll will continue applying webhooks.
+      setSaving(false);
+      void refreshItems(selected).catch(() => null);
     } catch (err) {
       setError(err.response?.data?.error || "Unable to send approved emails.");
     } finally {
@@ -486,7 +501,7 @@ export default function Outreach() {
             failures.push(`${row.Name || email}: ${err.response?.data?.error || "could not be updated"}`);
           }
         }
-        await loadItems(selected);
+        await refreshItems(selected);
         setBulkCorrecting(false);
         if (correctionFileRef.current) correctionFileRef.current.value = "";
         setNotice(`${prepared} replacement draft${prepared === 1 ? "" : "s"} prepared. ${failures.length} row${failures.length === 1 ? "" : "s"} still need attention.`);
