@@ -26,7 +26,7 @@ export default function ApplicationImageSettings() {
 
   if (!config) return error ? <p className="form-error">{error}</p> : null;
 
-  const uploadHeroImage = async (file) => {
+  const uploadLogo = async (file) => {
     if (!file) return;
     if (!/^image\/(png|jpeg|webp)$/.test(file.type) || file.size > 5 * 1024 * 1024) {
       setError("Choose a PNG, JPG, or WEBP image up to 5 MB.");
@@ -36,17 +36,17 @@ export default function ApplicationImageSettings() {
       setUploading(true);
       setError("");
       const asset = await uploadEventImage({ file: await fileData(file), filename: file.name });
-      setConfig((current) => ({ ...current, heroImageUrl: asset.url }));
-      setMessage("Hero image uploaded. Save to publish the change.");
+      setConfig((current) => ({ ...current, logoUrl: asset.url }));
+      setMessage("Logo uploaded. Save to publish the change.");
     } catch (err) {
-      setError(err.response?.data?.error || "Unable to upload the hero image.");
+      setError(err.response?.data?.error || "Unable to upload the logo.");
     } finally {
       setUploading(false);
     }
   };
 
-  const removeHeroImage = () => {
-    setConfig((current) => ({ ...current, heroImageUrl: "" }));
+  const removeLogo = () => {
+    setConfig((current) => ({ ...current, logoUrl: "" }));
     setMessage("");
   };
 
@@ -54,10 +54,10 @@ export default function ApplicationImageSettings() {
     try {
       setSaving(true);
       setConfig(await updateApplicationConfig(config));
-      setMessage("Application page hero image saved.");
+      setMessage("Application page logo saved.");
       setError("");
     } catch (err) {
-      setError(err.response?.data?.error || "Unable to save the hero image.");
+      setError(err.response?.data?.error || "Unable to save the logo.");
     } finally {
       setSaving(false);
     }
@@ -67,36 +67,36 @@ export default function ApplicationImageSettings() {
     <section className="account-settings-panel account-settings-panel--refined">
       <header>
         <p className="page-eyebrow">Applications</p>
-        <h2>Application page hero image</h2>
-        <p>Shown at the top of your public application page. Choose a photo that represents your program.</p>
+        <h2>Application page logo</h2>
+        <p>Shown at the top of your public application page. For best results, use a transparent PNG — it renders as-is, with no background box behind it.</p>
       </header>
       {message ? <p className="discovery-notice">{message}</p> : null}
       {error ? <p className="form-error">{error}</p> : null}
       <section className="settings-section account-profile-form account-profile-form--compact">
-        {config.heroImageUrl ? (
+        {config.logoUrl ? (
           <div className="application-hero-preview">
-            <img src={config.heroImageUrl} alt="Application page hero" />
+            <img src={config.logoUrl} alt="Application page logo" />
           </div>
         ) : (
-          <p className="account-settings-empty">No hero image set yet. The application page will use its default layout.</p>
+          <p className="account-settings-empty">No logo set yet. The application page will use your site's main logo instead.</p>
         )}
         <label className="form-field">
-          <span>{config.heroImageUrl ? "Replace hero image" : "Upload hero image"}</span>
+          <span>{config.logoUrl ? "Replace logo" : "Upload logo"}</span>
           <input
             type="file"
             accept="image/png,image/jpeg,image/webp"
             disabled={uploading}
-            onChange={(event) => uploadHeroImage(event.target.files?.[0])}
+            onChange={(event) => uploadLogo(event.target.files?.[0])}
           />
         </label>
-        {config.heroImageUrl ? (
-          <Button type="button" variant="outline" size="sm" onClick={removeHeroImage}>
-            Remove hero image
+        {config.logoUrl ? (
+          <Button type="button" variant="outline" size="sm" onClick={removeLogo}>
+            Remove logo
           </Button>
         ) : null}
       </section>
       <footer>
-        <Button loading={saving} disabled={uploading} onClick={save}>Save hero image</Button>
+        <Button loading={saving} disabled={uploading} onClick={save}>Save logo</Button>
       </footer>
     </section>
   );

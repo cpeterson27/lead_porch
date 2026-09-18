@@ -91,7 +91,7 @@ function publicConfig(config) {
         "Thank you. Your student application has been received. Our team will review it and follow up with next steps.",
       1000,
     ),
-    heroImageUrl: clean(app.heroImageUrl, 1000),
+    logoUrl: clean(app.logoUrl, 1000),
     questionLabels: {
       investingExperience: clean(
         labels.investingExperience || "Investing experience",

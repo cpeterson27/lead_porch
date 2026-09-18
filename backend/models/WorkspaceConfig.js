@@ -303,7 +303,7 @@ const workspaceConfigSchema = new mongoose.Schema(
       },
       privacyUrl: { type: String, default: "/privacy", maxlength: 1000 },
       termsUrl: { type: String, default: "/terms", maxlength: 1000 },
-      heroImageUrl: { type: String, default: "", maxlength: 1000 },
+      logoUrl: { type: String, default: "", maxlength: 1000 },
       defaultAssigneeUserId: {
         type: mongoose.Schema.Types.ObjectId,
         ref: "User",

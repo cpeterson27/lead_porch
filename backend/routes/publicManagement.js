@@ -201,7 +201,7 @@ router.patch("/application-config", admin, async (req, res) => {
         0,
         1000,
       ),
-      heroImageUrl: service.safeUrl(input.heroImageUrl || ""),
+      logoUrl: service.safeUrl(input.logoUrl || ""),
       questionLabels: Object.fromEntries(
         Object.entries(input.questionLabels || {}).map(([key, value]) => [
           key,

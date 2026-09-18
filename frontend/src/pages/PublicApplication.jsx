@@ -125,11 +125,13 @@ export default function PublicApplication({ embedded: embeddedOverride, search: 
     !config?.intro || config.intro === legacyIntro
       ? "Choose the program that fits your goals and tell us a little about where you are today."
       : config.intro;
-  // The hero panel is always a dark surface, so it prefers the
-  // dark-backgrounds logo — the same single light/dark logo pair used
-  // everywhere else (public website header, dashboard sidebar).
+  // Prefers a logo uploaded specifically for this page (Settings ->
+  // Applications -> Application page logo); falls back to the same
+  // light-background site logo used in the public site header if none is
+  // set. This panel is no longer a dark card, so the light-background
+  // variant is the right default now, not the dark one.
   const heroLogo =
-    site?.branding?.publicSiteLogoDarkUrl || site?.branding?.publicSiteLogoUrl || "";
+    config?.logoUrl || site?.branding?.publicSiteLogoUrl || site?.branding?.publicSiteLogoDarkUrl || "";
   const embedded = embeddedOverride ?? new URLSearchParams(search).get("embed") === "1";
 
   const content = (
