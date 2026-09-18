@@ -32,7 +32,14 @@ async function runAgent(request, dependencies = {}) {
     agent,
     task: safeText(task, 2000),
     input,
-    operationalContext: safeText(operationalContext, 20000),
+    // Default 20000 is plenty for a normal instruction+context prompt, but
+    // a blind character slice at that limit will cut a large JSON payload
+    // (e.g. 20 candidates' full evidence) off mid-object — the model then
+    // never receives valid data for whichever candidates landed past the
+    // cutoff, and silently omits them from its output. A caller building a
+    // genuinely large structured payload can raise this explicitly via
+    // options.operationalContextLimit instead of hitting that silently.
+    operationalContext: safeText(operationalContext, Math.max(20000, Math.min(120000, Number(options.operationalContextLimit) || 20000))),
     approvedKnowledge: safeText(knowledge.context, 8000),
     conversationContext: safeText(conversation.messages?.map((item) => `${item.role}: ${item.content}`).join("\n"), 12000),
     toolResults,
