@@ -1620,11 +1620,13 @@ export const previewCampaignEmailTemplate = (campaignId, template) =>
 // EMAILS / OUTREACH SEND
 // ======================================
 
-export const sendEmails = (outreachIds, { allowUnverified = false } = {}) =>
+export const sendEmails = (outreachIds, { allowUnverified = false, deliveryPurpose = "marketing", prospectingAttested = false } = {}) =>
   api
     .post("/outreach/send", {
       outreachIds,
       allowUnverified,
+      deliveryPurpose,
+      prospectingAttested,
     }, { timeout: 120000 })
     .then((res) => res.data);
 

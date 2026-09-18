@@ -182,15 +182,12 @@ router.post("/record-consent", requireRole("owner", "admin"), async (req, res) =
       educational_newsletter: "educationalNewsletter",
     }[topic];
     const result = await Contact.updateMany(
-      { _id: { $in: contactIds }, status: { $nin: ["archived", "invalid"] } },
+      { _id: { $in: contactIds }, status: { $nin: ["archived", "invalid", "unsubscribed"] }, "emailPreferences.marketingStatus": { $ne: "unsubscribed" } },
       {
         $set: {
-          status: "active",
           "emailPreferences.marketingStatus": "subscribed",
           "emailPreferences.consentSource": consentSource,
           "emailPreferences.consentAt": recordedAt,
-          "emailPreferences.unsubscribedAt": null,
-          "emailPreferences.unsubscribeSource": "",
           [`emailPreferences.topics.${topicField}`]: true,
         },
       },
@@ -338,18 +335,22 @@ router.patch("/bulk/approve", async (req, res) => {
     if (outreachIds !== undefined && !Array.isArray(outreachIds)) {
       return res.status(400).json({ error: "outreachIds must be an array" });
     }
-    const filter = { campaignId, status: "pending" };
+    const filter = {
+      campaignId,
+      status: { $in: ["pending", "failed"] },
+      deliveryStatus: { $nin: ["bounced", "suppressed", "complained"] },
+    };
     if (Array.isArray(outreachIds)) {
       if (!outreachIds.length) return res.status(400).json({ error: "Select at least one draft" });
       filter._id = { $in: outreachIds };
     }
     const result = await Outreach.updateMany(
       filter,
-      { $set: { status: "approved", errorMessage: "" } },
+      { $set: { status: "approved", deliveryStatus: "", failedAt: null, errorMessage: "" } },
     );
     return res.json({
       approvedCount: result.modifiedCount || 0,
-      message: `${result.modifiedCount || 0} pending draft${result.modifiedCount === 1 ? "" : "s"} approved`,
+      message: `${result.modifiedCount || 0} draft${result.modifiedCount === 1 ? "" : "s"} prepared to send`,
     });
   } catch (error) {
     return res.status(400).json({ error: error.message || "Unable to approve pending drafts" });
@@ -433,7 +434,20 @@ router.post("/send", async(req,res)=>{
     const {
       outreachIds,
       allowUnverified,
+      deliveryPurpose = "marketing",
+      prospectingAttested = false,
     } = req.body;
+
+    if (!Array.isArray(outreachIds) || !outreachIds.length || outreachIds.length > 100) {
+      return res.status(400).json({ error: "Select between 1 and 100 approved drafts." });
+    }
+
+    if (!["marketing", "business_prospecting"].includes(deliveryPurpose)) {
+      return res.status(400).json({ error: "Choose a valid sending purpose." });
+    }
+    if (deliveryPurpose === "business_prospecting" && prospectingAttested !== true) {
+      return res.status(400).json({ error: "Confirm the cold business-outreach safeguards before sending." });
+    }
 
 
 
@@ -479,7 +493,10 @@ router.post("/send", async(req,res)=>{
 
 
       const result =
-        await sendEmail(item, { allowUnverified: allowUnverified === true });
+        await sendEmail(item, {
+          allowUnverified: allowUnverified === true,
+          deliveryPurpose,
+        });
 
 
 
@@ -493,6 +510,8 @@ router.post("/send", async(req,res)=>{
         item.messageId =
           result.id || "";
         item.deliveryStatus = "accepted";
+        item.deliveryPurpose = deliveryPurpose;
+        item.prospectingAttestedAt = deliveryPurpose === "business_prospecting" ? new Date() : null;
 
 
         sentCount++;

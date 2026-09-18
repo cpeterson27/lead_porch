@@ -87,6 +87,10 @@ export default function Outreach() {
   const [approveAllOpen, setApproveAllOpen] = useState(false);
   const [deletePendingOpen, setDeletePendingOpen] = useState(false);
   const [consentConfirmOpen, setConsentConfirmOpen] = useState(false);
+  const [issueReview, setIssueReview] = useState(null);
+  const [sendMode, setSendMode] = useState("marketing");
+  const [coldSendOpen, setColdSendOpen] = useState(false);
+  const [coldAttested, setColdAttested] = useState(false);
   const [allowUnverified, setAllowUnverified] = useState(false);
   const [selectedOutreachIds, setSelectedOutreachIds] = useState([]);
   const [bulkCorrecting, setBulkCorrecting] = useState(false);
@@ -188,7 +192,9 @@ export default function Outreach() {
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const visibleItems = filtered.slice((page - 1) * pageSize, page * pageSize);
   const selectableItems = useMemo(
-    () => filtered.filter((item) => ["pending", "approved"].includes(item.status)),
+    () => filtered.filter((item) =>
+      ["pending", "approved"].includes(item.status) ||
+      (item.status === "failed" && !["bounced", "suppressed", "complained"].includes(item.deliveryStatus))),
     [filtered],
   );
   const selectedOutreach = useMemo(
@@ -197,6 +203,7 @@ export default function Outreach() {
   );
   const selectedPendingCount = selectedOutreach.filter((item) => item.status === "pending").length;
   const selectedApprovedCount = selectedOutreach.filter((item) => item.status === "approved").length;
+  const selectedFailedCount = selectedOutreach.filter((item) => item.status === "failed").length;
   useEffect(() => {
     const resetPage = window.setTimeout(() => setPage(1), 0);
     return () => window.clearTimeout(resetPage);
@@ -246,7 +253,7 @@ export default function Outreach() {
   const approve = async (item) => {
     try {
       setSaving(true);
-      const updated = await updateOutreach(item._id, { status: "approved" });
+      const updated = await updateOutreach(item._id, { status: "approved", deliveryStatus: "", failedAt: null, errorMessage: "" });
       setItems((current) =>
         current.map((row) => (row._id === updated._id ? updated : row)),
       );
@@ -273,8 +280,8 @@ export default function Outreach() {
     }
   };
   const approveSelected = async () => {
-    const ids = selectedOutreach.filter((item) => item.status === "pending").map((item) => item._id);
-    if (!selected || !ids.length) return setError("Select one or more pending drafts to approve.");
+    const ids = selectedOutreach.filter((item) => ["pending", "failed"].includes(item.status)).map((item) => item._id);
+    if (!selected || !ids.length) return setError("Select one or more pending or recoverable failed drafts to prepare.");
     try {
       setSaving(true);
       setError("");
@@ -376,14 +383,18 @@ export default function Outreach() {
       setSaving(false);
     }
   };
-  const send = async () => {
+  const performSend = async (deliveryPurpose = "marketing") => {
     const ids = selectedOutreach.filter((item) => item.status === "approved").map((item) => item._id);
     if (!ids.length)
       return setError("Select approved drafts before sending. Use Select next 25 or Select next 50 below.");
     try {
       setSaving(true);
       setError("");
-      const result = await sendEmails(ids, { allowUnverified });
+      const result = await sendEmails(ids, {
+        allowUnverified,
+        deliveryPurpose,
+        prospectingAttested: deliveryPurpose === "business_prospecting",
+      });
       setSelectedOutreachIds((current) => current.filter((id) => !ids.includes(id)));
       await loadItems(selected);
       if (!result.failedCount) setNotice(`${result.sentCount} selected email${result.sentCount === 1 ? "" : "s"} sent. No other approved drafts were touched.`);
@@ -403,6 +414,20 @@ export default function Outreach() {
     } finally {
       setSaving(false);
     }
+  };
+  const send = () => {
+    if (sendMode === "business_prospecting") {
+      if (!selectedApprovedCount) return setError("Prepare and select approved drafts before sending.");
+      setColdAttested(false);
+      setColdSendOpen(true);
+      return;
+    }
+    return performSend("marketing");
+  };
+  const confirmColdSend = async () => {
+    if (!coldAttested) return;
+    setColdSendOpen(false);
+    await performSend("business_prospecting");
   };
 
   const downloadBounceCorrectionCsv = () => {
@@ -528,6 +553,17 @@ export default function Outreach() {
           and no-consent contacts are still blocked.
         </small>
       </label>
+      <fieldset className="outreach-send-mode">
+        <legend>Sending purpose</legend>
+        <label>
+          <input type="radio" name="send-purpose" value="marketing" checked={sendMode === "marketing"} onChange={() => setSendMode("marketing")} />
+          <span><strong>Opted-in marketing</strong><small>For subscribers who explicitly requested this topic.</small></span>
+        </label>
+        <label>
+          <input type="radio" name="send-purpose" value="business_prospecting" checked={sendMode === "business_prospecting"} onChange={() => setSendMode("business_prospecting")} />
+          <span><strong>Cold business prospecting</strong><small>For relevant business contacts. Unsubscribed, suppressed, bounced, and unverified addresses remain blocked.</small></span>
+        </label>
+      </fieldset>
       {error ? <p className="form-error">{error}</p> : null}
       {notice ? <p className="outreach-notice">{notice}</p> : null}
       <section className="outreach-controls">
@@ -597,7 +633,7 @@ export default function Outreach() {
           <div className="outreach-batch-tools" aria-label="Batch selection controls">
             <div>
               <strong>{selectedOutreach.length} selected</strong>
-              <span>{selectedPendingCount} pending · {selectedApprovedCount} approved</span>
+              <span>{selectedPendingCount} pending · {selectedApprovedCount} approved · {selectedFailedCount} retryable</span>
             </div>
             <Button variant="outline" size="sm" onClick={() => setSelectedOutreachIds(selectableItems.slice(0, 25).map((item) => item._id))}>
               Select next {Math.min(25, selectableItems.length)}
@@ -605,14 +641,14 @@ export default function Outreach() {
             <Button variant="outline" size="sm" onClick={() => setSelectedOutreachIds(selectableItems.slice(0, 50).map((item) => item._id))}>
               Select next {Math.min(50, selectableItems.length)}
             </Button>
-            <Button variant="outline" size="sm" onClick={() => setSelectedOutreachIds(visibleItems.filter((item) => ["pending", "approved"].includes(item.status)).map((item) => item._id))}>
+            <Button variant="outline" size="sm" onClick={() => setSelectedOutreachIds(visibleItems.filter((item) => selectableItems.some((selectable) => selectable._id === item._id)).map((item) => item._id))}>
               Select this page
             </Button>
             <Button variant="outline" size="sm" disabled={!selectedOutreach.length} onClick={() => setSelectedOutreachIds([])}>
               Clear
             </Button>
-            <Button size="sm" loading={saving} disabled={!selectedPendingCount} onClick={approveSelected}>
-              Approve selected · {selectedPendingCount}
+            <Button size="sm" loading={saving} disabled={!(selectedPendingCount + selectedFailedCount)} onClick={approveSelected}>
+              Prepare selected · {selectedPendingCount + selectedFailedCount}
             </Button>
             <Button size="sm" loading={saving} disabled={!selectedApprovedCount} onClick={send}>
               <FiMail /> Send selected · {selectedApprovedCount}
@@ -629,8 +665,8 @@ export default function Outreach() {
             </div>
             <div className="outreach-list">
             {visibleItems.map((item) => (
-              <article key={item._id} className={`outreach-item ${["pending", "approved"].includes(item.status) && selectedOutreachIds.includes(item._id) ? "is-selected" : ""}`}>
-                {["pending", "approved"].includes(item.status) ? (
+              <article key={item._id} className={`outreach-item ${selectableItems.some((selectable) => selectable._id === item._id) && selectedOutreachIds.includes(item._id) ? "is-selected" : ""}`}>
+                {selectableItems.some((selectable) => selectable._id === item._id) ? (
                   <label className="outreach-item__select">
                     <input
                       type="checkbox"
@@ -680,6 +716,8 @@ export default function Outreach() {
                             ? item.contactId.email
                             : "";
                         setEmailCorrection({ ...item, newEmail: correctedEmail, confirmDirectSource: false });
+                      } else if (item.status === "failed") {
+                        setIssueReview(item);
                       } else review(item);
                     }}
                   >
@@ -772,6 +810,57 @@ export default function Outreach() {
             <p className="outreach-email-correction__note"><strong>What happens next:</strong> Lead Porch updates the contact and creates a new draft for your review. Confirm this address is correct before approving it. The bounced record stays unchanged for an accurate audit trail, and nothing is sent automatically.</p>
           </form>
         ) : null}
+      </Modal>
+      <Modal
+        isOpen={Boolean(issueReview)}
+        onClose={() => setIssueReview(null)}
+        title="Why this message did not send"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setIssueReview(null)}>Close</Button>
+            {issueReview && !["bounced", "suppressed", "complained"].includes(issueReview.deliveryStatus) ? (
+              <Button loading={saving} onClick={async () => {
+                await approve(issueReview);
+                setIssueReview(null);
+                setSendMode("business_prospecting");
+                setNotice("Draft prepared. Select it, choose Cold business prospecting, and send when ready.");
+              }}>Prepare this draft to retry</Button>
+            ) : null}
+          </>
+        }
+      >
+        {issueReview ? (
+          <div className="outreach-issue-review">
+            <p><strong>{issueReview.contactName || issueReview.contactEmail}</strong></p>
+            <p className="form-error">{issueReview.errorMessage || "The provider could not send this message."}</p>
+            {String(issueReview.errorMessage || "").includes("no recorded marketing opt-in") ? (
+              <p>This address may be retried only through <strong>Cold business prospecting</strong>. That route does not mark the person as subscribed and still enforces verification, unsubscribe, suppression, bounce, mailing-address, and one-click opt-out safeguards.</p>
+            ) : (
+              <p>Correct the issue shown above before retrying. Delivery failures and opt-outs are never overridden.</p>
+            )}
+            <Button variant="outline" onClick={() => { const item = issueReview; setIssueReview(null); review(item); }}>Preview email copy</Button>
+          </div>
+        ) : null}
+      </Modal>
+      <Modal
+        isOpen={coldSendOpen}
+        onClose={() => !saving && setColdSendOpen(false)}
+        title={`Send ${selectedApprovedCount} cold business email${selectedApprovedCount === 1 ? "" : "s"}?`}
+        footer={
+          <>
+            <Button variant="outline" disabled={saving} onClick={() => setColdSendOpen(false)}>Cancel</Button>
+            <Button loading={saving} disabled={!coldAttested} onClick={confirmColdSend}><FiMail /> Send selected</Button>
+          </>
+        }
+      >
+        <div className="outreach-cold-confirmation">
+          <p>This is a separate prospecting route. It does <strong>not</strong> claim that these people subscribed.</p>
+          <p>Lead Porch will still block every unsubscribed, suppressed, bounced, complained, invalid, archived, or unverified address. Every message includes the configured business identity, mailing address, and one-click unsubscribe.</p>
+          <label>
+            <input type="checkbox" checked={coldAttested} onChange={(event) => setColdAttested(event.target.checked)} />
+            <span>I confirm these are relevant business contacts, this message accurately identifies the sender and purpose, and I am authorized to conduct this outreach under the rules that apply to this campaign and its recipients.</span>
+          </label>
+        </div>
       </Modal>
       <Modal
         isOpen={Boolean(preview)}

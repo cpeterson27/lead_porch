@@ -119,6 +119,13 @@ const outreachSchema = new mongoose.Schema(
       enum: ["event_invitations", "program_offers", "educational_newsletter"],
       default: "event_invitations",
     },
+    deliveryPurpose: {
+      type: String,
+      enum: ["marketing", "business_prospecting"],
+      default: "marketing",
+      index: true,
+    },
+    prospectingAttestedAt: { type: Date, default: null },
 
 
     // ======================================

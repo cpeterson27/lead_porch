@@ -79,13 +79,12 @@ async function renderEmailContent(
  * behalf (not a one-off admin connectivity test) must call this first; see
  * marketingCampaignExecution.js for the bulk-send caller.
  *
- * `allowUnverified` is an explicit, per-send opt-in (never a default) that
- * skips only the emailStatus === "verified" requirement — someone who's
- * confident an address is real despite verification saying otherwise. It
- * does not touch suppression, unsubscribe, or marketing-opt-in checks; those
- * still apply, so this can't be used to email someone who never consented.
+ * `allowUnverified` is an explicit marketing-send exception and is never
+ * honored for cold business prospecting. `deliveryPurpose` may bypass only
+ * the subscriber/topic checks; suppression, unsubscribe, invalid/archive,
+ * bounce, CRM identity, and verified-address checks still apply.
  */
-async function checkSendEligibility(recipientEmail, { contactId, emailTopic, allowUnverified = false } = {}) {
+async function checkSendEligibility(recipientEmail, { contactId, emailTopic, allowUnverified = false, deliveryPurpose = "marketing" } = {}) {
   const recipient = String(recipientEmail || "").trim();
   if (!recipient) return { eligible: false, message: "No recipient email found." };
 
@@ -102,6 +101,9 @@ async function checkSendEligibility(recipientEmail, { contactId, emailTopic, all
   const contact = contactId
     ? await Contact.findById(contactId)
     : await Contact.findOne({ email: recipient.toLowerCase() });
+  if (["invalid", "archived"].includes(contact?.status)) {
+    return { eligible: false, message: "This contact is invalid or archived and cannot receive campaign email." };
+  }
   if (
     contact?.status === "unsubscribed" ||
     contact?.emailPreferences?.marketingStatus === "unsubscribed"
@@ -111,18 +113,23 @@ async function checkSendEligibility(recipientEmail, { contactId, emailTopic, all
   if (!contact) {
     return { eligible: false, message: "A CRM contact is required before campaign email can be sent." };
   }
-  if (contact.emailStatus === "undeliverable") {
+  if (contact.emailStatus === "undeliverable" || contact.emailBounced === true) {
     return {
       eligible: false,
       message: "This email address is known to bounce and cannot be sent to.",
     };
   }
-  if (contact.emailStatus !== "verified" && !allowUnverified) {
+  if (contact.emailStatus !== "verified" && (!allowUnverified || deliveryPurpose === "business_prospecting")) {
     return {
       eligible: false,
       message: "This email address is not verified. Verify or directly confirm the corrected address before sending.",
     };
   }
+  // A cold business-prospecting message is not a marketing subscription.
+  // It may bypass only the affirmative opt-in/topic checks below. Suppression,
+  // unsubscribe, invalid/bounced state, CRM identity, and address verification
+  // above remain mandatory for every send.
+  if (deliveryPurpose === "business_prospecting") return { eligible: true, contact };
   if (
     contact.emailPreferences?.marketingStatus !== "subscribed" ||
     !contact.emailPreferences?.consentAt
@@ -151,7 +158,7 @@ async function checkSendEligibility(recipientEmail, { contactId, emailTopic, all
   return { eligible: true, contact };
 }
 
-async function sendEmail(outreachItem, { allowUnverified = false } = {}) {
+async function sendEmail(outreachItem, { allowUnverified = false, deliveryPurpose = "marketing" } = {}) {
   if (!outreachItem) {
     return {
       success: false,
@@ -165,6 +172,7 @@ async function sendEmail(outreachItem, { allowUnverified = false } = {}) {
     contactId: outreachItem.contactId,
     emailTopic: outreachItem.emailTopic,
     allowUnverified,
+    deliveryPurpose,
   });
   if (!eligibility.eligible) {
     return { success: false, message: eligibility.message };
