@@ -16,6 +16,7 @@ const LinkedinSequenceEnrollment = require("../models/LinkedinSequenceEnrollment
 const LinkedinSequence = require("../models/LinkedinSequence");
 const { connectionForAccount: linkedinConnectionForAccount, ingestLinkedinMessage } = require("../services/conversations/linkedinMessagingAdapter");
 const linkedinSequenceReplyService = require("../services/linkedinSequenceReplyService");
+const linkedinInboxSyncService = require("../services/linkedinInboxSyncService");
 const MessagingSender = require("../models/MessagingSender");
 const { normalizePhone } = require("../services/communicationPolicyService");
 const { twilioConversationAdapter, validateTwilioSignature } = require("../services/conversations/twilioConversationAdapter");
@@ -457,6 +458,22 @@ router.post("/unipile", async (req, res) => {
           { upsert: true, setDefaultsOnInsert: true },
         );
         console.log(`[Unipile webhook] LinkedIn account connected: workspaceId=${workspaceId} accountId=${accountId}`);
+        const publicBackendUrl = String(process.env.PUBLIC_BACKEND_URL || process.env.BACKEND_URL || "").trim();
+        if (publicBackendUrl && expected) {
+          try {
+            await linkedinInboxSyncService.ensureMessagingWebhook({
+              workspaceId,
+              backendBaseUrl: publicBackendUrl,
+              webhookToken: expected,
+            });
+          } catch (webhookError) {
+            console.warn(`[Unipile webhook] account connected but messaging webhook setup failed: ${webhookError.message}`);
+            await SocialConnection.updateOne(
+              { workspaceId, provider: "linkedin_unipile" },
+              { $set: { lastError: `Inbox webhook setup failed: ${webhookError.message}` } },
+            );
+          }
+        }
       } else {
         await SocialConnection.updateOne(
           { workspaceId, provider: "linkedin_unipile" },
@@ -494,7 +511,7 @@ router.post("/unipile-messages", async (req, res) => {
       const enrollment = await LinkedinSequenceEnrollment.findOne({
         workspaceId: connection.workspaceId,
         contactId: contact._id,
-        status: "awaiting_reply",
+        status: { $in: ["in_progress", "awaiting_reply"] },
       });
       if (!enrollment) return;
       const sequence = await LinkedinSequence.findById(enrollment.sequenceId);

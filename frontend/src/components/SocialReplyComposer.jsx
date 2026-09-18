@@ -137,7 +137,7 @@ export default function SocialReplyComposer({
       </>
     );
   if (
-    !["instagram", "facebook"].includes(thread.channel) ||
+    !["instagram", "facebook", "linkedin"].includes(thread.channel) ||
     thread.metadata?.interactionType === "comment"
   )
     return (
@@ -176,7 +176,7 @@ export default function SocialReplyComposer({
         }}
       >
         <label>
-          Reply as your connected business account
+          Reply as your connected {thread.channel === "linkedin" ? "LinkedIn profile" : "business account"}
           <textarea
             maxLength="2000"
             rows="4"
@@ -194,7 +194,9 @@ export default function SocialReplyComposer({
           I approve sending this exact reply
         </label>
         <p>
-          The provider's customer messaging window is checked before sending.
+          {thread.channel === "linkedin"
+            ? "This exact message will be sent in the connected LinkedIn conversation."
+            : "The provider's customer messaging window is checked before sending."}
         </p>
         {error && <p role="alert">{error}</p>}
         <button disabled={busy || !approved || !body.trim()}>

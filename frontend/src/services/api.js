@@ -110,6 +110,18 @@ export const fetchLinkedinSequenceEnrollments = (id) =>
   api.get(`/social/linkedin-outreach/sequences/${id}/enrollments`).then((res) => res.data.data);
 export const fetchLinkedinReplyDrafts = () =>
   api.get("/social/linkedin-outreach/reply-drafts").then((res) => res.data.data);
+export const fetchLinkedinCandidates = (params = {}) =>
+  api.get("/social/linkedin-outreach/candidates", { params }).then((res) => res.data.data);
+export const fetchLinkedinAnalytics = () =>
+  api.get("/social/linkedin-outreach/analytics").then((res) => res.data.data);
+export const syncLinkedinInbox = (maxChats = 100) =>
+  api.post("/social/linkedin-outreach/inbox/sync", { maxChats }).then((res) => res.data.data);
+export const registerLinkedinInboxWebhook = () =>
+  api.post("/social/linkedin-outreach/inbox/register-webhook").then((res) => res.data.data);
+export const searchLinkedinPeople = (values) =>
+  api.post("/social/linkedin-outreach/search", values).then((res) => res.data.data);
+export const importLinkedinSearchPeople = (people) =>
+  api.post("/social/linkedin-outreach/search/import", { people }).then((res) => res.data);
 export const sendLinkedinReplyDraft = (messageId, text) =>
   api
     .post(`/social/linkedin-outreach/reply-drafts/${messageId}/send`, { text })

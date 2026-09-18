@@ -849,7 +849,9 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                   const profileLink =
                     identity?.username && detail.thread.channel === "instagram"
                       ? `https://instagram.com/${identity.username}`
-                      : null;
+                      : detail.thread.channel === "linkedin"
+                        ? detail.thread.contactIds?.[0]?.linkedin || (identity?.username ? `https://www.linkedin.com/in/${identity.username}` : null)
+                        : null;
                   return (
                     <>
                       <header className="social-conversation-header">
@@ -873,7 +875,7 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                               target="_blank"
                               rel="noreferrer"
                             >
-                              View Instagram profile
+                              View {detail.thread.channel === "linkedin" ? "LinkedIn" : "Instagram"} profile
                             </a>
                           )}
                           {!profileLink && detail.thread.channel === "facebook" && (

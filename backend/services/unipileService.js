@@ -242,6 +242,29 @@ async function getAllMessagesFromChat({ chatId, cursor }) {
 }
 
 /**
+ * Run a user-initiated LinkedIn people search. Results are only previews;
+ * callers must require an explicit human selection before creating CRM
+ * contacts or starting outreach.
+ */
+async function searchLinkedinPeople({ accountId, url, keywords, cursor, limit = 25 }) {
+  assertEnabled();
+  try {
+    const { data } = await client().post("/linkedin/search", url
+      ? { url: String(url).trim() }
+      : { api: "classic", category: "people", keywords: String(keywords || "").trim() }, {
+      params: {
+        account_id: accountId,
+        limit: Math.min(25, Math.max(1, Number(limit) || 25)),
+        ...(cursor ? { cursor } : {}),
+      },
+    });
+    return data;
+  } catch (error) {
+    throw unipileError("LinkedIn people search", error);
+  }
+}
+
+/**
  * Register a messaging webhook so inbound LinkedIn messages reach
  * /api/webhooks/unipile-messages. Idempotency is the caller's
  * responsibility — Unipile does not dedupe webhook registrations by URL.
@@ -273,5 +296,6 @@ module.exports = {
   sendChatMessage,
   getAllChats,
   getAllMessagesFromChat,
+  searchLinkedinPeople,
   registerMessagingWebhook,
 };

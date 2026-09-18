@@ -14,6 +14,7 @@
     "test:user-avatar-ui": "node test-user-avatar-ui.js",
     "test:ambassador-welcome-ui": "node test-ambassador-welcome-ui.js",
     "test:social-workspace-ui": "node test-social-workspace-ui.js",
+    "test:linkedin-outreach-ui": "node test-linkedin-outreach-ui.js",
     "test:public-site-ui": "node test-public-site-ui.js",
     "test:organization-logo-ui": "node test-organization-logo-ui.js",
     "test:website-management-ui": "node test-website-management-ui.js",

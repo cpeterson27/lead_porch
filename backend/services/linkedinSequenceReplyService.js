@@ -87,6 +87,17 @@ async function notifyForReview(workspaceId, enrollment, draftMessage) {
  * (see routes/socialLinkedinOutreach.js's reply-review endpoints).
  */
 async function handleInboundReply({ workspaceId, sequence, enrollment, contact, thread }) {
+  // An inbound reply always halts the remaining timed follow-ups. From here
+  // the conversation is reply-led, not sequence-led.
+  enrollment.status = "awaiting_reply";
+  enrollment.nextActionDueAt = null;
+  await enrollment.save();
+  contact.linkedinOutreach = {
+    ...contact.linkedinOutreach,
+    status: "replied",
+    connectionStatus: "accepted",
+  };
+  await contact.save();
   const history = await recentHistory(thread._id);
   let drafted;
   try {

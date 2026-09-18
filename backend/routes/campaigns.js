@@ -13,6 +13,7 @@ const { requireRole } = require("../middleware/auth");
 const { defaultResearchAudienceTemplate } = require("../services/researchAudienceTemplates");
 const llmService = require("../services/llmService");
 const { renderEmailContent } = require("../services/email");
+const { regenerateCampaignOutreach } = require("../services/outreachGenerationService");
 
 const router = express.Router();
 
@@ -465,7 +466,23 @@ router.post("/:id/email-template/approve", requireRole("owner", "admin"), async 
     campaign.audienceMatch.routingApprovedByUserId = null;
   }
   await campaign.save();
-  return res.json({ template: approvedTemplate, version: approved });
+  // Self-heal: a newly-approved design otherwise only reaches contacts the
+  // next time someone manually clicks "Regenerate" on the Outreach page,
+  // which left already-drafted pending emails silently stuck on the old
+  // design until that happened. Only refresh campaigns that have already
+  // been generated at least once — approving a template shouldn't be the
+  // trigger that first spins up drafts for a campaign nobody's generated yet.
+  let refreshedOutreachCount = 0;
+  try {
+    const hasExistingOutreach = await Outreach.exists({ campaignId: campaign._id });
+    if (hasExistingOutreach) {
+      const refreshed = await regenerateCampaignOutreach(campaign, { actorUserId: req.auth.user._id });
+      refreshedOutreachCount = refreshed.updatedCount;
+    }
+  } catch (error) {
+    console.error("Auto-refresh of pending outreach after template approval failed:", error);
+  }
+  return res.json({ template: approvedTemplate, version: approved, refreshedOutreachCount });
 });
 
 router.patch("/:id/brand", async (req, res) => {

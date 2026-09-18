@@ -29,6 +29,8 @@ const automationExecutorService = require("../services/automationExecutorService
 const {
   metaMessagingAdapter,
 } = require("../services/conversations/metaMessagingAdapter");
+const { linkedinMessagingAdapter } = require("../services/conversations/linkedinMessagingAdapter");
+const { ingestProviderMessage } = require("../services/conversations/conversationIngestionService");
 const router = express.Router();
 router.use(requireCapability("social.manage"));
 const wrap = (fn) => (req, res, next) =>
@@ -345,7 +347,7 @@ router.get(
       ];
     }
     const data = await ConversationThread.find(query)
-      .populate("contactIds", "name")
+      .populate("contactIds", "name linkedin")
       .sort({ lastMessageAt: -1 })
       .limit(200)
       .lean();
@@ -382,7 +384,7 @@ router.get(
       workspaceId: req.auth.workspaceId,
       channel: { $in: socialChannels },
     })
-      .populate("contactIds", "name")
+      .populate("contactIds", "name linkedin")
       .lean();
     if (!thread)
       return res.status(404).json({ error: "Social conversation not found" });
@@ -577,7 +579,7 @@ router.post(
     const thread = await ConversationThread.findOne({
       _id: req.params.id,
       workspaceId: req.auth.workspaceId,
-      channel: { $in: ["instagram", "facebook"] },
+      channel: { $in: ["instagram", "facebook", "linkedin"] },
     }).lean();
     if (!thread)
       return res
@@ -593,6 +595,33 @@ router.post(
     );
     if (!recipient)
       return res.status(409).json({ error: "Identifiable recipient required" });
+    if (thread.channel === "linkedin") {
+      if (thread.provider !== "linkedin_unipile") return res.status(409).json({ error: "This LinkedIn conversation is not connected for direct replies" });
+      const body = String(req.body.body || "").trim().slice(0, 8000);
+      if (!body) return res.status(400).json({ error: "Reply text is required" });
+      const providerResult = await linkedinMessagingAdapter.sendMessage({
+        chatId: thread.providerThreadId,
+        accountId: thread.metadata?.accountId,
+        providerId: recipient.address,
+        body,
+      });
+      const saved = await ingestProviderMessage({
+        thread,
+        message: {
+          providerMessageId: String(providerResult?.id || providerResult?.message_id || `linkedin-sent:${Date.now()}`),
+          direction: "outbound",
+          body,
+          sender: { name: req.auth.user?.name || "Team", address: thread.metadata?.accountId || "" },
+          recipients: [{ address: recipient.address, role: "to" }],
+          contactId: thread.contactIds?.[0] || null,
+          createdBy: req.auth.user._id,
+          deliveryStatus: "sent",
+          sentAt: new Date(),
+          metadata: { senderType: "human" },
+        },
+      });
+      return res.json(saved);
+    }
     const result = await metaMessagingAdapter.sendMessage({
       workspaceId: req.auth.workspaceId,
       userId: req.auth.user._id,

@@ -510,7 +510,11 @@ export default function CampaignWorkspace() {
       const result = await approveCampaignEmailTemplate(id, templateAudience);
       setEmailTemplate(result.template);
       setTemplateDirty(false);
-      setTemplateNotice("Template approved.");
+      setTemplateNotice(
+        result.refreshedOutreachCount
+          ? `Template approved. ${result.refreshedOutreachCount} pending draft${result.refreshedOutreachCount === 1 ? "" : "s"} already in the queue ${result.refreshedOutreachCount === 1 ? "was" : "were"} refreshed to match.`
+          : "Template approved.",
+      );
       setTemplateVersions((current) => [result.version, ...current]);
     } catch (err) {
       setError(

@@ -39,6 +39,10 @@ const schema = new mongoose.Schema(
     // in addition to whatever limit the LinkedIn account itself allows
     // (LinkedIn caps around 80-100 invitations/day on paid accounts).
     dailyInvitationLimit: { type: Number, default: 20, min: 1, max: 100 },
+    // A second, rolling limit prevents a newly-activated sequence from
+    // spending its entire daily allowance in one worker pass. Five per hour
+    // is intentionally conservative for a real personal account.
+    hourlyInvitationLimit: { type: Number, default: 5, min: 1, max: 25 },
     // A reply is always drafted by AI; it is only ever SENT without a human
     // click when this is explicitly turned on for the sequence. Defaults to
     // off — every new sequence starts human-reviewed.

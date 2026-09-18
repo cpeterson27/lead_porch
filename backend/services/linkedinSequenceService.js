@@ -16,12 +16,14 @@ const CrmActivity = require("../models/CrmActivity");
 const outreachEngine = require("./linkedinOutreachEngineService");
 const unipile = require("./unipileService");
 const { runWithWorkspace } = require("../tenancy/workspaceContext");
+const { ingestProviderMessage } = require("./conversations/conversationIngestionService");
 
 const RUNNER_INTERVAL_MS = Math.max(30000, Number(process.env.LINKEDIN_SEQUENCE_WORKER_POLL_MS) || 5 * 60000);
 const LEASE_MS = Math.max(120000, Number(process.env.LINKEDIN_SEQUENCE_WORKER_LEASE_MS) || 10 * 60000);
 // How often the runner re-checks a pending connection request for
 // acceptance. See the TODO on checkConnectionAcceptance below.
-const ACCEPTANCE_RECHECK_MS = 6 * 60 * 60000;
+const ACCEPTANCE_RECHECK_MS = Math.max(15 * 60000, Number(process.env.LINKEDIN_ACCEPTANCE_RECHECK_MS) || 30 * 60000);
+const CONNECTION_REQUEST_EXPIRY_MS = 30 * 24 * 60 * 60000;
 const WORKER_ID = `${os.hostname()}:${process.pid}:${crypto.randomUUID().slice(0, 8)}`;
 let timer = null;
 let polling = false;
@@ -49,6 +51,38 @@ async function stopEnrollment(enrollment, reason) {
   await enrollment.save();
 }
 
+async function invitationQuota(sequence) {
+  const now = new Date();
+  const hourAgo = new Date(now.getTime() - 60 * 60000);
+  const dayAgo = new Date(now.getTime() - 24 * 60 * 60000);
+  const sequenceIds = await LinkedinSequence.find({
+    workspaceId: sequence.workspaceId,
+    unipileAccountId: sequence.unipileAccountId,
+  }).distinct("_id");
+  const base = {
+    workspaceId: sequence.workspaceId,
+    sequenceId: { $in: sequenceIds },
+    history: { $elemMatch: { type: "connection_request", result: "sent" } },
+  };
+  const [sentLastHour, sentLast24Hours] = await Promise.all([
+    LinkedinSequenceEnrollment.countDocuments({
+      ...base,
+      history: { $elemMatch: { type: "connection_request", result: "sent", occurredAt: { $gte: hourAgo } } },
+    }),
+    LinkedinSequenceEnrollment.countDocuments({
+      ...base,
+      history: { $elemMatch: { type: "connection_request", result: "sent", occurredAt: { $gte: dayAgo } } },
+    }),
+  ]);
+  return {
+    sentLastHour,
+    sentLast24Hours,
+    hourlyLimit: sequence.hourlyInvitationLimit || 5,
+    dailyLimit: sequence.dailyInvitationLimit || 20,
+    allowed: sentLastHour < (sequence.hourlyInvitationLimit || 5) && sentLast24Hours < (sequence.dailyInvitationLimit || 20),
+  };
+}
+
 /**
  * Enroll a set of contacts into a sequence. Skips contacts already enrolled
  * in this sequence (idempotent) and contacts with no LinkedIn URL.
@@ -58,6 +92,12 @@ async function enrollContacts({ sequence, contactIds, workspaceId }) {
   const results = [];
   for (const contact of contacts) {
     try {
+      const activeEnrollment = await LinkedinSequenceEnrollment.findOne({
+        workspaceId,
+        contactId: contact._id,
+        status: { $nin: ["stopped", "failed", "completed", "connection_declined"] },
+      }).select("_id").lean();
+      if (activeEnrollment) continue;
       const enrollment = await LinkedinSequenceEnrollment.findOneAndUpdate(
         { workspaceId, sequenceId: sequence._id, contactId: contact._id },
         { $setOnInsert: { status: "pending", nextActionDueAt: new Date() } },
@@ -107,6 +147,13 @@ async function advanceEnrollment(enrollment) {
 
   if (enrollment.status === "pending") {
     const step = sequence.steps[0];
+    const quota = await invitationQuota(sequence);
+    if (!quota.allowed) {
+      // Recheck without recording a failure. A rolling window is safer than
+      // resetting at midnight because it cannot burst at a date boundary.
+      enrollment.nextActionDueAt = new Date(Date.now() + 60 * 60000);
+      return enrollment.save();
+    }
     try {
       const { accountId, providerId } = await outreachEngine.sendConnectionRequestToContact({
         workspaceId: enrollment.workspaceId,
@@ -133,6 +180,9 @@ async function advanceEnrollment(enrollment) {
   }
 
   if (enrollment.status === "connection_sent") {
+    if (Date.now() - new Date(enrollment.createdAt).getTime() > CONNECTION_REQUEST_EXPIRY_MS) {
+      return stopEnrollment(enrollment, "connection_not_accepted_within_30_days");
+    }
     const { accepted } = await checkConnectionAcceptance(enrollment, enrollment.unipileAccountId);
     if (accepted) {
       enrollment.status = "connection_accepted";
@@ -148,20 +198,49 @@ async function advanceEnrollment(enrollment) {
     return enrollment.save();
   }
 
-  if (enrollment.status === "connection_accepted") {
+  if (["connection_accepted", "in_progress"].includes(enrollment.status)) {
     const step = sequence.steps[enrollment.currentStepIndex + 1];
     if (!step) return stopEnrollment(enrollment, "sequence_complete");
     try {
-      const chat = await unipile.startNewChat({
-        accountId: enrollment.unipileAccountId,
-        providerId: enrollment.unipileProviderId,
-        text: renderTemplate(step.messageTemplate, contact),
-      });
-      enrollment.unipileChatId = chat.chat_id || chat.id || "";
+      const text = renderTemplate(step.messageTemplate, contact);
+      const providerResult = enrollment.unipileChatId
+        ? await unipile.sendChatMessage({ chatId: enrollment.unipileChatId, text })
+        : await unipile.startNewChat({
+          accountId: enrollment.unipileAccountId,
+          providerId: enrollment.unipileProviderId,
+          text,
+        });
+      enrollment.unipileChatId = enrollment.unipileChatId || providerResult.chat_id || providerResult.id || "";
       enrollment.currentStepIndex += 1;
-      enrollment.status = "awaiting_reply";
-      enrollment.nextActionDueAt = null;
+      const followingStep = sequence.steps[enrollment.currentStepIndex + 1];
+      enrollment.status = followingStep ? "in_progress" : "awaiting_reply";
+      enrollment.nextActionDueAt = followingStep
+        ? new Date(Date.now() + followingStep.delayMinutes * 60000)
+        : null;
       await logHistory(enrollment, { stepIndex: enrollment.currentStepIndex, type: step.type, result: "sent" });
+      if (enrollment.unipileChatId) {
+        await ingestProviderMessage({
+          thread: {
+            channel: "linkedin",
+            provider: "linkedin_unipile",
+            providerThreadId: enrollment.unipileChatId,
+            contactIds: [contact._id],
+            participants: [{ kind: "contact", role: "to", address: enrollment.unipileProviderId, contactId: contact._id }],
+            metadata: { accountId: enrollment.unipileAccountId, sequenceId: sequence._id },
+          },
+          message: {
+            providerMessageId: String(providerResult.message_id || providerResult.id || `linkedin-sequence:${enrollment._id}:${enrollment.currentStepIndex}`),
+            direction: "outbound",
+            body: text,
+            sender: { name: "Connected LinkedIn account", address: enrollment.unipileAccountId },
+            recipients: [{ address: enrollment.unipileProviderId, role: "to" }],
+            contactId: contact._id,
+            deliveryStatus: "sent",
+            sentAt: new Date(),
+            metadata: { sequenceId: sequence._id, enrollmentId: enrollment._id, senderType: "automation" },
+          },
+        });
+      }
       await CrmActivity.create({
         contactId: contact._id,
         type: "system",
@@ -187,7 +266,7 @@ async function claimDueEnrollment() {
   const now = new Date();
   return LinkedinSequenceEnrollment.findOneAndUpdate(
     {
-      status: { $in: ["pending", "connection_sent", "connection_accepted"] },
+      status: { $in: ["pending", "connection_sent", "connection_accepted", "in_progress"] },
       nextActionDueAt: { $lte: now },
       $or: [{ leaseExpiresAt: null }, { leaseExpiresAt: { $lte: now } }],
     },
@@ -224,4 +303,5 @@ module.exports = {
   runDueEnrollments,
   startLinkedinSequenceRunner,
   renderTemplate,
+  invitationQuota,
 };
