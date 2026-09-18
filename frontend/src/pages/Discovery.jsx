@@ -859,6 +859,9 @@ export default function Discovery() {
     pagedGroundingResults.forEach((result) => lanes[discoveryLaneOf(result)].push(result));
     return lanes;
   }, [pagedGroundingResults]);
+  const selectAllInLane = (laneKey) => {
+    setSelectedGroundingIds(groundingResultsByLane[laneKey].map((r) => r._id));
+  };
 
   useEffect(() => {
     if (activeTab !== "people") return undefined;
@@ -1755,7 +1758,7 @@ export default function Discovery() {
 
         {visibleGroundingResults.length ? <><div className="discovery-lanes">
           {DISCOVERY_LANES.map(([laneKey, laneLabel, laneDescription]) => <details className={`discovery-lane lane-${laneKey}${groundingResultsByLane[laneKey].length ? "" : " is-empty"}`} key={laneKey} open={laneKey === "prospective_students"}>
-            <summary className="discovery-lane__header"><div><span>{laneLabel}</span><small>{laneDescription}</small></div><strong>{groundingResultsByLane[laneKey].length}</strong></summary>
+            <summary className="discovery-lane__header"><div><span>{laneLabel}</span><small>{laneDescription}</small></div><div className="discovery-lane__header-actions">{groundingResultsByLane[laneKey].length ? <Button size="sm" variant="outline" onClick={(event) => { event.preventDefault(); event.stopPropagation(); selectAllInLane(laneKey); }}>Select all</Button> : null}<strong>{groundingResultsByLane[laneKey].length}</strong></div></summary>
             {!groundingResultsByLane[laneKey].length ? <p className="discovery-lane__empty">No results in this category yet.</p> : <div className="review-queue-grid"><div className="lead-review-table__header" aria-hidden="true"><span>Person</span><span>Title</span><span>Company</span><span>Fit</span><span>Email</span><span>Social</span><span>Status</span><span>Next action</span></div>{groundingResultsByLane[laneKey].map((result) => {
             const { effectiveEmail, apolloProfile, publicProfileUrls, companyWebsiteUrl, missingContactMessage, contactStatus, sourceLabel, corroborated, isStructuredAudienceMatch, enrichedApolloProfile, apolloOrganization } = computeResultDisplay(result);
             // Apollo is always the first, primary contact-finding action.

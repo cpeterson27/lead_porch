@@ -1294,6 +1294,8 @@
 .discovery-lane__header span { color: #17222f; font-size: .95rem; font-weight: 800; }
 .discovery-lane__header small { color: #74807b; }
 .discovery-lane__header > strong { background: #fff; border: 1px solid #dde3e0; border-radius: 999px; color: #173f36; font-size: .76rem; padding: .25rem .55rem; }
+.discovery-lane__header-actions { align-items: center; display: flex; gap: .5rem; }
+.discovery-lane__header-actions .btn { padding: 5px 14px !important; height: 30px !important; min-height: 30px !important; }
 .discovery-lane.is-empty { opacity: .6; }
 .discovery-lane.is-empty .discovery-lane__header { cursor: default; }
 .discovery-lane__empty { color: #74807b; font-size: .85rem; margin: 0 .15rem .3rem; }
