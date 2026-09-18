@@ -1300,8 +1300,15 @@ export const fetchLeadGenerationSearch = (searchId) =>
   api.get(`/lead-generation/searches/${searchId}`).then((res) => res.data);
 export const enrichVertexGroundingResultWithApollo = (id) =>
   api.post(`/lead-generation/results/${id}/enrich-apollo`).then((res) => res.data);
+// A batch of up to 20 candidates each gets a full personalized outreach
+// draft generated, not just a score — real-world LLM latency on that can
+// run close to or past 60s under normal variance. A too-tight client
+// timeout here silently killed later batches mid-run (see the "select all,
+// qualify, only ~20 processed" incident) while earlier batches had already
+// succeeded and saved — this is about giving the request enough real room
+// to finish, not about how long the UI waits before giving up.
 export const qualifyLeadGenerationResults = (resultIds) =>
-  api.post("/lead-generation/results/qualify", { resultIds }, { timeout: 60000 }).then((res) => res.data);
+  api.post("/lead-generation/results/qualify", { resultIds }, { timeout: 120000 }).then((res) => res.data);
 export const proposeLeadGenerationMonitor = (searchId) =>
   api.post(`/lead-generation/searches/${searchId}/propose-monitor`).then((res) => res.data);
 export const fetchLeadGenerationMonitorSuggestions = () =>

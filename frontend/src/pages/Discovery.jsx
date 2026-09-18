@@ -574,9 +574,17 @@ export default function Discovery() {
     const batches = [];
     for (let i = 0; i < ids.length; i += QUALIFY_BATCH_SIZE) batches.push(ids.slice(i, i + QUALIFY_BATCH_SIZE));
     const totals = { processed: 0, qualified: 0, needsReview: 0, notAFit: 0, failed: 0 };
-    try {
-      for (let i = 0; i < batches.length; i += 1) {
-        setQualifyProgress({ batch: i + 1, batchCount: batches.length, total: ids.length });
+    let batchErrors = 0;
+    // Each batch is independent and already saved to the database the
+    // moment it succeeds — a later batch timing out or erroring must never
+    // discard or hide the batches that already completed. The previous
+    // version aborted the entire loop on the first error (e.g. a slow
+    // batch hitting the client timeout), silently leaving every batch
+    // after it unprocessed with no explanation and no refresh — exactly
+    // the reported "selected 50, only ~20 got scored" incident.
+    for (let i = 0; i < batches.length; i += 1) {
+      setQualifyProgress({ batch: i + 1, batchCount: batches.length, total: ids.length });
+      try {
         const res = await qualifyLeadGenerationResults(batches[i]);
         const s = res.data.summary || { processed: res.data.qualified || 0, qualified: res.data.qualified || 0, needsReview: 0, notAFit: 0, failed: 0 };
         totals.processed += s.processed || 0;
@@ -584,13 +592,17 @@ export default function Discovery() {
         totals.needsReview += s.needsReview || 0;
         totals.notAFit += s.notAFit || 0;
         totals.failed += s.failed || 0;
+      } catch (err) {
+        batchErrors += 1;
+        totals.failed += batches[i].length;
+        console.warn("[Discovery] a qualify batch failed; continuing with the remaining batches", err.response?.data?.error || err.message);
       }
-      setQualifySummary(totals);
-      setNotice(`Jarvis processed ${totals.processed} of ${ids.length} selected: ${totals.qualified} qualified, ${totals.needsReview} needs review, ${totals.notAFit} not a fit${totals.failed ? `, ${totals.failed} failed` : ""}.`);
-      setSelectedGroundingIds([]);
+    }
+    setQualifySummary(totals);
+    setNotice(`Jarvis processed ${totals.processed} of ${ids.length} selected: ${totals.qualified} qualified, ${totals.needsReview} needs review, ${totals.notAFit} not a fit${totals.failed ? `, ${totals.failed} failed` : ""}.${batchErrors ? ` ${batchErrors} batch${batchErrors === 1 ? "" : "es"} hit an error and may need to be re-run for those specific leads.` : ""}`);
+    setSelectedGroundingIds([]);
+    try {
       await loadGroundingResults();
-    } catch (err) {
-      setNotice(err.response?.data?.error || "Qualification failed.");
     } finally {
       setQualifyBusy(false);
       setQualifyProgress(null);
