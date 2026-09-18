@@ -56,6 +56,25 @@ function testBuildQualifyResponseSchemaWithNoApprovedProgramsOnlyAllowsNone() {
   assert.deepEqual(schema.properties.qualifications.items.properties.recommendedProgramId.enum, ["none"], "with zero approved programs, 'none' must be the only legal value — never a fabricated fallback name");
 }
 
+// Real, reported incident: 50 candidates selected, only 19 came back
+// scored — yet the 3 underlying LLM calls behind those batches all
+// reported success in the usage ledger (valid JSON, no error, reasonable
+// token counts). Nothing in the schema required the model to return one
+// qualification per candidate, so it was free to just omit most of them.
+// Each omission then landed as an unexplained "failed" with no error to
+// investigate. minItems/maxItems close that gap at the schema level,
+// where OpenAI's strict structured-output mode actually enforces it,
+// rather than relying only on a prose instruction the model can ignore.
+function testBuildQualifyResponseSchemaRequiresExactlyOneEntryPerCandidateWhenCountIsGiven() {
+  const withCount = buildQualifyResponseSchema(["note-1", "note-2"], 20);
+  assert.equal(withCount.properties.qualifications.minItems, 20, "must require at least as many qualifications as candidates supplied");
+  assert.equal(withCount.properties.qualifications.maxItems, 20, "must also cap at exactly the candidate count, so the model can't pad with fabricated entries either");
+
+  const withoutCount = buildQualifyResponseSchema(["note-1", "note-2"]);
+  assert.equal(withoutCount.properties.qualifications.minItems, undefined, "omitting candidateCount must not add a constraint, so existing callers that don't pass it keep working unchanged");
+  assert.equal(withoutCount.properties.qualifications.maxItems, undefined);
+}
+
 // ==================== computeQualificationOutcome: the three-axis enforcement ====================
 
 function testComputeQualificationOutcomeRequiresAllThreePillarsForQualified() {
@@ -263,6 +282,29 @@ async function testQualifyAndRecommendReportsAnAccurateCompletionSummary() {
   assert.equal(result.summary.needsReview, 1);
   assert.equal(result.summary.notAFit, 1);
   assert.equal(result.summary.failed, 1, "a requested candidate never found in pending_review or never returned by the model must be counted as failed, not silently ignored");
+}
+
+// Confirms qualifyAndRecommend actually wires the real batch size into the
+// schema it sends the model — a schema-builder unit test alone can't catch
+// this call site silently dropping the count again in the future.
+async function testQualifyAndRecommendTellsTheModelExactlyHowManyCandidatesToReturn() {
+  const rows = [
+    { _id: "gr-a", name: "A", providers: ["vertex_grounding"], confidence: "single_source", conflicts: [], discoveryMode: "public_web_evidence" },
+    { _id: "gr-b", name: "B", providers: ["vertex_grounding"], confidence: "single_source", conflicts: [], discoveryMode: "public_web_evidence" },
+    { _id: "gr-c", name: "C", providers: ["vertex_grounding"], confidence: "single_source", conflicts: [], discoveryMode: "public_web_evidence" },
+  ];
+  const GroundingResearchResult = fakeGroundingResultModel(rows);
+  const listApprovedPrograms = async () => [{ noteId: "note-real-1", title: "4-Month Multifamily Mentorship" }];
+  let capturedSchema = null;
+  const runAgent = async ({ options }) => {
+    capturedSchema = options.responseSchema;
+    return { output: { qualifications: rows.map((row) => ({ resultId: row._id, identityNotes: "", programFitScore: 50, programFitReasons: [], recommendedProgramId: "none", buyerIntentLevel: "none", buyerIntentEvidence: "", exclusionFlags: [], qualificationLabel: "needs_review", recommendedNextAction: "", outreachRecommended: false, outreachDraft: "" })) } };
+  };
+
+  await qualifyAndRecommend({ workspaceId: "workspace-1", userId: "u1", resultIds: ["gr-a", "gr-b", "gr-c"] }, { GroundingResearchResult, listApprovedPrograms, runAgent });
+
+  assert.equal(capturedSchema.properties.qualifications.minItems, 3, "the live call must tell the model exactly how many candidates it was given, matching the real batch size");
+  assert.equal(capturedSchema.properties.qualifications.maxItems, 3);
 }
 
 // ==================== approveAndRunSearch: every selected provider runs, queue stays capped ====================
@@ -528,6 +570,7 @@ async function run() {
   testDetectExclusionFlagsCatchesProfessionalsNotStudents();
   testBuildQualifyResponseSchemaOnlyEverAllowsRealProgramIds();
   testBuildQualifyResponseSchemaWithNoApprovedProgramsOnlyAllowsNone();
+  testBuildQualifyResponseSchemaRequiresExactlyOneEntryPerCandidateWhenCountIsGiven();
   testComputeQualificationOutcomeRequiresAllThreePillarsForQualified();
   testComputeQualificationOutcomeExcludesRegardlessOfOtherScores();
   testComputeQualificationOutcomeTreatsConflictAsNeedsReviewNotAutoRejected();
@@ -541,6 +584,7 @@ async function run() {
   await testPublicDiscoveryRunKeepsItsSelectedProgramDuringQualification();
   await testPrimaryPublicDiscoveryRunMapsItsCoachingProgramDuringQualification();
   await testQualifyAndRecommendReportsAnAccurateCompletionSummary();
+  await testQualifyAndRecommendTellsTheModelExactlyHowManyCandidatesToReturn();
   await testApproveAndRunSearchGathersARankedPoolAndKeepsOnlyTheBestByFit();
   await testApproveAndRunSearchRequestsAndMergesRealApolloPagesBeyondPage1();
   testMapToApolloSeniorityMapsConfidentlyAndDropsAmbiguousTerms();

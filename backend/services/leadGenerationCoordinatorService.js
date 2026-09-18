@@ -208,12 +208,22 @@ function detectExclusionFlags(candidate) {
  * qualifyAndRecommend() below discards anything that still doesn't match
  * before it's ever persisted.
  */
-function buildQualifyResponseSchema(programIds) {
+// `candidateCount`, when given, pins minItems/maxItems to the exact batch
+// size. Without a hard schema-level floor, the model was legally allowed to
+// return fewer qualifications than candidates supplied — nothing forced
+// completeness, so a batch could "succeed" (valid JSON, no error) while
+// silently qualifying only some of the candidates it was given. Each
+// omitted candidate then landed as an unexplained "failed" in the owner's
+// summary with no error to investigate. Real, reported incident: 50
+// selected, only 19 scored, with the 3 underlying LLM calls all reporting
+// success — this is what was actually happening.
+function buildQualifyResponseSchema(programIds, candidateCount = null) {
   return {
     type: "object",
     properties: {
       qualifications: {
         type: "array",
+        ...(Number.isInteger(candidateCount) && candidateCount > 0 ? { minItems: candidateCount, maxItems: candidateCount } : {}),
         items: {
           type: "object",
           properties: {
@@ -1316,7 +1326,7 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
 
   const result = await runAgent({
     workspaceId, userId, auth, agent: "lead", task: "qualify_and_recommend_leads", correlationId,
-    operationalContext: `Qualify each candidate below against ONLY this workspace's real approved programs listed here — never invent or generalize a program name. Score fit against each program's actual target-audience description below, not just its name — a name alone (e.g. "Asset Management") is not enough to know who the real intended buyer is:\n${programIds.length ? programIds.map((id) => `- ${id}: "${programById.get(id).title}"${programById.get(id).targetAudience ? `\n  Target audience: ${programById.get(id).targetAudience}` : "\n  (No target audience description is set for this program yet — judge fit from the name alone, cautiously.)"}`).join("\n") : "(No approved programs are currently available — recommendedProgramId must be 'none' for every candidate.)"}\n\nEach candidate already carries a computed "identityConfidence" (low/medium/high/conflict) — this is fixed, real data; do not second-guess it, just note in identityNotes whether the given evidence is consistent with it. A candidate with discoveryMode "icp_match" came from an Apollo/PDL structured audience search, not a public intent post. For that mode, evaluate whether the profile matches its targetProgramId and intended buyer; do NOT mark it not_a_fit merely because no current public buying-intent evidence was supplied. Missing intent should remain buyerIntentLevel "none" and may require review, while an actual mismatch or exclusion can be not_a_fit. Score programFitScore on whether this person resembles the recommended program's real intended buyer — 0-100, never a 0-10 scale. When a structured match has a valid targetProgramId and its profile genuinely fits, use that exact target program rather than returning "none" merely because public intent is absent. For public-web candidates, assess buyerIntentLevel STRICTLY from evidence of a CURRENT need or want (asking for recommendations, describing a specific problem this program solves) — a job title, real-estate role, or being "in the industry" is NEVER by itself buyer intent. Each candidate also carries "preScreenedExclusionFlags" from a keyword pre-screen (coach/broker/lender/etc.) — verify against the real evidence and include in your own exclusionFlags if still applicable, or omit if the pre-screen was a false positive; also add wrong_country, unrelated_corporate_employee, or no_personal_investing_evidence yourself when the evidence supports it. A candidate with listed conflicts should be treated cautiously. Draft a short, personalized outreach message strictly grounded in the evidence given only when you believe outreach is genuinely warranted — never invent facts not present.\n\nCandidates:\n${JSON.stringify(candidates, null, 2)}`,
+    operationalContext: `You are given exactly ${candidates.length} candidates below. Your qualifications array MUST contain exactly ${candidates.length} entries — one per candidate resultId listed, in any order, with zero omissions. If you are unsure about a candidate, still include their entry and set qualificationLabel to "needs_review" rather than leaving them out entirely.\n\nQualify each candidate below against ONLY this workspace's real approved programs listed here — never invent or generalize a program name. Score fit against each program's actual target-audience description below, not just its name — a name alone (e.g. "Asset Management") is not enough to know who the real intended buyer is:\n${programIds.length ? programIds.map((id) => `- ${id}: "${programById.get(id).title}"${programById.get(id).targetAudience ? `\n  Target audience: ${programById.get(id).targetAudience}` : "\n  (No target audience description is set for this program yet — judge fit from the name alone, cautiously.)"}`).join("\n") : "(No approved programs are currently available — recommendedProgramId must be 'none' for every candidate.)"}\n\nEach candidate already carries a computed "identityConfidence" (low/medium/high/conflict) — this is fixed, real data; do not second-guess it, just note in identityNotes whether the given evidence is consistent with it. A candidate with discoveryMode "icp_match" came from an Apollo/PDL structured audience search, not a public intent post. For that mode, evaluate whether the profile matches its targetProgramId and intended buyer; do NOT mark it not_a_fit merely because no current public buying-intent evidence was supplied. Missing intent should remain buyerIntentLevel "none" and may require review, while an actual mismatch or exclusion can be not_a_fit. Score programFitScore on whether this person resembles the recommended program's real intended buyer — 0-100, never a 0-10 scale. When a structured match has a valid targetProgramId and its profile genuinely fits, use that exact target program rather than returning "none" merely because public intent is absent. For public-web candidates, assess buyerIntentLevel STRICTLY from evidence of a CURRENT need or want (asking for recommendations, describing a specific problem this program solves) — a job title, real-estate role, or being "in the industry" is NEVER by itself buyer intent. Each candidate also carries "preScreenedExclusionFlags" from a keyword pre-screen (coach/broker/lender/etc.) — verify against the real evidence and include in your own exclusionFlags if still applicable, or omit if the pre-screen was a false positive; also add wrong_country, unrelated_corporate_employee, or no_personal_investing_evidence yourself when the evidence supports it. A candidate with listed conflicts should be treated cautiously. Draft a short, personalized outreach message strictly grounded in the evidence given only when you believe outreach is genuinely warranted — never invent facts not present.\n\nCandidates:\n${JSON.stringify(candidates, null, 2)}`,
     input: { candidateCount: candidates.length, approvedProgramCount: programIds.length },
     // Real, reported incident: up to 20 candidates' full evidence
     // (organization, summary, evidence URLs, conflicts, etc.) serialized
@@ -1326,7 +1336,7 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
     // the model correctly had no data to qualify them from, silently
     // showing up as "failed" with no real error. 80000 chars comfortably
     // covers a full 20-candidate batch with room to spare.
-    options: { responseSchema: buildQualifyResponseSchema(programIds), schemaName: "lead_qualification", operationalContextLimit: 80000 },
+    options: { responseSchema: buildQualifyResponseSchema(programIds, candidates.length), schemaName: "lead_qualification", operationalContextLimit: 80000 },
   });
 
   const validIds = new Set(candidates.map((row) => row.resultId));
