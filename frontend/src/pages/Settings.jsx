@@ -52,21 +52,31 @@ export default function Settings() {
   const location = useLocation();
   const { session } = useAuth();
 
-  const [activeSection, setActiveSection] = useState(() =>
-    location.pathname.endsWith("/payments")
+  const sectionFromPath = (pathname) =>
+    pathname.endsWith("/payments")
       ? "payments"
-      : location.pathname.includes("/communications/invitations")
+      : pathname.includes("/communications/invitations")
         ? "invitations"
-        : location.pathname.endsWith("/privacy")
+        : pathname.endsWith("/privacy")
           ? "privacy"
-          : location.pathname.endsWith("/website")
+          : pathname.endsWith("/website")
             ? "public"
-            : location.pathname.endsWith("/applications")
+            : pathname.endsWith("/applications")
               ? "applications"
-              : location.pathname.endsWith("/team")
+              : pathname.endsWith("/team")
                 ? "team"
-                : "profile",
-  );
+                : "profile";
+
+  const [activeSection, setActiveSection] = useState(() => sectionFromPath(location.pathname));
+  // All /settings/* routes render this same component without remounting
+  // it, so a navigation between two settings sub-paths (e.g. clicking
+  // "Team" from Launch Readiness) only ever changed the URL — activeSection
+  // was computed once at first mount and never updated again, so nothing
+  // visibly happened. This keeps it in sync with the real current path.
+  useEffect(() => {
+    setActiveSection(sectionFromPath(location.pathname));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname]);
 
   const [workspaceName, setWorkspaceName] = useState(
     () => getWorkspaceSettings().workspaceName,
