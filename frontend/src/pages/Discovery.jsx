@@ -1832,7 +1832,7 @@ export default function Discovery() {
                     {resultImageOf(result) ? <img src={resultImageOf(result)} alt="" loading="lazy" /> : <span>{initialsOf(result.name)}</span>}
                   </div>
                   <div className="review-card__title">
-                    <strong>{result.name}</strong>
+                    <strong title={result.name}>{result.name}</strong>
                     {result.isNew ? <span className="leadgen-badge-new">New</span> : null}
                   </div>
                 </header>

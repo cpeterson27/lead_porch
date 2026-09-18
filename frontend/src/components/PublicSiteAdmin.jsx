@@ -168,13 +168,12 @@ export default function PublicSiteAdmin({ section = "website" }) {
     [editingProfileId, setEditingProfileId] = useState("");
   const load = async () => {
     try {
-      const [c, t, p, pr, co, ct, wm] = await Promise.all([
+      const [c, t, p, pr, co, wm] = await Promise.all([
         fetchPublicManagementConfig(),
         fetchManagedTestimonials(),
         fetchCoachingPrograms({ limit: 200 }),
         fetchManagedProfiles(),
         fetchCoaches({ limit: 200 }),
-        fetchContacts({ limit: 200 }),
         fetchWorkspaceMembers(),
       ]);
       setConfig(c);
@@ -182,7 +181,6 @@ export default function PublicSiteAdmin({ section = "website" }) {
       setPrograms(p);
       setProfiles(pr);
       setCoaches(co);
-      setContacts(ct.contacts || ct || []);
       setMembers((wm.members || []).filter((row) => row.status === "active"));
     } catch (err) {
       setError(
@@ -194,6 +192,18 @@ export default function PublicSiteAdmin({ section = "website" }) {
     const timer = window.setTimeout(load, 0);
     return () => window.clearTimeout(timer);
   }, []);
+  // Contacts are only used by the Team tab's "Student Contact" picker — not
+  // needed to render Branding, Homepage, Video, Discovery call, or Visible
+  // sections at all, so this used to fetch every contact on every page load
+  // regardless of which tab was open. Loaded once, only when the Team tab
+  // is actually visited.
+  useEffect(() => {
+    if (tab !== "team" || contacts.length) return;
+    fetchContacts({ limit: 200 })
+      .then((ct) => setContacts(ct.contacts || ct || []))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
   const saveConfig = async () => {
     try {
       setSaving(true);

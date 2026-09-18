@@ -1152,9 +1152,8 @@
 }
 
 .review-card__title strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: break-word;
+  white-space: normal;
 }
 
 /* Small circular check control, Apple-style. */

@@ -615,7 +615,7 @@ export default function Contacts() {
   const [fieldUpdateApproval, setFieldUpdateApproval] = useState(null);
   const [fieldUpdateSaving, setFieldUpdateSaving] = useState(false);
   const [fieldUpdateError, setFieldUpdateError] = useState("");
-  const [unsubscribedContacts, setUnsubscribedContacts] = useState([]);
+  const [unsubscribedCount, setUnsubscribedCount] = useState(0);
   const [crmView, setCrmView] = useState(() => localStorage.getItem("growth-operator-crm-view") || "table");
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState(() => {
@@ -1064,19 +1064,19 @@ export default function Contacts() {
             ? { status: "unsubscribed" }
             : {}),
       };
+      // The unsubscribed count only ever needs a number for the tab badge
+      // (the real records, when that tab is actually open, come from the
+      // main query above via its own status filter) — fetching 100 full
+      // contact records just to read .length was real, unnecessary weight
+      // on every single page load. limit: 1 still returns the real total
+      // via pagination.total.
       const [response, unsubscribeResponse] = await Promise.all([
         fetchContacts(query),
-        fetchContacts({ limit: 100, status: "unsubscribed" }),
+        fetchContacts({ limit: 1, status: "unsubscribed" }),
       ]);
       const allContacts = response.data || [];
       setAvailableSources([...new Set(allContacts.map(contactSourceKey))].sort());
-      setUnsubscribedContacts(
-        [...(unsubscribeResponse.data || [])].sort(
-          (a, b) =>
-            new Date(b.emailPreferences?.unsubscribedAt || 0) -
-            new Date(a.emailPreferences?.unsubscribedAt || 0),
-        ),
-      );
+      setUnsubscribedCount(unsubscribeResponse.pagination?.total ?? 0);
       const items = allContacts.filter((contact) => {
         const workflow = contactWorkflowState(contact);
         const requestedResearchStatus = searchParams.get("researchStatus");
@@ -2238,7 +2238,7 @@ export default function Contacts() {
           activeId={contactTab}
           onChange={setContactTab}
           items={[
-            ...CRM_SAVED_VIEWS.map((view) => view.id === "unsubscribed" ? { ...view, count: unsubscribedContacts.length } : view),
+            ...CRM_SAVED_VIEWS.map((view) => view.id === "unsubscribed" ? { ...view, count: unsubscribedCount } : view),
             ...(importSummary?.importBatchId ? [{ id: "latest-import", label: "Latest import", count: latestImportTotal }] : []),
           ]}
         />
