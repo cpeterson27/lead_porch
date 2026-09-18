@@ -218,6 +218,16 @@ export default function PublicSiteAdmin({ section = "website" }) {
           `The server saved ${savedSurface} instead of ${requestedSurface}.`,
         );
       }
+      // A URL that doesn't pass the safe-URL check (must be a real,
+      // absolute https:// link) is silently dropped to an empty string on
+      // save rather than rejected outright — correct behavior for the
+      // server, but it must never happen without the owner being told, or
+      // it looks exactly like the setting was never saved at all.
+      if (config.publicSite?.discoveryCallBookingUrl?.trim() && !verified.publicSite?.discoveryCallBookingUrl) {
+        throw new Error(
+          `Your Google Calendar booking link wasn't saved — it must start with "https://". Check the link and try again.`,
+        );
+      }
       // Tell WorkspaceThemeContext (which drives the navbar/sidebar colors
       // everywhere else in the app) to re-fetch immediately, instead of
       // leaving it showing whatever colors were live at page load.
@@ -226,7 +236,7 @@ export default function PublicSiteAdmin({ section = "website" }) {
       return saved;
     } catch (err) {
       setError(
-        err.response?.data?.error || "Unable to save public-site settings.",
+        err.response?.data?.error || err.message || "Unable to save public-site settings.",
       );
     } finally {
       setSaving(false);
@@ -1061,13 +1071,26 @@ export default function PublicSiteAdmin({ section = "website" }) {
                   <h4>Choose a cover frame</h4>
                   <p>
                     Scrub through the uploaded video and select the exact frame
-                    visitors see before pressing play.
+                    visitors see before pressing play, or upload a separate cover photo instead.
                   </p>
                   <HomepageVideoCoverPicker
                     videoUrl={config.publicSite.introVideoUrl}
                     coverUrl={config.publicSite.introVideoPosterUrl}
                     onCapture={captureHomepageCover}
                   />
+                  <label className="website-upload-button website-upload-button--secondary">
+                    {uploading === "introVideoPosterUrl" ? "Uploading…" : "Or upload a cover photo directly"}
+                    <input
+                      disabled={Boolean(uploading)}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={async (event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        if (file) captureHomepageCover(await fileData(file));
+                      }}
+                    />
+                  </label>
                 </div>
               </article>
             ) : null}
@@ -1169,13 +1192,26 @@ export default function PublicSiteAdmin({ section = "website" }) {
                   <h4>Choose a cover frame</h4>
                   <p>
                     Scrub through the uploaded video and select the exact frame
-                    visitors see before pressing play.
+                    visitors see before pressing play, or upload a separate cover photo instead.
                   </p>
                   <HomepageVideoCoverPicker
                     videoUrl={config.publicSite.discoveryCallVideoUrl}
                     coverUrl={config.publicSite.discoveryCallVideoPosterUrl}
                     onCapture={captureDiscoveryCallCover}
                   />
+                  <label className="website-upload-button website-upload-button--secondary">
+                    {uploading === "discoveryCallVideoPosterUrl" ? "Uploading…" : "Or upload a cover photo directly"}
+                    <input
+                      disabled={Boolean(uploading)}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={async (event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        if (file) captureDiscoveryCallCover(await fileData(file));
+                      }}
+                    />
+                  </label>
                 </div>
               </article>
             ) : null}

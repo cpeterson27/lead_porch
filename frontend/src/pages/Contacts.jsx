@@ -1049,11 +1049,33 @@ export default function Contacts() {
     [],
   );
 
+  // Filtering (the saved-view tabs especially — attention/ready/assigned/
+  // etc. are computed client-side from each contact's own fields) needs
+  // every real contact in hand, not just the first page. A single
+  // limit: 500 request used to silently cut off anyone past that count —
+  // this workspace already has more contacts than that. Pages through in
+  // the same 500-at-a-time chunks (each one measured fast, ~11ms) until
+  // every real contact has actually been fetched, with a generous sanity
+  // ceiling so a backend bug can never spin this into an infinite loop.
+  async function fetchAllContacts(baseQuery) {
+    const pageSize = 500;
+    let skip = 0;
+    let all = [];
+    for (let page = 0; page < 40; page += 1) {
+      // eslint-disable-next-line no-await-in-loop
+      const response = await fetchContacts({ ...baseQuery, limit: pageSize, skip });
+      const rows = response.data || [];
+      all = all.concat(rows);
+      const total = response.pagination?.total ?? all.length;
+      if (rows.length < pageSize || all.length >= total) break;
+      skip += pageSize;
+    }
+    return all;
+  }
   async function loadContacts() {
     try {
       setLoading(true);
       const query = {
-        limit: 500,
         ...(searchTerm ? { search: searchTerm } : {}),
         ...(campaignId ? { campaignId } : {}),
         ...(sourceFilter ? { source: sourceFilter } : {}),
@@ -1070,11 +1092,10 @@ export default function Contacts() {
       // contact records just to read .length was real, unnecessary weight
       // on every single page load. limit: 1 still returns the real total
       // via pagination.total.
-      const [response, unsubscribeResponse] = await Promise.all([
-        fetchContacts(query),
+      const [allContacts, unsubscribeResponse] = await Promise.all([
+        fetchAllContacts(query),
         fetchContacts({ limit: 1, status: "unsubscribed" }),
       ]);
-      const allContacts = response.data || [];
       setAvailableSources([...new Set(allContacts.map(contactSourceKey))].sort());
       setUnsubscribedCount(unsubscribeResponse.pagination?.total ?? 0);
       const items = allContacts.filter((contact) => {

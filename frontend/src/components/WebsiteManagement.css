@@ -97,4 +97,5 @@
 .workspace-branding-editor .website-upload-button:hover,
 .workspace-branding-editor .brand-asset-field__actions button:hover,
 .workspace-branding-editor .logo-slot__actions button:hover{filter:brightness(.96)}
+.website-upload-button--secondary{background:transparent;border:1px solid #ded9cf;color:#173f36;margin-top:8px}
 .workspace-branding-editor .brand-advanced-toggle{color:var(--app-primary-action,#7457ff)!important;cursor:pointer!important}

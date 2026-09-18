@@ -863,6 +863,11 @@ export function PublicHome() {
     showHeroImage = visibility.heroImage !== false,
     showHeroQuote = visibility.heroQuote !== false,
     videoOnlyHero = !showHeroCopy && !showHeroImage,
+    discoveryCallCta = p.discoveryCallEnabled && p.discoveryCallBookingUrl ? (
+      <Link className="public-button public-discovery-call-cta" to="/book-a-call">
+        {p.discoveryCallButtonLabel || "Book a Discovery Call"}
+      </Link>
+    ) : null,
     heroImage = p.heroMediaUrl || "",
     workspaceName =
       site?.branding?.publicSiteName || site?.workspace?.name || "",
@@ -923,12 +928,16 @@ export function PublicHome() {
                 </SmartLink>
               </div>
               {visibility.video !== false ? (
-                <HeroVideoTile site={site} />
+                <>
+                  <HeroVideoTile site={site} />
+                  {discoveryCallCta}
+                </>
               ) : null}
             </div>
           ) : visibility.video !== false ? (
             <div className="public-hero-video-only">
               <HeroVideoTile site={site} />
+              {discoveryCallCta}
             </div>
           ) : null}
           {showHeroImage ? (
@@ -961,14 +970,6 @@ export function PublicHome() {
             </div>
           ) : null}
         </section>
-
-        {p.discoveryCallEnabled && p.discoveryCallBookingUrl ? (
-          <section className="public-discovery-call-cta">
-            <Link className="public-button" to="/book-a-call">
-              {p.discoveryCallButtonLabel || "Book a Discovery Call"}
-            </Link>
-          </section>
-        ) : null}
 
         <section className="public-why-section" id="about">
           <div className="public-why-title-block">
