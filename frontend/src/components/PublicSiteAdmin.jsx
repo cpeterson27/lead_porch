@@ -1137,10 +1137,10 @@ export default function PublicSiteAdmin({ section = "website" }) {
         <section className="homepage-media-editor">
           <p className="public-admin__help">
             A "Book a Discovery Call" button on your homepage sends visitors to their own page with an optional
-            intro video and a link to book a real time slot on your calendar. This uses your own Google Calendar —
-            not Calendly or any other scheduling tool. To get the booking link: open Google Calendar, click Create
-            &gt; Appointment schedule, set up your availability, then copy the booking page link it gives you and
-            paste it below.
+            intro video and your real booking calendar embedded right on the page — visitors pick a time without
+            leaving your site. This uses your own Google Calendar — not Calendly or any other scheduling tool. To
+            get the booking link: open Google Calendar, click Create &gt; Appointment schedule, set up your
+            availability, then copy the booking page link it gives you and paste it below.
           </p>
           <div className="public-admin__grid">
             <label className="website-toggle">

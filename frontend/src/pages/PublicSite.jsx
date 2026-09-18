@@ -1368,7 +1368,22 @@ export function ContactPage() {
 export function DiscoveryCallPage() {
   const { site } = useWorkspaceTheme(),
     p = site?.publicSite || {},
-    workspaceName = site?.branding?.publicSiteName || site?.workspace?.name || "us";
+    workspaceName = site?.branding?.publicSiteName || site?.workspace?.name || "us",
+    // Google's own documented format for embedding an Appointment Schedule
+    // booking page inline (not just linking out to it) — gv=true is what
+    // makes the embedded view interactive/bookable rather than a bare
+    // read-only calendar. Falls back to no embed (plain link only) if the
+    // saved URL isn't well-formed, rather than rendering a broken iframe.
+    bookingEmbedUrl = (() => {
+      if (!p.discoveryCallBookingUrl) return "";
+      try {
+        const url = new URL(p.discoveryCallBookingUrl);
+        url.searchParams.set("gv", "true");
+        return url.toString();
+      } catch {
+        return "";
+      }
+    })();
   return (
     <PublicLayout>
       <main id="main-content" className="public-inner discovery-call-page">
@@ -1383,17 +1398,26 @@ export function DiscoveryCallPage() {
             />
           </div>
         ) : null}
-        {p.discoveryCallBookingUrl ? (
-          <a
-            className="public-button"
-            href={p.discoveryCallBookingUrl}
-            target="_blank"
-            rel="noreferrer"
-            onClick={() => trackSiteEvent("discovery_call_booking_click", {})}
-          >
-            {p.discoveryCallButtonLabel || "Book a Discovery Call"}
-            <FiExternalLink />
-          </a>
+        {bookingEmbedUrl ? (
+          <>
+            <div className="discovery-call-page__booking">
+              <iframe
+                src={bookingEmbedUrl}
+                title={p.discoveryCallButtonLabel || "Book a Discovery Call"}
+                loading="lazy"
+              />
+            </div>
+            <a
+              className="discovery-call-page__fallback-link"
+              href={p.discoveryCallBookingUrl}
+              target="_blank"
+              rel="noreferrer"
+              onClick={() => trackSiteEvent("discovery_call_booking_click", {})}
+            >
+              Trouble booking above? Open in Google Calendar directly
+              <FiExternalLink />
+            </a>
+          </>
         ) : (
           <p className="discovery-call-page__pending">
             Booking isn't set up yet. Contact {workspaceName} directly to schedule a call.
