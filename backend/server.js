@@ -60,6 +60,7 @@ const publicWebDiscoveryRouter = require("./routes/publicWebDiscovery");
 const { requireAuth } = require("./middleware/auth");
 const { restrictNewRoleSurface } = require("./middleware/authorization");
 const { startResearchMonitorRunner } = require("./services/researchMonitorService");
+const { startMonitorRetentionRunner } = require("./services/monitorRetentionService");
 const { startLinkedinSequenceRunner } = require("./services/linkedinSequenceService");
 const { startCommunicationJobRunner } = require("./services/communicationJobRunner");
 const { startAutomationRunner } = require("./services/automationRunner");
@@ -298,6 +299,7 @@ connectDatabase(mongoUri)
     const server = app.listen(PORT, () => {
       console.log(`Server running on port ${PORT}`);
       if (process.env.RESEARCH_WORKER_MODE !== "external") startResearchMonitorRunner();
+      startMonitorRetentionRunner();
       startCommunicationJobRunner();
       startAutomationRunner();
       startSocialPublishingRunner();

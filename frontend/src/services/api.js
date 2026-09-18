@@ -1142,6 +1142,14 @@ export const fetchMarketResearchSources = () =>
 export const fetchResearchMonitors = () =>
   api.get("/audience/research/monitors").then((res) => res.data);
 
+export const fetchMonitorStorageRetention = () =>
+  api.get("/audience/research/storage-retention").then((res) => res.data);
+
+export const cleanupMonitorStorage = (confirmation) =>
+  api
+    .post("/audience/research/storage-retention/cleanup", { confirmation })
+    .then((res) => res.data);
+
 export const fetchResearchMonitorPresets = () =>
   api.get("/audience/research/monitor-presets").then((res) => res.data);
 

@@ -57,6 +57,7 @@
     "test:privacy-requests": "node test-privacy-requests.js",
     "test:market-intelligence": "node test-market-intelligence-boundaries.js",
     "test:monitor-presets": "node test-research-monitor-presets.js",
+    "test:monitor-retention": "node test-monitor-retention.js",
     "test:acquisition-reliability": "node test-acquisition-reliability.js",
     "test:biggerpockets-policy": "node test-biggerpockets-engagement-policy.js",
     "test:campaign-email-branding": "node test-campaign-email-branding.js",

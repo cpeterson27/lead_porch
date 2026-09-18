@@ -33,6 +33,8 @@ const biggerPocketsPolicy = require("../services/biggerPocketsEngagementPolicy")
 const agentExecutionService = require("../services/agentExecutionService");
 const searchQualityService = require("../services/searchQualityService");
 const vertexGroundingDiscoveryService = require("../services/vertexGroundingDiscoveryService");
+const monitorRetentionService = require("../services/monitorRetentionService");
+const { requireRole } = require("../middleware/auth");
 
 const router = express.Router();
 // bing_web dropped from buyer_intent/investor_profile — measured in this
@@ -78,6 +80,24 @@ router.get("/research/sources", (_req, res) => {
 router.get("/research/monitors", async (req, res) => {
   const monitors = await ResearchMonitor.find({ workspaceId: req.auth.workspaceId }).sort({ createdAt: -1 }).lean();
   return res.json({ success: true, monitors });
+});
+
+router.get("/research/storage-retention", requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const data = await monitorRetentionService.plan({ workspaceId: req.auth.workspaceId });
+    return res.json({ success: true, data: { ...data, filters: undefined, confirmationPhrase: monitorRetentionService.CONFIRMATION } });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: error.message || "Unable to preview monitoring cleanup." });
+  }
+});
+
+router.post("/research/storage-retention/cleanup", requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const data = await monitorRetentionService.execute({ workspaceId: req.auth.workspaceId, confirmation: req.body?.confirmation });
+    return res.json({ success: true, data });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message || "Unable to clean monitoring history." });
+  }
 });
 
 router.get("/research/monitor-presets", (_req, res) => res.json({ success: true, presets: RESEARCH_MONITOR_PRESETS }));

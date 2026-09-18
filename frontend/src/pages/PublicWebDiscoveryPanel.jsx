@@ -21,6 +21,8 @@ import {
   disableDiscoverySchedule,
   runDiscoveryScheduleNow,
   deleteDiscoverySchedule,
+  fetchMonitorStorageRetention,
+  cleanupMonitorStorage,
 } from "../services/api.js";
 import "./DiscoveryTargeting.css";
 
@@ -101,6 +103,8 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
   const [runBusy, setRunBusy] = useState({}); // runId -> action label in flight
   const [schedules, setSchedules] = useState([]);
   const [scheduleBusy, setScheduleBusy] = useState({});
+  const [storageRetention, setStorageRetention] = useState(null);
+  const [storageBusy, setStorageBusy] = useState(false);
   const [planPreviewByRun, setPlanPreviewByRun] = useState({}); // runId -> the EXACT finalized-job-plan preview from the backend
   const stopFlags = useRef({});
   const runInFlight = useRef({}); // synchronous re-entrancy guard — see runOnceNow
@@ -109,6 +113,7 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
     fetchCoachingPrograms({ status: "active" }).then((items) => setPrograms(items || [])).catch(() => {});
     fetchLeadGenerationProviderAvailability().then((res) => setProviderAvailability(res.data)).catch(() => {});
     fetchDiscoverySchedules().then((res) => setSchedules(res.data || [])).catch(() => {});
+    fetchMonitorStorageRetention().then((res) => setStorageRetention(res.data || null)).catch(() => {});
     // Reload persisted, non-draft runs (queued/running/paused/completed/
     // stopped-at-cap/failed) so a resumable run survives a page refresh
     // or redeployment instead of only ever existing in this component's
@@ -116,6 +121,27 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
     // add a session-local draft, so a plain prepend is safe here.
     fetchPublicWebDiscoveryRuns().then((res) => setRuns((current) => [...(res.data || []).map((run) => ({ ...run, icpDraft: icpDraftFromRun(run) })), ...current])).catch(() => {});
   }, []);
+
+  const cleanMonitoringStorage = async () => {
+    if (!storageRetention?.confirmationPhrase) return;
+    const confirmation = window.prompt(
+      `This permanently removes only disposable monitoring history. Contacts, qualified leads, conversions, manual decisions, drafts, notifications, and opportunity-linked signals are protected.\n\nType exactly: ${storageRetention.confirmationPhrase}`,
+    );
+    if (confirmation !== storageRetention.confirmationPhrase) return;
+    setStorageBusy(true);
+    setError("");
+    try {
+      const response = await cleanupMonitorStorage(confirmation);
+      const deleted = response.data?.deleted || {};
+      setNotice(`Storage cleanup complete: ${Number(deleted.monitorActivities || 0).toLocaleString()} monitoring activity records and ${Number(deleted.intentSignals || 0).toLocaleString()} rejected signals removed. Contacts removed: 0.`);
+      const refreshed = await fetchMonitorStorageRetention();
+      setStorageRetention(refreshed.data || null);
+    } catch (requestError) {
+      setError(requestError.response?.data?.error || requestError.message || "Unable to clean monitoring storage.");
+    } finally {
+      setStorageBusy(false);
+    }
+  };
 
   // Recomputes the pre-run plan preview from the SAME finalization the
   // backend uses when approving (round-robin by source, then sliced to
@@ -716,6 +742,26 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
           </div>
         ))}
       </details>
+
+      {storageRetention ? (
+        <details className="leadgen-recent-runs discovery-run-details">
+          <summary>
+            <span><b>Monitoring storage maintenance</b></span>
+            <small>{Number(storageRetention.monitorActivities?.eligibleForDeletion || 0).toLocaleString()} activity records and {Number(storageRetention.intentSignals?.eligibleForDeletion || 0).toLocaleString()} rejected signals can be removed</small>
+          </summary>
+          <div className="leadgen-monitor-suggestion">
+            <p>
+              The automatic policy retains up to {Number(storageRetention.policy?.activityMaximum || 0).toLocaleString()} recent monitoring activities for {storageRetention.policy?.activityRetentionDays} days and up to {Number(storageRetention.policy?.rejectedSignalMaximum || 0).toLocaleString()} rejected signals for {storageRetention.policy?.rejectedSignalRetentionDays} days per workspace. Qualified, converted, reviewing, manually classified, drafted, notified, and opportunity-linked signals are protected. <strong>Contacts are never included in this cleanup.</strong>
+            </p>
+            <p>
+              Preview: {Number(storageRetention.monitorActivities?.total || 0).toLocaleString()} monitoring activities ({Number(storageRetention.monitorActivities?.eligibleForDeletion || 0).toLocaleString()} removable) · {Number(storageRetention.intentSignals?.total || 0).toLocaleString()} intent signals ({Number(storageRetention.intentSignals?.eligibleForDeletion || 0).toLocaleString()} removable).
+            </p>
+            <Button variant="outline" loading={storageBusy} disabled={storageBusy || (!storageRetention.monitorActivities?.eligibleForDeletion && !storageRetention.intentSignals?.eligibleForDeletion)} onClick={cleanMonitoringStorage}>
+              Preview confirmed — clear disposable history
+            </Button>
+          </div>
+        </details>
+      ) : null}
     </DashboardCard>
   );
 }
