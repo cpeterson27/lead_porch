@@ -456,7 +456,7 @@ router.post("/send", async(req,res)=>{
 
 
 
-    for(const item of items){
+    const processItem = async (item) => {
 
       const contact = item.contactId
         ? await Contact.findById(item.contactId).select("status emailStatus emailBounced")
@@ -474,7 +474,7 @@ router.post("/send", async(req,res)=>{
         failedCount++;
         failures.push({ outreachId: item._id, email: item.contactEmail, message: item.errorMessage });
         await item.save();
-        continue;
+        return;
       }
 
 
@@ -516,8 +516,20 @@ router.post("/send", async(req,res)=>{
 
 
       await item.save();
+    };
 
-    }
+    // Provider calls must not run as one long serial chain. Five workers keep
+    // a 25/50-recipient UI batch inside the HTTP request window while the
+    // provider-level idempotency key makes a retry safe after a network timeout.
+    let nextIndex = 0;
+    const worker = async () => {
+      while (nextIndex < items.length) {
+        const item = items[nextIndex];
+        nextIndex += 1;
+        await processItem(item);
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(5, items.length) }, worker));
 
     if (sentCount > 0 && items[0]?.campaignId) {
       await Campaign.updateOne(

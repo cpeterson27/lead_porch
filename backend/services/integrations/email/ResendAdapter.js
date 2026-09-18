@@ -68,7 +68,7 @@ class ResendAdapter extends BaseIntegration {
         throw new Error("Resend API key missing.");
       }
 
-      const { to, subject, text, html, from, replyTo, headers } = params;
+      const { to, subject, text, html, from, replyTo, headers, idempotencyKey } = params;
 
       if (!to || !subject || !html || !from) {
         throw new Error("Missing required email fields");
@@ -80,7 +80,9 @@ class ResendAdapter extends BaseIntegration {
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
+          ...(idempotencyKey ? { "Idempotency-Key": String(idempotencyKey).slice(0, 256) } : {}),
         },
+        signal: AbortSignal.timeout(15000),
         body: JSON.stringify({
           from,
           to,

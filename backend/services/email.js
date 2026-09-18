@@ -232,6 +232,7 @@ async function sendEmail(outreachItem, { allowUnverified = false } = {}) {
         "List-Unsubscribe": `<${unsubscribeUrl}>`,
         "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
       },
+      idempotencyKey: outreachItem._id ? `outreach/${outreachItem._id}` : undefined,
     });
 
     console.log("✅ Email sent via Resend");

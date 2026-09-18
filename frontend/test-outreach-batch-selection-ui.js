@@ -10,5 +10,6 @@ assert.match(source, /Approve selected · \{selectedPendingCount\}/);
 assert.match(source, /Send selected · \{selectedApprovedCount\}/);
 assert.match(source, /aria-label=\{`Select \$\{item\.contactName/);
 assert.match(api, /Array\.isArray\(outreachIds\)/);
+assert.match(api, /\/outreach\/send[\s\S]*timeout: 120000/);
 
 console.log("Outreach batch selection UI tests passed.");

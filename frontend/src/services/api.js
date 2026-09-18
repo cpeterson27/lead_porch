@@ -1625,7 +1625,7 @@ export const sendEmails = (outreachIds, { allowUnverified = false } = {}) =>
     .post("/outreach/send", {
       outreachIds,
       allowUnverified,
-    })
+    }, { timeout: 120000 })
     .then((res) => res.data);
 
 // ======================================
