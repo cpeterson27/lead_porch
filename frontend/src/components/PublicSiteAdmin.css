@@ -108,7 +108,7 @@
 }
 .public-admin__help {
   background: #edf2ef;
-  border-left: 4px solid #173f36;
+  border-left: 4px solid var(--color-brand);
   margin: 0;
   padding: 12px;
 }
@@ -164,7 +164,7 @@
 }
 .website-editor-group > header > span {
   align-items: center;
-  background: #173f36;
+  background: var(--color-brand);
   border-radius: 50%;
   color: #fff;
   display: flex;
@@ -517,7 +517,7 @@
   object-fit: contain;
 }
 .brand-live-preview button {
-  background: #16624f;
+  background: var(--color-brand);
   border: 0;
   border-radius: 8px;
   color: #fff;
