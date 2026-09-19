@@ -1136,11 +1136,10 @@ export default function PublicSiteAdmin({ section = "website" }) {
       {tab === "discoveryCall" ? (
         <section className="homepage-media-editor">
           <p className="public-admin__help">
-            A "Book a Discovery Call" button on your homepage sends visitors to their own page with an optional
-            intro video and your real booking calendar embedded right on the page — visitors pick a time without
-            leaving your site. This uses your own Google Calendar — not Calendly or any other scheduling tool. To
-            get the booking link: open Google Calendar, click Create &gt; Appointment schedule, set up your
-            availability, then copy the booking page link it gives you and paste it below.
+            Show a discovery-call button even when no video is uploaded. Choose a coach whose Google Calendar is
+            connected in Lead Porch, set the public hours below, and visitors will only see times that are open on
+            that calendar. Confirmed calls appear in Lead Porch and create a Google Calendar event with a Meet link.
+            The external Google booking link remains available only as an optional fallback.
           </p>
           <div className="public-admin__grid">
             <label className="website-toggle">
@@ -1217,6 +1216,29 @@ export default function PublicSiteAdmin({ section = "website" }) {
             ) : null}
           </div>
           <div className="public-admin__grid">
+            <label className="wide">
+              Calendar owner
+              <select value={config.publicSite.discoveryCallAvailability?.coachProfileId || ""} onChange={(e) => patchPublic("discoveryCallAvailability", { ...(config.publicSite.discoveryCallAvailability || {}), coachProfileId: e.target.value || null })}>
+                <option value="">Choose a connected coach</option>
+                {coaches.filter((coach) => coach.status === "active").map((coach) => <option key={coach._id} value={coach._id}>{coach.displayName || coach.userId?.name}</option>)}
+              </select>
+            </label>
+            <label>
+              Appointment length
+              <select value={config.publicSite.discoveryCallAvailability?.durationMinutes || 30} onChange={(e) => patchPublic("discoveryCallAvailability", { ...(config.publicSite.discoveryCallAvailability || {}), durationMinutes: Number(e.target.value) })}><option value={30}>30 minutes</option><option value={45}>45 minutes</option><option value={60}>60 minutes</option></select>
+            </label>
+            <label>
+              Buffer between calls
+              <select value={config.publicSite.discoveryCallAvailability?.bufferMinutes ?? 15} onChange={(e) => patchPublic("discoveryCallAvailability", { ...(config.publicSite.discoveryCallAvailability || {}), bufferMinutes: Number(e.target.value) })}><option value={0}>No buffer</option><option value={15}>15 minutes</option><option value={30}>30 minutes</option></select>
+            </label>
+            <label>
+              Start time
+              <input type="time" value={config.publicSite.discoveryCallAvailability?.startTime || "09:00"} onChange={(e) => patchPublic("discoveryCallAvailability", { ...(config.publicSite.discoveryCallAvailability || {}), startTime: e.target.value })} />
+            </label>
+            <label>
+              End time
+              <input type="time" value={config.publicSite.discoveryCallAvailability?.endTime || "17:00"} onChange={(e) => patchPublic("discoveryCallAvailability", { ...(config.publicSite.discoveryCallAvailability || {}), endTime: e.target.value })} />
+            </label>
             <label>
               Homepage button text
               <input
@@ -1242,7 +1264,7 @@ export default function PublicSiteAdmin({ section = "website" }) {
               />
             </label>
             <label className="wide">
-              Your Google Calendar booking link
+              External Google booking link (optional fallback)
               <input
                 value={config.publicSite.discoveryCallBookingUrl || ""}
                 onChange={(e) => patchPublic("discoveryCallBookingUrl", e.target.value)}

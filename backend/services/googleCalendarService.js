@@ -142,6 +142,27 @@ function eventPayload({ contact, enrollment, startsAt, durationMinutes, timezone
   return { summary: `Coaching — ${contact.name || [contact.firstName, contact.lastName].filter(Boolean).join(" ") || "Student"}`, description: [`Program: ${enrollment.programSnapshot?.name || "Coaching"}`, enrollment.currentStageKey ? `Stage: ${enrollment.currentStageKey}` : "", zoomJoinUrl ? `Join Zoom: ${zoomJoinUrl}` : ""].filter(Boolean).join("\n"), location: zoomJoinUrl || undefined, start: { dateTime: start.toISOString(), timeZone: timezone }, end: { dateTime: end.toISOString(), timeZone: timezone } };
 }
 
+async function scheduleDiscoveryCall(input, models = dependencies, adapter = googleAdapter, cryptoOps) {
+  const connection = await connectedConnection(input, models);
+  const token = await accessToken(connection, adapter, cryptoOps);
+  const startsAt = new Date(input.startsAt);
+  const durationMinutes = Number(input.durationMinutes || 30);
+  const timezone = connection.settings?.timezone || "UTC";
+  const calendarId = connection.settings?.selectedCalendarId || "primary";
+  const end = new Date(startsAt.getTime() + durationMinutes * 60000);
+  const requestId = crypto.randomUUID();
+  const payload = {
+    summary: `Discovery Call — ${input.name}`,
+    description: [`Prospect: ${input.name}`, `Email: ${input.email}`, input.phone ? `Phone: ${input.phone}` : "", input.notes ? `Notes: ${input.notes}` : ""].filter(Boolean).join("\n"),
+    start: { dateTime: startsAt.toISOString(), timeZone: timezone },
+    end: { dateTime: end.toISOString(), timeZone: timezone },
+    attendees: [{ email: input.email, displayName: input.name }],
+    conferenceData: { createRequest: { requestId, conferenceSolutionKey: { type: "hangoutsMeet" } } },
+  };
+  const event = await adapter.request(token, `/calendars/${encodeURIComponent(calendarId)}/events?conferenceDataVersion=1&sendUpdates=all`, { method: "POST", body: JSON.stringify(payload) });
+  return { connection, calendarId, timezone, event, meetUrl: event.hangoutLink || event.conferenceData?.entryPoints?.find((entry) => entry.entryPointType === "video")?.uri || "" };
+}
+
 async function validateSessionReferences(input, models = dependencies) {
   const enrollment = await models.Enrollment.findOne({ _id: input.enrollmentId, workspaceId: input.workspaceId });
   if (!enrollment) throw calendarError("Enrollment not found", "ENROLLMENT_NOT_FOUND");
@@ -159,6 +180,15 @@ async function availability({ workspaceId, coachProfileId, startsAt, durationMin
   const result = await adapter.request(token, "/freeBusy", { method: "POST", body: JSON.stringify({ timeMin: start.toISOString(), timeMax: end.toISOString(), timeZone: connection.settings?.timezone || "UTC", items: [{ id: calendarId }] }) });
   const busy = result.calendars?.[calendarId]?.busy || [];
   return { available: busy.length === 0, busy, calendarId, timezone: connection.settings?.timezone || "UTC" };
+}
+
+async function busyWindow({ workspaceId, coachProfileId, timeMin, timeMax }, models = dependencies, adapter = googleAdapter, cryptoOps) {
+  const connection = await connectedConnection({ workspaceId, coachProfileId }, models);
+  const token = await accessToken(connection, adapter, cryptoOps);
+  const calendarId = connection.settings?.selectedCalendarId || "primary";
+  const timezone = connection.settings?.timezone || "UTC";
+  const result = await adapter.request(token, "/freeBusy", { method: "POST", body: JSON.stringify({ timeMin: new Date(timeMin).toISOString(), timeMax: new Date(timeMax).toISOString(), timeZone: timezone, items: [{ id: calendarId }] }) });
+  return { busy: result.calendars?.[calendarId]?.busy || [], calendarId, timezone };
 }
 
 async function scheduleSession(input, models = dependencies, adapter = googleAdapter, cryptoOps) {
@@ -199,4 +229,4 @@ async function syncVideoLink({ workspaceId, session }, models = dependencies, ad
   const token = await accessToken(connection, adapter, cryptoOps); await adapter.request(token, `/calendars/${encodeURIComponent(session.calendar.calendarId)}/events/${encodeURIComponent(session.calendar.eventId)}`, { method: "PATCH", body: JSON.stringify(eventPayload({ contact, enrollment, startsAt: session.startsAt, durationMinutes: session.durationMinutes, timezone: session.timezone, zoomJoinUrl: session.zoom?.joinUrl || "" })) }); return session;
 }
 
-module.exports = { PROVIDER, SCOPES, googleAdapter, createState, verifyState, authorizationUrl, coachIdentity, validateStateIdentity, saveConnection, publicConnection, ownStatus, disconnect, listCalendars, selectCalendar, availability, scheduleSession, rescheduleSession, cancelSession, syncVideoLink, connectionFilter, eventPayload, _dependencies: dependencies };
+module.exports = { PROVIDER, SCOPES, googleAdapter, createState, verifyState, authorizationUrl, coachIdentity, validateStateIdentity, saveConnection, publicConnection, ownStatus, disconnect, listCalendars, selectCalendar, availability, busyWindow, scheduleDiscoveryCall, scheduleSession, rescheduleSession, cancelSession, syncVideoLink, connectionFilter, eventPayload, _dependencies: dependencies };

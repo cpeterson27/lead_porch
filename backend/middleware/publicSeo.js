@@ -52,12 +52,14 @@ router.get("/sitemap.xml", async (req, res, next) => {
     if (!site.publicSite?.published) return res.status(404).end();
     const paths = [
       "/",
+      "/about",
+      "/coaching-programs",
+      "/faq",
+      "/resources",
       "/testimonials",
       "/contact",
-      "/privacy",
-      "/terms",
-      "/data-deletion",
-      ...(site.publicSite?.discoveryCallEnabled && site.publicSite?.discoveryCallBookingUrl ? ["/book-a-call"] : []),
+      ...(site.publicSite?.discoveryCallEnabled ? ["/book-a-call"] : []),
+      ...(site.programs || []).filter((program) => program.slug).map((program) => `/coaching-programs/${encodeURIComponent(program.slug)}`),
       ...(site.team || []).map((profile) => `/people/${encodeURIComponent(profile.slug)}`),
     ];
     const uniquePaths = [...new Set(paths)];

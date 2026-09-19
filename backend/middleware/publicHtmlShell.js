@@ -3,6 +3,7 @@ const path = require("path");
 const publicSiteService = require("../services/publicSiteService");
 const WorkspaceConfig = require("../models/WorkspaceConfig");
 const PublicProfile = require("../models/PublicProfile");
+const CoachingProgram = require("../models/CoachingProgram");
 const { runWithWorkspace } = require("../tenancy/workspaceContext");
 const { publicOrigin } = require("./publicSeo");
 
@@ -72,15 +73,19 @@ function pathSettings(pathname, siteName, defaultDescription) {
       description: "Read real student experiences from multifamily real estate coaching programs focused on practical execution, capital raising, and acquisitions.",
       indexable: true,
     },
+    "/about": { title: `About Ellie Baxter | ${siteName}`, description: "Meet Ellie Baxter and learn about the practical, accountability-focused approach behind Ellie's multifamily real estate coaching programs.", indexable: true },
+    "/coaching-programs": { title: `Multifamily Real Estate Coaching Programs | ${siteName}`, description: "Compare multifamily real estate coaching programs covering acquisitions, underwriting, capital raising, asset management, and investor development.", indexable: true },
+    "/faq": { title: `Multifamily Coaching FAQ | ${siteName}`, description: "Answers about Ellie's online multifamily real estate coaching programs, applications, discovery calls, and educational topics.", indexable: true },
+    "/resources": { title: `Multifamily Investor Resources | ${siteName}`, description: "Explore multifamily real estate coaching programs, student experiences, and practical resources from Ellie's Coaching.", indexable: true },
     "/contact": {
       title: `Contact ${siteName}`,
       description: "Contact Ellie's Coaching to ask about multifamily real estate coaching programs, applications, and upcoming training.",
       indexable: true,
     },
-    "/privacy": { title: `Privacy Policy | ${siteName}`, description: `Privacy policy for ${siteName}.`, indexable: true },
+    "/privacy": { title: `Privacy Policy | ${siteName}`, description: `Privacy policy for ${siteName}.`, indexable: false },
     "/privacy-policy": { title: `Privacy Policy | ${siteName}`, description: `Privacy policy for ${siteName}.`, indexable: false, canonicalPath: "/privacy" },
-    "/terms": { title: `Terms of Service | ${siteName}`, description: `Terms of service for ${siteName}.`, indexable: true },
-    "/data-deletion": { title: `Data Deletion | ${siteName}`, description: `Data deletion instructions for ${siteName}.`, indexable: true },
+    "/terms": { title: `Terms of Service | ${siteName}`, description: `Terms of service for ${siteName}.`, indexable: false },
+    "/data-deletion": { title: `Data Deletion | ${siteName}`, description: `Data deletion instructions for ${siteName}.`, indexable: false },
     "/apply": { title: `Apply to a Coaching Program | ${siteName}`, description: `Apply to a ${siteName} coaching program.`, indexable: false },
     "/book-a-call": { title: `Book a Discovery Call | ${siteName}`, description: `Book a free discovery call with ${siteName}.`, indexable: true },
   };
@@ -110,6 +115,7 @@ async function workspaceMeta(req) {
     truncate(publicSite.subheadline || publicSite.introBody || "", 160),
   );
   let profile = null;
+  let program = null;
   const profileSlug = defaults.path.match(/^\/people\/([a-z0-9-]+)$/i)?.[1];
   if (profileSlug) {
     profile = await runWithWorkspace(ws._id, () => PublicProfile.findOne({
@@ -120,6 +126,15 @@ async function workspaceMeta(req) {
     if (profile) {
       defaults.title = `${profile.displayName}${profile.publicTitle ? `, ${profile.publicTitle}` : ""} | ${siteName}`;
       defaults.description = truncate(profile.headline || profile.bio, 160);
+      defaults.indexable = true;
+    }
+  }
+  const programSlug = defaults.path.match(/^\/coaching-programs\/([a-z0-9-]+)$/i)?.[1];
+  if (programSlug) {
+    program = await runWithWorkspace(ws._id, () => CoachingProgram.findOne({ workspaceId: ws._id, status: "active", "publicPresentation.status": "published", "publicPresentation.slug": programSlug.toLowerCase() }).lean());
+    if (program) {
+      defaults.title = `${program.publicPresentation.title || program.name} | ${siteName}`;
+      defaults.description = truncate(program.publicPresentation.summary || program.publicPresentation.description, 160);
       defaults.indexable = true;
     }
   }
@@ -154,7 +169,15 @@ async function workspaceMeta(req) {
           ...(profile.socialLinks?.length ? { sameAs: profile.socialLinks.map((item) => item.url).filter(Boolean) } : {}),
           worksFor: { "@id": organizationId },
         }]
-      : [];
+      : program
+        ? [{ "@type": "Course", "@id": `${canonical}#course`, name: program.publicPresentation.title || program.name, description: truncate(program.publicPresentation.description || program.publicPresentation.summary, 500), url: canonical, provider: { "@id": organizationId }, ...(program.publicPresentation.audience ? { audience: { "@type": "Audience", audienceType: program.publicPresentation.audience } } : {}) }, { "@type": "BreadcrumbList", itemListElement: [{ "@type": "ListItem", position: 1, name: "Home", item: origin }, { "@type": "ListItem", position: 2, name: "Coaching Programs", item: `${origin}/coaching-programs` }, { "@type": "ListItem", position: 3, name: program.publicPresentation.title || program.name, item: canonical }] }]
+        : defaults.path === "/faq"
+          ? [{ "@type": "FAQPage", mainEntity: [
+              ["Who are the coaching programs for?", "Aspiring and active multifamily real estate investors who want structured education, practical guidance, and accountability."],
+              ["Is coaching available online?", "Yes. Coaching is primarily delivered virtually. Select programs may also include in-person educational experiences when offered."],
+              ["Does applying guarantee acceptance?", "No. An application starts a conversation and does not guarantee enrollment in a program."],
+            ].map(([name, text]) => ({ "@type": "Question", name, acceptedAnswer: { "@type": "Answer", text } })) }]
+          : [];
   return {
     title: defaults.title,
     description: truncate(defaults.description, 160),

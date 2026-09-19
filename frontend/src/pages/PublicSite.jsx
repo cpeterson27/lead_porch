@@ -15,6 +15,8 @@ import {
 import useWorkspaceTheme from "../context/useWorkspaceTheme.js";
 import {
   beginPublicProgramCheckout,
+  bookDiscoveryCall,
+  fetchDiscoveryCallAvailability,
   fetchPublicProfile,
   fetchPublicProgram,
   fetchPublicTestimonials,
@@ -509,6 +511,12 @@ function ProgramCards({ programs = [] }) {
                       ? "Hide details"
                       : "Learn more"}
                   </button>
+                  <Link
+                    className="public-text-link"
+                    to={`/coaching-programs/${program.slug || program.id}`}
+                  >
+                    View program page
+                  </Link>
                 </div>
                 <button
                   type="button"
@@ -644,6 +652,12 @@ function ProgramCards({ programs = [] }) {
                         ? "Hide details"
                         : "Learn more"}
                     </button>
+                    <Link
+                      className="public-text-link"
+                      to={`/coaching-programs/${program.slug || program.id}`}
+                    >
+                      View program page
+                    </Link>
                   </div>
                   <button
                     type="button"
@@ -960,7 +974,7 @@ export function PublicHome() {
     showHeroImage = visibility.heroImage !== false,
     showHeroQuote = visibility.heroQuote !== false,
     videoOnlyHero = !showHeroCopy && !showHeroImage,
-    discoveryCallCta = p.discoveryCallEnabled && p.discoveryCallBookingUrl ? (
+    discoveryCallCta = p.discoveryCallEnabled ? (
       <Link className="public-button public-discovery-call-cta" to="/book-a-call">
         {p.discoveryCallButtonLabel || "Book a Discovery Call"}
       </Link>
@@ -1301,6 +1315,21 @@ export function ProgramsPage() {
     </PublicLayout>
   );
 }
+export function FaqPage() {
+  const { site } = useWorkspaceTheme();
+  const name = site?.branding?.publicSiteName || site?.workspace?.name || "Ellie's Coaching";
+  const questions = [
+    ["Who are the coaching programs for?", "The programs are designed for aspiring and active multifamily real estate investors who want structured education, practical guidance, and accountability."],
+    ["Is coaching available online?", "Yes. Coaching is primarily delivered virtually. Select programs may also include in-person property tours or educational experiences when offered."],
+    ["Which program should I choose?", "Review the coaching program pages, then book a discovery call or submit an application so the team can help identify the most appropriate next step."],
+    ["Does applying guarantee acceptance?", "No. An application starts a conversation and does not guarantee enrollment in a program."],
+    ["What topics are covered?", "Depending on the program, topics may include acquisitions, market analysis, underwriting, capital raising, investor relationships, asset management, and business planning."],
+  ];
+  return <PublicLayout><main id="main-content" className="public-inner"><p className="public-kicker">Frequently asked questions</p><h1>Answers before your next step.</h1><div className="public-prose">{questions.map(([question, answer]) => <section key={question}><h2>{question}</h2><p>{answer}</p></section>)}<SmartLink className="public-button" to="/book-a-call">Talk with {name}</SmartLink></div></main></PublicLayout>;
+}
+export function ResourcesPage() {
+  return <PublicLayout><main id="main-content" className="public-inner"><p className="public-kicker">Investor resources</p><h1>Start with the right foundation.</h1><div className="public-prose"><p>Explore Ellie&rsquo;s coaching programs, student experiences, and practical next steps for multifamily real estate investing.</p><h2>Explore the programs</h2><p>Compare focused six-week coaching and Asset Acquisition Accelerator options.</p><SmartLink className="public-button" to="/coaching-programs">View coaching programs</SmartLink><h2>Hear from students</h2><p>Read published student experiences and results.</p><SmartLink className="public-button" to="/testimonials">View testimonials</SmartLink><h2>Talk through your goals</h2><p>Book a discovery call to discuss where you are and what kind of support may fit.</p><SmartLink className="public-button" to="/book-a-call">Book a discovery call</SmartLink></div></main></PublicLayout>;
+}
 export function ProgramDetail() {
   const { slug } = useParams();
   const [row, setRow] = useState(null),
@@ -1465,13 +1494,29 @@ export function ContactPage() {
 export function DiscoveryCallPage() {
   const { site } = useWorkspaceTheme(),
     p = site?.publicSite || {},
-    workspaceName = site?.branding?.publicSiteName || site?.workspace?.name || "us",
+    workspaceName = site?.branding?.publicSiteName || site?.workspace?.name || "us";
+  const [availability, setAvailability] = useState(null),
+    [selected, setSelected] = useState(""),
+    [form, setForm] = useState({ name: "", email: "", phone: "", notes: "" }),
+    [booking, setBooking] = useState(false),
+    [result, setResult] = useState(null),
+    [bookingError, setBookingError] = useState("");
+  useEffect(() => {
+    if (!p.discoveryCallAvailability?.coachProfileId) return;
+    fetchDiscoveryCallAvailability().then((data) => { setAvailability(data); setSelected(data.slots?.[0] || ""); }).catch(() => setAvailability({ slots: [] }));
+  }, [p.discoveryCallAvailability?.coachProfileId]);
+  const submitBooking = async (event) => {
+    event.preventDefault(); setBooking(true); setBookingError("");
+    try { const data = await bookDiscoveryCall({ ...form, startsAt: selected }); setResult(data); trackSiteEvent("discovery_call_booked", { starts_at: selected }); }
+    catch (error) { setBookingError(error?.response?.data?.error || "We couldn't reserve that time. Please choose another time and try again."); }
+    finally { setBooking(false); }
+  };
+  const bookingEmbedUrl = (() => {
     // Google's own documented format for embedding an Appointment Schedule
     // booking page inline (not just linking out to it) — gv=true is what
     // makes the embedded view interactive/bookable rather than a bare
     // read-only calendar. Falls back to no embed (plain link only) if the
     // saved URL isn't well-formed, rather than rendering a broken iframe.
-    bookingEmbedUrl = (() => {
       if (!p.discoveryCallBookingUrl) return "";
       try {
         const url = new URL(p.discoveryCallBookingUrl);
@@ -1495,7 +1540,13 @@ export function DiscoveryCallPage() {
             />
           </div>
         ) : null}
-        {bookingEmbedUrl ? (
+        {p.discoveryCallAvailability?.coachProfileId ? (
+          result ? <section className="discovery-booking-success"><h2>Your call is booked.</h2><p>A Google Calendar invitation has been sent to your email for {new Date(result.startsAt).toLocaleString()}.</p></section> :
+          <form className="discovery-booking-form" onSubmit={submitBooking}>
+            <h2>Choose an available time</h2>
+            {availability?.slots?.length ? <><label>Available appointment times<select required value={selected} onChange={(event) => setSelected(event.target.value)}>{availability.slots.map((slot) => <option key={slot} value={slot}>{new Date(slot).toLocaleString([], { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" })}</option>)}</select></label><div className="discovery-booking-form__grid"><label>Name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label><label>Email<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label><label>Phone (optional)<input type="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label></div><label>What would you like to discuss? (optional)<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>{bookingError ? <p className="form-error">{bookingError}</p> : null}<button className="public-button" disabled={booking}>{booking ? "Reserving…" : "Book discovery call"}</button></> : availability ? <p>No appointment times are currently available. Please check again soon or contact {workspaceName}.</p> : <p>Loading available times…</p>}
+          </form>
+        ) : bookingEmbedUrl ? (
           <>
             <div className="discovery-call-page__booking">
               <iframe

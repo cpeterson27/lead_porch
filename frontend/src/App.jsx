@@ -42,6 +42,11 @@ const AcceptInvitation = lazy(() => import("./pages/AcceptInvitation.jsx"));
 const PublicHome = lazy(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.PublicHome })));
 const TestimonialsPage = lazy(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.TestimonialsPage })));
 const DiscoveryCallPage = lazy(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.DiscoveryCallPage })));
+const AboutPage = lazy(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.AboutPage })));
+const ProgramsPage = lazy(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.ProgramsPage })));
+const ProgramDetail = lazy(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.ProgramDetail })));
+const FaqPage = lazy(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.FaqPage })));
+const ResourcesPage = lazy(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.ResourcesPage })));
 const ContactPage = lazy(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.ContactPage })));
 const PublicProfilePage = lazy(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.PublicProfilePage })));
 const PublicApplication = lazy(() => import("./pages/PublicApplication.jsx"));
@@ -88,7 +93,7 @@ function PublicPageTracking() {
   const location = useLocation();
   const lastPath = useRef("");
   useEffect(() => {
-    const publicPath = /^(?:\/$|\/(?:testimonials|contact|privacy|privacy-policy|terms|data-deletion|apply|book-a-call)(?:\/)?$|\/(?:people|ref)\/)/.test(location.pathname);
+    const publicPath = /^(?:\/$|\/(?:about|coaching-programs|faq|resources|testimonials|contact|privacy|privacy-policy|terms|data-deletion|apply|book-a-call)(?:\/)?$|\/(?:coaching-programs|people|ref)\/)/.test(location.pathname);
     if (!publicPath) return;
     const path = `${location.pathname}${location.search}`;
     if (lastPath.current === path) return;
@@ -239,9 +244,11 @@ function App() {
         <Suspense fallback={<PageLoading />}>
           <Routes>
             <Route path="/" element={<PublicHome />} />
-            <Route path="/about" element={<Navigate replace to="/#about" />} />
-            <Route path="/coaching-programs" element={<Navigate replace to="/#programs" />} />
-            <Route path="/coaching-programs/:slug" element={<Navigate replace to="/#programs" />} />
+            <Route path="/about" element={<AboutPage />} />
+            <Route path="/coaching-programs" element={<ProgramsPage />} />
+            <Route path="/coaching-programs/:slug" element={<ProgramDetail />} />
+            <Route path="/faq" element={<FaqPage />} />
+            <Route path="/resources" element={<ResourcesPage />} />
             <Route path="/testimonials" element={<TestimonialsPage />} />
             <Route path="/book-a-call" element={<DiscoveryCallPage />} />
             <Route path="/contact" element={<ContactPage />} />

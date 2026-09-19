@@ -11,6 +11,7 @@ const CrmActivity = require("../models/CrmActivity");
 const CoachingSession = require("../models/CoachingSession");
 const IntegrationConnection = require("../models/IntegrationConnection");
 const WorkspaceMembership = require("../models/WorkspaceMembership");
+const DiscoveryCallBooking = require("../models/DiscoveryCallBooking");
 const ZoomWebhookEvent = require("../models/ZoomWebhookEvent");
 const SkoolAccessRequest = require("../models/SkoolAccessRequest");
 const SkoolPurchase = require("../models/SkoolPurchase");
@@ -51,6 +52,7 @@ const defaultDependencies = {
   CoachingSession,
   IntegrationConnection,
   WorkspaceMembership,
+  DiscoveryCallBooking,
   ZoomWebhookEvent,
   SkoolAccessRequest,
   SkoolPurchase,
@@ -318,6 +320,14 @@ function createCoachingRouter(overrides = {}) {
     const data = await deps.CoachingSession.find(filter).populate("contactId", CONTACT_FIELDS).populate("coachProfileId", "displayName userId timezone status").populate("coachingProgramId", "name stages").populate("enrollmentId", "status currentStageKey").sort({ startsAt: 1 }).limit(safeLimit(req.query.limit)).lean();
     const reminderRows = await deps.CommunicationJob.find({ workspaceId: req.auth.workspaceId, coachingSessionId: { $in: data.map((item) => item._id) }, kind: "session_reminder" }).select("coachingSessionId channel status scheduledFor sentAt blockReason").sort({ scheduledFor: 1 }).lean();
     return res.json({ success: true, data: data.map((session) => ({ ...session, reminders: reminderRows.filter((row) => String(row.coachingSessionId) === String(session._id)) })) });
+  }));
+
+  router.get("/discovery-bookings", requireAdmin, asyncRoute(async (req, res) => {
+    const filter = { workspaceId: req.auth.workspaceId };
+    if (req.query.status) filter.status = req.query.status;
+    if (req.query.view === "upcoming") Object.assign(filter, { status: "scheduled", startsAt: { $gte: new Date() } });
+    const data = await deps.DiscoveryCallBooking.find(filter).populate("coachProfileId", "displayName timezone").sort({ startsAt: 1 }).limit(safeLimit(req.query.limit)).lean();
+    return res.json({ success: true, data });
   }));
 
   router.post("/sessions/availability", requireAdmin, asyncRoute(async (req, res) => {

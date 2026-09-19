@@ -332,6 +332,10 @@ export const fetchPublicApplication = () =>
   api.get("/public/application").then((res) => res.data.data);
 export const submitPublicApplication = (values) =>
   api.post("/public/application", values).then((res) => res.data);
+export const fetchDiscoveryCallAvailability = () =>
+  api.get("/public/discovery-call/availability").then((res) => res.data.data);
+export const bookDiscoveryCall = (values) =>
+  api.post("/public/discovery-call/book", values).then((res) => res.data.data);
 export const fetchStudentProfileEditor = (token) =>
   api.get(`/public/profile-edit/${token}`).then((res) => res.data);
 export const updateStudentProfile = (token, values) =>
@@ -801,6 +805,8 @@ export const fetchCoachCalendarConnections = () =>
   api.get("/coaching/calendar/connections").then((res) => res.data.data);
 export const fetchCoachingSessions = (params = {}) =>
   api.get("/coaching/sessions", { params }).then((res) => res.data.data);
+export const fetchDiscoveryCallBookings = (params = {}) =>
+  api.get("/coaching/discovery-bookings", { params }).then((res) => res.data.data);
 export const checkCoachAvailability = (values) =>
   api
     .post("/coaching/sessions/availability", values)

@@ -374,6 +374,15 @@ function sanitizedConfig(workspace, config) {
         p.discoveryCallButtonLabel || base.publicSite.discoveryCallButtonLabel || "",
       ).slice(0, 80),
       discoveryCallBookingUrl: safeUrl(p.discoveryCallBookingUrl),
+      discoveryCallAvailability: {
+        coachProfileId: p.discoveryCallAvailability?.coachProfileId || null,
+        days: (p.discoveryCallAvailability?.days || [1, 2, 3, 4, 5]).filter((day) => Number.isInteger(day) && day >= 0 && day <= 6),
+        startTime: /^\d{2}:\d{2}$/.test(p.discoveryCallAvailability?.startTime || "") ? p.discoveryCallAvailability.startTime : "09:00",
+        endTime: /^\d{2}:\d{2}$/.test(p.discoveryCallAvailability?.endTime || "") ? p.discoveryCallAvailability.endTime : "17:00",
+        durationMinutes: Math.min(180, Math.max(15, Number(p.discoveryCallAvailability?.durationMinutes || 30))),
+        bufferMinutes: Math.min(120, Math.max(0, Number(p.discoveryCallAvailability?.bufferMinutes || 15))),
+        horizonDays: Math.min(90, Math.max(1, Number(p.discoveryCallAvailability?.horizonDays || 30))),
+      },
       primaryCtaLabel: String(
         p.primaryCtaLabel || base.publicSite.primaryCtaLabel,
       ).slice(0, 80),
