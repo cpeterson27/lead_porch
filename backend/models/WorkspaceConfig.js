@@ -100,6 +100,11 @@ const workspaceConfigSchema = new mongoose.Schema(
     },
     publicSite: {
       published: { type: Boolean, default: false },
+      // Independent of headline/subheadline below — those drive the visible
+      // on-page hero. These two are the only fields that control the actual
+      // <title> and meta description Google shows in search results.
+      metaTitle: { type: String, default: "", trim: true, maxlength: 70 },
+      metaDescription: { type: String, default: "", trim: true, maxlength: 160 },
       headline: { type: String, default: "", maxlength: 300 },
       headlineAccent: { type: String, default: "Discipline", maxlength: 160 },
       subheadline: { type: String, default: "", maxlength: 1200 },
@@ -283,6 +288,16 @@ const workspaceConfigSchema = new mongoose.Schema(
         default: [],
       },
       homepageLinks: { type: [String], default: [] },
+      seoPages: {
+        aboutHeading: { type: String, default: "Experience, perspective, and practical support.", maxlength: 300 },
+        programsHeading: { type: String, default: "Support designed around the work ahead.", maxlength: 300 },
+        faqHeading: { type: String, default: "Answers before your next step.", maxlength: 300 },
+        resourcesHeading: { type: String, default: "Start with the right foundation.", maxlength: 300 },
+        resourcesCopy: { type: String, default: "", maxlength: 5000 },
+        testimonialsHeading: { type: String, default: "Stories from people doing the work.", maxlength: 300 },
+        contactHeading: { type: String, default: "", maxlength: 300 },
+        contactCopy: { type: String, default: "", maxlength: 3000 },
+      },
       contactEmail: { type: String, default: "", maxlength: 320 },
       contactPhone: { type: String, default: "", maxlength: 80 },
       footerText: { type: String, default: "", maxlength: 1000 },

@@ -100,3 +100,25 @@
 .website-upload-button--secondary{background:var(--color-brand-soft);border:1px solid transparent;color:var(--color-brand-hover);margin-top:8px}
 .workspace-branding-editor .brand-advanced-toggle{color:var(--app-primary-action,#7457ff)!important;cursor:pointer!important}
 .program-editor-hint{color:#8a5a2a;font-size:.78rem;margin:0;background:#fff6e8;border:1px solid #f0dcb8;border-radius:8px;padding:8px 12px}
+
+/* All interactive website-management accents follow Settings > Primary action. */
+.website-brand-manager .website-view-action,
+.website-brand-manager .website-live-action,
+.website-brand-manager .website-upload-button:not(.website-upload-button--secondary),
+.website-brand-manager .program-editor-group>header>span,
+.website-brand-manager .website-toggle>input:checked,
+.website-brand-manager .btn--primary{background:var(--color-brand)!important;border-color:var(--color-brand)!important;color:#fff!important}
+.website-brand-manager .website-brand-tabs button.is-active{border-bottom-color:var(--color-brand)!important;color:var(--color-brand)!important}
+.website-brand-manager .website-status-grid svg,
+.website-brand-manager .website-management-cards article>svg,
+.website-brand-manager .program-website-actions a,
+.website-brand-manager .public-profile-actions a{color:var(--color-brand)!important}
+.website-brand-manager .website-status-chip.is-live,
+.website-brand-manager .public-profile-summary em.is-live,
+.website-brand-manager .website-section-heading>small{background:var(--color-brand-soft)!important;color:var(--color-brand-hover)!important}
+.website-brand-manager .website-toggle,
+.website-brand-manager .program-placement-summary,
+.website-brand-manager .program-order-guide{background:color-mix(in srgb,var(--color-brand) 5%,#fff)!important;border-color:color-mix(in srgb,var(--color-brand) 20%,#fff)!important}
+.website-brand-manager input:focus,
+.website-brand-manager textarea:focus,
+.website-brand-manager select:focus{border-color:var(--color-brand)!important;box-shadow:0 0 0 3px var(--color-brand-soft)!important;outline:0}

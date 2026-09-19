@@ -595,6 +595,35 @@ export default function PublicSiteAdmin({ section = "website" }) {
         <section className="website-content-editor">
           <div className="website-editor-group">
             <header>
+              <span>00</span>
+              <div>
+                <h4>Google search listing</h4>
+                <p>Controls only what Google shows in search results — separate from the Hero fields below, which control what visitors see on the page itself.</p>
+              </div>
+            </header>
+            <label className="wide">
+              Google search title
+              <input
+                value={config.publicSite.metaTitle || ""}
+                placeholder={`${config.branding.publicSiteName || "Your business"} | Multifamily Real Estate Coaching`}
+                maxLength={70}
+                onChange={(e) => patchPublic("metaTitle", e.target.value)}
+              />
+              <small>Leave blank to keep the current default shown above.</small>
+            </label>
+            <label className="wide">
+              Google search description
+              <textarea
+                value={config.publicSite.metaDescription || ""}
+                placeholder="Practical coaching for investors ready to move from information to focused execution."
+                maxLength={160}
+                onChange={(e) => patchPublic("metaDescription", e.target.value)}
+              />
+              <small>Leave blank to keep using the Supporting statement below.</small>
+            </label>
+          </div>
+          <div className="website-editor-group">
+            <header>
               <span>01</span>
               <div>
                 <h4>Hero</h4>
@@ -1284,9 +1313,24 @@ export default function PublicSiteAdmin({ section = "website" }) {
             <header><span>SEO</span><div><h4>Google pages</h4><p>These crawlable pages support Google without adding items to the one-page navigation.</p></div></header>
             <div className="public-admin__page-grid">
               {[['About', '/about'], ['Programs', '/coaching-programs'], ['FAQ', '/faq'], ['Resources', '/resources'], ['Testimonials', '/testimonials'], ['Contact', '/contact'], ['Discovery call', '/book-a-call']].map(([label, path]) => <article key={path}><div><strong>{label}</strong><small>{path}</small></div><a className="website-upload-button website-upload-button--secondary" href={path} target="_blank" rel="noreferrer">View</a><label className="website-toggle"><input type="checkbox" checked={(config.publicSite.homepageLinks || []).includes(path)} onChange={(event) => patchPublic("homepageLinks", event.target.checked ? [...new Set([...(config.publicSite.homepageLinks || []), path])] : (config.publicSite.homepageLinks || []).filter((item) => item !== path))} /><span>Show link on homepage</span></label></article>)}
+              {programs.filter((program) => program.publicPresentation?.slug).map((program) => { const path = `/coaching-programs/${program.publicPresentation.slug}`; return <article key={program._id}><div><strong>{program.publicPresentation?.title || program.name}</strong><small>{path}</small></div><a className="website-upload-button website-upload-button--secondary" href={path} target="_blank" rel="noreferrer">View</a><button type="button" className="website-upload-button" onClick={() => setTab("programs")}>Edit page</button></article>; })}
             </div>
             <Button loading={saving} onClick={saveConfig}>Save homepage links</Button>
           </div>
+          <details className="website-editor-group public-admin__page-content" open>
+            <summary><strong>Edit supporting-page content</strong><span>Headings and copy for every non-program Google page</span></summary>
+            <div className="public-admin__grid">
+              <label>About page heading<input value={config.publicSite.seoPages?.aboutHeading || ""} onChange={(e) => patchPublic("seoPages", { ...(config.publicSite.seoPages || {}), aboutHeading: e.target.value })} /></label>
+              <label>Programs index heading<input value={config.publicSite.seoPages?.programsHeading || ""} onChange={(e) => patchPublic("seoPages", { ...(config.publicSite.seoPages || {}), programsHeading: e.target.value })} /></label>
+              <label>FAQ page heading<input value={config.publicSite.seoPages?.faqHeading || ""} onChange={(e) => patchPublic("seoPages", { ...(config.publicSite.seoPages || {}), faqHeading: e.target.value })} /></label>
+              <label>Resources page heading<input value={config.publicSite.seoPages?.resourcesHeading || ""} onChange={(e) => patchPublic("seoPages", { ...(config.publicSite.seoPages || {}), resourcesHeading: e.target.value })} /></label>
+              <label className="wide">Resources introduction<textarea value={config.publicSite.seoPages?.resourcesCopy || ""} onChange={(e) => patchPublic("seoPages", { ...(config.publicSite.seoPages || {}), resourcesCopy: e.target.value })} /></label>
+              <label>Testimonials page heading<input value={config.publicSite.seoPages?.testimonialsHeading || ""} onChange={(e) => patchPublic("seoPages", { ...(config.publicSite.seoPages || {}), testimonialsHeading: e.target.value })} /></label>
+              <label>Contact page heading<input value={config.publicSite.seoPages?.contactHeading || ""} onChange={(e) => patchPublic("seoPages", { ...(config.publicSite.seoPages || {}), contactHeading: e.target.value })} /></label>
+              <label className="wide">Contact page introduction<textarea value={config.publicSite.seoPages?.contactCopy || ""} onChange={(e) => patchPublic("seoPages", { ...(config.publicSite.seoPages || {}), contactCopy: e.target.value })} /></label>
+            </div>
+            <Button loading={saving} onClick={saveConfig}>Save supporting pages</Button>
+          </details>
           <div className="website-editor-group">
             <header><span>FAQ</span><div><h4>Frequently asked questions</h4><p>Edit the questions published at /faq and included in Google FAQ structured data.</p></div></header>
             {(config.publicSite.faqItems?.length ? config.publicSite.faqItems : starterFaqs).map((row, index) => <div className="public-admin__grid value-editor" key={index}><label>Question<input value={row.question || ""} onChange={(event) => { const rows = [...(config.publicSite.faqItems?.length ? config.publicSite.faqItems : starterFaqs)]; rows[index] = { ...rows[index], question: event.target.value }; patchPublic("faqItems", rows); }} /></label><label className="wide">Answer<textarea value={row.answer || ""} onChange={(event) => { const rows = [...(config.publicSite.faqItems?.length ? config.publicSite.faqItems : starterFaqs)]; rows[index] = { ...rows[index], answer: event.target.value }; patchPublic("faqItems", rows); }} /></label><button type="button" className="website-upload-button website-upload-button--secondary" onClick={() => patchPublic("faqItems", (config.publicSite.faqItems?.length ? config.publicSite.faqItems : starterFaqs).filter((_, rowIndex) => rowIndex !== index))}>Remove question</button></div>)}
@@ -1579,8 +1623,9 @@ export default function PublicSiteAdmin({ section = "website" }) {
           </p>
           <Link to="/coaching/programs">Manage programs</Link>
           {programs.map((program) => (
-            <article key={program._id}>
+            <article key={program._id} id={`program-page-${program._id}`}>
               <h3>{program.name}</h3>
+              {program.publicPresentation?.slug ? <a className="website-upload-button website-upload-button--secondary" href={`/coaching-programs/${program.publicPresentation.slug}`} target="_blank" rel="noreferrer">View live page</a> : null}
               <div className="public-admin__grid">
                 <label>
                   Public slug
@@ -1739,6 +1784,21 @@ export default function PublicSiteAdmin({ section = "website" }) {
                       )
                     }
                   />
+                </label>
+                <label className="wide">
+                  Full page description
+                  <textarea
+                    value={program.publicPresentation?.description || ""}
+                    onChange={(e) => setPrograms((rows) => rows.map((row) => row._id === program._id ? { ...row, publicPresentation: { ...row.publicPresentation, description: e.target.value } } : row))}
+                  />
+                </label>
+                <label>
+                  Program image URL
+                  <input value={program.publicPresentation?.imageUrl || ""} onChange={(e) => setPrograms((rows) => rows.map((row) => row._id === program._id ? { ...row, publicPresentation: { ...row.publicPresentation, imageUrl: e.target.value } } : row))} />
+                </label>
+                <label>
+                  Program image description (alt text)
+                  <input value={program.publicPresentation?.imageAlt || ""} onChange={(e) => setPrograms((rows) => rows.map((row) => row._id === program._id ? { ...row, publicPresentation: { ...row.publicPresentation, imageAlt: e.target.value } } : row))} />
                 </label>
                 <label className="wide">
                   Who it is for

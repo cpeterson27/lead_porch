@@ -31,6 +31,13 @@ for (const value of ['rel="canonical"', 'name="robots"', 'application/ld+json', 
 // coach's profile avatar.
 for (const value of ['rel="icon"', 'rel="apple-touch-icon"', "branding.faviconUrl"]) assert(shell.includes(value), `Missing favicon fix: ${value}`);
 assert(!/const favicon = absoluteUrl\(profile\?\.avatarUrl/.test(shell), "favicon must never fall back to a per-page image like a profile avatar or hero photo");
+// Real, reported confusion: the homepage <title>/description Google shows
+// was a hardcoded template in pathSettings, entirely independent of the
+// "Headline"/"Supporting statement" fields an owner could see and edit in
+// Settings — editing them visibly changed the page but never touched what
+// Google showed. A dedicated metaTitle/metaDescription pair, applied only
+// to "/", must override that hardcoded default when set.
+for (const value of ["publicSite.metaTitle", "publicSite.metaDescription", 'defaults.path === "/"']) assert(shell.includes(value), `Missing homepage meta-override fix: ${value}`);
 assert(server.includes('require("./middleware/publicSeo").publicSeo'));
 assert(app.includes('trackSiteEvent("virtual_page_view"'));
 for (const event of ["application_start", "application_submit", "program_select"]) assert(application.includes(`trackSiteEvent("${event}"`));

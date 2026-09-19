@@ -114,6 +114,14 @@ async function workspaceMeta(req) {
     siteName,
     truncate(publicSite.subheadline || publicSite.introBody || "", 160),
   );
+  // A workspace owner's explicit metaTitle/metaDescription always wins on
+  // the homepage — pathSettings' "/" title is otherwise a hardcoded
+  // template independent of any on-page copy, which is confusing to edit
+  // around (the visible "Headline" field never touches this).
+  if (defaults.path === "/") {
+    if (publicSite.metaTitle) defaults.title = publicSite.metaTitle;
+    if (publicSite.metaDescription) defaults.description = publicSite.metaDescription;
+  }
   let profile = null;
   let program = null;
   const profileSlug = defaults.path.match(/^\/people\/([a-z0-9-]+)$/i)?.[1];

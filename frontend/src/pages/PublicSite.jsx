@@ -1273,7 +1273,7 @@ export function AboutPage() {
     <PublicLayout>
       <main id="main-content" className="public-inner">
         <p className="public-kicker">About {workspaceName}</p>
-        <h1>Experience, perspective, and practical support.</h1>
+        <h1>{site?.publicSite?.seoPages?.aboutHeading || "Experience, perspective, and practical support."}</h1>
         <div className="public-prose">
           <p>
             {site?.publicSite?.aboutBody ||
@@ -1306,7 +1306,7 @@ export function ProgramsPage() {
     <PublicLayout>
       <main id="main-content" className="public-inner">
         <p className="public-kicker">Coaching programs</p>
-        <h1>Support designed around the work ahead.</h1>
+        <h1>{site?.publicSite?.seoPages?.programsHeading || "Support designed around the work ahead."}</h1>
         <ProgramCards programs={site?.programs} />
       </main>
     </PublicLayout>
@@ -1322,10 +1322,11 @@ export function FaqPage() {
     ["Does applying guarantee acceptance?", "No. An application starts a conversation and does not guarantee enrollment in a program."],
     ["What topics are covered?", "Depending on the program, topics may include acquisitions, market analysis, underwriting, capital raising, investor relationships, asset management, and business planning."],
   ];
-  return <PublicLayout><main id="main-content" className="public-inner"><p className="public-kicker">Frequently asked questions</p><h1>Answers before your next step.</h1><div className="public-prose">{questions.map(([question, answer]) => <section key={question}><h2>{question}</h2><p>{answer}</p></section>)}<SmartLink className="public-button" to="/book-a-call">Talk with {name}</SmartLink></div></main></PublicLayout>;
+  return <PublicLayout><main id="main-content" className="public-inner"><p className="public-kicker">Frequently asked questions</p><h1>{site?.publicSite?.seoPages?.faqHeading || "Answers before your next step."}</h1><div className="public-prose">{questions.map(([question, answer]) => <section key={question}><h2>{question}</h2><p>{answer}</p></section>)}<SmartLink className="public-button" to="/book-a-call">Talk with {name}</SmartLink></div></main></PublicLayout>;
 }
 export function ResourcesPage() {
-  return <PublicLayout><main id="main-content" className="public-inner"><p className="public-kicker">Investor resources</p><h1>Start with the right foundation.</h1><div className="public-prose"><p>Explore Ellie&rsquo;s coaching programs, student experiences, and practical next steps for multifamily real estate investing.</p><h2>Explore the programs</h2><p>Compare focused six-week coaching and Asset Acquisition Accelerator options.</p><SmartLink className="public-button" to="/coaching-programs">View coaching programs</SmartLink><h2>Hear from students</h2><p>Read published student experiences and results.</p><SmartLink className="public-button" to="/testimonials">View testimonials</SmartLink><h2>Talk through your goals</h2><p>Book a discovery call to discuss where you are and what kind of support may fit.</p><SmartLink className="public-button" to="/book-a-call">Book a discovery call</SmartLink></div></main></PublicLayout>;
+  const { site } = useWorkspaceTheme();
+  return <PublicLayout><main id="main-content" className="public-inner"><p className="public-kicker">Investor resources</p><h1>{site?.publicSite?.seoPages?.resourcesHeading || "Start with the right foundation."}</h1><div className="public-prose"><p>{site?.publicSite?.seoPages?.resourcesCopy || "Explore Ellie’s coaching programs, student experiences, and practical next steps for multifamily real estate investing."}</p><h2>Explore the programs</h2><p>Compare focused six-week coaching and Asset Acquisition Accelerator options.</p><SmartLink className="public-button" to="/coaching-programs">View coaching programs</SmartLink><h2>Hear from students</h2><p>Read published student experiences and results.</p><SmartLink className="public-button" to="/testimonials">View testimonials</SmartLink><h2>Talk through your goals</h2><p>Book a discovery call to discuss where you are and what kind of support may fit.</p><SmartLink className="public-button" to="/book-a-call">Book a discovery call</SmartLink></div></main></PublicLayout>;
 }
 export function ProgramDetail() {
   const { slug } = useParams();
@@ -1420,7 +1421,7 @@ export function TestimonialsPage() {
         {enabled ? (
           <>
             <p className="public-kicker">Student perspectives</p>
-            <h1>Stories from people doing the work.</h1>
+            <h1>{site?.publicSite?.seoPages?.testimonialsHeading || "Stories from people doing the work."}</h1>
             {rows.length ? (
               <Testimonials rows={rows} />
             ) : (
@@ -1447,14 +1448,12 @@ export function ContactPage() {
     <PublicLayout>
       <main id="main-content" className="public-inner">
         <p className="public-kicker">Contact</p>
-        <h1>Start a conversation with {workspaceName}.</h1>
+        <h1>{p.seoPages?.contactHeading || `Start a conversation with ${workspaceName}.`}</h1>
         <div className="contact-panel">
           <div>
             <h2>Program questions</h2>
             <p>
-              Questions before choosing a program? Use the configured contact
-              information below, or submit the secure program application when
-              you are ready.
+              {p.seoPages?.contactCopy || "Questions before choosing a program? Use the configured contact information below, or submit the secure program application when you are ready."}
             </p>
             {p.contactEmail ? (
               <a href={`mailto:${p.contactEmail}`}>{p.contactEmail}</a>

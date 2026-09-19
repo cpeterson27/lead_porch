@@ -840,6 +840,14 @@
 .website-content-editor .website-editor-group:nth-child(2),
 .website-content-editor>.public-admin__checks { grid-column:1/-1; }
 @media (max-width:900px) { .website-content-editor { grid-template-columns:1fr; } .website-content-editor>* { grid-column:1!important; } }
+.public-admin .website-toggle>input:checked { background:var(--color-brand)!important; }
+.public-admin__page-content { grid-column:1/-1; }
+.public-admin__page-content>summary { cursor:pointer; display:flex; flex-wrap:wrap; gap:8px 18px; list-style:none; align-items:center; }
+.public-admin__page-content>summary::-webkit-details-marker { display:none; }
+.public-admin__page-content>summary:before { content:"▸"; color:var(--color-brand); font-weight:900; }
+.public-admin__page-content[open]>summary:before { content:"▾"; }
+.public-admin__page-content>summary span { color:var(--color-text-muted); font-size:.8rem; }
+.public-admin__page-content>.public-admin__grid { margin-top:14px; }
 
 @media (max-width: 850px) {
   .homepage-media-uploads {

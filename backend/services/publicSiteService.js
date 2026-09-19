@@ -326,6 +326,14 @@ function sanitizedConfig(workspace, config) {
     },
     publicSite: {
       published: p.published ?? base.publicSite.published,
+      // Deliberately independent of headline/subheadline above — those
+      // drive the visible on-page hero (and can be hidden entirely via
+      // sectionVisibility.heroCopy without affecting Google at all). These
+      // two are the only fields that control the actual <title> and meta
+      // description Google shows in search results (see
+      // middleware/publicHtmlShell.js's pathSettings "/" entry).
+      metaTitle: String(p.metaTitle || "").slice(0, 70),
+      metaDescription: String(p.metaDescription || "").slice(0, 160),
       eyebrow: String(p.eyebrow || base.publicSite.eyebrow || "").slice(0, 160),
       headline: String(p.headline || base.publicSite.headline).slice(0, 300),
       subheadline: String(p.subheadline || base.publicSite.subheadline)
@@ -393,6 +401,16 @@ function sanitizedConfig(workspace, config) {
         answer: String(item.answer || "").slice(0, 2000),
       })).filter((item) => item.question && item.answer),
       homepageLinks: (p.homepageLinks || []).filter((path) => ["/about", "/coaching-programs", "/faq", "/resources", "/testimonials", "/contact", "/book-a-call"].includes(path)),
+      seoPages: {
+        aboutHeading: String(p.seoPages?.aboutHeading || "Experience, perspective, and practical support.").slice(0, 300),
+        programsHeading: String(p.seoPages?.programsHeading || "Support designed around the work ahead.").slice(0, 300),
+        faqHeading: String(p.seoPages?.faqHeading || "Answers before your next step.").slice(0, 300),
+        resourcesHeading: String(p.seoPages?.resourcesHeading || "Start with the right foundation.").slice(0, 300),
+        resourcesCopy: String(p.seoPages?.resourcesCopy || "").slice(0, 5000),
+        testimonialsHeading: String(p.seoPages?.testimonialsHeading || "Stories from people doing the work.").slice(0, 300),
+        contactHeading: String(p.seoPages?.contactHeading || "").slice(0, 300),
+        contactCopy: String(p.seoPages?.contactCopy || "").slice(0, 3000),
+      },
       primaryCtaLabel: String(
         p.primaryCtaLabel || base.publicSite.primaryCtaLabel,
       ).slice(0, 80),
