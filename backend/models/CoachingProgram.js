@@ -56,6 +56,14 @@ const coachingProgramSchema = new mongoose.Schema({
     outcomes: { type: [String], default: [] }, curriculum: { type: [String], default: [] }, imageUrl: { type: String, default: "", maxlength: 1000 },
     introVideoUrl: { type: String, default: "", maxlength: 1000 }, introVideoPublicId: { type: String, default: "", maxlength: 500 },
     ctaLabel: { type: String, default: "Apply Now", maxlength: 80 }, ctaUrl: { type: String, default: "/apply", maxlength: 1000 }, ctaSupportingText: { type: String, default: "", maxlength: 500 },
+    // Lets a visitor pay and enroll immediately via Square hosted checkout,
+    // bypassing the application entirely — shown alongside, never instead
+    // of, the ctaLabel/ctaUrl apply flow above. Only takes effect once
+    // defaultPrice.amount is actually set (see publicSiteService's
+    // programProjection) — a program owner can turn this on ahead of time
+    // without it going live before a real price exists.
+    instantEnrollEnabled: { type: Boolean, default: false },
+    instantEnrollCtaLabel: { type: String, default: "Enroll Now", trim: true, maxlength: 80 },
     status: { type: String, enum: ["hidden", "published"], default: "hidden" },
     section: { type: String, enum: ["accelerator", "intensive"], default: "intensive" },
     tierLabel: { type: String, default: "", trim: true, maxlength: 80 },

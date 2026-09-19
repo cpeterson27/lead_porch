@@ -5,6 +5,7 @@ const CoachingProgram = require("../models/CoachingProgram");
 const WorkspaceConfig = require("../models/WorkspaceConfig");
 const service = require("../services/publicSiteService");
 const applicationService = require("../services/publicApplicationService");
+const paymentService = require("../services/paymentService");
 const { runWithWorkspace } = require("../tenancy/workspaceContext");
 const router = express.Router();
 const attempts = new Map();
@@ -119,6 +120,30 @@ router.post("/application", limited, async (req, res, next) => {
     });
   } catch (error) {
     res.status(400).json({ error: error.message });
+  }
+});
+router.post("/programs/:slug/checkout", limited, async (req, res) => {
+  try {
+    const ws = await service.workspace(req);
+    const program = await runWithWorkspace(ws._id, () =>
+      CoachingProgram.findOne({
+        workspaceId: ws._id,
+        status: "active",
+        "publicPresentation.status": "published",
+        "publicPresentation.slug": String(req.params.slug).toLowerCase(),
+      }).select("_id").lean(),
+    );
+    if (!program) return res.status(404).json({ error: "Program not found" });
+    const result = await runWithWorkspace(ws._id, () =>
+      paymentService.beginPublicProgramCheckout({
+        workspaceId: ws._id,
+        programId: program._id,
+        input: req.body || {},
+      }),
+    );
+    res.status(201).json({ success: true, data: result });
+  } catch (error) {
+    res.status(error.status || 400).json({ error: error.message, code: error.code || "PAYMENT_REQUEST_FAILED" });
   }
 });
 router.get("/testimonials", async (req, res, next) => {

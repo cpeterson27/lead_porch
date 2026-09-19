@@ -581,6 +581,19 @@ function programProjection(item) {
         item.publicPresentation.ctaSupportingText || "",
       ).slice(0, 500),
     },
+    instantEnroll: {
+      // A program can't be instantly purchased without a real price set,
+      // regardless of the toggle — this is enforced again server-side when
+      // the checkout is actually created, this is just so the button never
+      // renders for a program that would immediately fail to check out.
+      enabled:
+        Boolean(item.publicPresentation.instantEnrollEnabled) &&
+        item.defaultPrice?.amount != null &&
+        Number(item.defaultPrice.amount) > 0,
+      ctaLabel: String(
+        item.publicPresentation.instantEnrollCtaLabel || "Enroll Now",
+      ).slice(0, 80),
+    },
     sortOrder: item.publicPresentation.sortOrder,
     section: item.publicPresentation.section || "",
     tierLabel: String(item.publicPresentation.tierLabel || "").slice(0, 80),

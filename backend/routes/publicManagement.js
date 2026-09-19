@@ -371,6 +371,10 @@ router.patch("/programs/:id", admin, async (req, res) => {
       return res.status(400).json({
         error: "Add a program name and description before publishing.",
       });
+    if (input.instantEnrollEnabled === true && (!program.defaultPrice?.amount || Number(program.defaultPrice.amount) <= 0))
+      return res.status(400).json({
+        error: "Set a price for this program before enabling instant enrollment.",
+      });
     program.publicPresentation = {
       slug,
       title: String(input.title || program.name).slice(0, 180),
@@ -401,6 +405,8 @@ router.patch("/programs/:id", admin, async (req, res) => {
       coachingFormat: String(input.coachingFormat || "").trim().slice(0, 80),
       featured: input.featured === true,
       sortOrder: Number(input.sortOrder) || 0,
+      instantEnrollEnabled: input.instantEnrollEnabled === true,
+      instantEnrollCtaLabel: String(input.instantEnrollCtaLabel || "Enroll Now").trim().slice(0, 80),
     };
     await program.save();
     res.json({ success: true, data: program });

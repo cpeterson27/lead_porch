@@ -99,3 +99,4 @@
 .workspace-branding-editor .logo-slot__actions button:hover{filter:brightness(.96)}
 .website-upload-button--secondary{background:transparent;border:1px solid #ded9cf;color:#173f36;margin-top:8px}
 .workspace-branding-editor .brand-advanced-toggle{color:var(--app-primary-action,#7457ff)!important;cursor:pointer!important}
+.program-editor-hint{color:#8a5a2a;font-size:.78rem;margin:0;background:#fff6e8;border:1px solid #f0dcb8;border-radius:8px;padding:8px 12px}

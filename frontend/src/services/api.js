@@ -318,6 +318,10 @@ export const fetchPublicSite = () =>
     .then((res) => res.data.data);
 export const fetchPublicProgram = (slug) =>
   api.get(`/public/programs/${slug}`).then((res) => res.data.data);
+export const beginPublicProgramCheckout = (slug, values) =>
+  api
+    .post(`/public/programs/${slug}/checkout`, values)
+    .then((res) => res.data.data);
 export const fetchPublicTestimonials = () =>
   api.get("/public/testimonials").then((res) => res.data.data);
 export const submitPublicTestimonial = (values) =>

@@ -92,6 +92,47 @@ async function acceptApplicationAndCreatePaymentRequest({ workspaceId, userId, a
   application.status = "qualified"; application.acceptedAt = application.acceptedAt || new Date(); application.acceptedBy = application.acceptedBy || userId; await application.save();
   return createCheckout({ workspaceId, userId, input: { kind: input.kind, amountMinor: input.amountMinor, idempotencyKey: input.idempotencyKey, coachingApplicationId: application._id, coachingProgramId: application.coachingProgramId, contactId: application.contactId, salesOpportunityId: application.salesOpportunityId, description: input.description } });
 }
+// Lets an anonymous public website visitor pay for and enroll in a program
+// immediately, with no staff involvement and no application — the
+// alternative path to acceptApplicationAndCreatePaymentRequest above, for
+// programs the owner has explicitly opted in to instant checkout. Reuses
+// createCheckout for every real payment/idempotency/hosted-checkout rule
+// rather than duplicating any of it; the only new work here is resolving
+// (or creating) the buyer's Contact record from a name/email a stranger
+// just typed in, mirroring publicApplicationService's contact pattern.
+async function beginPublicProgramCheckout({ workspaceId, programId, input }) {
+  const program = await CoachingProgram.findOne({
+    _id: programId,
+    workspaceId,
+    status: "active",
+    "publicPresentation.status": "published",
+    "publicPresentation.instantEnrollEnabled": true,
+  });
+  if (!program) throw Object.assign(new Error("This program is not available for instant enrollment"), { code: "PAYMENT_PROGRAM_NOT_AVAILABLE", status: 404 });
+  if (!program.defaultPrice?.amount || Number(program.defaultPrice.amount) <= 0) throw Object.assign(new Error("This program does not have a price set yet"), { code: "PAYMENT_PROGRAM_PRICE_MISSING" });
+  const firstName = String(input.firstName || "").trim().slice(0, 120);
+  const lastName = String(input.lastName || "").trim().slice(0, 120);
+  const normalizedEmail = String(input.email || "").trim().toLowerCase().slice(0, 255);
+  if (!firstName || !lastName) throw Object.assign(new Error("First and last name are required"), { code: "PAYMENT_NAME_REQUIRED" });
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw Object.assign(new Error("A valid email is required"), { code: "PAYMENT_EMAIL_INVALID" });
+  let contact = await Contact.findOne({ workspaceId, email: normalizedEmail });
+  if (!contact) {
+    contact = new Contact({ workspaceId, name: `${firstName} ${lastName}`, firstName, lastName, email: normalizedEmail, type: "lead", status: "active", sources: ["public_checkout"], tags: ["instant-enrollment"] });
+  } else {
+    contact.firstName = contact.firstName || firstName;
+    contact.lastName = contact.lastName || lastName;
+    contact.name = contact.name || `${firstName} ${lastName}`;
+    contact.sources = [...new Set([...(contact.sources || []), "public_checkout"])];
+    contact.tags = [...new Set([...(contact.tags || []), "instant-enrollment"])];
+  }
+  await contact.save();
+  const { publicPaymentUrl } = await createCheckout({
+    workspaceId,
+    userId: null,
+    input: { kind: "full", coachingProgramId: program._id, contactId: contact._id, description: program.publicPresentation?.title || program.name },
+  });
+  return { publicPaymentUrl };
+}
 async function publicPaymentRequest(token) {
   const transaction = await PaymentTransaction.findOne({ publicAccessTokenHash: publicTokenHash(token) }).select("+publicAccessTokenHash").populate("coachingProgramId", "name defaultPrice");
   if (!transaction) throw Object.assign(new Error("This payment request is invalid"), { code: "PAYMENT_REQUEST_INVALID", status: 404 });
@@ -222,4 +263,4 @@ async function processSquareWebhook({ rawBody, signature }) {
 }
 async function updateSettings(workspaceId, input) { const enabled = input.autoEnrollOnVerifiedPayment === true; const config = await WorkspaceConfig.findOneAndUpdate({ workspaceId, key: "primary" }, { $set: { "payments.autoEnrollOnVerifiedPayment": enabled } }, { new: true, upsert: true, setDefaultsOnInsert: true }); return config.payments; }
 async function getSettings(workspaceId) { const config = await WorkspaceConfig.findOne({ workspaceId, key: "primary" }).lean(); return { autoEnrollOnVerifiedPayment: config?.payments?.autoEnrollOnVerifiedPayment === true }; }
-module.exports = { acceptApplicationAndCreatePaymentRequest, beginPublicCheckout, connectSquare, connectionStatus, createCheckout, disconnectSquare, getSettings, listTransactions, processSquareWebhook, publicPaymentRequest, refreshSquare, refund, safeConnection, updateSettings, validateAssociations };
+module.exports = { acceptApplicationAndCreatePaymentRequest, beginPublicCheckout, beginPublicProgramCheckout, connectSquare, connectionStatus, createCheckout, disconnectSquare, getSettings, listTransactions, processSquareWebhook, publicPaymentRequest, refreshSquare, refund, safeConnection, updateSettings, validateAssociations };

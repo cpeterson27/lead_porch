@@ -71,9 +71,22 @@ function rbacAndSafetyChecks() {
   const service = fs.readFileSync(path.join(__dirname, "services/paymentService.js"), "utf8");
   assert(service.includes("autoEnrollOnVerifiedPayment")); assert(service.includes("PAYMENT_RECURRING_UNSUPPORTED")); assert(service.includes("PAYMENT_KIND_INVALID")); assert(service.includes("PAYMENT_ASSOCIATION_MISMATCH")); assert(service.includes("SQUARE_PAYMENT_AMOUNT_MISMATCH")); assert(service.includes("SQUARE_REFUND_AMOUNT_MISMATCH")); assert(service.includes("PAYMENT_TRANSACTION_NOT_READY")); assert(service.includes('status: "processing"')); assert(service.includes("refund_not_initiated_by_workspace"));
   for (const required of ["PAYMENT_APPLICATION_PROGRAM_MISMATCH", "PAYMENT_PROGRAM_NOT_PUBLISHED", "PAYMENT_REQUEST_ALREADY_EXISTS", "publicAccessTokenHash", "publicPaymentRequest", "beginPublicCheckout", '"payment.status": "paid"', '"paymentSummary.status": "paid"']) assert(service.includes(required), `Missing application payment protection: ${required}`);
+  // Instant (no-application) public program checkout: the function must
+  // still gate on the program actually being active/published/opted-in and
+  // priced, and must never accept card data of its own — it only ever
+  // reuses createCheckout's own Square hosted-checkout flow.
+  for (const required of ["beginPublicProgramCheckout", '"publicPresentation.status": "published"', '"publicPresentation.instantEnrollEnabled": true', "PAYMENT_PROGRAM_NOT_AVAILABLE", "PAYMENT_PROGRAM_PRICE_MISSING", "PAYMENT_NAME_REQUIRED", "PAYMENT_EMAIL_INVALID"]) assert(service.includes(required), `Missing instant-enrollment protection: ${required}`);
   const routes = fs.readFileSync(path.join(__dirname, "routes/payments.js"), "utf8");
   assert(routes.includes('/applications/:id/payment-request')); assert(routes.includes('/public/:token')); assert(routes.includes('requireCapability("payments.manage")'));
+  const publicSiteRoutes = fs.readFileSync(path.join(__dirname, "routes/publicSite.js"), "utf8");
+  assert(publicSiteRoutes.includes('/programs/:slug/checkout'), "Instant enrollment needs its own public, unauthenticated checkout route");
+  assert(publicSiteRoutes.includes("limited"), "Instant enrollment's public checkout route must be rate-limited like the other public form routes");
+  const programModel = fs.readFileSync(path.join(__dirname, "models/CoachingProgram.js"), "utf8");
+  assert(programModel.includes("instantEnrollEnabled")); assert(programModel.includes("instantEnrollCtaLabel"));
+  const publicManagementRoutes = fs.readFileSync(path.join(__dirname, "routes/publicManagement.js"), "utf8");
+  assert(publicManagementRoutes.includes("Set a price for this program before enabling instant enrollment"), "Staff must not be able to turn on instant enrollment for an unpriced program");
   const transactionModel = fs.readFileSync(path.join(__dirname, "models/PaymentTransaction.js"), "utf8"); assert(transactionModel.includes("publicAccessTokenHash")); assert(transactionModel.includes("partialFilterExpression"));
+  assert(!/createdBy:\s*\{[^}]*required:\s*true/.test(transactionModel), "createdBy must stay optional — instant public checkouts have no staff user to attribute the transaction to");
   assert(!service.includes("cardNumber")); assert(!service.includes("cvv"));
   const server = fs.readFileSync(path.join(__dirname, "server.js"), "utf8"); assert(server.includes('/api/payments/square/webhook')); assert(server.includes('req.path.startsWith("/payments/public/")'));
 }

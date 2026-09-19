@@ -1414,6 +1414,70 @@ button.public-text-link {
   cursor: pointer;
 }
 
+.public-program-buy {
+  display: inline-flex;
+  width: 100%;
+  min-height: 42px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+  padding: 0 17px;
+  border: 1px solid var(--public-accent);
+  border-radius: 0;
+  background: transparent;
+  color: var(--public-accent);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.public-checkout-form {
+  display: grid;
+  gap: 14px;
+  padding: 32px;
+}
+
+.public-checkout-form h2 {
+  margin: 0;
+}
+
+.public-checkout-form__price {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--public-accent);
+}
+
+.public-checkout-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.public-checkout-form input {
+  min-height: 42px;
+  padding: 0 14px;
+  border: 1px solid var(--public-border, #d8ded9);
+  border-radius: var(--radius-pill, 999px);
+  font: inherit;
+}
+
+.public-checkout-form button[type="submit"] {
+  margin-top: 6px;
+  justify-content: center;
+  background: var(--public-accent);
+  color: #071006;
+}
+
+.public-checkout-form button[type="submit"]:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+
 .community-section {
   position: relative;
   display: grid;

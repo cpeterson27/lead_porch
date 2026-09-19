@@ -1026,6 +1026,41 @@ export default function ProgramWebsiteSettings({ websiteUrl = "/", onChange }) {
                 </span>
               </label>
             </section>
+            <section className="program-editor-group">
+              <header>
+                <span>6</span>
+                <div>
+                  <h4>Instant enrollment</h4>
+                  <p>Let a visitor pay and enroll immediately instead of filling out the application.</p>
+                </div>
+              </header>
+              {editing.defaultPrice?.amount == null || Number(editing.defaultPrice.amount) <= 0 ? (
+                <p className="program-editor-hint">Set a price for this program before turning this on.</p>
+              ) : null}
+              <label className="website-toggle">
+                <input
+                  type="checkbox"
+                  disabled={editing.defaultPrice?.amount == null || Number(editing.defaultPrice.amount) <= 0}
+                  checked={Boolean(editing.publicPresentation?.instantEnrollEnabled)}
+                  onChange={(e) => patch("instantEnrollEnabled", e.target.checked)}
+                />
+                <span>
+                  <strong>Show “Enroll Now” alongside Apply Now</strong>
+                  <small>Visitors can skip the application and go straight to secure checkout.</small>
+                </span>
+              </label>
+              {editing.publicPresentation?.instantEnrollEnabled ? (
+                <label>
+                  <span>Button label</span>
+                  <input
+                    value={editing.publicPresentation?.instantEnrollCtaLabel || ""}
+                    placeholder="Enroll Now"
+                    maxLength={80}
+                    onChange={(e) => patch("instantEnrollCtaLabel", e.target.value)}
+                  />
+                </label>
+              ) : null}
+            </section>
           </div>
         ) : null}
       </Modal>

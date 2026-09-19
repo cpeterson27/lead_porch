@@ -14,6 +14,7 @@ import {
 } from "react-icons/fi";
 import useWorkspaceTheme from "../context/useWorkspaceTheme.js";
 import {
+  beginPublicProgramCheckout,
   fetchPublicProfile,
   fetchPublicProgram,
   fetchPublicTestimonials,
@@ -321,8 +322,12 @@ export function PublicLayout({ children }) {
 function ProgramCards({ programs = [] }) {
   const [expanded, setExpanded] = useState(""),
     [applying, setApplying] = useState(null),
+    [buying, setBuying] = useState(null),
+    [buyerForm, setBuyerForm] = useState({ firstName: "", lastName: "", email: "" }),
+    [buyerBusy, setBuyerBusy] = useState(false),
+    [buyerError, setBuyerError] = useState(""),
     closeRef = useRef(null);
-  useModalLayer(Boolean(applying));
+  useModalLayer(Boolean(applying) || Boolean(buying));
   useEffect(() => {
     if (!applying) return undefined;
     closeRef.current?.focus();
@@ -331,6 +336,26 @@ function ProgramCards({ programs = [] }) {
       document.body.classList.remove("program-application-open");
     };
   }, [applying]);
+  const beginPurchase = (program) => {
+    trackSiteEvent("instant_checkout_open", { program_slug: program.slug || String(program.id) });
+    setBuyerError("");
+    setBuyerForm({ firstName: "", lastName: "", email: "" });
+    setBuying(program);
+  };
+  const submitPurchase = async (event) => {
+    event.preventDefault();
+    if (!buying || buyerBusy) return;
+    setBuyerBusy(true);
+    setBuyerError("");
+    try {
+      const result = await beginPublicProgramCheckout(buying.slug || buying.id, buyerForm);
+      trackSiteEvent("instant_checkout_submit", { program_slug: buying.slug || String(buying.id) });
+      window.location.href = result.publicPaymentUrl;
+    } catch (err) {
+      setBuyerError(err.response?.data?.error || "Unable to start checkout. Please try again.");
+      setBuyerBusy(false);
+    }
+  };
   if (!programs.length)
     return <p className="public-empty">No programs are currently published.</p>;
 
@@ -495,6 +520,15 @@ function ProgramCards({ programs = [] }) {
                 >
                   Apply to program <FiArrowRight />
                 </button>
+                {program.instantEnroll?.enabled ? (
+                  <button
+                    type="button"
+                    className="public-program-buy"
+                    onClick={() => beginPurchase(program)}
+                  >
+                    {program.instantEnroll.ctaLabel || "Enroll Now"} <FiArrowRight />
+                  </button>
+                ) : null}
               </div>
             </article>
           ))}
@@ -621,6 +655,15 @@ function ProgramCards({ programs = [] }) {
                   >
                     Apply to program <FiArrowRight />
                   </button>
+                  {program.instantEnroll?.enabled ? (
+                    <button
+                      type="button"
+                      className="public-program-buy"
+                      onClick={() => beginPurchase(program)}
+                    >
+                      {program.instantEnroll.ctaLabel || "Enroll Now"} <FiArrowRight />
+                    </button>
+                  ) : null}
                 </div>
               </article>
             ))}
@@ -646,6 +689,60 @@ function ProgramCards({ programs = [] }) {
               <FiX />
             </button>
             <EmbeddedApplication path={`/apply?program=${encodeURIComponent(applying.slug || applying.id)}&embed=1`} />
+          </div>
+        </div>
+      </ModalPortal> : null}
+      {buying ? <ModalPortal>
+        <div
+          className="program-application-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={`Enroll in ${buying.title}`}
+          onKeyDown={(event) => event.key === "Escape" && !buyerBusy && setBuying(null)}
+        >
+          <div>
+            <button
+              type="button"
+              className="program-application-modal__close"
+              onClick={() => !buyerBusy && setBuying(null)}
+              aria-label="Close"
+            >
+              <FiX />
+            </button>
+            <form className="public-checkout-form" onSubmit={submitPurchase}>
+              <h2>Enroll in {buying.title}</h2>
+              <p className="public-checkout-form__price">{money(buying)}</p>
+              <p>Enter your details and you&rsquo;ll be taken to a secure checkout page to complete payment.</p>
+              {buyerError ? <p className="form-error">{buyerError}</p> : null}
+              <label>
+                First name
+                <input
+                  required
+                  value={buyerForm.firstName}
+                  onChange={(event) => setBuyerForm({ ...buyerForm, firstName: event.target.value })}
+                />
+              </label>
+              <label>
+                Last name
+                <input
+                  required
+                  value={buyerForm.lastName}
+                  onChange={(event) => setBuyerForm({ ...buyerForm, lastName: event.target.value })}
+                />
+              </label>
+              <label>
+                Email
+                <input
+                  required
+                  type="email"
+                  value={buyerForm.email}
+                  onChange={(event) => setBuyerForm({ ...buyerForm, email: event.target.value })}
+                />
+              </label>
+              <button type="submit" className="public-program-buy" disabled={buyerBusy}>
+                {buyerBusy ? "Starting checkout…" : "Continue to secure checkout"}
+              </button>
+            </form>
           </div>
         </div>
       </ModalPortal> : null}

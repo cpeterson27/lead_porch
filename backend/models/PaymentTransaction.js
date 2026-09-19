@@ -39,7 +39,9 @@ const schema = new mongoose.Schema({
   salesOpportunityId: { type: mongoose.Schema.Types.ObjectId, ref: "SalesOpportunity", default: null },
   enrollmentId: { type: mongoose.Schema.Types.ObjectId, ref: "Enrollment", default: null },
   description: { type: String, default: "", maxlength: 500 },
-  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+  // null means the checkout was self-served by a public website visitor
+  // (instant enrollment) rather than created by a staff member.
+  createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   paidAt: { type: Date, default: null },
   canceledAt: { type: Date, default: null },
   refundedAt: { type: Date, default: null },
