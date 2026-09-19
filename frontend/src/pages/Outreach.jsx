@@ -242,6 +242,10 @@ export default function Outreach() {
   const counts = {
     ...Object.fromEntries(viewStatuses.map((status) => [status, items.filter((item) => matchesView(item, status)).length])),
   };
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const selectedCampaignSentToday = items.filter((item) => item.sentAt && new Date(item.sentAt) >= todayStart).length;
+  const selectedCampaignSentTotal = items.filter((item) => item.sentAt).length;
   const generate = async () => {
     if (!selected) return setError("Select a campaign first.");
     try {
@@ -612,12 +616,18 @@ export default function Outreach() {
               className={filter === status ? "is-active" : ""}
               onClick={() => setFilter(status)}
             >
-              <span>{labels[status]}</span>
+              <span>{status === "delivered" ? "Delivered · campaign total" : labels[status]}</span>
               <strong>{counts[status] || 0}</strong>
             </button>
           ),
         )}
       </section>
+      <aside className="outreach-usage-explainer">
+        <div><span>Submitted today from this campaign</span><strong>{selectedCampaignSentToday}</strong></div>
+        <div><span>Submitted over this campaign’s lifetime</span><strong>{selectedCampaignSentTotal}</strong></div>
+        <div><span>Resend free-plan account limit</span><strong>100/day</strong></div>
+        <p>The 100-email allowance is shared by the entire Resend account, including other campaigns, test emails, transactional messages, and other verified domains. “Delivered” is a cumulative campaign result—not today’s usage. Resend’s Emails and Usage pages are the authority for the account-wide count.</p>
+      </aside>
       <DashboardCard
         title={selected ? `Messages for ${selected.name}` : "Outreach messages"}
       >
