@@ -761,7 +761,8 @@ export default function ProgramWebsiteSettings({ websiteUrl = "/", onChange }) {
                 <legend>Program image</legend>
                 {editing.publicPresentation?.imageUrl ? (
                   <div className="program-video-preview">
-                    <img src={editing.publicPresentation.imageUrl} alt="" />
+                    <img src={editing.publicPresentation.imageUrl} alt={editing.publicPresentation.imageAlt || editing.publicPresentation.title || editing.name} />
+                    <label className="alt-text-field">Image description for Google and screen readers<input value={editing.publicPresentation.imageAlt || ""} onChange={(event) => patch("imageAlt", event.target.value)} placeholder={`Example: ${editing.name} multifamily coaching program`} /></label>
                     <div>
                       <Button
                         size="sm"

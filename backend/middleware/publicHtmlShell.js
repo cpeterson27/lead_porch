@@ -141,6 +141,16 @@ async function workspaceMeta(req) {
   const canonicalPath = defaults.canonicalPath || defaults.path;
   const canonical = `${origin}${canonicalPath}`;
   const image = absoluteUrl(profile?.avatarUrl || publicSite.heroMediaUrl || branding.publicSiteLogoUrl || branding.logoUrl, origin);
+  // Deliberately never the profile avatar or hero media used for `image`
+  // above — a favicon is a persistent per-tab/search-result identity, so it
+  // should always be the workspace's actual logo, the same on every page.
+  // branding.faviconUrl (a dedicated upload, distinct from the site logo)
+  // is preferred when set. Previously this only ever reached the page via
+  // client-side JS (WorkspaceThemeContext swapping a <link> tag in after
+  // React hydrates) — invisible to Googlebot's favicon crawler, which reads
+  // the server-rendered <head> directly. Rendering it here server-side is
+  // the actual fix for the favicon never appearing in search results.
+  const favicon = absoluteUrl(branding.faviconUrl || branding.publicSiteLogoUrl || branding.logoUrl, origin);
   const organizationId = `${origin}/#organization`;
   const organization = {
     "@type": "Organization",
@@ -182,6 +192,7 @@ async function workspaceMeta(req) {
     title: defaults.title,
     description: truncate(defaults.description, 160),
     image,
+    favicon,
     canonical,
     indexable: defaults.indexable,
     schemas,
@@ -194,6 +205,7 @@ async function renderShell(req) {
     title: FALLBACK_TITLE,
     description: "",
     image: "",
+    favicon: "",
     canonical: `${publicOrigin(req)}${req.path || "/"}`,
     indexable: false,
     schemas: [],
@@ -201,6 +213,7 @@ async function renderShell(req) {
   const safeTitle = escapeHtml(meta.title);
   const safeDescription = escapeHtml(meta.description);
   const safeImage = escapeHtml(meta.image);
+  const safeFavicon = escapeHtml(meta.favicon);
   const safeCanonical = escapeHtml(meta.canonical);
   const tags = [
     meta.description
@@ -219,6 +232,8 @@ async function renderShell(req) {
     meta.image ? `<meta name="twitter:image" content="${safeImage}">` : "",
     `<meta name="robots" content="${meta.indexable ? "index,follow,max-image-preview:large" : "noindex,follow"}">`,
     `<link rel="canonical" href="${safeCanonical}">`,
+    meta.favicon ? `<link rel="icon" href="${safeFavicon}">` : "",
+    meta.favicon ? `<link rel="apple-touch-icon" href="${safeFavicon}">` : "",
     ...(meta.schemas || []).map((schema) => `<script type="application/ld+json">${safeJson({ "@context": "https://schema.org", ...schema })}</script>`),
   ]
     .filter(Boolean)

@@ -67,20 +67,23 @@ router.get("/discovery-call/availability", async (req, res, next) => {
     const durationMinutes = Math.min(180, Math.max(15, Number(availability.durationMinutes || 30)));
     const bufferMinutes = Math.min(120, Math.max(0, Number(availability.bufferMinutes || 15)));
     const probe = await runWithWorkspace(ws._id, () => googleCalendarService.busyWindow({ workspaceId: ws._id, coachProfileId: availability.coachProfileId, timeMin: new Date(), timeMax: new Date(Date.now() + (horizonDays + 1) * 86400000) }));
-    const [startHour, startMinute] = String(availability.startTime || "09:00").split(":").map(Number);
-    const [endHour, endMinute] = String(availability.endTime || "17:00").split(":").map(Number);
     const days = new Set((availability.days || [1, 2, 3, 4, 5]).map(Number));
+    const weeklyHours = new Map((availability.weeklyHours || []).map((row) => [Number(row.day), row]));
     const busy = probe.busy.map((row) => ({ start: new Date(row.start).getTime() - bufferMinutes * 60000, end: new Date(row.end).getTime() + bufferMinutes * 60000 }));
     const slots = [];
     const localDate = new Intl.DateTimeFormat("en-CA", { timeZone: probe.timezone, year: "numeric", month: "2-digit", day: "2-digit" });
     for (let offset = 1; offset <= horizonDays; offset += 1) {
       const noon = new Date(Date.now() + offset * 86400000);
       const [year, month, day] = localDate.format(noon).split("-").map(Number);
+      const dateProbe = zonedDate(year, month, day, 12, 0, probe.timezone);
+      const weekday = new Intl.DateTimeFormat("en-US", { timeZone: probe.timezone, weekday: "short" }).format(dateProbe);
+      const weekdayNumber = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday);
+      const schedule = weeklyHours.get(weekdayNumber);
+      if (schedule ? schedule.enabled !== true : !days.has(weekdayNumber)) continue;
+      const [startHour, startMinute] = String(schedule?.startTime || availability.startTime || "09:00").split(":").map(Number);
+      const [endHour, endMinute] = String(schedule?.endTime || availability.endTime || "17:00").split(":").map(Number);
       const localStart = zonedDate(year, month, day, startHour, startMinute, probe.timezone);
       const localEnd = zonedDate(year, month, day, endHour, endMinute, probe.timezone);
-      const weekday = new Intl.DateTimeFormat("en-US", { timeZone: probe.timezone, weekday: "short" }).format(localStart);
-      const weekdayNumber = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].indexOf(weekday);
-      if (!days.has(weekdayNumber)) continue;
       for (let start = localStart.getTime(); start + durationMinutes * 60000 <= localEnd.getTime(); start += (durationMinutes + bufferMinutes) * 60000) {
         const end = start + durationMinutes * 60000;
         if (start > Date.now() + 2 * 60 * 60 * 1000 && !busy.some((row) => start < row.end && end > row.start)) slots.push(new Date(start).toISOString());

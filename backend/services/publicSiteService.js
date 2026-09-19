@@ -381,11 +381,18 @@ function sanitizedConfig(workspace, config) {
         durationMinutes: Math.min(180, Math.max(15, Number(p.discoveryCallAvailability?.durationMinutes || 30))),
         bufferMinutes: Math.min(120, Math.max(0, Number(p.discoveryCallAvailability?.bufferMinutes || 15))),
         horizonDays: Math.min(90, Math.max(1, Number(p.discoveryCallAvailability?.horizonDays || 30))),
+        weeklyHours: (p.discoveryCallAvailability?.weeklyHours || []).slice(0, 7).map((row) => ({
+          day: Math.min(6, Math.max(0, Number(row.day))),
+          enabled: row.enabled === true,
+          startTime: /^\d{2}:\d{2}$/.test(row.startTime || "") ? row.startTime : "09:00",
+          endTime: /^\d{2}:\d{2}$/.test(row.endTime || "") ? row.endTime : "17:00",
+        })),
       },
       faqItems: (p.faqItems || []).slice(0, 30).map((item) => ({
         question: String(item.question || "").slice(0, 300),
         answer: String(item.answer || "").slice(0, 2000),
       })).filter((item) => item.question && item.answer),
+      homepageLinks: (p.homepageLinks || []).filter((path) => ["/about", "/coaching-programs", "/faq", "/resources", "/testimonials", "/contact", "/book-a-call"].includes(path)),
       primaryCtaLabel: String(
         p.primaryCtaLabel || base.publicSite.primaryCtaLabel,
       ).slice(0, 80),
@@ -584,6 +591,7 @@ function programProjection(item) {
     outcomes: strings(item.publicPresentation.outcomes, 20),
     curriculum: strings(item.publicPresentation.curriculum, 30),
     imageUrl: safeUrl(item.publicPresentation.imageUrl),
+    imageAlt: String(item.publicPresentation.imageAlt || "").slice(0, 300),
     audience: item.publicPresentation.audience,
     introVideoUrl: safeUrl(item.publicPresentation.introVideoUrl),
     cta: {

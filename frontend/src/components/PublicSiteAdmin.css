@@ -25,6 +25,7 @@
 }
 .public-admin__grid {
   display: grid;
+  align-items: start;
   gap: 12px;
   grid-template-columns: 1fr 1fr;
 }
@@ -64,15 +65,16 @@
   font-weight: 800;
   cursor: pointer;
 }
+.social-profile-editor__columns { display: grid; grid-template-columns: minmax(140px, .42fr) minmax(260px, 1fr) auto; gap: 10px; padding: 0 17px; }
+.social-profile-editor__columns span { color: var(--color-text-muted); font-size: .68rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .social-profile-editor__rows { display: grid; gap: 10px; }
-.social-profile-row { display: grid; grid-template-columns: minmax(140px, .42fr) minmax(260px, 1fr) auto; align-items: end; gap: 10px; }
-.social-profile-row label { gap: 4px; }
-.social-profile-row label > span { padding-left: 14px; color: var(--color-text-muted); font-size: .68rem; letter-spacing: .04em; text-transform: uppercase; }
+.social-profile-row { display: grid; grid-template-columns: minmax(140px, .42fr) minmax(260px, 1fr) auto; align-items: center; gap: 10px; }
 .public-admin .social-profile-row input:not([type="checkbox"]) { min-height: 44px; padding: 0 17px; border-color: var(--color-border); border-radius: 999px; background: var(--color-surface-subtle); }
 .social-profile-row > button:hover,
 .social-profile-editor__heading > button:hover { border-color: var(--color-brand); background: var(--color-brand); color: #fff; }
 @media (max-width: 700px) {
   .social-profile-editor__heading { align-items: stretch; flex-direction: column; }
+  .social-profile-editor__columns { display: none; }
   .social-profile-row { grid-template-columns: 1fr; }
   .social-profile-row > button { justify-self: start; }
 }
@@ -207,29 +209,6 @@
   padding: 12px;
   position: sticky;
   z-index: 3;
-}
-.social-profile-editor {
-  border-top: 1px solid #d9e2de;
-  display: grid;
-  gap: 10px;
-  padding-top: 20px;
-}
-.social-profile-editor label {
-  align-items: center;
-  display: grid;
-  gap: 12px;
-  grid-template-columns: 110px minmax(0, 1fr) auto;
-}
-.social-profile-editor input {
-  min-width: 0;
-}
-.social-profile-state {
-  color: #78827e;
-  font-size: 0.74rem;
-  font-weight: 800;
-}
-.social-profile-state.is-on {
-  color: #17604d;
 }
 .application-image-settings {
   background: #fff;
@@ -609,10 +588,6 @@
   .website-editor-save {
     bottom: 6px;
   }
-  .social-profile-editor label {
-    align-items: stretch;
-    grid-template-columns: 1fr;
-  }
   .application-image-settings__control {
     align-items: stretch;
     flex-direction: column;
@@ -848,6 +823,23 @@
   padding: 0 8px;
   font-weight: 800;
 }
+.public-admin__weekly-hours { display:grid; gap:8px; }
+.public-admin__weekly-row { display:grid; grid-template-columns:minmax(150px,1fr) minmax(120px,.55fr) minmax(120px,.55fr); gap:10px; align-items:end; }
+.public-admin__weekly-row .website-toggle { min-height:44px; }
+.public-admin .website-upload-button { background:var(--color-brand); border-color:var(--color-brand); color:#fff; border-radius:var(--radius-pill); }
+.public-admin .website-upload-button--secondary { background:var(--color-brand-soft); border-color:transparent; color:var(--color-brand-hover); }
+@media (max-width:700px) { .public-admin__weekly-row { grid-template-columns:1fr 1fr; } .public-admin__weekly-row .website-toggle { grid-column:1/-1; } }
+.public-admin__page-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:10px; }
+.public-admin__page-grid article { border:1px solid var(--color-border); border-radius:14px; padding:12px; display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; }
+.public-admin__page-grid article>div { display:grid; gap:2px; }
+.public-admin__page-grid small { color:var(--color-text-muted); }
+.public-admin__page-grid .website-toggle { grid-column:1/-1; padding:8px 10px; }
+.website-content-editor { grid-template-columns:repeat(2,minmax(0,1fr)); align-items:start; }
+.website-content-editor .website-editor-group { padding:18px; gap:14px; }
+.website-content-editor .website-editor-group:first-child,
+.website-content-editor .website-editor-group:nth-child(2),
+.website-content-editor>.public-admin__checks { grid-column:1/-1; }
+@media (max-width:900px) { .website-content-editor { grid-template-columns:1fr; } .website-content-editor>* { grid-column:1!important; } }
 
 @media (max-width: 850px) {
   .homepage-media-uploads {

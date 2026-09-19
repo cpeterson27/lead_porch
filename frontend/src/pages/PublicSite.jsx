@@ -447,7 +447,7 @@ function ProgramCards({ programs = [] }) {
                   <img
                     className="public-accelerator-img"
                     src={cloudinaryImage(program.imageUrl, 760)}
-                    alt={`${program.title} program`}
+                    alt={program.imageAlt || `${program.title} program`}
                     loading="lazy"
                   />
                 ) : (
@@ -603,7 +603,7 @@ function ProgramCards({ programs = [] }) {
                     <img
                       className="public-program-img"
                       src={cloudinaryImage(program.imageUrl, 760)}
-                      alt={`${program.title} program`}
+                      alt={program.imageAlt || `${program.title} program`}
                       loading="lazy"
                     />
                   ) : (
@@ -1130,6 +1130,15 @@ export function PublicHome() {
           </section>
         ) : null}
 
+        {p.homepageLinks?.length ? (
+          <nav className="public-homepage-links" aria-label="Explore more">
+            {p.homepageLinks.map((path) => {
+              const labels = { "/about": "About Ellie", "/coaching-programs": "All programs", "/faq": "FAQ", "/resources": "Resources", "/testimonials": "Student stories", "/contact": "Contact", "/book-a-call": "Book a discovery call" };
+              return <Link key={path} to={path}>{labels[path] || path}</Link>;
+            })}
+          </nav>
+        ) : null}
+
         {visibility.programs !== false ? (
           <section className="public-curriculum-section" id="programs">
             <div className="public-curriculum-header">
@@ -1395,7 +1404,7 @@ export function ProgramDetail() {
 export function TestimonialsPage() {
   const { site } = useWorkspaceTheme();
   const [rows, setRows] = useState([]),
-    enabled = site?.publicSite?.sectionVisibility?.results === true;
+    enabled = site?.publicSite?.sectionVisibility?.testimonials !== false;
   useEffect(() => {
     const timer = window.setTimeout(() => {
       if (enabled)

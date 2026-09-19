@@ -53,7 +53,7 @@ const coachingProgramSchema = new mongoose.Schema({
     slug: { type: String, default: "", trim: true, lowercase: true, maxlength: 120 },
     title: { type: String, default: "", trim: true, maxlength: 180 }, summary: { type: String, default: "", trim: true, maxlength: 1200 }, description: { type: String, default: "", maxlength: 12000 },
     priceVisible: { type: Boolean, default: false }, highlights: { type: [String], default: [] }, audience: { type: String, default: "", maxlength: 3000 },
-    outcomes: { type: [String], default: [] }, curriculum: { type: [String], default: [] }, imageUrl: { type: String, default: "", maxlength: 1000 },
+    outcomes: { type: [String], default: [] }, curriculum: { type: [String], default: [] }, imageUrl: { type: String, default: "", maxlength: 1000 }, imageAlt: { type: String, default: "", maxlength: 300 },
     introVideoUrl: { type: String, default: "", maxlength: 1000 }, introVideoPublicId: { type: String, default: "", maxlength: 500 },
     ctaLabel: { type: String, default: "Apply Now", maxlength: 80 }, ctaUrl: { type: String, default: "/apply", maxlength: 1000 }, ctaSupportingText: { type: String, default: "", maxlength: 500 },
     // Lets a visitor pay and enroll immediately via Square hosted checkout,

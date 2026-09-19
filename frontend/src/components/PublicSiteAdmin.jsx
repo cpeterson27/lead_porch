@@ -988,28 +988,28 @@ export default function PublicSiteAdmin({ section = "website" }) {
                     + Add profile
                   </button>
                 </div>
+                {(config.publicSite.socialLinks || []).length ? (
+                  <div className="social-profile-editor__columns" aria-hidden="true">
+                    <span>Platform</span>
+                    <span>Profile URL</span>
+                  </div>
+                ) : null}
                 <div className="social-profile-editor__rows">
                   {(config.publicSite.socialLinks || []).map((link, index) => (
                     <div className="social-profile-row" key={`${index}-${link.label}`}>
-                      <label>
-                        <span>Platform</span>
-                        <input
-                          aria-label={`Social platform ${index + 1}`}
-                          value={link.label || ""}
-                          placeholder="Instagram"
-                          onChange={(event) => patchPublic("socialLinks", (config.publicSite.socialLinks || []).map((row, rowIndex) => rowIndex === index ? { ...row, label: event.target.value } : row))}
-                        />
-                      </label>
-                      <label>
-                        <span>Profile URL</span>
-                        <input
-                          aria-label={`Social profile URL ${index + 1}`}
-                          type="url"
-                          value={link.url || ""}
-                          placeholder="https://instagram.com/yourname"
-                          onChange={(event) => patchPublic("socialLinks", (config.publicSite.socialLinks || []).map((row, rowIndex) => rowIndex === index ? { ...row, url: event.target.value } : row))}
-                        />
-                      </label>
+                      <input
+                        aria-label={`Social platform ${index + 1}`}
+                        value={link.label || ""}
+                        placeholder="LinkedIn"
+                        onChange={(event) => patchPublic("socialLinks", (config.publicSite.socialLinks || []).map((row, rowIndex) => rowIndex === index ? { ...row, label: event.target.value } : row))}
+                      />
+                      <input
+                        aria-label={`Social profile URL ${index + 1}`}
+                        type="url"
+                        value={link.url || ""}
+                        placeholder="https://linkedin.com/company/yourname"
+                        onChange={(event) => patchPublic("socialLinks", (config.publicSite.socialLinks || []).map((row, rowIndex) => rowIndex === index ? { ...row, url: event.target.value } : row))}
+                      />
                       <button
                         type="button"
                         aria-label={`Remove ${link.label || "social profile"}`}
@@ -1235,20 +1235,15 @@ export default function PublicSiteAdmin({ section = "website" }) {
               Buffer between calls
               <select value={config.publicSite.discoveryCallAvailability?.bufferMinutes ?? 15} onChange={(e) => patchPublic("discoveryCallAvailability", { ...(config.publicSite.discoveryCallAvailability || {}), bufferMinutes: Number(e.target.value) })}><option value={0}>No buffer</option><option value={15}>15 minutes</option><option value={30}>30 minutes</option></select>
             </label>
-            <label>
-              Start time
-              <input type="time" value={config.publicSite.discoveryCallAvailability?.startTime || "09:00"} onChange={(e) => patchPublic("discoveryCallAvailability", { ...(config.publicSite.discoveryCallAvailability || {}), startTime: e.target.value })} />
-            </label>
-            <label>
-              End time
-              <input type="time" value={config.publicSite.discoveryCallAvailability?.endTime || "17:00"} onChange={(e) => patchPublic("discoveryCallAvailability", { ...(config.publicSite.discoveryCallAvailability || {}), endTime: e.target.value })} />
-            </label>
             <fieldset className="wide public-admin__weekday-fieldset">
-              <legend>Bookable days</legend>
-              <div className="public-admin__checks">
+              <legend>Weekly availability</legend>
+              <div className="public-admin__weekly-hours">
                 {bookingDays.map(([value, label]) => {
                   const selectedDays = config.publicSite.discoveryCallAvailability?.days || [1, 2, 3, 4, 5];
-                  return <label className="website-toggle" key={value}><input type="checkbox" checked={selectedDays.includes(value)} onChange={(event) => patchPublic("discoveryCallAvailability", { ...(config.publicSite.discoveryCallAvailability || {}), days: event.target.checked ? [...new Set([...selectedDays, value])].sort() : selectedDays.filter((day) => day !== value) })} /><span>{label}</span></label>;
+                  const savedRows = config.publicSite.discoveryCallAvailability?.weeklyHours || [];
+                  const row = savedRows.find((item) => item.day === value) || { day: value, enabled: selectedDays.includes(value), startTime: config.publicSite.discoveryCallAvailability?.startTime || "09:00", endTime: config.publicSite.discoveryCallAvailability?.endTime || "17:00" };
+                  const updateRow = (change) => patchPublic("discoveryCallAvailability", { ...(config.publicSite.discoveryCallAvailability || {}), weeklyHours: bookingDays.map(([day]) => { const existing = savedRows.find((item) => item.day === day) || { day, enabled: selectedDays.includes(day), startTime: config.publicSite.discoveryCallAvailability?.startTime || "09:00", endTime: config.publicSite.discoveryCallAvailability?.endTime || "17:00" }; return day === value ? { ...existing, ...change } : existing; }) });
+                  return <div className="public-admin__weekly-row" key={value}><label className="website-toggle"><input type="checkbox" checked={row.enabled} onChange={(event) => updateRow({ enabled: event.target.checked })} /><span>{label}</span></label><label>Start<input type="time" disabled={!row.enabled} value={row.startTime} onChange={(event) => updateRow({ startTime: event.target.value })} /></label><label>End<input type="time" disabled={!row.enabled} value={row.endTime} onChange={(event) => updateRow({ endTime: event.target.value })} /></label></div>;
                 })}
               </div>
               <p className="public-admin__help">For vacations or one-off unavailable times, Ellie adds an all-day or timed “Busy” event to the connected Google Calendar. Lead Porch automatically removes those times from public availability.</p>
@@ -1287,9 +1282,10 @@ export default function PublicSiteAdmin({ section = "website" }) {
         <section className="website-content-editor">
           <div className="website-editor-group">
             <header><span>SEO</span><div><h4>Google pages</h4><p>These crawlable pages support Google without adding items to the one-page navigation.</p></div></header>
-            <div className="public-admin__checks">
-              {[['About', '/about'], ['Programs', '/coaching-programs'], ['FAQ', '/faq'], ['Resources', '/resources'], ['Testimonials', '/testimonials'], ['Contact', '/contact'], ['Discovery call', '/book-a-call']].map(([label, path]) => <a className="website-upload-button website-upload-button--secondary" href={path} target="_blank" rel="noreferrer" key={path}>{label}: {path}</a>)}
+            <div className="public-admin__page-grid">
+              {[['About', '/about'], ['Programs', '/coaching-programs'], ['FAQ', '/faq'], ['Resources', '/resources'], ['Testimonials', '/testimonials'], ['Contact', '/contact'], ['Discovery call', '/book-a-call']].map(([label, path]) => <article key={path}><div><strong>{label}</strong><small>{path}</small></div><a className="website-upload-button website-upload-button--secondary" href={path} target="_blank" rel="noreferrer">View</a><label className="website-toggle"><input type="checkbox" checked={(config.publicSite.homepageLinks || []).includes(path)} onChange={(event) => patchPublic("homepageLinks", event.target.checked ? [...new Set([...(config.publicSite.homepageLinks || []), path])] : (config.publicSite.homepageLinks || []).filter((item) => item !== path))} /><span>Show link on homepage</span></label></article>)}
             </div>
+            <Button loading={saving} onClick={saveConfig}>Save homepage links</Button>
           </div>
           <div className="website-editor-group">
             <header><span>FAQ</span><div><h4>Frequently asked questions</h4><p>Edit the questions published at /faq and included in Google FAQ structured data.</p></div></header>

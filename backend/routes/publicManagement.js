@@ -391,6 +391,7 @@ router.patch("/programs/:id", admin, async (req, res) => {
         .map(String)
         .slice(0, 30),
       imageUrl: service.safeUrl(input.imageUrl || ""),
+      imageAlt: String(input.imageAlt || "").trim().slice(0, 300),
       audience: String(input.audience || "").slice(0, 3000),
       introVideoUrl: service.safeUrl(input.introVideoUrl || ""),
       introVideoPublicId: String(input.introVideoPublicId || "").slice(0, 500),

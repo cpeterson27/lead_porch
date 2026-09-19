@@ -24,13 +24,13 @@
 }
 
 .btn--primary {
-  background: linear-gradient(135deg,var(--ai-violet),#4f7dff);
+  background: var(--color-brand);
   color: #fff;
-  box-shadow: 0 10px 24px rgba(104, 79, 235, 0.24);
+  box-shadow: 0 10px 24px color-mix(in srgb, var(--color-brand) 28%, transparent);
 }
 
 .btn--primary:hover:not(:disabled) {
-  background: linear-gradient(135deg,#6547ef,#3976ff);
+  background: var(--color-brand-hover);
 }
 
 .btn--secondary {
