@@ -223,6 +223,32 @@
 .outreach-guidance span { color: var(--text-muted); font-size: 0.8rem; line-height: 1.45; }
 .outreach-guidance--bounced { border-color: #e7c9c5; border-left-color: #a84b41; background: #fff5f3; }
 .outreach-guidance--delivered { border-color: #c5dfd3; border-left-color: #2e705c; background: #f1f8f4; }
+.outreach-provider-alert {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 1rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid #e6b9b4;
+  border-left: 4px solid #a84b41;
+  border-radius: 10px;
+  background: #fff4f3;
+  color: #702d27;
+}
+.outreach-provider-alert div { display: grid; gap: 0.25rem; }
+.outreach-provider-alert p { margin: 0; color: #6b4a47; line-height: 1.5; }
+.outreach-provider-alert a {
+  flex: 0 0 auto;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  color: #702d27;
+  font-size: 0.8rem;
+  font-weight: 800;
+  text-decoration: none;
+}
+.outreach-provider-alert a:hover { background: #fff; }
 @media (max-width: 680px) { .outreach-guidance { grid-template-columns: 1fr; } }
 .outreach-mailbox {
   width: 100%;
@@ -296,7 +322,7 @@
   gap: 0.4rem;
   align-items: center;
   margin: 0;
-  white-space: nowrap;
+  flex-wrap: wrap;
 }
 .outreach-item__actions .btn { min-width: 0; padding-inline: 0.65rem; }
 .outreach-item__actions .btn:first-child { width: auto; white-space: nowrap; }
@@ -351,13 +377,14 @@
   color: #5a3a9e;
 }
 .outreach-item__error {
-  display: inline-block;
-  max-width: 220px;
-  overflow: hidden;
+  display: block;
+  flex: 1 0 100%;
+  width: 100%;
   color: #a32929;
   font-size: 0.8rem;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  white-space: normal;
   vertical-align: middle;
 }
 .outreach-pagination {

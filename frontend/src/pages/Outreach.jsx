@@ -70,6 +70,14 @@ const htmlToText = (html = "") =>
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
     .trim();
+const isDailyQuotaError = (message = "") =>
+  /daily email(?: sending)? quota|daily (?:email )?(?:sending )?(?:quota|limit)/i.test(
+    String(message),
+  );
+const friendlyDeliveryError = (message = "") =>
+  isDailyQuotaError(message)
+    ? "Sending paused: Resend's daily account quota is currently exhausted."
+    : message;
 export default function Outreach() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -246,6 +254,9 @@ export default function Outreach() {
   todayStart.setHours(0, 0, 0, 0);
   const selectedCampaignSentToday = items.filter((item) => item.sentAt && new Date(item.sentAt) >= todayStart).length;
   const selectedCampaignSentTotal = items.filter((item) => item.sentAt).length;
+  const dailyQuotaFailures = items.filter(
+    (item) => item.status === "failed" && isDailyQuotaError(item.errorMessage),
+  ).length;
   const generate = async () => {
     if (!selected) return setError("Select a campaign first.");
     try {
@@ -585,6 +596,17 @@ export default function Outreach() {
       </fieldset>
       {error ? <p className="form-error">{error}</p> : null}
       {notice ? <p className="outreach-notice">{notice}</p> : null}
+      {dailyQuotaFailures ? (
+        <aside className="outreach-provider-alert" role="status">
+          <div>
+            <strong>Sending is paused by Resend</strong>
+            <p>
+              Resend rejected {dailyQuotaFailures} message{dailyQuotaFailures === 1 ? "" : "s"} because the account's current daily quota is exhausted. These drafts are safe in Lead Porch. Wait until Resend's Usage page shows the daily counter has reset, or upgrade the Resend plan, before retrying.
+            </p>
+          </div>
+          <a href="https://resend.com/settings/usage" target="_blank" rel="noreferrer">Check Resend usage</a>
+        </aside>
+      ) : null}
       <section className="outreach-controls">
         <label>
           Campaign
@@ -768,7 +790,7 @@ export default function Outreach() {
                   ) : null}
                   {item.status === "failed" && item.errorMessage ? (
                     <span className="outreach-item__error" title={item.errorMessage}>
-                      {item.errorMessage}
+                      {friendlyDeliveryError(item.errorMessage)}
                     </span>
                   ) : null}
                 </div>
@@ -843,7 +865,7 @@ export default function Outreach() {
         footer={
           <>
             <Button variant="outline" onClick={() => setIssueReview(null)}>Close</Button>
-            {issueReview && !["bounced", "suppressed", "complained"].includes(issueReview.deliveryStatus) ? (
+            {issueReview && !isDailyQuotaError(issueReview.errorMessage) && !["bounced", "suppressed", "complained"].includes(issueReview.deliveryStatus) ? (
               <Button loading={saving} onClick={async () => {
                 await approve(issueReview);
                 setIssueReview(null);
@@ -857,8 +879,10 @@ export default function Outreach() {
         {issueReview ? (
           <div className="outreach-issue-review">
             <p><strong>{issueReview.contactName || issueReview.contactEmail}</strong></p>
-            <p className="form-error">{issueReview.errorMessage || "The provider could not send this message."}</p>
-            {String(issueReview.errorMessage || "").includes("no recorded marketing opt-in") ? (
+            <p className="form-error">{friendlyDeliveryError(issueReview.errorMessage) || "The provider could not send this message."}</p>
+            {isDailyQuotaError(issueReview.errorMessage) ? (
+              <p><strong>This draft is safe.</strong> Do not retry it yet. Resend is currently over the account's free daily allowance, even if this is your first attempt during your local calendar day. Retry only after Resend's Usage page shows that the daily counter has reset, or after the Resend plan is upgraded.</p>
+            ) : String(issueReview.errorMessage || "").includes("no recorded marketing opt-in") ? (
               <p>This address may be retried only through <strong>Cold business prospecting</strong>. That route does not mark the person as subscribed and still enforces verification, unsubscribe, suppression, bounce, mailing-address, and one-click opt-out safeguards.</p>
             ) : (
               <p>Correct the issue shown above before retrying. Delivery failures and opt-outs are never overridden.</p>
