@@ -69,7 +69,13 @@ function rbacAndSafetyChecks() {
   assert(!effectivePermissions({ role: "coach", roles: ["coach"] }).includes("payments.view"));
   assert(!effectivePermissions({ role: "viewer", roles: ["viewer"] }).includes("payments.manage"));
   const service = fs.readFileSync(path.join(__dirname, "services/paymentService.js"), "utf8");
-  assert(service.includes("autoEnrollOnVerifiedPayment")); assert(service.includes("PAYMENT_RECURRING_UNSUPPORTED")); assert(service.includes("PAYMENT_KIND_INVALID")); assert(service.includes("PAYMENT_ASSOCIATION_MISMATCH")); assert(service.includes("SQUARE_PAYMENT_AMOUNT_MISMATCH")); assert(service.includes("SQUARE_REFUND_AMOUNT_MISMATCH")); assert(service.includes("PAYMENT_TRANSACTION_NOT_READY")); assert(service.includes('status: "processing"')); assert(service.includes("refund_not_initiated_by_workspace"));
+  // Auto-enrollment on verified payment is unconditional by explicit
+  // product decision — it must never again be gated behind a settings
+  // flag/toggle. Assert the flag is actually gone, not just that the
+  // enrollment call exists (that would pass even with a gate re-added).
+  assert(!service.includes("autoEnrollOnVerifiedPayment"), "Auto-enrollment must not be a togglable setting — it always happens on a verified payment");
+  assert(service.includes("async function maybeEnroll(transaction) { if (transaction.paymentPlanId || !transaction.contactId || !transaction.coachingProgramId || transaction.enrollmentId) return;"), "maybeEnroll must run unconditionally once past its own data-completeness guards — no settings lookup in between");
+  assert(service.includes("PAYMENT_RECURRING_UNSUPPORTED")); assert(service.includes("PAYMENT_KIND_INVALID")); assert(service.includes("PAYMENT_ASSOCIATION_MISMATCH")); assert(service.includes("SQUARE_PAYMENT_AMOUNT_MISMATCH")); assert(service.includes("SQUARE_REFUND_AMOUNT_MISMATCH")); assert(service.includes("PAYMENT_TRANSACTION_NOT_READY")); assert(service.includes('status: "processing"')); assert(service.includes("refund_not_initiated_by_workspace"));
   for (const required of ["PAYMENT_APPLICATION_PROGRAM_MISMATCH", "PAYMENT_PROGRAM_NOT_PUBLISHED", "PAYMENT_REQUEST_ALREADY_EXISTS", "publicAccessTokenHash", "publicPaymentRequest", "beginPublicCheckout", '"payment.status": "paid"', '"paymentSummary.status": "paid"']) assert(service.includes(required), `Missing application payment protection: ${required}`);
   // Instant (no-application) public program checkout: the function must
   // still gate on the program actually being active/published/opted-in and

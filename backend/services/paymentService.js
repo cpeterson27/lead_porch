@@ -189,7 +189,11 @@ async function refund({ workspaceId, userId, transactionId, amountMinor, reason,
   }
 }
 
-async function maybeEnroll(transaction) { if (transaction.paymentPlanId || !transaction.contactId || !transaction.coachingProgramId || transaction.enrollmentId) return; const config = await WorkspaceConfig.findOne({ workspaceId: transaction.workspaceId, key: "primary" }).lean(); if (!config?.payments?.autoEnrollOnVerifiedPayment) return; const existing = await Enrollment.findOne({ workspaceId: transaction.workspaceId, contactId: transaction.contactId, coachingProgramId: transaction.coachingProgramId, status: { $ne: "cancelled" } }); if (existing) { transaction.enrollmentId = existing._id; await transaction.save(); return; } const enrollment = await coachingDomainService.createEnrollment({ workspaceId: transaction.workspaceId, contactId: transaction.contactId, coachingProgramId: transaction.coachingProgramId, sourceOpportunityId: transaction.salesOpportunityId, status: "pending", createdBy: transaction.createdBy }); transaction.enrollmentId = enrollment._id; await transaction.save(); }
+// Always runs once a Square webhook has genuinely verified a payment —
+// there is no settings flag gating this. A verified payment is treated as
+// unconditional enrollment intent; nothing less than that (checkout merely
+// started, a client-side claim) can ever reach here in the first place.
+async function maybeEnroll(transaction) { if (transaction.paymentPlanId || !transaction.contactId || !transaction.coachingProgramId || transaction.enrollmentId) return; const existing = await Enrollment.findOne({ workspaceId: transaction.workspaceId, contactId: transaction.contactId, coachingProgramId: transaction.coachingProgramId, status: { $ne: "cancelled" } }); if (existing) { transaction.enrollmentId = existing._id; await transaction.save(); return; } const enrollment = await coachingDomainService.createEnrollment({ workspaceId: transaction.workspaceId, contactId: transaction.contactId, coachingProgramId: transaction.coachingProgramId, sourceOpportunityId: transaction.salesOpportunityId, status: "pending", createdBy: transaction.createdBy }); transaction.enrollmentId = enrollment._id; await transaction.save(); }
 async function processSquareWebhook({ rawBody, signature }) {
   const provider = getPaymentProvider("square");
   if (!provider.verifyWebhookSignature(rawBody, signature)) throw Object.assign(new Error("Square webhook signature is invalid"), { code: "SQUARE_WEBHOOK_SIGNATURE_INVALID", status: 401 });
@@ -261,6 +265,4 @@ async function processSquareWebhook({ rawBody, signature }) {
     await completeReceipt("processed"); return { processed: true };
   } catch (error) { receipt.status = "failed"; receipt.errorCategory = error.code || "processing_failed"; await receipt.save(); throw error; }
 }
-async function updateSettings(workspaceId, input) { const enabled = input.autoEnrollOnVerifiedPayment === true; const config = await WorkspaceConfig.findOneAndUpdate({ workspaceId, key: "primary" }, { $set: { "payments.autoEnrollOnVerifiedPayment": enabled } }, { new: true, upsert: true, setDefaultsOnInsert: true }); return config.payments; }
-async function getSettings(workspaceId) { const config = await WorkspaceConfig.findOne({ workspaceId, key: "primary" }).lean(); return { autoEnrollOnVerifiedPayment: config?.payments?.autoEnrollOnVerifiedPayment === true }; }
-module.exports = { acceptApplicationAndCreatePaymentRequest, beginPublicCheckout, beginPublicProgramCheckout, connectSquare, connectionStatus, createCheckout, disconnectSquare, getSettings, listTransactions, processSquareWebhook, publicPaymentRequest, refreshSquare, refund, safeConnection, updateSettings, validateAssociations };
+module.exports = { acceptApplicationAndCreatePaymentRequest, beginPublicCheckout, beginPublicProgramCheckout, connectSquare, connectionStatus, createCheckout, disconnectSquare, listTransactions, processSquareWebhook, publicPaymentRequest, refreshSquare, refund, safeConnection, validateAssociations };

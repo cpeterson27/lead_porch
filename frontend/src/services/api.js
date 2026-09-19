@@ -645,8 +645,6 @@ export const refundPaymentTransaction = (
       headers: { "Idempotency-Key": idempotencyKey },
     })
     .then((res) => res.data.transaction);
-export const updatePaymentSettings = (values) =>
-  api.patch("/payments/settings", values).then((res) => res.data.settings);
 export const createCoachingProgram = (values) =>
   api.post("/coaching/programs", values).then((res) => res.data.data);
 export const updateCoachingProgram = (programId, values) =>

@@ -471,9 +471,6 @@ const workspaceConfigSchema = new mongoose.Schema(
         ],
       },
     },
-    payments: {
-      autoEnrollOnVerifiedPayment: { type: Boolean, default: false },
-    },
     automationPolicy: {
       enabled: { type: Boolean, default: false },
       dryRun: { type: Boolean, default: true },
