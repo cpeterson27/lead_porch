@@ -511,12 +511,6 @@ function ProgramCards({ programs = [] }) {
                       ? "Hide details"
                       : "Learn more"}
                   </button>
-                  <Link
-                    className="public-text-link"
-                    to={`/coaching-programs/${program.slug || program.id}`}
-                  >
-                    View program page
-                  </Link>
                 </div>
                 <button
                   type="button"
@@ -652,12 +646,6 @@ function ProgramCards({ programs = [] }) {
                         ? "Hide details"
                         : "Learn more"}
                     </button>
-                    <Link
-                      className="public-text-link"
-                      to={`/coaching-programs/${program.slug || program.id}`}
-                    >
-                      View program page
-                    </Link>
                   </div>
                   <button
                     type="button"
@@ -1318,7 +1306,7 @@ export function ProgramsPage() {
 export function FaqPage() {
   const { site } = useWorkspaceTheme();
   const name = site?.branding?.publicSiteName || site?.workspace?.name || "Ellie's Coaching";
-  const questions = [
+  const questions = site?.publicSite?.faqItems?.length ? site.publicSite.faqItems.map((item) => [item.question, item.answer]) : [
     ["Who are the coaching programs for?", "The programs are designed for aspiring and active multifamily real estate investors who want structured education, practical guidance, and accountability."],
     ["Is coaching available online?", "Yes. Coaching is primarily delivered virtually. Select programs may also include in-person property tours or educational experiences when offered."],
     ["Which program should I choose?", "Review the coaching program pages, then book a discovery call or submit an application so the team can help identify the most appropriate next step."],
@@ -1531,7 +1519,7 @@ export function DiscoveryCallPage() {
       <main id="main-content" className="public-inner discovery-call-page">
         <p className="public-kicker">Discovery call</p>
         <h1>{p.discoveryCallHeading || "Book a Discovery Call"}</h1>
-        {p.discoveryCallCopy ? <p className="public-lead">{p.discoveryCallCopy}</p> : null}
+        <p className="public-lead">{p.discoveryCallCopy || "Tell us where you are in your investing journey. Choose an available time to meet with Ellie, ask questions, and identify the right next step for your goals."}</p>
         {p.discoveryCallVideoUrl ? (
           <div className="discovery-call-page__video">
             <TestimonialVideoPlayer

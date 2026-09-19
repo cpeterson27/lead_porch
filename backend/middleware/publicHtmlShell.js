@@ -172,11 +172,11 @@ async function workspaceMeta(req) {
       : program
         ? [{ "@type": "Course", "@id": `${canonical}#course`, name: program.publicPresentation.title || program.name, description: truncate(program.publicPresentation.description || program.publicPresentation.summary, 500), url: canonical, provider: { "@id": organizationId }, ...(program.publicPresentation.audience ? { audience: { "@type": "Audience", audienceType: program.publicPresentation.audience } } : {}) }, { "@type": "BreadcrumbList", itemListElement: [{ "@type": "ListItem", position: 1, name: "Home", item: origin }, { "@type": "ListItem", position: 2, name: "Coaching Programs", item: `${origin}/coaching-programs` }, { "@type": "ListItem", position: 3, name: program.publicPresentation.title || program.name, item: canonical }] }]
         : defaults.path === "/faq"
-          ? [{ "@type": "FAQPage", mainEntity: [
+          ? [{ "@type": "FAQPage", mainEntity: (publicSite.faqItems?.length ? publicSite.faqItems.map((item) => [item.question, item.answer]) : [
               ["Who are the coaching programs for?", "Aspiring and active multifamily real estate investors who want structured education, practical guidance, and accountability."],
               ["Is coaching available online?", "Yes. Coaching is primarily delivered virtually. Select programs may also include in-person educational experiences when offered."],
               ["Does applying guarantee acceptance?", "No. An application starts a conversation and does not guarantee enrollment in a program."],
-            ].map(([name, text]) => ({ "@type": "Question", name, acceptedAnswer: { "@type": "Answer", text } })) }]
+            ]).map(([name, text]) => ({ "@type": "Question", name, acceptedAnswer: { "@type": "Answer", text } })) }]
           : [];
   return {
     title: defaults.title,

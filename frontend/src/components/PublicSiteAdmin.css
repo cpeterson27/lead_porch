@@ -839,6 +839,15 @@
   font: inherit;
   font-weight: 400;
 }
+.public-admin__weekday-fieldset {
+  border: 1px solid #d9dfdc;
+  border-radius: 16px;
+  padding: 18px;
+}
+.public-admin__weekday-fieldset legend {
+  padding: 0 8px;
+  font-weight: 800;
+}
 
 @media (max-width: 850px) {
   .homepage-media-uploads {

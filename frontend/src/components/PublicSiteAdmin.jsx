@@ -62,6 +62,15 @@ const visibilityLabels = {
   heroImage: "Hero photo",
   heroQuote: "Hero pull-quote",
 };
+const bookingDays = [
+  [0, "Sunday"], [1, "Monday"], [2, "Tuesday"], [3, "Wednesday"],
+  [4, "Thursday"], [5, "Friday"], [6, "Saturday"],
+];
+const starterFaqs = [
+  { question: "Who are the coaching programs for?", answer: "The programs are designed for aspiring and active multifamily real estate investors who want structured education, practical guidance, and accountability." },
+  { question: "Is coaching available online?", answer: "Yes. Coaching is primarily delivered virtually. Select programs may also include in-person property tours or educational experiences when offered." },
+  { question: "Which program should I choose?", answer: "Review the coaching programs, then book a discovery call or submit an application so the team can help identify the most appropriate next step." },
+];
 const lines = (value) => (value || []).join("\n");
 const list = (value) =>
   String(value || "")
@@ -223,11 +232,6 @@ export default function PublicSiteAdmin({ section = "website" }) {
       // save rather than rejected outright — correct behavior for the
       // server, but it must never happen without the owner being told, or
       // it looks exactly like the setting was never saved at all.
-      if (config.publicSite?.discoveryCallBookingUrl?.trim() && !verified.publicSite?.discoveryCallBookingUrl) {
-        throw new Error(
-          `Your Google Calendar booking link wasn't saved — it must start with "https://". Check the link and try again.`,
-        );
-      }
       // Tell WorkspaceThemeContext (which drives the navbar/sidebar colors
       // everywhere else in the app) to re-fetch immediately, instead of
       // leaving it showing whatever colors were live at page load.
@@ -1139,7 +1143,7 @@ export default function PublicSiteAdmin({ section = "website" }) {
             Show a discovery-call button even when no video is uploaded. Choose a coach whose Google Calendar is
             connected in Lead Porch, set the public hours below, and visitors will only see times that are open on
             that calendar. Confirmed calls appear in Lead Porch and create a Google Calendar event with a Meet link.
-            The external Google booking link remains available only as an optional fallback.
+            Ellie connects her own Google account once in Coach Portal → My Schedule; no external booking link is needed.
           </p>
           <div className="public-admin__grid">
             <label className="website-toggle">
@@ -1239,6 +1243,16 @@ export default function PublicSiteAdmin({ section = "website" }) {
               End time
               <input type="time" value={config.publicSite.discoveryCallAvailability?.endTime || "17:00"} onChange={(e) => patchPublic("discoveryCallAvailability", { ...(config.publicSite.discoveryCallAvailability || {}), endTime: e.target.value })} />
             </label>
+            <fieldset className="wide public-admin__weekday-fieldset">
+              <legend>Bookable days</legend>
+              <div className="public-admin__checks">
+                {bookingDays.map(([value, label]) => {
+                  const selectedDays = config.publicSite.discoveryCallAvailability?.days || [1, 2, 3, 4, 5];
+                  return <label className="website-toggle" key={value}><input type="checkbox" checked={selectedDays.includes(value)} onChange={(event) => patchPublic("discoveryCallAvailability", { ...(config.publicSite.discoveryCallAvailability || {}), days: event.target.checked ? [...new Set([...selectedDays, value])].sort() : selectedDays.filter((day) => day !== value) })} /><span>{label}</span></label>;
+                })}
+              </div>
+              <p className="public-admin__help">For vacations or one-off unavailable times, Ellie adds an all-day or timed “Busy” event to the connected Google Calendar. Lead Porch automatically removes those times from public availability.</p>
+            </fieldset>
             <label>
               Homepage button text
               <input
@@ -1263,14 +1277,6 @@ export default function PublicSiteAdmin({ section = "website" }) {
                 placeholder="Not sure where to start? Book a free discovery call and we'll help you find the right next step."
               />
             </label>
-            <label className="wide">
-              External Google booking link (optional fallback)
-              <input
-                value={config.publicSite.discoveryCallBookingUrl || ""}
-                onChange={(e) => patchPublic("discoveryCallBookingUrl", e.target.value)}
-                placeholder="https://calendar.app.google/..."
-              />
-            </label>
           </div>
           <Button loading={saving} onClick={saveConfig}>
             Save discovery call settings
@@ -1279,6 +1285,18 @@ export default function PublicSiteAdmin({ section = "website" }) {
       ) : null}
       {tab === "sections" ? (
         <section className="website-content-editor">
+          <div className="website-editor-group">
+            <header><span>SEO</span><div><h4>Google pages</h4><p>These crawlable pages support Google without adding items to the one-page navigation.</p></div></header>
+            <div className="public-admin__checks">
+              {[['About', '/about'], ['Programs', '/coaching-programs'], ['FAQ', '/faq'], ['Resources', '/resources'], ['Testimonials', '/testimonials'], ['Contact', '/contact'], ['Discovery call', '/book-a-call']].map(([label, path]) => <a className="website-upload-button website-upload-button--secondary" href={path} target="_blank" rel="noreferrer" key={path}>{label}: {path}</a>)}
+            </div>
+          </div>
+          <div className="website-editor-group">
+            <header><span>FAQ</span><div><h4>Frequently asked questions</h4><p>Edit the questions published at /faq and included in Google FAQ structured data.</p></div></header>
+            {(config.publicSite.faqItems?.length ? config.publicSite.faqItems : starterFaqs).map((row, index) => <div className="public-admin__grid value-editor" key={index}><label>Question<input value={row.question || ""} onChange={(event) => { const rows = [...(config.publicSite.faqItems?.length ? config.publicSite.faqItems : starterFaqs)]; rows[index] = { ...rows[index], question: event.target.value }; patchPublic("faqItems", rows); }} /></label><label className="wide">Answer<textarea value={row.answer || ""} onChange={(event) => { const rows = [...(config.publicSite.faqItems?.length ? config.publicSite.faqItems : starterFaqs)]; rows[index] = { ...rows[index], answer: event.target.value }; patchPublic("faqItems", rows); }} /></label><button type="button" className="website-upload-button website-upload-button--secondary" onClick={() => patchPublic("faqItems", (config.publicSite.faqItems?.length ? config.publicSite.faqItems : starterFaqs).filter((_, rowIndex) => rowIndex !== index))}>Remove question</button></div>)}
+            <button type="button" className="website-upload-button" onClick={() => patchPublic("faqItems", [...(config.publicSite.faqItems?.length ? config.publicSite.faqItems : starterFaqs), { question: "", answer: "" }])}>Add question</button>
+            <Button loading={saving} onClick={saveConfig}>Save FAQ and page settings</Button>
+          </div>
           <div className="website-editor-group">
             <header>
               <span>00</span>

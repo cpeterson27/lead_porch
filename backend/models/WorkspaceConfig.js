@@ -246,13 +246,8 @@ const workspaceConfigSchema = new mongoose.Schema(
         ],
         default: [],
       },
-      // "Book a Discovery Call" — a homepage CTA that sends the visitor to
-      // its own public page (see PublicSite.jsx's DiscoveryCallPage) with
-      // an optional intro video and a link to the owner's own real-time
-      // Google Calendar booking page. bookingUrl is intentionally a plain
-      // link the owner pastes in (Google Calendar's own "Appointment
-      // schedule" feature generates one) — never a third-party scheduling
-      // tool, and never a Lead Porch-hosted calendar integration.
+      // Native discovery booking reads the selected coach's connected Google
+      // Calendar, creates Calendar/Meet events, and stores bookings in Lead Porch.
       discoveryCallEnabled: { type: Boolean, default: false },
       discoveryCallHeading: { type: String, default: "Book a Discovery Call", maxlength: 300 },
       discoveryCallCopy: { type: String, default: "", maxlength: 1200 },
@@ -268,6 +263,14 @@ const workspaceConfigSchema = new mongoose.Schema(
         durationMinutes: { type: Number, default: 30, min: 15, max: 180 },
         bufferMinutes: { type: Number, default: 15, min: 0, max: 120 },
         horizonDays: { type: Number, default: 30, min: 1, max: 90 },
+      },
+      faqItems: {
+        type: [{
+          _id: false,
+          question: { type: String, maxlength: 300 },
+          answer: { type: String, maxlength: 2000 },
+        }],
+        default: [],
       },
       contactEmail: { type: String, default: "", maxlength: 320 },
       contactPhone: { type: String, default: "", maxlength: 80 },

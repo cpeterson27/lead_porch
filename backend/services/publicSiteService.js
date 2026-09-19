@@ -328,10 +328,9 @@ function sanitizedConfig(workspace, config) {
       published: p.published ?? base.publicSite.published,
       eyebrow: String(p.eyebrow || base.publicSite.eyebrow || "").slice(0, 160),
       headline: String(p.headline || base.publicSite.headline).slice(0, 300),
-      subheadline: String(p.subheadline || base.publicSite.subheadline).slice(
-        0,
-        1200,
-      ),
+      subheadline: String(p.subheadline || base.publicSite.subheadline)
+        .replace(/\bAquire\b/gi, "Acquire")
+        .slice(0, 1200),
       introTitle: String(p.introTitle || base.publicSite.introTitle).slice(
         0,
         300,
@@ -383,6 +382,10 @@ function sanitizedConfig(workspace, config) {
         bufferMinutes: Math.min(120, Math.max(0, Number(p.discoveryCallAvailability?.bufferMinutes || 15))),
         horizonDays: Math.min(90, Math.max(1, Number(p.discoveryCallAvailability?.horizonDays || 30))),
       },
+      faqItems: (p.faqItems || []).slice(0, 30).map((item) => ({
+        question: String(item.question || "").slice(0, 300),
+        answer: String(item.answer || "").slice(0, 2000),
+      })).filter((item) => item.question && item.answer),
       primaryCtaLabel: String(
         p.primaryCtaLabel || base.publicSite.primaryCtaLabel,
       ).slice(0, 80),

@@ -1162,6 +1162,8 @@
 }
 .public-hero-video-only {
   display: flex;
+  flex-direction: column;
+  align-items: center;
   justify-content: center;
   width: 100%;
 }
@@ -2007,6 +2009,14 @@ button.public-text-link {
 }
 .public-discovery-call-cta {
   margin-top: 20px;
+  width: fit-content;
+  min-height: 40px;
+  padding: 0 20px;
+  border-radius: 999px;
+  align-self: flex-start;
+}
+.public-hero-video-only .public-discovery-call-cta {
+  align-self: center;
 }
 .discovery-call-page__video {
   max-width: 640px;
