@@ -35,6 +35,13 @@ router.get("/", async (req, res) => {
 
     const outreach =
       await Outreach.find(filter)
+        // htmlBody is the full rendered email (~20-22KB each, ~90% of this
+        // document's size) — the list view never displays it, and clicking
+        // into a single email already re-fetches its rendered HTML fresh via
+        // GET /:id/preview (see the `review()` handler in Outreach.jsx).
+        // Dropping it here cuts a 300+ item load from several MB to a few
+        // hundred KB, which matters a lot on the current free-tier database.
+        .select("-htmlBody")
         .populate("contactId", "email emailStatus primaryEmailVerificationSource")
         .sort({
           createdAt: -1
