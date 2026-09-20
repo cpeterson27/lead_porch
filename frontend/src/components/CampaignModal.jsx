@@ -32,7 +32,7 @@ const createEmptyForm = (campaignKind = "event") => ({
   ticketGoal: "",
   audience: [],
   description: "",
-  brand: { logoUrl: "", websiteUrl: "", accentColor: "#173f36" },
+  brand: { logoUrl: "", flyerUrl: "", websiteUrl: "", accentColor: "#173f36" },
   templateKey: campaignKind === "program" ? PROGRAM_TEMPLATES[0].key : EVENT_TEMPLATES[0].key,
 });
 
@@ -54,18 +54,55 @@ export default function CampaignModal({
   const [flyerGenerating, setFlyerGenerating] = useState(false);
   const [flyerUrl, setFlyerUrl] = useState("");
   const [flyerError, setFlyerError] = useState("");
+  const [referenceImage, setReferenceImage] = useState("");
+  const [referenceImageName, setReferenceImageName] = useState("");
+  const [revisionPrompt, setRevisionPrompt] = useState("");
+  const [generationNumber, setGenerationNumber] = useState(0);
 
-  const generateFlyer = async () => {
+  const generateFlyer = async ({ retry = false } = {}) => {
     if (!flyerPrompt.trim() || flyerGenerating) return;
     setFlyerGenerating(true);
     setFlyerError("");
     try {
-      const result = await generateAiImage({ prompt: flyerPrompt, campaignId: initialData?._id || null });
+      const revision = revisionPrompt.trim();
+      const retryDirection = retry
+        ? (revision || "Create a clearly different professional composition while preserving the person's recognizable face and natural appearance.")
+        : revision;
+      const prompt = [
+        referenceImage ? "Use the uploaded person as the featured subject. Preserve her recognizable facial features, skin tone, hair, and natural appearance; do not substitute a different person." : "",
+        flyerPrompt.trim(),
+        retryDirection ? `Revision direction: ${retryDirection}` : "",
+        "Create polished flyer artwork with legible hierarchy and text-safe areas. Do not invent credentials, testimonials, prices, dates, or claims.",
+      ].filter(Boolean).join("\n\n");
+      const result = await generateAiImage({ prompt, referenceImage, quality: "medium", campaignId: initialData?._id || null });
       setFlyerUrl(result.url);
+      setGenerationNumber((current) => current + 1);
+      setRevisionPrompt("");
     } catch (err) {
       setFlyerError(err.response?.data?.code === "IMAGE_GENERATION_DISABLED" ? "Image generation isn't turned on for this workspace yet." : (err.response?.data?.error || "Unable to generate that image."));
     } finally {
       setFlyerGenerating(false);
+    }
+  };
+
+  const chooseReferenceImage = async (file) => {
+    if (!file) return;
+    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) {
+      setFlyerError("Choose a JPG, PNG, or WEBP photo smaller than 5 MB.");
+      return;
+    }
+    try {
+      const dataUrl = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      setReferenceImage(dataUrl);
+      setReferenceImageName(file.name);
+      setFlyerError("");
+    } catch {
+      setFlyerError("Unable to read that reference photo.");
     }
   };
 
@@ -92,13 +129,20 @@ export default function CampaignModal({
           ticketGoal: initialData.ticketGoal ?? "",
           audience: initialData.audience || [],
           description: initialData.description || "",
-          brand: { logoUrl: initialData.brand?.logoUrl || "", websiteUrl: initialData.brand?.websiteUrl || "", accentColor: initialData.brand?.accentColor || "#173f36" },
+          brand: { logoUrl: initialData.brand?.logoUrl || "", flyerUrl: initialData.brand?.flyerUrl || "", websiteUrl: initialData.brand?.websiteUrl || "", accentColor: initialData.brand?.accentColor || "#173f36" },
           templateKey: initialData.templateKey || choices[0].key,
         });
       } else {
         setForm(createEmptyForm(defaultCampaignKind));
       }
       setError("");
+      setFlyerPrompt("");
+      setFlyerUrl(initialData?.brand?.flyerUrl || "");
+      setFlyerError("");
+      setReferenceImage("");
+      setReferenceImageName("");
+      setRevisionPrompt("");
+      setGenerationNumber(0);
     }, 0);
     return () => window.clearTimeout(resetForm);
   }, [isOpen, initialData, defaultCampaignKind]);
@@ -241,6 +285,18 @@ export default function CampaignModal({
 
               <div className="form-field span-2 ai-flyer-generator">
                 <label htmlFor="ai-flyer-prompt">Generate a flyer with AI</label>
+                <div className="ai-flyer-reference">
+                  <div><strong>Reference photo (optional)</strong><small>Upload a clear photo of Ellie to feature her in the flyer and preserve her appearance.</small></div>
+                  <label className="ai-flyer-reference__picker" htmlFor="ai-flyer-reference-image">{referenceImage ? "Replace photo" : "Upload Ellie’s photo"}</label>
+                  <input id="ai-flyer-reference-image" className="ai-flyer-reference__input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => chooseReferenceImage(event.target.files?.[0])} />
+                </div>
+                {referenceImage ? (
+                  <div className="ai-flyer-reference__preview">
+                    <img src={referenceImage} alt="Ellie reference preview" />
+                    <span>{referenceImageName}</span>
+                    <button type="button" onClick={() => { setReferenceImage(""); setReferenceImageName(""); }}>Remove</button>
+                  </div>
+                ) : null}
                 <div className="ai-flyer-generator__row">
                   <input id="ai-flyer-prompt" type="text" placeholder="e.g. A bold flyer announcing early enrollment for the Multifamily Mentorship program" value={flyerPrompt} onChange={(event) => setFlyerPrompt(event.target.value)} />
                   <Button type="button" size="sm" variant="outline" loading={flyerGenerating} disabled={!flyerPrompt.trim()} onClick={generateFlyer}>Generate</Button>
@@ -248,10 +304,18 @@ export default function CampaignModal({
                 <small>Real OpenAI image generation — a rough draft to react to, not final artwork. Nothing is posted anywhere.</small>
                 {flyerError ? <p className="form-error">{flyerError}</p> : null}
                 {flyerUrl ? (
-                  <div className="program-logo-preview span-2">
-                    <img src={flyerUrl} alt="Generated flyer draft" />
-                    <a href={flyerUrl} target="_blank" rel="noreferrer">Open full size</a>
-                    <button type="button" onClick={() => setForm((current) => ({ ...current, brand: { ...current.brand, logoUrl: flyerUrl } }))}>Use as program logo</button>
+                  <div className="ai-flyer-result span-2">
+                    <img src={flyerUrl} alt={`Generated flyer draft ${generationNumber || 1}`} />
+                    <div className="ai-flyer-result__actions">
+                      <strong>Flyer draft {generationNumber || 1}</strong>
+                      <a href={flyerUrl} target="_blank" rel="noreferrer">Open full size</a>
+                      <button type="button" onClick={() => setForm((current) => ({ ...current, brand: { ...current.brand, flyerUrl } }))}>{form.brand.flyerUrl === flyerUrl ? "Selected for email campaign" : "Use in email campaign"}</button>
+                    </div>
+                    <div className="ai-flyer-revision">
+                      <label htmlFor="ai-flyer-revision">What should change?</label>
+                      <input id="ai-flyer-revision" type="text" placeholder="e.g. Make the headline larger and use a brighter background" value={revisionPrompt} onChange={(event) => setRevisionPrompt(event.target.value)} />
+                      <Button type="button" size="sm" variant="outline" loading={flyerGenerating} onClick={() => generateFlyer({ retry: true })}>Try again</Button>
+                    </div>
                   </div>
                 ) : null}
               </div>

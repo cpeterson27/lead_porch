@@ -39,10 +39,10 @@ router.patch("/:id/media/:mediaIndex/variants/:provider",requireCapability("soci
 /** Real OpenAI image generation, disabled until its own flag + chat flag + key are all set. */
 router.post("/generate-image",requireCapability("social.manage","campaigns.manage"),async(req,res)=>{
   try{
-    const result=await imageGenerationService.generateImage({workspaceId:req.auth.workspaceId,userId:req.auth.user._id,prompt:req.body?.prompt,size:req.body?.size,quality:req.body?.quality,campaignId:req.body?.campaignId||null,correlationId:req.get("x-request-id")||""});
+    const result=await imageGenerationService.generateImage({workspaceId:req.auth.workspaceId,userId:req.auth.user._id,prompt:req.body?.prompt,size:req.body?.size,quality:req.body?.quality,referenceImage:req.body?.referenceImage||"",campaignId:req.body?.campaignId||null,correlationId:req.get("x-request-id")||""});
     return res.status(201).json({success:true,data:result});
   }catch(error){
-    const status=error.code==="IMAGE_GENERATION_DISABLED"?503:error.code==="IMAGE_PROMPT_REQUIRED"?400:502;
+    const status=error.status||(error.code==="IMAGE_GENERATION_DISABLED"?503:error.code==="IMAGE_PROMPT_REQUIRED"?400:502);
     return res.status(status).json({success:false,error:error.message,code:error.code||""});
   }
 });

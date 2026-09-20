@@ -7,6 +7,7 @@
  * which expires.
  */
 const OpenAI = require("openai");
+const { toFile } = require("openai");
 const AiUsageRecord = require("../models/AiUsageRecord");
 const imageAssetService = require("./imageAssetService");
 
@@ -41,13 +42,21 @@ async function recordUsage(values, models = { AiUsageRecord }) {
   catch (error) { console.warn("[Image generation] usage ledger write skipped", { code: error.code || "USAGE_LEDGER_WRITE_FAILED" }); }
 }
 
+function referenceUpload(dataUrl) {
+  imageAssetService.validateDataImage(dataUrl);
+  const match = String(dataUrl).match(/^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/=]+)$/i);
+  const mimeType = match[1].toLowerCase();
+  const extension = mimeType === "image/jpeg" ? "jpg" : mimeType.split("/")[1];
+  return toFile(Buffer.from(match[2], "base64"), `reference.${extension}`, { type: mimeType });
+}
+
 /**
  * Generate one image, upload it to Cloudinary, and log usage/cost. Never
  * returns a bare OpenAI-hosted URL (those expire) — the caller always gets
  * back a real, permanent asset URL plus everything needed for provenance:
  * prompt, model, generation ID, usage/cost, campaign, tenant, timestamp.
  */
-async function generateImage({ workspaceId, userId = null, actorType = "user", principal = "", prompt, size = "1024x1024", quality = "medium", campaignId = null, agent = "content", feature = "image.generate", correlationId = "", folder }, dependencies = {}) {
+async function generateImage({ workspaceId, userId = null, actorType = "user", principal = "", prompt, size = "1024x1024", quality = "medium", referenceImage = "", campaignId = null, agent = "content", feature = "image.generate", correlationId = "", folder }, dependencies = {}) {
   assertEnabled();
   const cleanPrompt = String(prompt || "").trim().slice(0, 4000);
   if (!cleanPrompt) { const error = new Error("A prompt is required to generate an image"); error.code = "IMAGE_PROMPT_REQUIRED"; throw error; }
@@ -60,7 +69,9 @@ async function generateImage({ workspaceId, userId = null, actorType = "user", p
   const client = dependencies.clientFactory ? dependencies.clientFactory() : new OpenAI({ apiKey: process.env.OPENAI_API_KEY.trim() });
   const started = Date.now();
   try {
-    const response = await client.images.generate({ model, prompt: cleanPrompt, size, quality: requestedQuality, n: 1 });
+    const response = referenceImage
+      ? await client.images.edit({ model, image: await referenceUpload(referenceImage), prompt: cleanPrompt, size, quality: requestedQuality, input_fidelity: "high", n: 1 })
+      : await client.images.generate({ model, prompt: cleanPrompt, size, quality: requestedQuality, n: 1 });
     const generation = response.data?.[0];
     if (!generation?.b64_json && !generation?.url) throw new Error("OpenAI did not return image data");
     const fileData = generation.b64_json ? `data:image/png;base64,${generation.b64_json}` : generation.url;
@@ -77,4 +88,4 @@ async function generateImage({ workspaceId, userId = null, actorType = "user", p
   }
 }
 
-module.exports = { isEnabled, assertEnabled, estimateImageCost, generateImage, IMAGE_PRICING, PRICING_VERSION };
+module.exports = { isEnabled, assertEnabled, estimateImageCost, generateImage, referenceUpload, IMAGE_PRICING, PRICING_VERSION };

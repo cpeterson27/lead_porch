@@ -82,6 +82,22 @@ async function testLegacyStandardQualityIsTranslated(workspaceId) {
   assert.equal(receivedQuality, "medium", "legacy standard quality must be translated before calling OpenAI");
 }
 
+async function testReferencePhotoUsesHighFidelityEdit(workspaceId) {
+  let editParams;
+  const referenceImage = `data:image/png;base64,${Buffer.from("reference-photo").toString("base64")}`;
+  await service.generateImage(
+    { workspaceId, prompt: "Feature this person in a coaching flyer", referenceImage },
+    {
+      clientFactory: () => ({ images: { edit: async (params) => { editParams = params; return { data: [{ b64_json: "ZmFrZQ==" }] }; } } }),
+      uploadImage: async () => ({ url: "https://example.com/reference-result.png", publicId: "generated/reference", width: 1024, height: 1024 }),
+    },
+  );
+  assert.equal(editParams.model, "gpt-image-1");
+  assert.equal(editParams.input_fidelity, "high");
+  assert.equal(editParams.quality, "medium");
+  assert.ok(editParams.image, "reference photo must be sent as an image upload");
+}
+
 async function testFailedGenerationStillRecordsUsage(workspaceId) {
   await assert.rejects(() => service.generateImage(
     { workspaceId, prompt: "test" },
@@ -101,6 +117,7 @@ async function run() {
     await testGenerateRequiresPrompt();
     await testGenerateUploadsAndRecordsUsage(workspaceId);
     await testLegacyStandardQualityIsTranslated(workspaceId);
+    await testReferencePhotoUsesHighFidelityEdit(workspaceId);
     await testFailedGenerationStillRecordsUsage(workspaceId);
   } finally {
     await AiUsageRecord.deleteMany({ workspaceId });
