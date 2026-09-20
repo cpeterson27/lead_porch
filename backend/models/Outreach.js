@@ -261,6 +261,32 @@ outreachSchema.index({
   status: 1,
 });
 
+// Main outreach view: workspace-scoped campaign rows in newest-first order.
+// This matches the tenant filter injected by workspacePlugin and avoids an
+// in-memory sort as a campaign's outreach history grows.
+outreachSchema.index(
+  {
+    workspaceId: 1,
+    campaignId: 1,
+    createdAt: -1,
+  },
+  {
+    name: "workspace_campaign_created_at",
+  }
+);
+
+// Retry replacement lookup used when the outreach list is assembled.
+outreachSchema.index(
+  {
+    workspaceId: 1,
+    retryOf: 1,
+    createdAt: -1,
+  },
+  {
+    name: "workspace_retry_created_at",
+  }
+);
+
 
 // Sent history sorting
 outreachSchema.index({

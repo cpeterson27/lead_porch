@@ -20,6 +20,19 @@ function connectDatabase(uri) {
           partialFilterExpression: { "selectedAssetIds.0": { $exists: true } },
         },
       );
+
+    // Keep the outreach dashboard's two hottest queries indexed even when
+    // Mongoose auto-index creation is disabled in production. createIndex is
+    // idempotent when the same name and definition already exist.
+    const outreach = connection.connection.collection("outreaches");
+    await outreach.createIndex(
+      { workspaceId: 1, campaignId: 1, createdAt: -1 },
+      { name: "workspace_campaign_created_at", background: true },
+    );
+    await outreach.createIndex(
+      { workspaceId: 1, retryOf: 1, createdAt: -1 },
+      { name: "workspace_retry_created_at", background: true },
+    );
     return connection;
   });
 }
