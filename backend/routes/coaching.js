@@ -40,6 +40,22 @@ const { hasRole } = require("../authorization/capabilities");
 const { requireCapability } = require("../middleware/auth");
 const { runWithWorkspace } = require("../tenancy/workspaceContext");
 
+// FRONTEND_URL can legitimately hold multiple comma-separated origins (one
+// per domain the frontend is served from). Every other redirect-building
+// site in the app already takes just the first one via .split(",")[0] — the
+// two OAuth callbacks below were the one place still using the raw,
+// un-split value, which silently produced a single broken URL built by
+// jamming every origin together (reported: landed on
+// "leadporch.co,https//www.leadporch.co,https://elliescoaching.com,...").
+// This also tolerates a malformed entry (one missing its "https://" scheme,
+// as "leadporch.co" was) by skipping straight to the next valid one rather
+// than propagating it into the redirect.
+function frontendOrigin() {
+  const candidates = String(process.env.FRONTEND_URL || "").split(",").map((value) => value.trim());
+  const valid = candidates.find((value) => /^https?:\/\//i.test(value));
+  return (valid || "http://localhost:5173").replace(/\/$/, "");
+}
+
 const defaultDependencies = {
   CoachProfile,
   CoachingProgram,
@@ -126,7 +142,7 @@ function createCoachingRouter(overrides = {}) {
   const router = express.Router();
 
   router.get("/calendar/oauth/callback", asyncRoute(async (req, res) => {
-    const frontend = String(process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+    const frontend = frontendOrigin();
     try {
       const state = deps.googleCalendarService.verifyState(req.query.state);
       if (!state) throw new Error("Google Calendar connection request expired or is invalid");
@@ -142,7 +158,7 @@ function createCoachingRouter(overrides = {}) {
   }));
 
   router.get("/zoom/oauth/callback", asyncRoute(async (req, res) => {
-    const frontend = String(process.env.FRONTEND_URL || "http://localhost:5173").replace(/\/$/, "");
+    const frontend = frontendOrigin();
     try {
       const state = deps.zoomService.verifyState(req.query.state); if (!state) throw new Error("Zoom connection request expired or is invalid");
       const identity = await runWithWorkspace(state.workspaceId, () => deps.zoomService.validateStateIdentity(state, deps));
@@ -869,3 +885,4 @@ function createCoachingRouter(overrides = {}) {
 const router = createCoachingRouter();
 module.exports = router;
 module.exports.createCoachingRouter = createCoachingRouter;
+module.exports.frontendOrigin = frontendOrigin;
