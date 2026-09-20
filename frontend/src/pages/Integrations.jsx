@@ -21,6 +21,9 @@ import {
   disconnectMeetup,
   fetchMeetupAssets,
   selectMeetupGroups,
+  fetchTwilioStatus,
+  registerTwilioSender,
+  getTwilioWebhookUrls,
 } from "../services/api.js";
 import "./Integrations.css";
 
@@ -80,11 +83,15 @@ export default function Integrations() {
   const [meetupNetwork, setMeetupNetwork] = useState("");
   const [meetupBusy, setMeetupBusy] = useState(false);
   const [skoolForm, setSkoolForm] = useState({ mode: "manual", groupId: "", groupSlug: "", groupName: "", groupUrl: "", zapierHookUrl: "", adapterSecret: "" });
+  const [twilio, setTwilio] = useState(null);
+  const [twilioForm, setTwilioForm] = useState({ phoneNumber: "" });
+  const [twilioBusy, setTwilioBusy] = useState(false);
+  const [twilioMessage, setTwilioMessage] = useState("");
 
   const loadProviders = async () => {
     try {
       setLoading(true);
-      const [response, connection, webhook, eventData, gmailConnection, linkedin, meta, skoolStatus, meetupStatus, instagram] = await Promise.all([
+      const [response, connection, webhook, eventData, gmailConnection, linkedin, meta, skoolStatus, meetupStatus, instagram, twilioStatus] = await Promise.all([
         fetchIntegrationHub(),
         fetchEventbriteConnection().catch(() => null),
         fetchEventbriteWebhookStatus().catch(() => null),
@@ -95,6 +102,7 @@ export default function Integrations() {
         fetchSkoolStatus().catch(() => null),
         fetchMeetupStatus().catch(() => null),
         fetchSocialConnection("instagram").catch(() => null),
+        fetchTwilioStatus().catch(() => null),
       ]);
       setProviders(response.data?.providers || []);
       setEventbriteConnection(connection);
@@ -105,12 +113,29 @@ export default function Integrations() {
       setSkool(skoolStatus);
       setMeetup(meetupStatus);
       setMeetupNetwork(meetupStatus?.proNetworkUrlname || "");
+      setTwilio(twilioStatus);
       if (skoolStatus) setSkoolForm((current) => ({ ...current, mode: skoolStatus.mode || "manual", groupId: skoolStatus.groupId || "", groupSlug: skoolStatus.groupSlug || "", groupName: skoolStatus.groupName || "", groupUrl: skoolStatus.groupUrl || "" }));
       setError("");
     } catch (err) {
       setError(err.response?.data?.error || "Unable to load integrations");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const registerSender = async (event) => {
+    event.preventDefault();
+    setTwilioBusy(true);
+    setTwilioMessage("");
+    try {
+      await registerTwilioSender({ phoneNumber: twilioForm.phoneNumber, capabilities: { sms: true }, status: "active" });
+      setTwilioForm({ phoneNumber: "" });
+      setTwilioMessage("Number registered. It can send as soon as Twilio finishes A2P approval.");
+      await loadProviders();
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to register that phone number.");
+    } finally {
+      setTwilioBusy(false);
     }
   };
 
@@ -236,6 +261,30 @@ export default function Integrations() {
         <article className="crm-connection-card">
           <div><span className="integration-status integration-status--connected">Connected</span><h2>Resend</h2></div>
           <p>Resend remains the campaign delivery provider. Gmail is for the connected inbox and personal replies; the two integrations have separate jobs.</p>
+        </article>
+      </section>
+
+      <h2 className="integration-section-title">SMS and voice</h2>
+      <section className="crm-connection-grid">
+        <article className="crm-connection-card">
+          <div><span className={`integration-status integration-status--${twilio?.provider?.configured ? "connected" : "configuration_required"}`}>{twilio?.provider?.configured ? "Account connected" : "Account not connected"}</span><h2>Twilio</h2></div>
+          <p>{twilio?.provider?.configured ? "Twilio account credentials are configured. Register the phone number below to start sending." : "Add TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN to the backend environment first."}</p>
+          {twilio?.senders?.length ? <ul className="twilio-sender-list">{twilio.senders.map((sender) => <li key={sender._id}><strong>{sender.phoneNumber}</strong><span className={`integration-status integration-status--${sender.status === "active" ? "connected" : "configuration_required"}`}>{sender.status === "active" ? "Active" : sender.status}</span></li>)}</ul> : <p className="twilio-empty">No phone number registered yet.</p>}
+          {twilio?.provider?.configured ? <form className="coaching-form" onSubmit={registerSender}>
+            <label>Phone number (E.164, e.g. +18885551234)<input required value={twilioForm.phoneNumber} onChange={(event) => setTwilioForm({ phoneNumber: event.target.value })} placeholder="+18885551234" /></label>
+            <Button type="submit" loading={twilioBusy}>Register this number</Button>
+          </form> : null}
+          {twilioMessage ? <p className="twilio-message">{twilioMessage}</p> : null}
+          <details className="twilio-webhook-details">
+            <summary>Webhook URLs to paste into Twilio</summary>
+            <p>On your phone number's configuration page in the Twilio Console, under Messaging, set:</p>
+            <dl>
+              <dt>A message comes in</dt><dd><code>{getTwilioWebhookUrls().inbound}</code></dd>
+              <dt>Status callback URL</dt><dd><code>{getTwilioWebhookUrls().status}</code></dd>
+            </dl>
+            <small>Both should be set to HTTP POST. This is what lets Lead Porch see delivered/bounced status and inbound replies (including STOP and JOIN keywords).</small>
+          </details>
+          {twilio?.readiness?.requiresA2pForUsMarketing ? <small>US marketing texts require A2P 10DLC registration in the Twilio Console before carriers will reliably deliver them — this is separate from connecting the account here.</small> : null}
         </article>
       </section>
 

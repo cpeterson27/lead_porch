@@ -68,6 +68,18 @@ export const refreshInstagramAuthorization = () =>
 export const selectSocialAssets = (provider, assetIds) =>
   api.patch(`/social/${provider}/assets`, { assetIds }).then((res) => res.data);
 
+export const fetchTwilioStatus = () =>
+  api.get("/telephony/status").then((res) => res.data);
+export const registerTwilioSender = (values) =>
+  api.post("/telephony/senders", values).then((res) => res.data.data);
+export const getTwilioWebhookUrls = () => {
+  const base = String(api.defaults.baseURL || "").replace(/\/$/, "");
+  return {
+    inbound: `${base}/webhooks/twilio/message-inbound`,
+    status: `${base}/webhooks/twilio/message-status`,
+  };
+};
+
 export const fetchMeetupStatus = () =>
   api.get("/meetup/status").then((res) => res.data.data);
 export const beginMeetupConnection = () =>
