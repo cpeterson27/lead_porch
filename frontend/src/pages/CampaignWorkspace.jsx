@@ -77,6 +77,7 @@ export default function CampaignWorkspace() {
   const [templateSaving, setTemplateSaving] = useState(false);
   const [ideaGenerating, setIdeaGenerating] = useState(false);
   const [ideaPrompt, setIdeaPrompt] = useState("");
+  const [ideaImages, setIdeaImages] = useState([]);
   const [workspaceDefaultLogoUrl, setWorkspaceDefaultLogoUrl] = useState("");
   const [logoSaving, setLogoSaving] = useState(false);
   const [audienceTagsSaving, setAudienceTagsSaving] = useState(false);
@@ -402,6 +403,7 @@ export default function CampaignWorkspace() {
       const generated = await generateCampaignEmailIdeas(id, {
         audienceLabel: selectedAudienceLabel(),
         prompt: ideaPrompt,
+        inspirationImages: ideaImages.map((image) => image.dataUrl),
       });
       setEmailTemplate((current) => ({ ...current, ...generated, status: "draft" }));
       setTemplateDirty(true);
@@ -411,6 +413,28 @@ export default function CampaignWorkspace() {
       setError(err.response?.data?.error || "OpenAI could not generate ideas right now.");
     } finally {
       setIdeaGenerating(false);
+    }
+  };
+  const addIdeaImages = async (files) => {
+    const available = Math.max(0, 3 - ideaImages.length);
+    const selected = Array.from(files || []).slice(0, available);
+    if (!selected.length) return;
+    const invalid = selected.find((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 2.5 * 1024 * 1024);
+    if (invalid) {
+      setError("Choose JPG, PNG, or WEBP inspiration images no larger than 2.5 MB each.");
+      return;
+    }
+    try {
+      const loaded = await Promise.all(selected.map((file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ id: `${file.name}-${file.size}-${file.lastModified}`, name: file.name, dataUrl: reader.result });
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      })));
+      setIdeaImages((current) => [...current, ...loaded.filter((next) => !current.some((image) => image.id === next.id))].slice(0, 3));
+      setError("");
+    } catch {
+      setError("One of those inspiration images could not be read.");
     }
   };
   const loadHistoricalTemplate = (version) => {
@@ -1068,6 +1092,27 @@ export default function CampaignWorkspace() {
                     placeholder="e.g. Make it urgent about the early-bird deadline, keep it casual"
                   />
                 </label>
+                <div className="campaign-idea-images">
+                  <div>
+                    <strong>Inspiration images (optional)</strong>
+                    <small>Add up to 3 screenshots, flyers, photos, or design references. AI will study them for ideas; they are not automatically inserted into the email.</small>
+                  </div>
+                  <label className="campaign-idea-images__upload">
+                    Add images
+                    <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={ideaImages.length >= 3 || ideaGenerating} onChange={(event) => { addIdeaImages(event.target.files); event.target.value = ""; }} />
+                  </label>
+                  {ideaImages.length ? (
+                    <div className="campaign-idea-images__previews">
+                      {ideaImages.map((image) => (
+                        <figure key={image.id}>
+                          <img src={image.dataUrl} alt={`${image.name} inspiration preview`} />
+                          <figcaption title={image.name}>{image.name}</figcaption>
+                          <button type="button" aria-label={`Remove ${image.name}`} onClick={() => setIdeaImages((current) => current.filter((item) => item.id !== image.id))}>×</button>
+                        </figure>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
                 <Button
                   variant="outline"
                   loading={ideaGenerating}
