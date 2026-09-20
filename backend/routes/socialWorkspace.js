@@ -170,50 +170,141 @@ router.get(
           connections.find(
             (connection) => connection.provider === "instagram",
           ) || {};
-        const hasPermission = (connection, names) =>
-          names.some((name) => (connection.scopes || []).includes(name));
-        return [
-          {
-            key: "instagram-comments",
-            label: "Instagram comments and approved private replies",
-            ready: hasPermission(instagram, [
-              "instagram_business_manage_comments",
-              "instagram_manage_comments",
-            ]),
+        const selectedAssets = (connection, type) => {
+          const selected = new Set((connection.selectedAssetIds || []).map(String));
+          return (connection.assets || []).filter(
+            (asset) => asset.type === type && selected.has(String(asset.id)),
+          );
+        };
+        const accountNames = (connection, type) =>
+          selectedAssets(connection, type)
+            .map((asset) => asset.username ? `@${asset.username}` : asset.name)
+            .filter(Boolean)
+            .join(", ");
+        const capability = ({ key, label, connection, type, permissions, enabled = true }) => {
+          const assets = selectedAssets(connection, type);
+          const granted = permissions.filter((permission) =>
+            (connection.scopes || []).includes(permission),
+          );
+          return {
+            key,
+            label,
+            ready:
+              connection.connected === true &&
+              assets.length > 0 &&
+              granted.length === permissions.length &&
+              enabled,
             review: true,
-          },
-          {
+            permissions,
+            missingPermissions: permissions.filter(
+              (permission) => !granted.includes(permission),
+            ),
+            selectedAccounts: accountNames(connection, type),
+            environmentBlocked: !enabled,
+          };
+        };
+        return [
+          capability({
+            key: "instagram-comments",
+            label: "Direct Instagram comments",
+            connection: instagram,
+            type: "instagram_business",
+            permissions: ["instagram_business_manage_comments"],
+          }),
+          capability({
             key: "instagram-messages",
             label: "Instagram direct messages",
-            ready: hasPermission(instagram, [
-              "instagram_business_manage_messages",
-              "instagram_manage_messages",
-            ]),
-            review: true,
-          },
-          {
+            connection: instagram,
+            type: "instagram_business",
+            permissions: ["instagram_business_manage_messages"],
+          }),
+          capability({
+            key: "instagram-publishing",
+            label: "Direct Instagram publishing",
+            connection: instagram,
+            type: "instagram_business",
+            permissions: ["instagram_business_content_publish"],
+            enabled: process.env.SOCIAL_PUBLISHING_ENABLED === "true",
+          }),
+          capability({
+            key: "instagram-insights",
+            label: "Direct Instagram account insights",
+            connection: instagram,
+            type: "instagram_business",
+            permissions: ["instagram_business_manage_insights"],
+          }),
+          capability({
+            key: "page-linked-instagram-basic",
+            label: "Page-linked Instagram account access",
+            connection: meta,
+            type: "instagram_business",
+            permissions: ["instagram_basic"],
+          }),
+          capability({
+            key: "page-linked-instagram-comments",
+            label: "Page-linked Instagram comments",
+            connection: meta,
+            type: "instagram_business",
+            permissions: ["instagram_manage_comments"],
+          }),
+          capability({
+            key: "page-linked-instagram-messages",
+            label: "Page-linked Instagram messages",
+            connection: meta,
+            type: "instagram_business",
+            permissions: ["instagram_manage_messages"],
+          }),
+          capability({
+            key: "page-linked-instagram-publishing",
+            label: "Page-linked Instagram publishing",
+            connection: meta,
+            type: "instagram_business",
+            permissions: ["instagram_content_publish"],
+            enabled: process.env.SOCIAL_PUBLISHING_ENABLED === "true",
+          }),
+          capability({
+            key: "page-linked-instagram-insights",
+            label: "Page-linked Instagram insights",
+            connection: meta,
+            type: "instagram_business",
+            permissions: ["instagram_manage_insights"],
+          }),
+          capability({
             key: "facebook-comments",
             label: "Facebook Page comments and moderation",
-            ready: hasPermission(meta, [
-              "pages_manage_engagement",
-              "pages_read_user_content",
-            ]),
-            review: true,
-          },
-          {
+            connection: meta,
+            type: "facebook_page",
+            permissions: ["pages_read_user_content", "pages_manage_engagement"],
+          }),
+          capability({
             key: "messenger",
             label: "Messenger conversations and replies",
-            ready: hasPermission(meta, ["pages_messaging"]),
-            review: true,
-          },
-          {
-            key: "publishing",
-            label: "Publishing to connected accounts",
-            ready:
-              process.env.SOCIAL_PUBLISHING_ENABLED === "true" &&
-              hasPermission(meta, ["pages_manage_posts"]),
-            review: true,
-          },
+            connection: meta,
+            type: "facebook_page",
+            permissions: ["pages_messaging"],
+          }),
+          capability({
+            key: "facebook-publishing",
+            label: "Facebook Page publishing",
+            connection: meta,
+            type: "facebook_page",
+            permissions: ["pages_manage_posts"],
+            enabled: process.env.SOCIAL_PUBLISHING_ENABLED === "true",
+          }),
+          capability({
+            key: "facebook-engagement-reading",
+            label: "Facebook Page engagement and recent posts",
+            connection: meta,
+            type: "facebook_page",
+            permissions: ["pages_read_engagement"],
+          }),
+          capability({
+            key: "facebook-insights",
+            label: "Facebook Page insights",
+            connection: meta,
+            type: "facebook_page",
+            permissions: ["read_insights"],
+          }),
           {
             key: "lead-attribution",
             label: "CRM lead capture and tracked website CTAs",

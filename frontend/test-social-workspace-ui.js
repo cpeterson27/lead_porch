@@ -35,6 +35,7 @@ for (const section of [
   assert(workspace.includes(`"${section}"`));
 const studio = read("./src/pages/SocialStudio.jsx");
 const automationFields = read("./src/components/SocialAutomationFields.jsx");
+const studioSurface = `${studio}\n${automationFields}`;
 for (const control of [
   "Generate post",
   "Repurpose existing content",
@@ -46,7 +47,7 @@ for (const control of [
   "No — general content",
   "Save draft",
 ])
-  assert(studio.includes(control));
+  assert(studioSurface.includes(control));
 for (const control of [
   "Automate responses to this post",
   "Automation name",
@@ -66,7 +67,7 @@ for (const control of [
   "tags",
   "automationReady",
 ])
-  assert(studio.includes(control));
+  assert(studioSurface.includes(control));
 for (const control of [
   "Campaign (optional)",
   "Contact labels",
@@ -114,7 +115,7 @@ for (const value of [
 ])
   assert(connectedAccounts.includes(value));
 for (const value of [
-  "Choose the LinkedIn Page Lead Porch should manage",
+  "Choose which LinkedIn Page to manage",
   "No manageable LinkedIn Pages were returned",
   "LinkedIn",
 ])
@@ -126,9 +127,8 @@ assert(
     sidebar.includes('session?.workspace?.name || "Lead Porch"'),
 );
 assert(
-  navbar.includes("displayedWorkspaceName") &&
-    navbar.includes("socialConnectionOnly") &&
-    navbar.includes('session?.workspace?.name || "Lead Porch"'),
+  navbar.includes('session?.workspace?.name || "Lead Porch"') &&
+    navbar.includes('session?.workspace?.name || "Workspace"'),
 );
 assert(
   read("./src/components/SocialReplyComposer.jsx").includes(

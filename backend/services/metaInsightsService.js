@@ -99,16 +99,21 @@ async function instagramInsights(
   http,
   version,
 ) {
-  if (!connection.scopes?.includes("instagram_manage_insights"))
+  const directInstagram = connection.provider === "instagram";
+  const requiredPermission = directInstagram
+    ? "instagram_business_manage_insights"
+    : "instagram_manage_insights";
+  if (!connection.scopes?.includes(requiredPermission))
     return {
       provider: "instagram",
       assetId: asset.id,
       assetName: asset.name,
       status: "permission_required",
-      requiredPermission: "instagram_manage_insights",
+      requiredPermission,
     };
   const token =
-    credentials.pageTokens?.[String(asset.parentId)] || credentials.accessToken;
+    credentials.pageTokens?.[String(asset.parentId)] ||
+    (directInstagram ? credentials.accessToken : null);
   if (!token)
     return {
       provider: "instagram",
@@ -117,15 +122,16 @@ async function instagramInsights(
       status: "authorization_required",
     };
   try {
+    const host = directInstagram ? "graph.instagram.com" : "graph.facebook.com";
     const [profile, insight] = await Promise.all([
-      http.get(`https://graph.facebook.com/${version}/${asset.id}`, {
+      http.get(`https://${host}/${version}/${asset.id}`, {
         params: {
           fields: "followers_count,media_count,username",
           access_token: token,
         },
         timeout: 15000,
       }),
-      http.get(`https://graph.facebook.com/${version}/${asset.id}/insights`, {
+      http.get(`https://${host}/${version}/${asset.id}/insights`, {
         params: {
           metric: "reach,profile_views",
           period: "day",
@@ -167,17 +173,28 @@ async function instagramInsights(
 async function fetchWorkspaceInsights(workspaceId, models = deps) {
   const connections = await models.SocialConnection.find({
     workspaceId,
-    provider: "meta",
+    provider: { $in: ["meta", "instagram"] },
     status: "connected",
   }).select("+credentialsEncrypted");
   const assets = [];
-  for (const connection of connections) {
+  const seen = new Set();
+  // Prefer Direct Instagram Login for an Instagram account when both login
+  // products authorize the same asset. It uses the instagram_business_*
+  // permission family and graph.instagram.com; Facebook Pages and any
+  // remaining Page-linked Instagram accounts continue through Meta Login.
+  const orderedConnections = [...connections].sort((left, right) =>
+    left.provider === right.provider ? 0 : left.provider === "instagram" ? -1 : 1,
+  );
+  for (const connection of orderedConnections) {
     if (!usable(connection)) continue;
     const credentials = decryptCredentials(connection.credentialsEncrypted);
     const selected = new Set((connection.selectedAssetIds || []).map(String));
     for (const asset of connection.assets || []) {
       if (!selected.has(String(asset.id))) continue;
-      if (asset.type === "facebook_page")
+      const key = `${asset.type}:${asset.id}`;
+      if (seen.has(key)) continue;
+      if (asset.type === "facebook_page" && connection.provider === "meta") {
+        seen.add(key);
         assets.push(
           await facebookInsights(
             connection,
@@ -187,7 +204,9 @@ async function fetchWorkspaceInsights(workspaceId, models = deps) {
             graphVersion(),
           ),
         );
-      if (asset.type === "instagram_business")
+      }
+      if (asset.type === "instagram_business") {
+        seen.add(key);
         assets.push(
           await instagramInsights(
             connection,
@@ -197,6 +216,7 @@ async function fetchWorkspaceInsights(workspaceId, models = deps) {
             graphVersion(),
           ),
         );
+      }
     }
   }
   return {

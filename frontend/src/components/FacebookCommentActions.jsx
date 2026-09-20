@@ -102,6 +102,26 @@ export default function FacebookCommentActions({
         <button disabled={Boolean(busy)} onClick={() => run("unhide")}>
           Unhide
         </button>
+        {!instagram ? (
+          <>
+            <button disabled={Boolean(busy)} onClick={() => run("like")}>
+              Like as Page
+            </button>
+            <button disabled={Boolean(busy)} onClick={() => run("unlike")}>
+              Remove Page like
+            </button>
+          </>
+        ) : null}
+        <button
+          disabled={Boolean(busy)}
+          onClick={() => {
+            if (window.confirm("Delete this comment from the connected account? This cannot be undone.")) {
+              run("delete");
+            }
+          }}
+        >
+          Delete comment
+        </button>
       </div>
       {notice ? <p role="status">{notice}</p> : null}
       {error ? (

@@ -338,7 +338,7 @@ function inboxReplyRouteContract() {
     [
       'req.body.approved !== true',
       'Explicit reply approval is required',
-      "channel: { $in: [\"instagram\", \"facebook\"] }",
+      "channel: { $in: [\"instagram\", \"facebook\", \"linkedin\"] }",
       "workspaceId: req.auth.workspaceId",
       'thread.metadata?.interactionType === "comment"',
       "Human comment/private-reply controls are not implemented yet",

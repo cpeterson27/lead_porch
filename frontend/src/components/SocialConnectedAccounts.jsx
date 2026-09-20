@@ -462,10 +462,16 @@ export default function SocialConnectedAccounts({
                       : "Available"}
                 </span>
                 <strong>{item.label}</strong>
+                {item.selectedAccounts ? (
+                  <small>Selected account: {item.selectedAccounts}</small>
+                ) : null}
                 {item.review && !item.ready && (
                   <small>
-                    Grant the permission, configure the webhook, and complete
-                    App Review.
+                    {item.environmentBlocked
+                      ? "Publishing is disabled in the deployment environment."
+                      : item.missingPermissions?.length
+                        ? `Needs permission: ${item.missingPermissions.join(", ")}`
+                        : "Select an authorized account to use this feature."}
                   </small>
                 )}
               </div>
