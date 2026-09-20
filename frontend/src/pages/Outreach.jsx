@@ -609,12 +609,15 @@ export default function Outreach() {
       {dailyQuotaFailures ? (
         <aside className="outreach-provider-alert" role="status">
           <div>
-            <strong>Sending is paused by Resend</strong>
+            <strong>{dailyQuotaFailures} draft{dailyQuotaFailures === 1 ? "" : "s"} need to be retried</strong>
             <p>
-              Resend rejected {dailyQuotaFailures} message{dailyQuotaFailures === 1 ? "" : "s"} because the account's current daily quota is exhausted. These drafts are safe in Lead Porch. Wait until Resend's Usage page shows the daily counter has reset, or upgrade the Resend plan, before retrying.
+              Resend previously rejected {dailyQuotaFailures} message{dailyQuotaFailures === 1 ? "" : "s"} when the account had exhausted its former daily allowance. This is saved failure history, not a live claim that your upgraded account is paused. The drafts are safe in Lead Porch; select them, prepare them again, and send when ready.
             </p>
           </div>
-          <a href="https://resend.com/settings/usage" target="_blank" rel="noreferrer">Check Resend usage</a>
+          <div className="outreach-provider-alert__actions">
+            <button type="button" onClick={() => { setFilter("failed"); setPage(1); }}>Show failed drafts</button>
+            <a href="https://resend.com/settings/usage" target="_blank" rel="noreferrer">Check Resend usage</a>
+          </div>
         </aside>
       ) : null}
       <section className="outreach-controls">

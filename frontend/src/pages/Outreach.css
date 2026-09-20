@@ -238,17 +238,24 @@
 }
 .outreach-provider-alert div { display: grid; gap: 0.25rem; }
 .outreach-provider-alert p { margin: 0; color: #6b4a47; line-height: 1.5; }
-.outreach-provider-alert a {
+.outreach-provider-alert__actions { align-items: center; display: flex !important; flex: 0 0 auto; gap: 0.5rem !important; }
+.outreach-provider-alert a,
+.outreach-provider-alert button {
   flex: 0 0 auto;
   padding: 0.55rem 0.8rem;
   border: 1px solid currentColor;
   border-radius: 999px;
+  background: transparent;
   color: #702d27;
+  cursor: pointer;
+  font-family: inherit;
   font-size: 0.8rem;
   font-weight: 800;
   text-decoration: none;
 }
-.outreach-provider-alert a:hover { background: #fff; }
+.outreach-provider-alert a:hover,
+.outreach-provider-alert button:hover { background: #fff; }
+@media (max-width: 760px) { .outreach-provider-alert { align-items: stretch; flex-direction: column; } .outreach-provider-alert__actions { flex-wrap: wrap; } }
 @media (max-width: 680px) { .outreach-guidance { grid-template-columns: 1fr; } }
 .outreach-mailbox {
   width: 100%;
