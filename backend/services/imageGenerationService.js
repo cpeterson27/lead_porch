@@ -47,15 +47,20 @@ async function recordUsage(values, models = { AiUsageRecord }) {
  * back a real, permanent asset URL plus everything needed for provenance:
  * prompt, model, generation ID, usage/cost, campaign, tenant, timestamp.
  */
-async function generateImage({ workspaceId, userId = null, actorType = "user", principal = "", prompt, size = "1024x1024", quality = "standard", campaignId = null, agent = "content", feature = "image.generate", correlationId = "", folder }, dependencies = {}) {
+async function generateImage({ workspaceId, userId = null, actorType = "user", principal = "", prompt, size = "1024x1024", quality = "medium", campaignId = null, agent = "content", feature = "image.generate", correlationId = "", folder }, dependencies = {}) {
   assertEnabled();
   const cleanPrompt = String(prompt || "").trim().slice(0, 4000);
   if (!cleanPrompt) { const error = new Error("A prompt is required to generate an image"); error.code = "IMAGE_PROMPT_REQUIRED"; throw error; }
   const model = process.env.OPENAI_IMAGE_MODEL || "gpt-image-1";
+  // `standard` belonged to the older image API vocabulary. Translate it so
+  // requests from an already-open browser tab remain compatible after deploy.
+  const normalizedQuality = quality === "standard" ? "medium" : quality;
+  const supportedQualities = new Set(["low", "medium", "high", "auto"]);
+  const requestedQuality = supportedQualities.has(normalizedQuality) ? normalizedQuality : "medium";
   const client = dependencies.clientFactory ? dependencies.clientFactory() : new OpenAI({ apiKey: process.env.OPENAI_API_KEY.trim() });
   const started = Date.now();
   try {
-    const response = await client.images.generate({ model, prompt: cleanPrompt, size, quality, n: 1 });
+    const response = await client.images.generate({ model, prompt: cleanPrompt, size, quality: requestedQuality, n: 1 });
     const generation = response.data?.[0];
     if (!generation?.b64_json && !generation?.url) throw new Error("OpenAI did not return image data");
     const fileData = generation.b64_json ? `data:image/png;base64,${generation.b64_json}` : generation.url;

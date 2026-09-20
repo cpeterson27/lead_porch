@@ -48,7 +48,7 @@ async function testGenerateUploadsAndRecordsUsage(workspaceId) {
   const result = await service.generateImage(
     { workspaceId, campaignId: "campaign-1", prompt: "A bright, modern coaching program banner" },
     {
-      clientFactory: () => ({ images: { generate: async (params) => { generateCalled = true; assert.equal(params.model, "gpt-image-1"); assert.equal(params.prompt, "A bright, modern coaching program banner"); return { id: "gen_123", data: [{ b64_json: "ZmFrZS1pbWFnZS1kYXRh" }] }; } } }),
+      clientFactory: () => ({ images: { generate: async (params) => { generateCalled = true; assert.equal(params.model, "gpt-image-1"); assert.equal(params.prompt, "A bright, modern coaching program banner"); assert.equal(params.quality, "medium"); return { id: "gen_123", data: [{ b64_json: "ZmFrZS1pbWFnZS1kYXRh" }] }; } } }),
       uploadImage: async ({ file, folder }) => { uploadCalled = true; assert.match(file, /^data:image\/png;base64,/); assert.equal(folder, `growth-operator/generated/${workspaceId}`); return { url: "https://res.cloudinary.com/demo/image/upload/v1/generated/abc.png", publicId: "generated/abc", width: 1024, height: 1024 }; },
     },
   );
@@ -70,6 +70,18 @@ async function testGenerateUploadsAndRecordsUsage(workspaceId) {
   assert.ok(usage.estimatedTotalCostUsd > 0);
 }
 
+async function testLegacyStandardQualityIsTranslated(workspaceId) {
+  let receivedQuality = "";
+  await service.generateImage(
+    { workspaceId, prompt: "A compatibility test", quality: "standard" },
+    {
+      clientFactory: () => ({ images: { generate: async (params) => { receivedQuality = params.quality; return { data: [{ b64_json: "ZmFrZQ==" }] }; } } }),
+      uploadImage: async () => ({ url: "https://example.com/generated.png", publicId: "generated/test", width: 1024, height: 1024 }),
+    },
+  );
+  assert.equal(receivedQuality, "medium", "legacy standard quality must be translated before calling OpenAI");
+}
+
 async function testFailedGenerationStillRecordsUsage(workspaceId) {
   await assert.rejects(() => service.generateImage(
     { workspaceId, prompt: "test" },
@@ -88,6 +100,7 @@ async function run() {
     testChatEnabledAloneIsNotEnough();
     await testGenerateRequiresPrompt();
     await testGenerateUploadsAndRecordsUsage(workspaceId);
+    await testLegacyStandardQualityIsTranslated(workspaceId);
     await testFailedGenerationStillRecordsUsage(workspaceId);
   } finally {
     await AiUsageRecord.deleteMany({ workspaceId });

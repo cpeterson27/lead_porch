@@ -83,7 +83,7 @@ async function build({ workspaceId, userId, packageId }, dependencies = {}) {
       const program = await Program.create({ workspaceId, name: p.name, internalSummary: p.summary, status: "draft", duration: { value: p.durationValue, unit: p.durationUnit }, defaultPrice: { amount: p.priceAmount, currency: "USD" }, publicPresentation: { title: p.name, summary: p.summary, audience: p.audience, outcomes: p.outcomes, curriculum: p.curriculum, status: "hidden", ctaLabel: item.callToAction.label, ctaUrl: item.callToAction.url } });
       programId = program._id; item.generatedProgramId = program._id; await item.save();
     }
-    const image = item.image?.url ? item.image : await imageService.generateImage({ workspaceId, userId, agent: "content", feature: "jarvis.campaign_studio.flyer", prompt: item.flyerPrompt, size: "1024x1536", quality: "standard", folder: `growth-operator/jarvis-campaigns/${workspaceId}` });
+    const image = item.image?.url ? item.image : await imageService.generateImage({ workspaceId, userId, agent: "content", feature: "jarvis.campaign_studio.flyer", prompt: item.flyerPrompt, size: "1024x1536", quality: "medium", folder: `growth-operator/jarvis-campaigns/${workspaceId}` });
     if (!item.image?.url) { item.image = { url: image.url, publicId: image.publicId, width: image.width, height: image.height, model: image.model, prompt: image.prompt }; await item.save(); }
     const media = { type: "image", url: image.url, publicId: image.publicId, width: image.width, height: image.height, orientation: variantService.detectOrientation(image.width, image.height), alt: `${item.name} campaign graphic` };
     media.platformVariants = variantService.generatePlatformVariants({ media, platforms: PROVIDERS, mode: "contain" });
