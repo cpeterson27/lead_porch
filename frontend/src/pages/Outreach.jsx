@@ -103,6 +103,7 @@ export default function Outreach() {
   const [selectedOutreachIds, setSelectedOutreachIds] = useState([]);
   const [bulkCorrecting, setBulkCorrecting] = useState(false);
   const correctionFileRef = useRef(null);
+  const activeCampaignIdRef = useRef("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testSending, setTestSending] = useState(false);
@@ -122,20 +123,29 @@ export default function Outreach() {
   }, []);
   const loadItems = useCallback(async (campaign) => {
     if (!campaign?._id) {
+      activeCampaignIdRef.current = "";
       setItems([]);
       return;
     }
-    await syncGmailOutreachReplies().catch(() => null);
+    const campaignId = String(campaign._id);
+    activeCampaignIdRef.current = campaignId;
+    // Render the saved queue first. Gmail synchronization and preparation of
+    // newly eligible drafts are maintenance work and must not block the page.
     await refreshItems(campaign);
-    try {
-      await generateOutreach(campaign._id, true);
+    void Promise.allSettled([
+      syncGmailOutreachReplies(),
+      generateOutreach(campaign._id, true),
+    ]).then(async (results) => {
+      if (activeCampaignIdRef.current !== campaignId) return;
       await refreshItems(campaign);
-    } catch (err) {
-      setError(
-        err.response?.data?.error ||
-          "Existing outreach loaded, but new drafts could not be prepared.",
-      );
-    }
+      const preparation = results[1];
+      if (preparation.status === "rejected") {
+        setError(
+          preparation.reason?.response?.data?.error ||
+            "Existing outreach loaded, but new drafts could not be prepared.",
+        );
+      }
+    });
   }, [refreshItems]);
   const load = useCallback(async () => {
     try {
@@ -647,8 +657,8 @@ export default function Outreach() {
       <aside className="outreach-usage-explainer">
         <div><span>Submitted today from this campaign</span><strong>{selectedCampaignSentToday}</strong></div>
         <div><span>Submitted over this campaign’s lifetime</span><strong>{selectedCampaignSentTotal}</strong></div>
-        <div><span>Resend free-plan account limit</span><strong>100/day</strong></div>
-        <p>The 100-email allowance is shared by the entire Resend account, including other campaigns, test emails, transactional messages, and other verified domains. “Delivered” is a cumulative campaign result—not today’s usage. Resend’s Emails and Usage pages are the authority for the account-wide count.</p>
+        <div><span>Provider account allowance</span><strong>See Resend Usage</strong></div>
+        <p>Your account-wide quota is determined by the active Resend Transactional plan and includes campaigns, test emails, transactional messages, and other verified domains. Lead Porch accepts up to 100 selected drafts per send request as a safe batch size; that is not a daily limit. “Delivered” is a cumulative campaign result—not today’s usage. Resend’s Emails and Usage pages are the authority for current plan consumption.</p>
       </aside>
       <DashboardCard
         title={selected ? `Messages for ${selected.name}` : "Outreach messages"}
