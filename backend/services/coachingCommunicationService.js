@@ -14,6 +14,7 @@ const integrationHub = require("./integrationHub");
 const segmentService = require("./communicationSegmentService");
 const { twilioConversationAdapter } = require("./conversations/twilioConversationAdapter");
 const { ingestProviderMessage } = require("./conversations/conversationIngestionService");
+const { evaluateOutboundCommunication } = require("./communicationPolicyService");
 const { createUnsubscribeToken, publicBackendUrl } = require("../utils/unsubscribe");
 const { runWithWorkspace } = require("../tenancy/workspaceContext");
 
@@ -124,7 +125,15 @@ async function processJob(job, models = deps) {
       await recordCanonicalMessage({ job, contact, channel: "email", provider: "resend", providerMessageId: response.messageId, senderAddress: process.env.EMAIL_FROM || "onboarding@resend.dev", recipientAddress: contact.email }, models);
     } else {
       const sender = await models.MessagingSender.findOne({ workspaceId: job.workspaceId, provider: "twilio", status: "active" }); if (!sender) throw communicationError("No active Twilio sender", "COMMUNICATION_BLOCKED");
-      const to = contact.mobilePhone || contact.phone || contact.workDirectPhone; response = await models.twilioConversationAdapter.sendMessage({ sender, to, body: render(job.content.body, { contact: safeContact(contact) }), purpose: job.purpose, timezone: contact.timezone });
+      const to = contact.mobilePhone || contact.phone || contact.workDirectPhone;
+      // The same real gate the one-off /telephony/messages route already
+      // uses — opt-out status, documented marketing consent (required only
+      // for purpose "marketing", never for a transactional reminder to an
+      // existing student), US A2P approval, sender active, quiet hours.
+      // Nothing reaches Twilio from a scheduled job without passing this.
+      const policy = await evaluateOutboundCommunication({ channel: "sms", address: to, purpose: job.purpose, sender, timezone: contact.timezone });
+      if (!policy.allowed) throw communicationError(policy.reasons.join("; "), "COMMUNICATION_BLOCKED");
+      response = await models.twilioConversationAdapter.sendMessage({ sender, to, body: render(job.content.body, { contact: safeContact(contact) }), purpose: job.purpose, timezone: contact.timezone });
       await recordCanonicalMessage({ job, contact, channel: "sms", provider: "twilio", providerMessageId: response.sid, senderAddress: sender.phoneNumber, recipientAddress: to }, models);
     }
     job.status = "sent"; job.sentAt = new Date(); job.providerMessageId = response.messageId || response.sid; job.attempts += 1; job.lastAttemptAt = new Date(); await job.save();

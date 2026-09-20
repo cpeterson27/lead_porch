@@ -98,6 +98,7 @@ router.post(["/meta", "/instagram"], async (req, res) => {
   } catch (error) { console.error("META MESSAGING WEBHOOK ERROR:", "Provider event processing failed"); res.status(500).json({ error: "Webhook failed" }); }
 });
 
+function xmlEscape(value) { return String(value || "").replace(/[<>&'"]/g, (character) => ({ "<": "&lt;", ">": "&gt;", "&": "&amp;", "'": "&apos;", '"': "&quot;" })[character]); }
 function twilioWebhookUrl(req) { return `${String(process.env.PUBLIC_BACKEND_URL || "").replace(/\/$/, "")}${req.originalUrl}`; }
 function validTwilioRequest(req) { return validateTwilioSignature(twilioWebhookUrl(req), req.body || {}, String(req.get("x-twilio-signature") || "")); }
 async function twilioSender(req) {
@@ -110,17 +111,31 @@ router.post("/twilio/message-inbound", async (req, res) => {
   const sender = await twilioSender(req);
   if (!sender?.workspaceId) return res.status(404).type("text/xml").send("<Response></Response>");
   try {
-    await runWithWorkspace(sender.workspaceId, async () => {
+    const autoReplyBody = await runWithWorkspace(sender.workspaceId, async () => {
       const from = normalizePhone(req.body.From);
       const consentChannel = /^whatsapp:/i.test(String(req.body.From || "")) ? "whatsapp" : "sms";
       const optOutType = String(req.body.OptOutType || "").toUpperCase();
+      let reply = null;
       if (from && ["STOP", "START"].includes(optOutType)) {
         const optedOut = optOutType === "STOP";
         await CommunicationConsent.findOneAndUpdate({ channel: consentChannel, address: from, purpose: "all" }, { $set: { status: optedOut ? "opted_out" : "opted_in", source: "provider", proof: `Twilio Advanced Opt-Out ${optOutType}`, keyword: String(req.body.Body || "").slice(0, 80), consentedAt: optedOut ? null : new Date(), revokedAt: optedOut ? new Date() : null, metadata: { optOutType } } }, { upsert: true, new: true, setDefaultsOnInsert: true });
+      // Opt-in growth flow: someone texts JOIN and is immediately, provably
+      // opted in to marketing SMS — this is what evaluateOutboundCommunication
+      // actually requires before a marketing campaign is allowed to reach
+      // them (see communicationPolicyService.js). Only fires when Twilio's
+      // own Advanced Opt-Out didn't already classify this message as
+      // STOP/START, and only for the exact keyword — anything else falls
+      // through to normal inbound conversation handling below.
+      } else if (from && /^join$/i.test(String(req.body.Body || "").trim())) {
+        const contact = await Contact.findOne({ $or: [{ phone: from }, { mobilePhone: from }, { workDirectPhone: from }] }).select("_id").lean();
+        await CommunicationConsent.findOneAndUpdate({ channel: consentChannel, address: from, purpose: "marketing" }, { $set: { contactId: contact?._id || null, status: "opted_in", source: "keyword", keyword: "JOIN", proof: "Replied JOIN via SMS", consentedAt: new Date(), revokedAt: null } }, { upsert: true, new: true, setDefaultsOnInsert: true });
+        reply = "You're subscribed to text updates. Msg & data rates may apply. Reply STOP to unsubscribe anytime.";
       }
       const inbound = await twilioConversationAdapter.ingestInbound(req.body, sender);
       if (inbound?.message?.contactId) await CrmActivity.create({ contactId: inbound.message.contactId, type: "system", direction: "inbound", title: "SMS reply received", source: "integration", metadata: { eventType: "sms.replied", conversationMessageId: inbound.message._id, providerMessageId: req.body.MessageSid } });
+      return reply;
     });
+    if (autoReplyBody) return res.type("text/xml").send(`<Response><Message>${xmlEscape(autoReplyBody)}</Message></Response>`);
     return res.type("text/xml").send("<Response></Response>");
   } catch (error) { console.error("TWILIO INBOUND ERROR:", error); return res.status(500).type("text/xml").send("<Response></Response>"); }
 });

@@ -13,6 +13,8 @@ const CoachProfile = require("../models/CoachProfile");
 const WorkspaceMembership = require("../models/WorkspaceMembership");
 const DiscoveryCallBooking = require("../models/DiscoveryCallBooking");
 const googleCalendarService = require("../services/googleCalendarService");
+const CommunicationConsent = require("../models/CommunicationConsent");
+const { normalizePhone } = require("../services/communicationPolicyService");
 
 function zonedDate(year, month, day, hour, minute, timezone) {
   const target = Date.UTC(year, month - 1, day, hour, minute);
@@ -104,6 +106,13 @@ router.post("/discovery-call/book", limited, async (req, res, next) => {
     if (!check.available) return res.status(409).json({ error: "That time was just booked. Please choose another available time." });
     const scheduled = await runWithWorkspace(ws._id, () => googleCalendarService.scheduleDiscoveryCall({ workspaceId: ws._id, coachProfileId: availability.coachProfileId, startsAt, durationMinutes, name, email, phone: String(req.body?.phone || "").slice(0, 80), notes: String(req.body?.notes || "").slice(0, 2000) }));
     const booking = await runWithWorkspace(ws._id, () => DiscoveryCallBooking.create({ workspaceId: ws._id, coachProfileId: availability.coachProfileId, name, email, phone: String(req.body?.phone || "").slice(0, 80), notes: String(req.body?.notes || "").slice(0, 2000), startsAt, durationMinutes, timezone: scheduled.timezone, calendar: { connectionId: scheduled.connection._id, calendarId: scheduled.calendarId, eventId: scheduled.event.id, htmlLink: scheduled.event.htmlLink || "", meetUrl: scheduled.meetUrl } }));
+    const smsAddress = normalizePhone(req.body?.phone);
+    if (req.body?.smsConsent === true && smsAddress)
+      await runWithWorkspace(ws._id, () => CommunicationConsent.findOneAndUpdate(
+        { workspaceId: ws._id, channel: "sms", address: smsAddress, purpose: "all" },
+        { $set: { status: "opted_in", source: "web_form", proof: `${name} <${email}> checked SMS opt-in on the discovery call booking form`, consentedAt: new Date(), revokedAt: null } },
+        { upsert: true, new: true, setDefaultsOnInsert: true },
+      ));
     res.status(201).json({ success: true, data: { id: booking._id, startsAt: booking.startsAt, durationMinutes, timezone: booking.timezone } });
   } catch (error) { next(error); }
 });
