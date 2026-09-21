@@ -11,20 +11,25 @@ const GRADE_BATCH_SIZE = 20;
 /**
  * The one campaign currently "open" for new Discovery leads: an owner
  * explicitly turns acceptingDiscoveryLeads on for a campaign (the
- * "Accepting new Discovery leads" toggle in Campaign Workspace) — never
- * inferred. If more than one campaign is left open at once, the soonest
- * scheduled send wins so there's still a single, predictable answer.
- * services/campaignSendScheduler.js turns the flag back off automatically
- * the moment that campaign's send actually completes, so a campaign that
- * "ended" stops absorbing new leads even if the owner forgets to close it
- * by hand — but closing it early, by hand, works exactly the same way.
- * Returns null when nothing is currently open, which is the caller's
- * signal to import straight to the CRM with no campaign attached instead.
+ * "Accepting Discovery leads" toggle in Outreach) — never inferred. This
+ * is deliberately built so an owner can turn the switch on for SEVERAL
+ * campaigns at once — a whole week's worth, say — and it behaves as a
+ * queue: only the single soonest-scheduled one among them ever receives
+ * new leads. services/campaignSendScheduler.js turns that one's flag back
+ * off automatically the instant its send completes, and because it's no
+ * longer "open," the next-soonest campaign in the group becomes the new
+ * answer on its own — no one needs to remember to flip anything each day.
+ * A campaign with no scheduledSendAt set yet is excluded rather than
+ * sorting first (Mongo sorts null before any real date ascending), so an
+ * unscheduled campaign can never accidentally jump the queue. Returns
+ * null when nothing is currently open, which is the caller's signal to
+ * import straight to the CRM with no campaign attached instead.
  */
 async function findActiveCampaign(workspaceId) {
   return Campaign.findOne({
     workspaceId,
     acceptingDiscoveryLeads: true,
+    scheduledSendAt: { $ne: null },
   }).sort({ scheduledSendAt: 1 }).select("_id name");
 }
 
