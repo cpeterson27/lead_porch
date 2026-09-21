@@ -328,6 +328,71 @@ export default function CampaignWorkspace() {
     }
   };
 
+  // A real, already-resolved Google Calendar link (never a {{token}}) — the
+  // event date/time/location is the same for every recipient, so unlike
+  // {{firstName}} it doesn't need per-contact substitution at send time.
+  const addToCalendarUrl = (() => {
+    const event = campaign?.eventId;
+    if (!event?.startDate) return "";
+    const start = new Date(event.startDate);
+    if (Number.isNaN(start.getTime())) return "";
+    const end = event.endDate && !Number.isNaN(new Date(event.endDate).getTime())
+      ? new Date(event.endDate)
+      : new Date(start.getTime() + 60 * 60 * 1000);
+    const stamp = (date) => date.toISOString().replace(/[-:]/g, "").split(".")[0] + "Z";
+    const params = new URLSearchParams({
+      action: "TEMPLATE",
+      text: event.name || campaign.name || "Event",
+      dates: `${stamp(start)}/${stamp(end)}`,
+      location: event.locationType === "venue" ? event.location || "" : event.onlineUrl || event.location || "",
+    });
+    return `https://calendar.google.com/calendar/render?${params}`;
+  })();
+
+  const insertAddToCalendarButton = async () => {
+    if (!addToCalendarUrl) {
+      setError("This campaign's linked event needs a start date before an “add to calendar” button can be created.");
+      return;
+    }
+    try {
+      const current = await messageRef.current.exportHtml();
+      const base = current?.design?.body ? current.design : { body: { rows: [], values: {} } };
+      const buttonRow = {
+        cells: [1],
+        columns: [
+          {
+            contents: [
+              {
+                type: "button",
+                values: {
+                  text: "Add to Calendar",
+                  textAlign: "center",
+                  containerPadding: "16px",
+                  backgroundColor: campaign.brand?.accentColor || "#173f36",
+                  color: "#ffffff",
+                  borderRadius: "999px",
+                  href: { name: "web", values: { href: addToCalendarUrl, target: "_blank" } },
+                },
+              },
+            ],
+            values: {},
+          },
+        ],
+        values: {},
+      };
+      const nextDesign = {
+        ...base,
+        body: { ...base.body, rows: [...(base.body.rows || []), buttonRow] },
+      };
+      await messageRef.current.loadDesign(nextDesign);
+      const exported = await messageRef.current.exportHtml();
+      handleDesignChange(exported);
+      setTemplateNotice("“Add to Calendar” button added, linked to this campaign's event date. Recipients tap it to add the event straight to their own calendar.");
+    } catch (err) {
+      setError(err.message || "Unable to insert the add-to-calendar button right now.");
+    }
+  };
+
   const saveAudienceTags = async (nextAudience) => {
     setAudienceTagsSaving(true);
     setError("");
@@ -1078,6 +1143,16 @@ export default function CampaignWorkspace() {
                     onClick={insertArrowButton}
                   >
                     Insert arrow button
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={!addToCalendarUrl}
+                    title={addToCalendarUrl ? "" : "This campaign's linked event needs a start date first"}
+                    onClick={insertAddToCalendarButton}
+                  >
+                    Insert &ldquo;Add to Calendar&rdquo; button
                   </Button>
                   <small>
                     Add the logo by itself or beside editable words. Both
