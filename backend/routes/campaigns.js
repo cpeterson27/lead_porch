@@ -652,17 +652,21 @@ router.post("/:id/email-template/approve", requireRole("owner", "admin"), async 
   // design until that happened. Only refresh campaigns that have already
   // been generated at least once — approving a template shouldn't be the
   // trigger that first spins up drafts for a campaign nobody's generated yet.
-  let refreshedOutreachCount = 0;
-  try {
-    const hasExistingOutreach = await Outreach.exists({ campaignId: campaign._id });
-    if (hasExistingOutreach) {
-      const refreshed = await regenerateCampaignOutreach(campaign, { actorUserId: req.auth.user._id });
-      refreshedOutreachCount = refreshed.updatedCount;
-    }
-  } catch (error) {
-    console.error("Auto-refresh of pending outreach after template approval failed:", error);
+  //
+  // Runs in the background rather than blocking this response: it loops
+  // over every matching contact (regenerateCampaignOutreach), and a
+  // campaign with hundreds of contacts made this request take long enough
+  // to look frozen — the whole point of a "self-heal" is that the owner
+  // never has to wait on it.
+  const hasExistingOutreach = await Outreach.exists({ campaignId: campaign._id });
+  if (hasExistingOutreach) {
+    setImmediate(() => {
+      regenerateCampaignOutreach(campaign, { actorUserId: req.auth.user._id }).catch((error) => {
+        console.error("Auto-refresh of pending outreach after template approval failed:", error);
+      });
+    });
   }
-  return res.json({ template: approvedTemplate, version: approved, refreshedOutreachCount });
+  return res.json({ template: approvedTemplate, version: approved, refreshedOutreachCount: hasExistingOutreach ? null : 0 });
 });
 
 router.patch("/:id/brand", async (req, res) => {

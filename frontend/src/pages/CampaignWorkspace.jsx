@@ -676,8 +676,8 @@ export default function CampaignWorkspace() {
       setEmailTemplate(result.template);
       setTemplateDirty(false);
       setTemplateNotice(
-        result.refreshedOutreachCount
-          ? `Template approved. ${result.refreshedOutreachCount} pending draft${result.refreshedOutreachCount === 1 ? "" : "s"} already in the queue ${result.refreshedOutreachCount === 1 ? "was" : "were"} refreshed to match.`
+        result.refreshedOutreachCount === null
+          ? "Template approved. Pending drafts already in the queue are being refreshed to match — this happens in the background, no need to wait."
           : "Template approved.",
       );
       setTemplateVersions((current) => [result.version, ...current]);
