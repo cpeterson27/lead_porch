@@ -422,6 +422,26 @@
   flex-shrink: 0;
 }
 
+.campaign-accent-color {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.campaign-accent-color input[type="color"] {
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+}
+
 .campaign-email-logo > small {
   color: var(--text-muted);
   font-size: 0.74rem;

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Button from "./Button.jsx";
 import Modal from "./Modal.jsx";
-import { fetchContentBriefs, generateAiImage, uploadEventImage } from "../services/api.js";
+import { fetchContentBriefs, fetchWorkspaceConfig, generateAiImage, uploadEventImage } from "../services/api.js";
 import "./CampaignModal.css";
 
 const BLANK_TEMPLATE = { key: "blank", name: "Start blank", description: "Skip the pre-written copy and write the email yourself." };
@@ -138,6 +138,12 @@ export default function CampaignModal({
         });
       } else {
         setForm(createEmptyForm(defaultCampaignKind));
+        fetchWorkspaceConfig()
+          .then((config) => {
+            const accentColor = config.branding?.accentColor;
+            if (accentColor) setForm((current) => ({ ...current, brand: { ...current.brand, accentColor } }));
+          })
+          .catch(() => {});
       }
       setError("");
       setFlyerPrompt("");

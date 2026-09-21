@@ -81,6 +81,7 @@ export default function CampaignWorkspace() {
   const [ideaPrompt, setIdeaPrompt] = useState("");
   const [ideaImages, setIdeaImages] = useState([]);
   const [workspaceDefaultLogoUrl, setWorkspaceDefaultLogoUrl] = useState("");
+  const [workspaceDefaultAccentColor, setWorkspaceDefaultAccentColor] = useState("");
   const [logoSaving, setLogoSaving] = useState(false);
   const [audienceTagsSaving, setAudienceTagsSaving] = useState(false);
   const [audienceMatch, setAudienceMatch] = useState(null);
@@ -136,7 +137,10 @@ export default function CampaignWorkspace() {
 
   useEffect(() => {
     fetchWorkspaceConfig()
-      .then((config) => setWorkspaceDefaultLogoUrl(config.organizationLogoUrl || ""))
+      .then((config) => {
+        setWorkspaceDefaultLogoUrl(config.organizationLogoUrl || "");
+        setWorkspaceDefaultAccentColor(config.branding?.accentColor || "");
+      })
       .catch(() => {});
   }, []);
 
@@ -184,6 +188,15 @@ export default function CampaignWorkspace() {
       setError(err.response?.data?.error || "Unable to reset the logo.");
     } finally {
       setLogoSaving(false);
+    }
+  };
+
+  const saveAccentColor = async (accentColor) => {
+    setError("");
+    try {
+      setCampaign(normalizeBrandAssets(await updateCampaignBrand(id, { accentColor })));
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to save the accent color.");
     }
   };
 
@@ -1136,6 +1149,14 @@ export default function CampaignWorkspace() {
                   >
                     Insert logo + text
                   </Button>
+                  <label className="campaign-accent-color">
+                    <span>Accent color</span>
+                    <input
+                      type="color"
+                      value={campaign.brand?.accentColor || workspaceDefaultAccentColor || "#173f36"}
+                      onChange={(event) => saveAccentColor(event.target.value)}
+                    />
+                  </label>
                   <Button
                     type="button"
                     variant="outline"
