@@ -1130,10 +1130,26 @@ export function PublicHome() {
           </section>
         ) : null}
 
-        {p.homepageLinks?.length ? (
+        {p.homepageLinks?.includes("/faq") && p.faqItems?.length ? (
+          <section className="public-section public-homepage-faq" id="faq">
+            <p className="public-kicker">Frequently asked questions</p>
+            <h2>{p.seoPages?.faqHeading || "Answers before your next step."}</h2>
+            <div className="public-homepage-faq__list">
+              {p.faqItems.slice(0, 4).map((item) => (
+                <details key={item.question}>
+                  <summary>{item.question}</summary>
+                  <p>{item.answer}</p>
+                </details>
+              ))}
+            </div>
+            <Link className="public-button" to="/faq">See all FAQs</Link>
+          </section>
+        ) : null}
+
+        {p.homepageLinks?.filter((path) => path !== "/faq").length ? (
           <nav className="public-homepage-links" aria-label="Explore more">
-            {p.homepageLinks.map((path) => {
-              const labels = { "/about": "About Ellie", "/coaching-programs": "All programs", "/faq": "FAQ", "/resources": "Resources", "/testimonials": "Student stories", "/contact": "Contact", "/book-a-call": "Book a discovery call" };
+            {p.homepageLinks.filter((path) => path !== "/faq").map((path) => {
+              const labels = { "/about": "About Ellie", "/coaching-programs": "All programs", "/resources": "Resources", "/testimonials": "Student stories", "/contact": "Contact", "/book-a-call": "Book a discovery call" };
               return <Link key={path} to={path}>{labels[path] || path}</Link>;
             })}
           </nav>
