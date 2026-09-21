@@ -15,6 +15,7 @@ import {
   saveCampaignEmailTemplate,
   updateCampaignAudienceTags,
   updateCampaignBrand,
+  updateCampaignDiscoveryLeads,
   updateCampaignSchedule,
   uploadEventImage,
 } from "../services/api.js";
@@ -83,6 +84,7 @@ export default function CampaignWorkspace() {
   const [workspaceDefaultLogoUrl, setWorkspaceDefaultLogoUrl] = useState("");
   const [workspaceDefaultAccentColor, setWorkspaceDefaultAccentColor] = useState("");
   const [logoSaving, setLogoSaving] = useState(false);
+  const [discoveryLeadsBusy, setDiscoveryLeadsBusy] = useState(false);
   const [audienceTagsSaving, setAudienceTagsSaving] = useState(false);
   const [audienceMatch, setAudienceMatch] = useState(null);
   const [newAudienceTag, setNewAudienceTag] = useState("");
@@ -197,6 +199,20 @@ export default function CampaignWorkspace() {
       setCampaign(normalizeBrandAssets(await updateCampaignBrand(id, { accentColor })));
     } catch (err) {
       setError(err.response?.data?.error || "Unable to save the accent color.");
+    }
+  };
+
+  const toggleDiscoveryLeads = async () => {
+    const accepting = !campaign.acceptingDiscoveryLeads;
+    setDiscoveryLeadsBusy(true);
+    setError("");
+    try {
+      const result = await updateCampaignDiscoveryLeads(id, accepting);
+      setCampaign(normalizeBrandAssets(result.campaign));
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to update this campaign's Discovery-lead setting.");
+    } finally {
+      setDiscoveryLeadsBusy(false);
     }
   };
 
@@ -833,6 +849,13 @@ export default function CampaignWorkspace() {
           </div>
         </div>
         <div className="campaign-workspace__actions">
+          <Button
+            variant={campaign.acceptingDiscoveryLeads ? "primary" : "outline"}
+            loading={discoveryLeadsBusy}
+            onClick={toggleDiscoveryLeads}
+          >
+            {campaign.acceptingDiscoveryLeads ? "Accepting Discovery leads" : "Not accepting Discovery leads"}
+          </Button>
           <Button
             variant="outline"
             onClick={() => navigate(`/discovery?tab=people&campaignId=${campaign._id}`)}
