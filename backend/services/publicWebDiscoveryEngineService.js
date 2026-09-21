@@ -14,6 +14,17 @@
  * nothing here ever creates a CRM Contact/Organization, enriches, enables
  * a monitor, or sends outreach on its own.
  *
+ * One deliberate, explicit exception: when a run was produced by a
+ * DiscoverySchedule (an owner-enabled *recurring* search, never a one-off
+ * manual run), runDueDiscoverySchedules() below hands the finished run to
+ * services/discoveryAutoEnrollmentService.js, which grades each new person
+ * with the same AI qualification a human review would use and saves only
+ * the ones it calls "qualified" into the CRM — everything else still
+ * waits in the review queue exactly as before. This exists specifically
+ * so a recurring schedule can keep feeding a campaign without someone
+ * re-approving it by hand every day; a manual, one-off run is never
+ * affected by this and keeps the guarantee above untouched.
+ *
  * Deliberately separate from, and never calls into,
  * services/vertexGroundingDiscoveryService.js's search() or
  * services/leadGenerationCoordinatorService.js's approveAndRunSearch() —
@@ -25,6 +36,7 @@
  */
 const PublicWebDiscoveryRun = require("../models/PublicWebDiscoveryRun");
 const DiscoverySchedule = require("../models/DiscoverySchedule");
+const { autoGradeApproveAndEnroll } = require("./discoveryAutoEnrollmentService");
 const { nextScheduledRun } = require("./discoveryScheduleTimeService");
 const GroundingResearchResult = require("../models/GroundingResearchResult");
 const JarvisMemoryNote = require("../models/JarvisMemoryNote");
@@ -1401,6 +1413,17 @@ async function runDueDiscoverySchedules(dependencies = {}) {
           ? (claimed.enabled ? nextScheduledRun(claimed, now) : null)
           : new Date(Date.now() + 60000);
         if (terminal) claimed.currentRunId = null;
+        if (claimed.lastRunStatus === "completed") {
+          try {
+            // eslint-disable-next-line no-await-in-loop
+            const enrollment = await autoGradeApproveAndEnroll({ workspaceId: claimed.workspaceId, discoveryRunId: run._id, scheduleName: claimed.name });
+            if (enrollment.saved) {
+              claimed.lastRunMessage += ` · ${enrollment.saved} auto-added to ${enrollment.campaignName || "the CRM"}.`;
+            }
+          } catch (error) {
+            console.error("Discovery auto-enrollment failed:", { scheduleId: String(claimed._id), message: error.message });
+          }
+        }
       } catch (error) {
         claimed.lastRunStatus = "failed";
         claimed.lastRunMessage = error.message;
