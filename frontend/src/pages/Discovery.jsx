@@ -19,6 +19,7 @@ import {
   fetchDiscoveryTemplates,
   fetchMarketResearchResults,
   fetchMarketResearchHistory,
+  updateAudienceSchedule,
   fetchPeopleResearchPreviews,
   deletePeopleResearchPreview,
   fetchResearchMonitors,
@@ -331,6 +332,11 @@ export default function Discovery() {
   const [apolloJob, setApolloJob] = useState(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [openingHistoryId, setOpeningHistoryId] = useState("");
+  const [scheduleTarget, setScheduleTarget] = useState(null);
+  const [scheduleTime, setScheduleTime] = useState("08:00");
+  const [scheduleDays, setScheduleDays] = useState([0, 1, 2, 3, 4, 5, 6]);
+  const [scheduleBusy, setScheduleBusy] = useState(false);
+  const [scheduleError, setScheduleError] = useState("");
   const [peoplePreviews, setPeoplePreviews] = useState([]);
   const [peoplePreviewsLoading, setPeoplePreviewsLoading] = useState(false);
   const [openPeoplePreviewId, setOpenPeoplePreviewId] = useState("");
@@ -491,6 +497,45 @@ export default function Discovery() {
       setNotice("Unable to load saved research history.");
     } finally {
       setHistoryLoading(false);
+    }
+  };
+
+  const openAudienceSchedule = (entry) => {
+    setScheduleError("");
+    const existing = entry.scheduledSearch;
+    setScheduleTime(existing?.enabled ? existing.time : "08:00");
+    setScheduleDays(existing?.enabled && existing.days?.length ? existing.days : [0, 1, 2, 3, 4, 5, 6]);
+    setScheduleTarget(entry);
+  };
+  const submitAudienceSchedule = async () => {
+    if (!scheduleTarget) return;
+    setScheduleBusy(true);
+    setScheduleError("");
+    try {
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York";
+      const response = await updateAudienceSchedule(scheduleTarget._id, { time: scheduleTime, days: scheduleDays, timezone });
+      setResearchHistory((current) => current.map((row) => (row._id === scheduleTarget._id ? { ...row, scheduledSearch: response.audience.scheduledSearch } : row)));
+      setScheduleTarget(null);
+      setNotice(`This search will now run automatically at ${scheduleTime} (${timezone}).`);
+    } catch (err) {
+      setScheduleError(err.response?.data?.error || "Unable to schedule this search.");
+    } finally {
+      setScheduleBusy(false);
+    }
+  };
+  const cancelAudienceSchedule = async () => {
+    if (!scheduleTarget) return;
+    setScheduleBusy(true);
+    setScheduleError("");
+    try {
+      const response = await updateAudienceSchedule(scheduleTarget._id, { enabled: false });
+      setResearchHistory((current) => current.map((row) => (row._id === scheduleTarget._id ? { ...row, scheduledSearch: response.audience.scheduledSearch } : row)));
+      setScheduleTarget(null);
+      setNotice("Scheduled daily search turned off.");
+    } catch (err) {
+      setScheduleError(err.response?.data?.error || "Unable to turn off this schedule.");
+    } finally {
+      setScheduleBusy(false);
     }
   };
 
@@ -1525,7 +1570,13 @@ export default function Discovery() {
         return <article key={entry._id} className={`research-history-item is-${jobStatus}`}>
           <div className="research-history-main"><span>{jobStatus.replaceAll("_", " ")}</span><strong>{entry.name}</strong><p>{entry.description || entry.job?.question || "Saved prospect list"}</p></div>
           <div className="research-history-counts"><strong>{entry.totalOrgs || statistics.received || 0}</strong><span>organizations</span><small>{entry.job ? `${statistics.created || 0} new · ${statistics.updated || 0} refreshed` : /apollo/i.test(entry.source || "") ? "Legacy Apollo-labeled research" : entry.source || "Saved targeting profile"}</small></div>
-          <div className="research-history-actions"><small>{new Date(entry.createdAt).toLocaleString()}</small><Button size="sm" variant="outline" loading={openingHistoryId === String(entry._id)} onClick={() => openSavedResearch(entry)}>Open results</Button></div>
+          <div className="research-history-actions">
+            <small>{new Date(entry.createdAt).toLocaleString()}</small>
+            <Button size="sm" variant="outline" onClick={() => openAudienceSchedule(entry)}>
+              {entry.scheduledSearch?.enabled ? `Runs daily · ${entry.scheduledSearch.time}` : "Schedule daily search"}
+            </Button>
+            <Button size="sm" variant="outline" loading={openingHistoryId === String(entry._id)} onClick={() => openSavedResearch(entry)}>Open results</Button>
+          </div>
           {entry.job?.error ? <p className="research-history-error">{entry.job.error}</p> : null}
         </article>;
       })}</div> : <div className="table-state table-state--empty">No saved research yet. Research started in ChatGPT or on this page will appear here automatically.</div>}
@@ -2023,5 +2074,38 @@ export default function Discovery() {
     </Modal>
 
     <Modal isOpen={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)} title="Delete this prospect?" footer={<><Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button><Button onClick={remove}>Delete permanently</Button></>}><p>This removes {deleteTarget?.name || "this prospect"} from Lead Porch. This cannot be undone.</p></Modal>
+
+    <Modal
+      isOpen={Boolean(scheduleTarget)}
+      onClose={() => !scheduleBusy && setScheduleTarget(null)}
+      title={`Schedule "${scheduleTarget?.name || "this search"}"`}
+      footer={<>
+        {scheduleTarget?.scheduledSearch?.enabled ? <Button variant="outline" disabled={scheduleBusy} onClick={cancelAudienceSchedule}>Turn off schedule</Button> : null}
+        <Button variant="outline" disabled={scheduleBusy} onClick={() => setScheduleTarget(null)}>Close</Button>
+        <Button loading={scheduleBusy} onClick={submitAudienceSchedule}>Save schedule</Button>
+      </>}
+    >
+      <div className="research-schedule-form">
+        <p>Lead Porch will repeat this exact search automatically, adding any newly matching organizations to this same saved list — no one needs to click Search again.</p>
+        <label>
+          <span>Time of day</span>
+          <input className="select-input" type="time" value={scheduleTime} onChange={(event) => setScheduleTime(event.target.value)} />
+        </label>
+        <fieldset className="research-schedule-days">
+          <legend>Days</legend>
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((label, index) => (
+            <label key={label}>
+              <input
+                type="checkbox"
+                checked={scheduleDays.includes(index)}
+                onChange={(event) => setScheduleDays((current) => event.target.checked ? [...current, index].sort() : current.filter((day) => day !== index))}
+              />
+              {label}
+            </label>
+          ))}
+        </fieldset>
+        {scheduleError ? <p className="form-error">{scheduleError}</p> : null}
+      </div>
+    </Modal>
   </div>;
 }

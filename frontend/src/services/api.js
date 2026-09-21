@@ -1317,6 +1317,11 @@ export const fetchMarketResearchHistory = (limit = 30) =>
     .get("/audience/research/history", { params: { limit } })
     .then((res) => res.data);
 
+export const updateAudienceSchedule = (audienceId, payload) =>
+  api
+    .patch(`/audience/research/history/${audienceId}/schedule`, payload)
+    .then((res) => res.data);
+
 export const fetchPeopleResearchPreviews = (limit = 20) =>
   api
     .get("/audience/research/people-previews", { params: { limit } })

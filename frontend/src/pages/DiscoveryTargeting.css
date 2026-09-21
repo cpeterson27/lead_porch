@@ -172,6 +172,12 @@
 .research-history-actions small { color: #66736e; font-size: 12px; }
 .research-history-actions { align-items: flex-end; display: grid; gap: 9px; justify-items: end; }
 .research-history-error { color: #a13f3f; grid-column: 1 / -1; margin: 0; }
+.research-schedule-form { display: grid; gap: 14px; }
+.research-schedule-form label { display: grid; gap: 6px; font-weight: 600; }
+.research-schedule-form input[type="time"] { border-radius: var(--radius-pill, 999px); }
+.research-schedule-days { border: 1px solid var(--color-border, #dce2de); border-radius: 14px; display: flex; flex-wrap: wrap; gap: 12px; padding: 12px 14px; }
+.research-schedule-days legend { font-weight: 700; padding: 0 6px; }
+.research-schedule-days label { align-items: center; display: flex; flex-direction: row; font-weight: 500; gap: 6px; }
 .people-preview-intro {
   color: var(--text-muted);
   line-height: 1.5;

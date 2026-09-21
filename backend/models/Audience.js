@@ -124,6 +124,23 @@ const audienceSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+
+    // -------------------------------------------------------------------------
+    // Optional daily auto-rerun of this saved search — see
+    // services/researchScheduledSearchRunner.js. Reuses the plan/question
+    // from this audience's most recent research job every time it fires, so
+    // newly matching organizations keep getting added to the same saved
+    // audience without anyone re-running it by hand. lastRunDateKey is a
+    // "YYYY-MM-DD" string computed in `timezone`, so the poller (which may
+    // tick many times a day) only ever runs it once per calendar day.
+    scheduledSearch: {
+      enabled: { type: Boolean, default: false },
+      time: { type: String, default: "08:00" },
+      timezone: { type: String, default: "America/New_York" },
+      days: { type: [Number], default: [0, 1, 2, 3, 4, 5, 6] },
+      lastRunAt: { type: Date, default: null },
+      lastRunDateKey: { type: String, default: "" },
+    },
   },
   {
     // Adds createdAt and updatedAt automatically

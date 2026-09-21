@@ -657,7 +657,7 @@ router.get("/research/history", async (req, res) => {
   try {
     const limit = Math.min(100, Math.max(1, Number(req.query.limit) || 30));
     const audiences = await Audience.find({ workspaceId: req.auth.workspaceId })
-      .select("name description status source totalOrgs lastDiscoveredAt createdAt updatedAt")
+      .select("name description status source totalOrgs lastDiscoveredAt createdAt updatedAt scheduledSearch")
       .sort({ createdAt: -1 })
       .limit(limit)
       .lean();
@@ -680,6 +680,35 @@ router.get("/research/history", async (req, res) => {
     });
   } catch (_error) {
     return res.status(500).json({ success: false, error: "Unable to load saved research history." });
+  }
+});
+
+router.patch("/research/history/:audienceId/schedule", async (req, res) => {
+  try {
+    const audience = await Audience.findOne({ _id: req.params.audienceId, workspaceId: req.auth.workspaceId });
+    if (!audience) return res.status(404).json({ success: false, error: "Saved search not found." });
+    if (req.body?.enabled === false) {
+      audience.scheduledSearch.enabled = false;
+      await audience.save();
+      return res.json({ success: true, audience });
+    }
+    const hasPriorJob = await MarketResearchJob.exists({ audienceId: audience._id });
+    if (!hasPriorJob) return res.status(400).json({ success: false, error: "This saved search has no completed run yet to repeat." });
+    const time = String(req.body?.time || "");
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return res.status(400).json({ success: false, error: "Choose a valid time." });
+    const days = Array.isArray(req.body?.days) ? req.body.days.filter((day) => Number.isInteger(day) && day >= 0 && day <= 6) : [];
+    audience.scheduledSearch = {
+      enabled: true,
+      time,
+      timezone: String(req.body?.timezone || "America/New_York").slice(0, 100),
+      days: days.length ? [...new Set(days)] : [0, 1, 2, 3, 4, 5, 6],
+      lastRunAt: audience.scheduledSearch?.lastRunAt || null,
+      lastRunDateKey: audience.scheduledSearch?.lastRunDateKey || "",
+    };
+    await audience.save();
+    return res.json({ success: true, audience });
+  } catch (error) {
+    return res.status(400).json({ success: false, error: error.message || "Unable to schedule this saved search." });
   }
 });
 

@@ -4,7 +4,14 @@ import { fetchPublicSite, fetchWorkspaceConfig } from "../services/api.js";
 import WorkspaceThemeContext from "./WorkspaceThemeContextValue.js";
 export function WorkspaceThemeProvider({ children }) {
   const { pathname } = useLocation();
-  const publicRoute = /^\/(?:$|about(?:\/|$)|coaching-programs(?:\/|$)|testimonials(?:\/|$)|contact(?:\/|$)|people(?:\/|$)|privacy(?:-policy)?(?:\/|$)|terms(?:\/|$)|data-deletion(?:\/|$)|apply(?:\/|$)|ref(?:\/|$)|profile\/edit(?:\/|$))/.test(pathname);
+  // Every path rendered by App.jsx's public <Route> block must be listed
+  // here too — a path missing from this list silently fetches the
+  // authenticated dashboard config instead (which has no `publicSite`
+  // field), so the page falls back to its generic placeholder copy
+  // instead of the real saved content. /faq, /resources, and /book-a-call
+  // were missing, which is why those specific pages kept showing
+  // placeholder FAQs no matter what was saved in the admin dashboard.
+  const publicRoute = /^\/(?:$|about(?:\/|$)|coaching-programs(?:\/|$)|faq(?:\/|$)|resources(?:\/|$)|testimonials(?:\/|$)|book-a-call(?:\/|$)|contact(?:\/|$)|people(?:\/|$)|privacy(?:-policy)?(?:\/|$)|terms(?:\/|$)|data-deletion(?:\/|$)|apply(?:\/|$)|ref(?:\/|$)|profile\/edit(?:\/|$))/.test(pathname);
   const [site, setSite] = useState(null),
     [loading, setLoading] = useState(true);
   useEffect(() => {
