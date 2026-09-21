@@ -64,11 +64,21 @@ function ideaDesign(copy) {
   };
 }
 
+// Unlayer has shipped text content under more than one block type name
+// across versions/insertion paths — "text" and "paragraph" both carry
+// editable body copy the same way (values.text). Checking only "text"
+// silently found zero blocks on any design actually built with
+// "paragraph" blocks (confirmed live: a real campaign's design used only
+// image/paragraph/button, no "text" blocks at all), so every AI-generated
+// audience variant kept the exact source body — only the separately
+// stored subject field ever visibly changed.
+const EMAIL_TEXT_BLOCK_TYPES = new Set(["text", "paragraph"]);
+
 function collectEmailTextBlocks(design) {
   const blocks = [];
   const visit = (value) => {
     if (!value || typeof value !== "object") return;
-    if (value.type === "text" && typeof value.values?.text === "string") {
+    if (EMAIL_TEXT_BLOCK_TYPES.has(value.type) && typeof value.values?.text === "string") {
       blocks.push(value.values.text);
     }
     Object.values(value).forEach(visit);
@@ -83,7 +93,7 @@ function personalizeEmailDesign(design, textBlocks) {
   let blockIndex = 0;
   const visit = (value) => {
     if (!value || typeof value !== "object") return;
-    if (value.type === "text" && typeof value.values?.text === "string") {
+    if (EMAIL_TEXT_BLOCK_TYPES.has(value.type) && typeof value.values?.text === "string") {
       const replacement = textBlocks?.[blockIndex];
       if (typeof replacement === "string" && replacement.trim()) {
         value.values.text = replacement;
