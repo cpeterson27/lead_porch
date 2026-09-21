@@ -56,6 +56,25 @@ function frontendOrigin() {
   return (valid || "http://localhost:5173").replace(/\/$/, "");
 }
 
+// Real, reported incident: with multiple valid frontend origins configured
+// (e.g. the app is reachable at both a custom domain and the onrender.com
+// URL), frontendOrigin() above always picks the same one — a coach who
+// started "Connect Google Calendar" from a *different* origin than that
+// default got redirected back to a domain their browser session doesn't
+// belong to (session data is origin-scoped), landing on a "please log in
+// again" page even though the connection itself saved successfully. The fix
+// is to remember which origin the request actually came from and return to
+// that exact one — never a blind guess — while still only ever returning to
+// an origin this app is actually configured to serve, never an arbitrary
+// caller-supplied value.
+function requestOrigin(req) {
+  const raw = String(req.get("origin") || "").trim() || (() => {
+    try { return new URL(req.get("referer") || "").origin; } catch { return ""; }
+  })();
+  const allowed = String(process.env.FRONTEND_URL || "").split(",").map((value) => value.trim()).filter((value) => /^https?:\/\//i.test(value)).map((value) => value.replace(/\/$/, ""));
+  return allowed.includes(raw.replace(/\/$/, "")) ? raw.replace(/\/$/, "") : "";
+}
+
 const defaultDependencies = {
   CoachProfile,
   CoachingProgram,
@@ -142,10 +161,15 @@ function createCoachingRouter(overrides = {}) {
   const router = express.Router();
 
   router.get("/calendar/oauth/callback", asyncRoute(async (req, res) => {
-    const frontend = frontendOrigin();
+    let frontend = frontendOrigin();
     try {
       const state = deps.googleCalendarService.verifyState(req.query.state);
       if (!state) throw new Error("Google Calendar connection request expired or is invalid");
+      // Land the coach back on the exact origin they started from — session
+      // data is origin-scoped, so redirecting to a different (even if
+      // otherwise valid) configured origin than the one they're actually
+      // signed into logs them out, even though the connection itself saved.
+      if (state.returnOrigin) frontend = state.returnOrigin;
       const identity = await runWithWorkspace(state.workspaceId, () => deps.googleCalendarService.validateStateIdentity(state, { ...deps, WorkspaceMembership: deps.WorkspaceMembership }));
       if (!req.query.code) throw new Error(req.query.error || "Google did not return an authorization code");
       const tokens = await deps.googleCalendarService.googleAdapter.exchangeCode(req.query.code);
@@ -158,9 +182,10 @@ function createCoachingRouter(overrides = {}) {
   }));
 
   router.get("/zoom/oauth/callback", asyncRoute(async (req, res) => {
-    const frontend = frontendOrigin();
+    let frontend = frontendOrigin();
     try {
       const state = deps.zoomService.verifyState(req.query.state); if (!state) throw new Error("Zoom connection request expired or is invalid");
+      if (state.returnOrigin) frontend = state.returnOrigin;
       const identity = await runWithWorkspace(state.workspaceId, () => deps.zoomService.validateStateIdentity(state, deps));
       if (!req.query.code) throw new Error(req.query.error || "Zoom did not return an authorization code");
       const tokens = await deps.zoomService.zoomAdapter.exchangeCode(req.query.code); const profile = await deps.zoomService.zoomAdapter.profile(tokens.access_token);
@@ -278,7 +303,7 @@ function createCoachingRouter(overrides = {}) {
   router.get("/calendar/oauth/start", asyncRoute(async (req, res) => {
     if (!hasRole(req.auth, "coach")) return res.status(403).json({ success: false, error: "Coaches connect their own Google Calendar", code: "COACH_SELF_SERVICE_REQUIRED" });
     const identity = await deps.googleCalendarService.coachIdentity({ workspaceId: req.auth.workspaceId, userId: authenticatedUserId(req) }, deps);
-    return res.json({ success: true, authorizationUrl: deps.googleCalendarService.authorizationUrl(identity) });
+    return res.json({ success: true, authorizationUrl: deps.googleCalendarService.authorizationUrl(identity, { returnOrigin: requestOrigin(req) }) });
   }));
 
   router.delete("/calendar/connection", asyncRoute(async (req, res) => {
@@ -312,7 +337,7 @@ function createCoachingRouter(overrides = {}) {
   }));
   router.get("/zoom/oauth/start", asyncRoute(async (req, res) => {
     if (!hasRole(req.auth, "coach")) return res.status(403).json({ success: false, error: "Coaches connect their own Zoom account", code: "COACH_SELF_SERVICE_REQUIRED" });
-    const identity = await deps.zoomService.coachIdentity({ workspaceId: req.auth.workspaceId, userId: authenticatedUserId(req) }, deps); return res.json({ success: true, authorizationUrl: deps.zoomService.authorizationUrl(identity) });
+    const identity = await deps.zoomService.coachIdentity({ workspaceId: req.auth.workspaceId, userId: authenticatedUserId(req) }, deps); return res.json({ success: true, authorizationUrl: deps.zoomService.authorizationUrl(identity, { returnOrigin: requestOrigin(req) }) });
   }));
   router.delete("/zoom/connection", asyncRoute(async (req, res) => {
     if (!hasRole(req.auth, "coach")) return res.status(403).json({ success: false, error: "Coaches disconnect their own Zoom account", code: "COACH_SELF_SERVICE_REQUIRED" });

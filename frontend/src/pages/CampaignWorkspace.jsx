@@ -507,7 +507,6 @@ export default function CampaignWorkspace() {
       designJson: version.designJson || null,
       callToAction: version.callToAction || "",
       callToActionUrl: version.callToActionUrl || "",
-      hideCallToAction: version.hideCallToAction === true,
       additionalButtons: version.additionalButtons || [],
       topic: version.topic || emailTemplate?.topic || "event_invitations",
       status: "draft",
@@ -1164,44 +1163,6 @@ export default function CampaignWorkspace() {
                     </div>
                   )}
                 </div>
-              </div>
-              <div className="campaign-cta-editor">
-                <div>
-                  <strong>Call-to-action button</strong>
-                  <small>Automatically appended below the email body on every send — this is not a block in the canvas above, so it can't be deleted by clicking on it there.</small>
-                </div>
-                <label className="campaign-cta-editor__toggle">
-                  <input
-                    type="checkbox"
-                    checked={!emailTemplate?.hideCallToAction}
-                    onChange={(e) => updateTemplateField("hideCallToAction", !e.target.checked)}
-                  />
-                  <span>
-                    <strong>Show this button</strong>
-                    <small>Turn off to send this email with no call-to-action button at all.</small>
-                  </span>
-                </label>
-                {!emailTemplate?.hideCallToAction ? (
-                  <div className="campaign-cta-editor__fields">
-                    <label>
-                      <span>Button text</span>
-                      <input
-                        value={emailTemplate?.callToAction || ""}
-                        placeholder="Learn more"
-                        onChange={(e) => updateTemplateField("callToAction", e.target.value)}
-                      />
-                    </label>
-                    <label>
-                      <span>Button link</span>
-                      <input
-                        type="url"
-                        value={emailTemplate?.callToActionUrl || ""}
-                        placeholder="Defaults to your website homepage if left blank"
-                        onChange={(e) => updateTemplateField("callToActionUrl", e.target.value)}
-                      />
-                    </label>
-                  </div>
-                ) : null}
               </div>
               <div className="campaign-idea-generator">
                 <label>

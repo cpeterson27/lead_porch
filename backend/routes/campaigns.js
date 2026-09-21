@@ -253,7 +253,7 @@ router.get("/:id/email-template", async (req, res) => {
   const audienceTemplate = audienceKey === "general" ? null : campaign.emailAudienceTemplates?.[audienceKey] || defaultResearchAudienceTemplate(audienceKey, campaign);
   const versions = await CampaignTemplateVersion.find({ campaignId: campaign._id })
     .sort({ version: -1 })
-    .select("version subject body designJson callToAction callToActionUrl hideCallToAction additionalButtons topic approvedAt approvedByUserId createdAt")
+    .select("version subject body designJson callToAction callToActionUrl additionalButtons topic approvedAt approvedByUserId createdAt")
     .lean();
   const usage = await Outreach.aggregate([
     { $match: { campaignId: campaign._id, status: { $in: ["sent", "replied"] } } },
@@ -284,7 +284,6 @@ router.get("/:id/email-template", async (req, res) => {
         designJson: null,
         callToAction: "",
         callToActionUrl: "",
-        hideCallToAction: false,
         additionalButtons: [],
         topic: campaign.campaignKind === "program" ? "program_offers" : "event_invitations",
         status: "draft",
@@ -321,7 +320,6 @@ router.post("/:id/email-template/preview", async (req, res) => {
     body: String(req.body?.body || effectiveTemplate(campaign).body).trim(),
     callToAction: String(req.body?.callToAction || effectiveTemplate(campaign).callToAction).trim(),
     callToActionUrl: String(req.body?.callToActionUrl || effectiveTemplate(campaign).callToActionUrl).trim(),
-    hideCallToAction: req.body?.hideCallToAction !== undefined ? req.body.hideCallToAction === true : effectiveTemplate(campaign).hideCallToAction === true,
     additionalButtons: Array.isArray(req.body?.additionalButtons)
       ? normalizeEmailButtons(req.body.additionalButtons)
       : effectiveTemplate(campaign).additionalButtons || [],
@@ -536,7 +534,6 @@ router.post("/:id/email-template/audience-ideas", requireRole("owner", "admin", 
           designJson: personalizeEmailDesign(sourceDesign, generated.textBlocks),
           callToAction: String(generated.callToAction || mainTemplate.callToAction || "").trim().slice(0, 160),
           callToActionUrl: mainTemplate.callToActionUrl || "",
-          hideCallToAction: mainTemplate.hideCallToAction === true,
           additionalButtons: mainTemplate.additionalButtons || [],
           topic: mainTemplate.topic || (campaign.campaignKind === "program" ? "program_offers" : "event_invitations"),
           status: "draft",
@@ -589,7 +586,6 @@ router.put("/:id/email-template", requireRole("owner", "admin", "member"), async
       designJson: req.body?.designJson ?? null,
       callToAction: String(req.body?.callToAction || "").trim(),
       callToActionUrl: String(req.body?.callToActionUrl || "").trim(),
-      hideCallToAction: req.body?.hideCallToAction === true,
       additionalButtons: Array.isArray(req.body?.additionalButtons)
         ? normalizeEmailButtons(req.body.additionalButtons)
         : [],
@@ -632,7 +628,6 @@ router.post("/:id/email-template/approve", requireRole("owner", "admin"), async 
     designJson: template.designJson || null,
     callToAction: template.callToAction,
     callToActionUrl: template.callToActionUrl,
-    hideCallToAction: template.hideCallToAction === true,
     additionalButtons: template.additionalButtons || [],
     topic: template.topic,
     approvedByUserId: req.auth.user._id,

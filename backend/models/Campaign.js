@@ -89,12 +89,6 @@ const campaignSchema = new mongoose.Schema(
     designJson: { type: mongoose.Schema.Types.Mixed, default: null },
     callToAction: { type: String, default: "", trim: true, maxlength: 120 },
     callToActionUrl: { type: String, default: "", trim: true, maxlength: 1000 },
-    // Every campaign email otherwise always gets an auto-generated call-to-
-    // action button appended after the designed body (falling back to the
-    // program's own homepage if no explicit callToActionUrl/Eventbrite link
-    // is set — see utils/outreachGenerator.js's eventLink) — there was
-    // previously no way to turn that off from the template editor.
-    hideCallToAction: { type: Boolean, default: false },
     additionalButtons: [{
       label: { type: String, required: true, trim: true, maxlength: 120 },
       url: { type: String, required: true, trim: true, maxlength: 1000 },

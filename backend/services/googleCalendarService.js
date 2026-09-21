@@ -23,9 +23,9 @@ function required(name) { const value = String(process.env[name] || "").trim(); 
 function redirectUri() { return required("GOOGLE_CALENDAR_REDIRECT_URI"); }
 function stateSecret() { return required("INTEGRATION_CREDENTIAL_ENCRYPTION_KEY"); }
 
-function createState({ workspaceId, userId, coachProfileId }) {
+function createState({ workspaceId, userId, coachProfileId, returnOrigin = "" }) {
   if (!workspaceId || !userId || !coachProfileId) throw calendarError("A signed-in coach profile is required", "CALENDAR_IDENTITY_REQUIRED");
-  const payload = Buffer.from(JSON.stringify({ workspaceId: String(workspaceId), userId: String(userId), coachProfileId: String(coachProfileId), createdAt: Date.now(), nonce: crypto.randomBytes(16).toString("hex") })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ workspaceId: String(workspaceId), userId: String(userId), coachProfileId: String(coachProfileId), returnOrigin: String(returnOrigin || ""), createdAt: Date.now(), nonce: crypto.randomBytes(16).toString("hex") })).toString("base64url");
   const signature = crypto.createHmac("sha256", stateSecret()).update(payload).digest("base64url");
   return `${payload}.${signature}`;
 }
@@ -41,10 +41,10 @@ function verifyState(value) {
   } catch { return null; }
 }
 
-function authorizationUrl(identity) {
+function authorizationUrl(identity, { returnOrigin = "" } = {}) {
   const params = new URLSearchParams({
     client_id: required("GOOGLE_CALENDAR_CLIENT_ID"), redirect_uri: redirectUri(), response_type: "code",
-    access_type: "offline", prompt: "consent", include_granted_scopes: "true", scope: SCOPES.join(" "), state: createState(identity),
+    access_type: "offline", prompt: "consent", include_granted_scopes: "true", scope: SCOPES.join(" "), state: createState({ ...identity, returnOrigin }),
   });
   return `https://accounts.google.com/o/oauth2/v2/auth?${params}`;
 }

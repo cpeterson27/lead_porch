@@ -10,7 +10,6 @@ const campaignTemplateVersionSchema = new mongoose.Schema(
     designJson: { type: mongoose.Schema.Types.Mixed, default: null },
     callToAction: { type: String, default: "", trim: true, maxlength: 120 },
     callToActionUrl: { type: String, default: "", trim: true, maxlength: 1000 },
-    hideCallToAction: { type: Boolean, default: false },
     additionalButtons: [{
       label: { type: String, required: true, trim: true, maxlength: 120 },
       url: { type: String, required: true, trim: true, maxlength: 1000 },

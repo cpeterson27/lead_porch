@@ -17,9 +17,9 @@ function redirectUri() { return required("ZOOM_REDIRECT_URI"); }
 function stateSecret() { return required("INTEGRATION_CREDENTIAL_ENCRYPTION_KEY"); }
 function basicAuth() { return Buffer.from(`${required("ZOOM_CLIENT_ID")}:${required("ZOOM_CLIENT_SECRET")}`).toString("base64"); }
 
-function createState({ workspaceId, userId, coachProfileId }) {
+function createState({ workspaceId, userId, coachProfileId, returnOrigin = "" }) {
   if (!workspaceId || !userId || !coachProfileId) throw zoomError("A signed-in coach profile is required", "ZOOM_IDENTITY_REQUIRED");
-  const payload = Buffer.from(JSON.stringify({ workspaceId: String(workspaceId), userId: String(userId), coachProfileId: String(coachProfileId), createdAt: Date.now(), nonce: crypto.randomBytes(16).toString("hex") })).toString("base64url");
+  const payload = Buffer.from(JSON.stringify({ workspaceId: String(workspaceId), userId: String(userId), coachProfileId: String(coachProfileId), returnOrigin: String(returnOrigin || ""), createdAt: Date.now(), nonce: crypto.randomBytes(16).toString("hex") })).toString("base64url");
   const signature = crypto.createHmac("sha256", stateSecret()).update(payload).digest("base64url"); return `${payload}.${signature}`;
 }
 
@@ -27,8 +27,8 @@ function verifyState(value) {
   try { const [payload, signature] = String(value || "").split("."); if (!payload || !signature) return null; const expected = crypto.createHmac("sha256", stateSecret()).update(payload).digest("base64url"); if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null; const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")); return Date.now() - Number(parsed.createdAt) < 10 * 60 * 1000 && parsed.workspaceId && parsed.userId && parsed.coachProfileId ? parsed : null; } catch { return null; }
 }
 
-function authorizationUrl(identity) {
-  return `https://zoom.us/oauth/authorize?${new URLSearchParams({ response_type: "code", client_id: required("ZOOM_CLIENT_ID"), redirect_uri: redirectUri(), state: createState(identity) })}`;
+function authorizationUrl(identity, { returnOrigin = "" } = {}) {
+  return `https://zoom.us/oauth/authorize?${new URLSearchParams({ response_type: "code", client_id: required("ZOOM_CLIENT_ID"), redirect_uri: redirectUri(), state: createState({ ...identity, returnOrigin }) })}`;
 }
 
 async function jsonRequest(url, options, fallback) { const response = await fetch(url, options); const data = response.status === 204 ? {} : await response.json(); if (!response.ok) throw zoomError(data.message || data.reason || fallback, "ZOOM_REQUEST_FAILED"); return data; }

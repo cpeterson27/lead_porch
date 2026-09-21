@@ -49,6 +49,27 @@ withFrontendUrl("", () => {
 
 const source = require("node:fs").readFileSync(require("node:path").join(__dirname, "routes/coaching.js"), "utf8");
 assert(!/const frontend = String\(process\.env\.FRONTEND_URL/.test(source), "the Google Calendar and Zoom OAuth callbacks must not go back to reading the raw, un-split FRONTEND_URL value");
-assert((source.match(/const frontend = frontendOrigin\(\);/g) || []).length === 2, "both OAuth callbacks (Google Calendar and Zoom) must use the shared, safe helper");
+assert((source.match(/let frontend = frontendOrigin\(\);/g) || []).length === 2, "both OAuth callbacks (Google Calendar and Zoom) must start from the shared, safe helper as their fallback");
+
+// Real, reported incident: a coach who started "Connect Google Calendar"
+// from one configured origin (e.g. a custom domain) got redirected back to
+// a *different* configured origin (e.g. the onrender.com URL) after
+// granting access — session data is origin-scoped, so this logged them out
+// even though the connection itself saved correctly. Both callbacks must
+// prefer the origin captured in the signed OAuth state over the generic
+// fallback once that state has been verified.
+assert((source.match(/if \(state\.returnOrigin\) frontend = state\.returnOrigin;/g) || []).length === 2, "both OAuth callbacks must return the coach to the exact origin they started from, once state is verified");
+assert(source.includes("function requestOrigin(req)"), "the OAuth start routes must capture the request's real origin to thread through state");
+for (const startRoute of ['"/calendar/oauth/start"', '"/zoom/oauth/start"']) {
+  const routeIndex = source.indexOf(startRoute);
+  assert(routeIndex !== -1, `${startRoute} route must exist`);
+  assert(source.slice(routeIndex, routeIndex + 550).includes("requestOrigin(req)"), `${startRoute} must pass the captured request origin into authorizationUrl`);
+}
+
+const googleCalendarSource = require("node:fs").readFileSync(require("node:path").join(__dirname, "services/googleCalendarService.js"), "utf8");
+const zoomSource = require("node:fs").readFileSync(require("node:path").join(__dirname, "services/zoomService.js"), "utf8");
+for (const [label, src] of [["googleCalendarService", googleCalendarSource], ["zoomService", zoomSource]]) {
+  assert(src.includes("returnOrigin"), `${label} must carry returnOrigin through its signed OAuth state`);
+}
 
 console.log("Coaching OAuth callback redirects always resolve to a single valid frontend origin, never a jammed-together FRONTEND_URL string.");

@@ -127,16 +127,18 @@ function generateOutreachDraft(contact, campaign) {
     "manual";
 
 
-  const websiteUrl = String(campaign.brand?.websiteUrl || "").trim();
-  const normalizedWebsiteUrl = websiteUrl && !/^https?:\/\//i.test(websiteUrl) ? `https://${websiteUrl}` : websiteUrl;
-  const programHomepageUrl = campaign.campaignKind === "program" && normalizedWebsiteUrl
-    ? `${normalizedWebsiteUrl.replace(/\/$/, "")}/`
-    : "";
-  const eventLink = campaign.content?.hideCallToAction ? "" : (
+  // Deliberately no homepage-URL fallback here — a program campaign with no
+  // explicit registration link or callToActionUrl gets no auto-injected
+  // button at all. That silent fallback was the real cause of a real,
+  // reported incident: an owner found a "Request program details" button
+  // in a sent email with no idea where it came from (it isn't a block in
+  // the Unlayer canvas, so there was nothing to click and delete) and no
+  // way to turn it off. Editors already have their own way to add a CTA
+  // button directly in the email design if they want one.
+  const eventLink =
     campaign.registrationLinks?.eventbrite?.url ||
     campaign.content?.callToActionUrl ||
-    programHomepageUrl
-  );
+    "";
 
   const meetupLink =
     campaign.registrationLinks?.meetup?.url || "";
