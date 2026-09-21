@@ -35,6 +35,7 @@
 }
 .public-header,
 .public-home-wrap,
+.public-inner,
 .public-footer {
   position: relative;
   z-index: 1;
@@ -2565,6 +2566,16 @@ button.public-text-link {
 }
 .public-site.has-sticky-background .public-training-section {
   background: color-mix(in srgb, var(--public-accent) 90%, transparent);
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+/* Every secondary page (FAQ, About, Resources, Programs, Contact, etc.)
+   renders inside .public-inner rather than .public-home-wrap, so it needs
+   this same translucent-but-readable surface treatment — without it, the
+   z-index fix above makes the text visible again but leaves it sitting
+   directly on the photo with no readable background behind it. */
+.public-site.has-sticky-background .public-inner {
+  background: color-mix(in srgb, var(--public-bg) 82%, transparent);
   backdrop-filter: blur(5px);
   -webkit-backdrop-filter: blur(5px);
 }
