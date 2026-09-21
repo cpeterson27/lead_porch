@@ -647,6 +647,18 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
           </div>
         )}
 
+        {RUN_TERMINAL_STATUSES.has(run.status) && !schedule ? (
+          <div className="leadgen-schedule-form">
+            <span className="leadgen-field-label">Repeat this exact search automatically</span>
+            <label><span>Repeats</span><select value={scheduleDraft(run).cadence} onChange={(event) => updateScheduleDraft(run._id, { cadence: event.target.value })}><option value="daily">Every day</option><option value="weekly">Every week</option></select></label>
+            {scheduleDraft(run).cadence === "weekly" ? <label><span>Day</span><select value={scheduleDraft(run).dayOfWeek} onChange={(event) => updateScheduleDraft(run._id, { dayOfWeek: event.target.value })}>{WEEKDAYS.map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label> : null}
+            <label><span>Time</span><input type="time" value={scheduleDraft(run).timeOfDay} onChange={(event) => updateScheduleDraft(run._id, { timeOfDay: event.target.value })} /></label>
+            <label><span>Timezone</span><input type="text" value={scheduleDraft(run).timezone} onChange={(event) => updateScheduleDraft(run._id, { timezone: event.target.value })} /></label>
+            <Button size="sm" loading={scheduleBusy[run._id] === "saving"} onClick={() => saveEnabledSchedule(run)}>Save and turn on schedule</Button>
+            <p className="leadgen-run-disclosure">Reuses this exact run's settings — same queries, same Apollo/PDL/web providers, same credit caps — and repeats it on this cadence going forward.</p>
+          </div>
+        ) : null}
+
         {schedule ? (
           <div className="leadgen-monitor-suggestion">
             <p>Scheduled search "{schedule.name}": <strong>{schedule.enabled ? "on" : "paused"}</strong> — {schedule.cadence === "daily" ? "every day" : `every ${WEEKDAYS.find(([value]) => value === schedule.dayOfWeek)?.[1] || schedule.dayOfWeek}`} at {schedule.timeOfDay} ({schedule.timezone}). {schedule.nextRunAt ? `Next run: ${new Date(schedule.nextRunAt).toLocaleString()}.` : ""} {schedule.lastRunMessage ? `Last run: ${schedule.lastRunMessage}` : ""}</p>
