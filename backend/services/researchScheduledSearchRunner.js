@@ -1,6 +1,7 @@
 const Audience = require("../models/Audience");
 const MarketResearchJob = require("../models/MarketResearchJob");
 const { runMarketResearchJob } = require("./externalMarketResearchService");
+const { autoEnrollPeopleForCampaign, MAX_ORGANIZATIONS_PER_RUN } = require("./audienceAutoEnrollmentService");
 const { runWithWorkspace } = require("../tenancy/workspaceContext");
 
 function localParts(date, timezone) {
@@ -60,6 +61,28 @@ async function runDueScheduledSearches() {
           });
           await runMarketResearchJob(job._id, { maxResults: 300 });
           results.push({ audienceId: audience._id, jobId: job._id });
+
+          if (audience.scheduledSearch.autoEnrollCampaignId) {
+            const refreshed = await Audience.findById(audience._id).select("organizationIds scheduledSearch.autoEnrolledOrganizationIds");
+            const alreadyProcessed = new Set((refreshed?.scheduledSearch?.autoEnrolledOrganizationIds || []).map(String));
+            const unprocessed = (refreshed?.organizationIds || []).filter((id) => !alreadyProcessed.has(String(id)));
+            if (unprocessed.length) {
+              const batch = unprocessed.slice(0, MAX_ORGANIZATIONS_PER_RUN);
+              try {
+                const enrollment = await autoEnrollPeopleForCampaign({
+                  workspaceId: audience.workspaceId,
+                  campaignId: audience.scheduledSearch.autoEnrollCampaignId,
+                  organizationIds: batch,
+                });
+                results.push({ audienceId: audience._id, autoEnrollment: enrollment });
+              } finally {
+                // Mark this batch processed regardless of outcome — a
+                // transient Apollo failure on one organization should not
+                // make the poller retry (and re-bill) it every single tick.
+                await Audience.updateOne({ _id: audience._id }, { $addToSet: { "scheduledSearch.autoEnrolledOrganizationIds": { $each: batch } } });
+              }
+            }
+          }
         });
       } catch (error) {
         console.error("Scheduled search failed:", { audienceId: String(audience._id), message: error.message });

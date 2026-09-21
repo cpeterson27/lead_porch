@@ -178,6 +178,8 @@
 .research-schedule-days { border: 1px solid var(--color-border, #dce2de); border-radius: 14px; display: flex; flex-wrap: wrap; gap: 12px; padding: 12px 14px; }
 .research-schedule-days legend { font-weight: 700; padding: 0 6px; }
 .research-schedule-days label { align-items: center; display: flex; flex-direction: row; font-weight: 500; gap: 6px; }
+.research-schedule-form select { border-radius: var(--radius-pill, 999px); }
+.research-schedule-note { background: #f6f3ff; border: 1px solid #ddd5ff; border-radius: 12px; color: #4a4763; font-size: 13px; line-height: 1.5; margin: 0; padding: 12px 14px; }
 .people-preview-intro {
   color: var(--text-muted);
   line-height: 1.5;

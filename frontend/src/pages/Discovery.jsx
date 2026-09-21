@@ -337,6 +337,7 @@ export default function Discovery() {
   const [scheduleDays, setScheduleDays] = useState([0, 1, 2, 3, 4, 5, 6]);
   const [scheduleBusy, setScheduleBusy] = useState(false);
   const [scheduleError, setScheduleError] = useState("");
+  const [scheduleAutoEnrollCampaignId, setScheduleAutoEnrollCampaignId] = useState("");
   const [peoplePreviews, setPeoplePreviews] = useState([]);
   const [peoplePreviewsLoading, setPeoplePreviewsLoading] = useState(false);
   const [openPeoplePreviewId, setOpenPeoplePreviewId] = useState("");
@@ -505,6 +506,7 @@ export default function Discovery() {
     const existing = entry.scheduledSearch;
     setScheduleTime(existing?.enabled ? existing.time : "08:00");
     setScheduleDays(existing?.enabled && existing.days?.length ? existing.days : [0, 1, 2, 3, 4, 5, 6]);
+    setScheduleAutoEnrollCampaignId(existing?.enabled && existing.autoEnrollCampaignId ? String(existing.autoEnrollCampaignId) : "");
     setScheduleTarget(entry);
   };
   const submitAudienceSchedule = async () => {
@@ -513,10 +515,10 @@ export default function Discovery() {
     setScheduleError("");
     try {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York";
-      const response = await updateAudienceSchedule(scheduleTarget._id, { time: scheduleTime, days: scheduleDays, timezone });
+      const response = await updateAudienceSchedule(scheduleTarget._id, { time: scheduleTime, days: scheduleDays, timezone, autoEnrollCampaignId: scheduleAutoEnrollCampaignId || null });
       setResearchHistory((current) => current.map((row) => (row._id === scheduleTarget._id ? { ...row, scheduledSearch: response.audience.scheduledSearch } : row)));
       setScheduleTarget(null);
-      setNotice(`This search will now run automatically at ${scheduleTime} (${timezone}).`);
+      setNotice(`This search will now run automatically at ${scheduleTime} (${timezone}).${scheduleAutoEnrollCampaignId ? " Matching people with a verified email will be added to that campaign automatically." : ""}`);
     } catch (err) {
       setScheduleError(err.response?.data?.error || "Unable to schedule this search.");
     } finally {
@@ -1573,7 +1575,9 @@ export default function Discovery() {
           <div className="research-history-actions">
             <small>{new Date(entry.createdAt).toLocaleString()}</small>
             <Button size="sm" variant="outline" onClick={() => openAudienceSchedule(entry)}>
-              {entry.scheduledSearch?.enabled ? `Runs daily · ${entry.scheduledSearch.time}` : "Schedule daily search"}
+              {entry.scheduledSearch?.enabled
+                ? `Runs daily · ${entry.scheduledSearch.time}${entry.scheduledSearch.autoEnrollCampaignId ? " · auto-adding people" : ""}`
+                : "Schedule daily search"}
             </Button>
             <Button size="sm" variant="outline" loading={openingHistoryId === String(entry._id)} onClick={() => openSavedResearch(entry)}>Open results</Button>
           </div>
@@ -2104,6 +2108,26 @@ export default function Discovery() {
             </label>
           ))}
         </fieldset>
+        <label>
+          <span>Also auto-add matching people to a campaign (optional)</span>
+          <select
+            className="select-input"
+            value={scheduleAutoEnrollCampaignId}
+            onChange={(event) => setScheduleAutoEnrollCampaignId(event.target.value)}
+          >
+            <option value="">Don't auto-add people — just keep the company list fresh</option>
+            {campaigns.map((campaign) => (
+              <option key={campaign._id} value={campaign._id}>{campaign.name}</option>
+            ))}
+          </select>
+        </label>
+        {scheduleAutoEnrollCampaignId ? (
+          <p className="research-schedule-note">
+            Each run, Lead Porch looks for decision-makers at up to 8 newly matched companies and adds only the
+            ones with an Apollo-verified email straight into this campaign, ready for you to approve and send —
+            no one with an unverified email is ever added automatically.
+          </p>
+        ) : null}
         {scheduleError ? <p className="form-error">{scheduleError}</p> : null}
       </div>
     </Modal>

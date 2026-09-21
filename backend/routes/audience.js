@@ -697,6 +697,12 @@ router.patch("/research/history/:audienceId/schedule", async (req, res) => {
     const time = String(req.body?.time || "");
     if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) return res.status(400).json({ success: false, error: "Choose a valid time." });
     const days = Array.isArray(req.body?.days) ? req.body.days.filter((day) => Number.isInteger(day) && day >= 0 && day <= 6) : [];
+    let autoEnrollCampaignId = null;
+    if (req.body?.autoEnrollCampaignId) {
+      const targetCampaign = await Campaign.findOne({ _id: req.body.autoEnrollCampaignId, workspaceId: req.auth.workspaceId }).select("_id");
+      if (!targetCampaign) return res.status(400).json({ success: false, error: "Choose a valid campaign to auto-add people to." });
+      autoEnrollCampaignId = targetCampaign._id;
+    }
     audience.scheduledSearch = {
       enabled: true,
       time,
@@ -704,6 +710,8 @@ router.patch("/research/history/:audienceId/schedule", async (req, res) => {
       days: days.length ? [...new Set(days)] : [0, 1, 2, 3, 4, 5, 6],
       lastRunAt: audience.scheduledSearch?.lastRunAt || null,
       lastRunDateKey: audience.scheduledSearch?.lastRunDateKey || "",
+      autoEnrollCampaignId,
+      autoEnrolledOrganizationIds: audience.scheduledSearch?.autoEnrolledOrganizationIds || [],
     };
     await audience.save();
     return res.json({ success: true, audience });

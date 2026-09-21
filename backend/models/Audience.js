@@ -140,6 +140,17 @@ const audienceSchema = new mongoose.Schema(
       days: { type: [Number], default: [0, 1, 2, 3, 4, 5, 6] },
       lastRunAt: { type: Date, default: null },
       lastRunDateKey: { type: String, default: "" },
+      // Optional: also find decision-makers at newly matched organizations
+      // and add them straight into this campaign's outreach queue, but
+      // only ones with an Apollo-*verified* email — see
+      // services/audienceAutoEnrollmentService.js. null/absent means this
+      // schedule only refreshes the company list, matching its original,
+      // more conservative behavior.
+      autoEnrollCampaignId: { type: mongoose.Schema.Types.ObjectId, ref: "Campaign", default: null },
+      // Organizations already searched for people at least once, so the
+      // same company is never re-searched (and re-billed) on every
+      // subsequent daily run just because it's still in organizationIds.
+      autoEnrolledOrganizationIds: { type: [mongoose.Schema.Types.ObjectId], default: [] },
     },
   },
   {
