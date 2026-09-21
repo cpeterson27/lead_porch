@@ -684,7 +684,7 @@ router.patch("/:id/brand", async (req, res) => {
       req.params.id,
       { $set: set },
       { new: true, runValidators: true },
-    );
+    ).populate("eventId");
     if (!campaign) return res.status(404).json({ error: "Campaign not found." });
     res.json(campaign);
   } catch (error) {
@@ -703,7 +703,7 @@ router.patch("/:id/audience", async (req, res) => {
       req.params.id,
       { $set: { audience } },
       { new: true, runValidators: true },
-    );
+    ).populate("eventId");
     if (!campaign) return res.status(404).json({ error: "Campaign not found." });
     res.json(campaign);
   } catch (error) {
@@ -731,6 +731,7 @@ router.patch("/:id/schedule", requireRole("owner", "admin"), async (req, res) =>
         await event.save();
       }
     }
+    await campaign.populate("eventId");
     return res.json(campaign);
   } catch {
     return res.status(400).json({ error: "Unable to save the event date." });
@@ -746,6 +747,7 @@ router.patch("/:id/scheduled-send", requireRole("owner", "admin"), async (req, r
       campaign.scheduledSendCompletedAt = null;
       campaign.scheduledSendResult = null;
       await campaign.save();
+      await campaign.populate("eventId");
       return res.json({ campaign });
     }
     const scheduledSendAt = new Date(req.body?.scheduledSendAt);
@@ -763,6 +765,7 @@ router.patch("/:id/scheduled-send", requireRole("owner", "admin"), async (req, r
     campaign.scheduledSendCompletedAt = null;
     campaign.scheduledSendResult = null;
     await campaign.save();
+    await campaign.populate("eventId");
     return res.json({ campaign, approvedCount });
   } catch (error) {
     return res.status(400).json({ error: error.message || "Unable to schedule this campaign's send." });
