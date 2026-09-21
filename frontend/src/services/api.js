@@ -915,6 +915,11 @@ export const generateCampaignEmailIdeas = (campaignId, payload) =>
     .post(`/campaigns/${campaignId}/email-template/ideas`, payload)
     .then((res) => res.data);
 
+export const generateCampaignAudienceTemplates = (campaignId, payload) =>
+  api
+    .post(`/campaigns/${campaignId}/email-template/audience-ideas`, payload, { timeout: 180000 })
+    .then((res) => res.data);
+
 export const fetchMarketingCampaign = async (campaignId) => {
   const res = await api.get(`/marketing-campaigns/${campaignId}`);
 

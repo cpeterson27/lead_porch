@@ -38,6 +38,7 @@ async function regenerateCampaignOutreach(campaign, { onlyMissing = false, actor
       designJson: template.designJson || null,
       callToAction: template.callToAction,
       callToActionUrl: template.callToActionUrl,
+      hideCallToAction: template.hideCallToAction === true,
       topic: template.topic,
       approvedByUserId: actorUserId,
       approvedAt: new Date(),
@@ -102,6 +103,7 @@ async function regenerateCampaignOutreach(campaign, { onlyMissing = false, actor
       body: recipientTemplate.body,
       callToAction: recipientTemplate.callToAction,
       callToActionUrl: recipientTemplate.callToActionUrl,
+      hideCallToAction: recipientTemplate.hideCallToAction === true,
     };
 
     const draft = generateOutreachDraft(cleanedContact, campaign);

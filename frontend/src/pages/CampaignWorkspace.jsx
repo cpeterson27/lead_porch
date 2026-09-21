@@ -10,6 +10,7 @@ import {
   previewCampaignAudience,
   fetchWorkspaceConfig,
   generateCampaignEmailIdeas,
+  generateCampaignAudienceTemplates,
   previewCampaignEmailTemplate,
   saveCampaignEmailTemplate,
   updateCampaignAudienceTags,
@@ -76,6 +77,7 @@ export default function CampaignWorkspace() {
   const [templateHistoryOpen, setTemplateHistoryOpen] = useState(false);
   const [templateSaving, setTemplateSaving] = useState(false);
   const [ideaGenerating, setIdeaGenerating] = useState(false);
+  const [audienceIdeasGenerating, setAudienceIdeasGenerating] = useState(false);
   const [ideaPrompt, setIdeaPrompt] = useState("");
   const [ideaImages, setIdeaImages] = useState([]);
   const [workspaceDefaultLogoUrl, setWorkspaceDefaultLogoUrl] = useState("");
@@ -415,6 +417,67 @@ export default function CampaignWorkspace() {
       setIdeaGenerating(false);
     }
   };
+  const audienceDefinitions = () => {
+    const definitions = [
+      ...RESEARCH_EMAIL_AUDIENCES,
+      ...(campaign.audience || []).map((label, index) => ({
+        key: `audience-${index}`,
+        label,
+      })),
+    ];
+    const seenLabels = new Set();
+    return definitions.filter(({ label }) => {
+      const normalized = String(label || "").trim().toLowerCase();
+      if (!normalized || seenLabels.has(normalized)) return false;
+      seenLabels.add(normalized);
+      return true;
+    });
+  };
+  const generateAllAudienceTemplates = async () => {
+    if (templateAudience !== "general") {
+      setError("Switch to the main email before creating all audience drafts.");
+      return;
+    }
+    const audiences = audienceDefinitions();
+    if (!audiences.length) {
+      setError("Add at least one target audience before creating audience drafts.");
+      return;
+    }
+    const existingCount = Object.keys(campaign.emailAudienceTemplates || {}).filter((key) =>
+      audiences.some((audience) => audience.key === key),
+    ).length;
+    if (existingCount && !window.confirm(`Create fresh AI drafts for ${audiences.length} audiences? This will replace ${existingCount} existing audience draft${existingCount === 1 ? "" : "s"}; approved history and sent emails stay unchanged.`)) return;
+    try {
+      setAudienceIdeasGenerating(true);
+      setError("");
+      setTemplateNotice("");
+      const current = await exportCurrentTemplate();
+      if (!String(current.subject || "").trim() || !String(current.body || "").trim()) {
+        setError("Finish the main email subject and message before creating audience versions.");
+        return;
+      }
+      if (templateDirty) {
+        const savedMain = await saveCampaignEmailTemplate(id, {
+          ...current,
+          audienceKey: "general",
+          audienceLabel: "All campaign contacts",
+        });
+        setEmailTemplate(savedMain);
+        setTemplateDirty(false);
+      }
+      const result = await generateCampaignAudienceTemplates(id, {
+        audiences,
+        direction: ideaPrompt,
+      });
+      const refreshedCampaign = normalizeBrandAssets(await fetchCampaign(id));
+      setCampaign(refreshedCampaign);
+      setTemplateNotice(`${result.generatedCount} personalized audience draft${result.generatedCount === 1 ? "" : "s"} created. Choose any audience above to review and edit its version before approving it.`);
+    } catch (err) {
+      setError(err.response?.data?.error || "OpenAI could not create the audience drafts right now.");
+    } finally {
+      setAudienceIdeasGenerating(false);
+    }
+  };
   const addIdeaImages = async (files) => {
     const available = Math.max(0, 3 - ideaImages.length);
     const selected = Array.from(files || []).slice(0, available);
@@ -444,6 +507,7 @@ export default function CampaignWorkspace() {
       designJson: version.designJson || null,
       callToAction: version.callToAction || "",
       callToActionUrl: version.callToActionUrl || "",
+      hideCallToAction: version.hideCallToAction === true,
       additionalButtons: version.additionalButtons || [],
       topic: version.topic || emailTemplate?.topic || "event_invitations",
       status: "draft",
@@ -945,6 +1009,24 @@ export default function CampaignWorkspace() {
                     />
                   </label>
                 </div>
+                {templateAudience === "general" ? (
+                  <section className="campaign-audience-ai-action">
+                    <div>
+                      <strong>Build every audience version from this design</strong>
+                      <small>
+                        AI keeps this template&rsquo;s layout, images, links, and buttons, then adapts the subject and message for each target audience. Every version remains a draft until you review and approve it.
+                      </small>
+                    </div>
+                    <Button
+                      type="button"
+                      loading={audienceIdeasGenerating}
+                      disabled={templateSaving || ideaGenerating}
+                      onClick={generateAllAudienceTemplates}
+                    >
+                      Create all audience drafts with AI
+                    </Button>
+                  </section>
+                ) : null}
                 <div className="campaign-personalization" aria-label="Email personalization fields">
                   <div>
                     <strong>Personalize your email</strong>
@@ -1082,6 +1164,44 @@ export default function CampaignWorkspace() {
                     </div>
                   )}
                 </div>
+              </div>
+              <div className="campaign-cta-editor">
+                <div>
+                  <strong>Call-to-action button</strong>
+                  <small>Automatically appended below the email body on every send — this is not a block in the canvas above, so it can't be deleted by clicking on it there.</small>
+                </div>
+                <label className="campaign-cta-editor__toggle">
+                  <input
+                    type="checkbox"
+                    checked={!emailTemplate?.hideCallToAction}
+                    onChange={(e) => updateTemplateField("hideCallToAction", !e.target.checked)}
+                  />
+                  <span>
+                    <strong>Show this button</strong>
+                    <small>Turn off to send this email with no call-to-action button at all.</small>
+                  </span>
+                </label>
+                {!emailTemplate?.hideCallToAction ? (
+                  <div className="campaign-cta-editor__fields">
+                    <label>
+                      <span>Button text</span>
+                      <input
+                        value={emailTemplate?.callToAction || ""}
+                        placeholder="Learn more"
+                        onChange={(e) => updateTemplateField("callToAction", e.target.value)}
+                      />
+                    </label>
+                    <label>
+                      <span>Button link</span>
+                      <input
+                        type="url"
+                        value={emailTemplate?.callToActionUrl || ""}
+                        placeholder="Defaults to your website homepage if left blank"
+                        onChange={(e) => updateTemplateField("callToActionUrl", e.target.value)}
+                      />
+                    </label>
+                  </div>
+                ) : null}
               </div>
               <div className="campaign-idea-generator">
                 <label>

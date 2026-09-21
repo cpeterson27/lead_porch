@@ -132,10 +132,11 @@ function generateOutreachDraft(contact, campaign) {
   const programHomepageUrl = campaign.campaignKind === "program" && normalizedWebsiteUrl
     ? `${normalizedWebsiteUrl.replace(/\/$/, "")}/`
     : "";
-  const eventLink =
+  const eventLink = campaign.content?.hideCallToAction ? "" : (
     campaign.registrationLinks?.eventbrite?.url ||
     campaign.content?.callToActionUrl ||
-    programHomepageUrl;
+    programHomepageUrl
+  );
 
   const meetupLink =
     campaign.registrationLinks?.meetup?.url || "";

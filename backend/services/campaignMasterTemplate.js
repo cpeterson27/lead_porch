@@ -45,6 +45,7 @@ function effectiveTemplate(campaign) {
     designJson: String(saved.body || "").trim() ? saved.designJson || null : null,
     callToAction: saved.callToAction || content.callToAction || "Learn more",
     callToActionUrl: saved.callToActionUrl || content.callToActionUrl || "",
+    hideCallToAction: saved.hideCallToAction === true,
     additionalButtons: Array.isArray(saved.additionalButtons) ? saved.additionalButtons : [],
     topic: saved.topic || (campaign.campaignKind === "program" ? "program_offers" : "event_invitations"),
     status: saved.status || "draft",
