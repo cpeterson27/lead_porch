@@ -131,6 +131,17 @@ const campaignSchema = new mongoose.Schema(
   scheduledSendCompletedAt: { type: Date, default: null },
   scheduledSendResult: { type: mongoose.Schema.Types.Mixed, default: null },
 
+  // Explicit, owner-controlled switch: does a Discovery schedule's
+  // auto-enrollment (services/discoveryAutoEnrollmentService.js) currently
+  // route newly-qualified people into THIS campaign? Defaults off — an
+  // owner turns it on deliberately, same spirit as scheduledSearch on
+  // Audience defaulting off. Also turned off automatically the moment this
+  // campaign's scheduled send actually completes (see
+  // services/campaignSendScheduler.js), so a campaign that "ended" stops
+  // absorbing new leads even if the owner forgets to turn it off by hand —
+  // but the owner can just as easily close it early themselves.
+  acceptingDiscoveryLeads: { type: Boolean, default: false },
+
   metrics: {
 
     sent: {

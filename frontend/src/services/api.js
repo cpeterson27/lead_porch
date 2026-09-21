@@ -894,6 +894,11 @@ export const updateCampaignScheduledSend = (campaignId, scheduledSendAt) =>
     .patch(`/campaigns/${campaignId}/scheduled-send`, { scheduledSendAt })
     .then((res) => res.data);
 
+export const updateCampaignDiscoveryLeads = (campaignId, accepting) =>
+  api
+    .patch(`/campaigns/${campaignId}/discovery-leads`, { accepting })
+    .then((res) => res.data);
+
 export const fetchCampaignEmailTemplate = (
   campaignId,
   audienceKey = "general",

@@ -7,15 +7,14 @@ function includesAll(contents, expected, label) { for (const value of expected) 
 // A recurring (schedule-driven, never one-off manual) Discovery run grades
 // every new person with the same AI qualification a human review already
 // uses, auto-saves only the ones graded "qualified" into whichever
-// campaign is currently open (has an upcoming, not-yet-sent scheduled
-// send), and falls back to a plain CRM import — clearly tagged with which
-// search found them — when no campaign is currently open. A campaign
-// stops receiving new people the instant it actually sends, with no
-// separate "turn off" step needed.
+// campaign the owner has explicitly marked as currently accepting
+// Discovery leads (never inferred from dates alone), and falls back to a
+// plain CRM import — clearly tagged with which search found them — when
+// no campaign is currently open.
 includesAll(source("services/discoveryAutoEnrollmentService.js"), [
   "autoGradeApproveAndEnroll", "findActiveCampaign",
   "qualifyAndRecommend", "saveResult", "regenerateCampaignOutreach",
-  "scheduledSendAt: { $gt: new Date() }", "scheduledSendCompletedAt: null",
+  "acceptingDiscoveryLeads: true",
   "qualificationLabel: \"qualified\"",
   "`discovery:${scheduleName}`",
 ], "services/discoveryAutoEnrollmentService.js");

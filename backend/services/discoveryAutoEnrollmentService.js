@@ -9,20 +9,22 @@ const { regenerateCampaignOutreach } = require("./outreachGenerationService");
 const GRADE_BATCH_SIZE = 20;
 
 /**
- * The one campaign currently "open" for new Discovery leads: whichever
- * campaign has an upcoming scheduled send that hasn't gone out yet,
- * picking the soonest if more than one qualifies. The moment a campaign
- * actually sends (services/campaignSendScheduler.js sets
- * scheduledSendCompletedAt), it stops matching this query on its own —
- * no separate "turn off" step needed. Returns null when nothing is
- * currently open, which is the caller's signal to import straight to
- * the CRM with no campaign attached instead.
+ * The one campaign currently "open" for new Discovery leads: an owner
+ * explicitly turns acceptingDiscoveryLeads on for a campaign (the
+ * "Accepting new Discovery leads" toggle in Campaign Workspace) — never
+ * inferred. If more than one campaign is left open at once, the soonest
+ * scheduled send wins so there's still a single, predictable answer.
+ * services/campaignSendScheduler.js turns the flag back off automatically
+ * the moment that campaign's send actually completes, so a campaign that
+ * "ended" stops absorbing new leads even if the owner forgets to close it
+ * by hand — but closing it early, by hand, works exactly the same way.
+ * Returns null when nothing is currently open, which is the caller's
+ * signal to import straight to the CRM with no campaign attached instead.
  */
 async function findActiveCampaign(workspaceId) {
   return Campaign.findOne({
     workspaceId,
-    scheduledSendAt: { $gt: new Date() },
-    scheduledSendCompletedAt: null,
+    acceptingDiscoveryLeads: true,
   }).sort({ scheduledSendAt: 1 }).select("_id name");
 }
 

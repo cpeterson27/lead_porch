@@ -18,9 +18,13 @@ async function runDueCampaignSends() {
       // Claimed atomically (findOneAndUpdate, not just the find above) so
       // two overlapping poller ticks — or a poller restart mid-run — can
       // never send the same scheduled campaign twice.
+      // acceptingDiscoveryLeads goes false in this same atomic claim — the
+      // instant a campaign's send fires is exactly when it should stop
+      // absorbing new Discovery leads (see discoveryAutoEnrollmentService's
+      // findActiveCampaign), whether or not the send itself succeeds.
       const claimed = await Campaign.findOneAndUpdate(
         { _id: campaign._id, scheduledSendCompletedAt: null },
-        { $set: { scheduledSendCompletedAt: new Date() } },
+        { $set: { scheduledSendCompletedAt: new Date(), acceptingDiscoveryLeads: false } },
         { new: false },
       );
       if (!claimed) continue;

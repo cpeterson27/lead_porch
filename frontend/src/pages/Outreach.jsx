@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Papa from "papaparse";
-import { FiChevronLeft, FiChevronRight, FiClock, FiEdit2, FiEye, FiMail, FiRefreshCw, FiSearch } from "react-icons/fi";
+import { FiChevronLeft, FiChevronRight, FiClock, FiEdit2, FiEye, FiMail, FiRefreshCw, FiSearch, FiUserPlus } from "react-icons/fi";
 import Button from "../components/Button.jsx";
 import DashboardCard from "../components/DashboardCard.jsx";
 import Modal from "../components/Modal.jsx";
@@ -17,6 +17,7 @@ import {
   sendOutreachTestEmail,
   sendEmails,
   syncGmailOutreachReplies,
+  updateCampaignDiscoveryLeads,
   updateCampaignScheduledSend,
   updateOutreach,
 } from "../services/api.js";
@@ -106,6 +107,7 @@ export default function Outreach() {
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleValue, setScheduleValue] = useState("");
   const [scheduleBusy, setScheduleBusy] = useState(false);
+  const [discoveryLeadsBusy, setDiscoveryLeadsBusy] = useState(false);
   const [scheduleError, setScheduleError] = useState("");
   const correctionFileRef = useRef(null);
   const activeCampaignIdRef = useRef("");
@@ -526,6 +528,25 @@ export default function Outreach() {
     }
   };
 
+  const toggleDiscoveryLeads = async () => {
+    if (!selected?._id) return;
+    const accepting = !selected?.acceptingDiscoveryLeads;
+    setDiscoveryLeadsBusy(true);
+    try {
+      const result = await updateCampaignDiscoveryLeads(selected._id, accepting);
+      applyCampaignUpdate(result.campaign);
+      setNotice(
+        accepting
+          ? "This campaign is now accepting new Discovery leads — Apollo finds will route here until you turn this off or the campaign sends."
+          : "This campaign will no longer receive new Discovery leads.",
+      );
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to update this campaign's Discovery-lead setting.");
+    } finally {
+      setDiscoveryLeadsBusy(false);
+    }
+  };
+
   const downloadBounceCorrectionCsv = () => {
     const rows = items
       .filter((item) => item.deliveryStatus === "bounced" && !item.replacement)
@@ -632,6 +653,15 @@ export default function Outreach() {
             Confirm permission
           </Button>
           <Button
+            variant={selected?.acceptingDiscoveryLeads ? "primary" : "outline"}
+            disabled={!selected}
+            loading={discoveryLeadsBusy}
+            onClick={toggleDiscoveryLeads}
+          >
+            <FiUserPlus />
+            {selected?.acceptingDiscoveryLeads ? "Accepting Discovery leads" : "Not accepting Discovery leads"}
+          </Button>
+          <Button
             variant="outline"
             disabled={!selected || saving}
             onClick={openSchedule}
@@ -645,6 +675,13 @@ export default function Outreach() {
           </Button>
         </div>
       </header>
+      {selected?.acceptingDiscoveryLeads ? (
+        <p className="outreach-notice">
+          New people a Discovery schedule finds and qualifies will be added straight to this campaign. Turn "Accepting
+          Discovery leads" off any time to stop — it also turns off automatically the moment this campaign's scheduled
+          send completes.
+        </p>
+      ) : null}
       {selected?.scheduledSendAt && !selected?.scheduledSendCompletedAt ? (
         <p className="outreach-notice">
           Every currently approved draft in this campaign will auto-send on{" "}

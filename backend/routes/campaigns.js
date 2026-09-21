@@ -776,6 +776,25 @@ router.patch("/:id/scheduled-send", requireRole("owner", "admin"), async (req, r
   }
 });
 
+// Explicit, owner-controlled switch for whether a Discovery schedule's
+// auto-enrollment currently routes newly-qualified people into this
+// campaign — see services/discoveryAutoEnrollmentService.js's
+// findActiveCampaign(). Turning it on here is the only way a campaign
+// ever starts receiving them; campaignSendScheduler.js turns it back off
+// automatically once this campaign's scheduled send actually completes.
+router.patch("/:id/discovery-leads", requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const campaign = await Campaign.findById(req.params.id);
+    if (!campaign) return res.status(404).json({ error: "Campaign not found." });
+    campaign.acceptingDiscoveryLeads = req.body?.accepting === true;
+    await campaign.save();
+    await campaign.populate("eventId");
+    return res.json({ campaign });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Unable to update this campaign's Discovery-lead setting." });
+  }
+});
+
 router.patch("/:id/registration-links", async (req, res) => {
   try {
     const campaign = await Campaign.findById(req.params.id);
