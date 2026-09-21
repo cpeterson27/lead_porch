@@ -4,13 +4,17 @@ import Modal from "./Modal.jsx";
 import { fetchContentBriefs, generateAiImage, uploadEventImage } from "../services/api.js";
 import "./CampaignModal.css";
 
+const BLANK_TEMPLATE = { key: "blank", name: "Start blank", description: "Skip the pre-written copy and write the email yourself." };
+
 const EVENT_TEMPLATES = [
+  BLANK_TEMPLATE,
   { key: "event_investor", name: "Investor invitation", description: "A direct invitation for qualified real-estate investors." },
   { key: "event_operator", name: "Operator invitation", description: "For property managers, operators, and multifamily leaders." },
   { key: "event_partner", name: "Partner invitation", description: "For affiliates and referral partners who can share the event." },
 ];
 
 const PROGRAM_TEMPLATES = [
+  BLANK_TEMPLATE,
   { key: "program_enrollment", name: "Program enrollment", description: "Invite qualified people to join a course, membership, coaching program, or community." },
   { key: "program_operator", name: "Direct offer", description: "Promote a service or offer directly to the people most likely to need it." },
   { key: "program_partner", name: "Partner referral", description: "Ask affiliates and strategic partners to refer the right people." },

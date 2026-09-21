@@ -1,4 +1,9 @@
 const templateCatalog = {
+  blank: {
+    subject: "",
+    body: "",
+    callToAction: "",
+  },
   event_investor: {
     subject: "{{firstName}}, an invitation for real-estate investors",
     body: "Hi {{firstName}},\n\nI wanted to personally invite you to {{campaignName}}. It is designed for investors looking for practical opportunities, clearer strategy, and valuable connections.\n\nWould you like the details?",
