@@ -737,6 +737,38 @@ router.patch("/:id/schedule", requireRole("owner", "admin"), async (req, res) =>
   }
 });
 
+router.patch("/:id/scheduled-send", requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const campaign = await Campaign.findById(req.params.id);
+    if (!campaign) return res.status(404).json({ error: "Campaign not found." });
+    if (req.body?.scheduledSendAt === null) {
+      campaign.scheduledSendAt = null;
+      campaign.scheduledSendCompletedAt = null;
+      campaign.scheduledSendResult = null;
+      await campaign.save();
+      return res.json({ campaign });
+    }
+    const scheduledSendAt = new Date(req.body?.scheduledSendAt);
+    if (Number.isNaN(scheduledSendAt.getTime()) || scheduledSendAt <= new Date()) {
+      return res.status(400).json({ error: "Choose a real date and time in the future." });
+    }
+    const approvedCount = await Outreach.countDocuments({ campaignId: campaign._id, status: "approved" });
+    if (!approvedCount) return res.status(400).json({ error: "Approve at least one draft before scheduling — nothing approved yet means nothing to send." });
+    campaign.scheduledSendAt = scheduledSendAt;
+    // Scheduling only ever covers the standard "marketing" delivery purpose
+    // — the stricter cold-outreach ("business_prospecting") category
+    // requires an explicit, in-the-moment attestation the manual send
+    // already collects, which an unattended background send can't provide.
+    campaign.scheduledSendDeliveryPurpose = "marketing";
+    campaign.scheduledSendCompletedAt = null;
+    campaign.scheduledSendResult = null;
+    await campaign.save();
+    return res.json({ campaign, approvedCount });
+  } catch (error) {
+    return res.status(400).json({ error: error.message || "Unable to schedule this campaign's send." });
+  }
+});
+
 router.patch("/:id/registration-links", async (req, res) => {
   try {
     const campaign = await Campaign.findById(req.params.id);

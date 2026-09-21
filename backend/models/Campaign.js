@@ -119,6 +119,17 @@ const campaignSchema = new mongoose.Schema(
     },
   },
 
+  // Auto-sends every currently-approved Outreach draft for this campaign at
+  // this time, with no one needing to be there to click Send — see
+  // services/campaignSendScheduler.js (a background poller, same pattern as
+  // communicationJobRunner.js) and services/scheduledCampaignSendService.js
+  // (the actual send, reusing the exact same per-item logic the manual
+  // "Send selected" button already uses). scheduledSendCompletedAt is set
+  // once processed so the poller never double-sends the same schedule.
+  scheduledSendAt: { type: Date, default: null },
+  scheduledSendDeliveryPurpose: { type: String, enum: ["marketing", "business_prospecting"], default: "marketing" },
+  scheduledSendCompletedAt: { type: Date, default: null },
+  scheduledSendResult: { type: mongoose.Schema.Types.Mixed, default: null },
 
   metrics: {
 

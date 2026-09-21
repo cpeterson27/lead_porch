@@ -63,6 +63,7 @@ const { startResearchMonitorRunner } = require("./services/researchMonitorServic
 const { startMonitorRetentionRunner } = require("./services/monitorRetentionService");
 const { startLinkedinSequenceRunner } = require("./services/linkedinSequenceService");
 const { startCommunicationJobRunner } = require("./services/communicationJobRunner");
+const { startCampaignSendScheduler } = require("./services/campaignSendScheduler");
 const { startAutomationRunner } = require("./services/automationRunner");
 const { startSocialPublishingRunner } = require("./services/socialPublishingRunner");
 const { startPublicWebDiscoveryRunner } = require("./services/publicWebDiscoveryEngineService");
@@ -301,6 +302,7 @@ connectDatabase(mongoUri)
       if (process.env.RESEARCH_WORKER_MODE !== "external") startResearchMonitorRunner();
       startMonitorRetentionRunner();
       startCommunicationJobRunner();
+      startCampaignSendScheduler();
       startAutomationRunner();
       startSocialPublishingRunner();
       // Safe to start unconditionally — see startPublicWebDiscoveryRunner()'s

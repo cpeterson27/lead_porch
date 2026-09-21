@@ -137,6 +137,7 @@ export default function TestimonialManager() {
     [confirmId, setConfirmId] = useState(""),
     [saving, setSaving] = useState(false),
     [error, setError] = useState("");
+  const editorRef = useRef(null);
   const load = () =>
     fetchManagedTestimonials()
       .then((items) => setRows(orderTestimonials(items)))
@@ -145,6 +146,12 @@ export default function TestimonialManager() {
     const timer = window.setTimeout(load, 0);
     return () => window.clearTimeout(timer);
   }, []);
+  // Clicking "Edit" on a row further down a long testimonial list opened
+  // this editor up near the top of the page, out of view — looking exactly
+  // like nothing happened, as reported. Bring it into view every time.
+  useEffect(() => {
+    if (draft) editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [draft]);
   const edit = (row = blank) => setDraft({ ...blank, ...row, rating: row.rating || "" });
   const save = async () => {
     try {
@@ -224,7 +231,7 @@ export default function TestimonialManager() {
       </header>
       {error ? <p className="form-error">{error}</p> : null}
       {draft ? (
-        <section className="settings-section testimonial-editor" aria-label={draft._id ? "Edit testimonial" : "Add testimonial"}>
+        <section ref={editorRef} className="settings-section testimonial-editor" aria-label={draft._id ? "Edit testimonial" : "Add testimonial"}>
           <div className="account-profile-form account-profile-form--compact">
             <label className="form-field">
               <span>Customer/client name</span>

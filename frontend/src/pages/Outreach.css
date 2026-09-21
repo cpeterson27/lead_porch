@@ -631,7 +631,9 @@
 .outreach-send-mode input { margin-top: 4px; }
 .outreach-send-mode span { display: grid; gap: 3px; }
 .outreach-send-mode small { color: var(--color-text-muted, #69736f); line-height: 1.4; }
-.outreach-issue-review, .outreach-cold-confirmation { display: grid; gap: 14px; }
+.outreach-issue-review, .outreach-cold-confirmation, .outreach-schedule-form { display: grid; gap: 14px; }
 .outreach-cold-confirmation label { align-items: flex-start; background: #f6f3ff; border: 1px solid #ddd5ff; border-radius: 12px; display: flex; gap: 10px; padding: 14px; }
 .outreach-cold-confirmation input { margin-top: 4px; }
+.outreach-schedule-form label { display: grid; gap: 6px; font-weight: 600; }
+.outreach-schedule-form input[type="datetime-local"] { border-radius: var(--radius-pill, 999px); }
 @media (max-width: 760px) { .outreach-send-mode { flex-direction: column; } }

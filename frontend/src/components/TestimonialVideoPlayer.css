@@ -34,3 +34,16 @@
   background: #000;
   object-fit: cover;
 }
+/* object-fit: cover crops to fill the 3:4 box above, which is the right
+   call for the small inline player (avoids letterboxing on a thumbnail).
+   But the browser's native fullscreen stretches this same element to fill
+   the whole (usually much wider) screen, and "cover" crops far more
+   aggressively at that size — cutting heads off entirely, as reported.
+   Fullscreen must show the complete, uncropped frame instead. */
+.testimonial-video-player:fullscreen,
+.testimonial-video-player:-webkit-full-screen {
+  aspect-ratio: auto;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}

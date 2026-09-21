@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import Papa from "papaparse";
-import { FiChevronLeft, FiChevronRight, FiEdit2, FiEye, FiMail, FiRefreshCw, FiSearch } from "react-icons/fi";
+import { FiChevronLeft, FiChevronRight, FiClock, FiEdit2, FiEye, FiMail, FiRefreshCw, FiSearch } from "react-icons/fi";
 import Button from "../components/Button.jsx";
 import DashboardCard from "../components/DashboardCard.jsx";
 import Modal from "../components/Modal.jsx";
@@ -17,6 +17,7 @@ import {
   sendOutreachTestEmail,
   sendEmails,
   syncGmailOutreachReplies,
+  updateCampaignScheduledSend,
   updateOutreach,
 } from "../services/api.js";
 import "./Outreach.css";
@@ -102,6 +103,10 @@ export default function Outreach() {
   const [allowUnverified, setAllowUnverified] = useState(false);
   const [selectedOutreachIds, setSelectedOutreachIds] = useState([]);
   const [bulkCorrecting, setBulkCorrecting] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleValue, setScheduleValue] = useState("");
+  const [scheduleBusy, setScheduleBusy] = useState(false);
+  const [scheduleError, setScheduleError] = useState("");
   const correctionFileRef = useRef(null);
   const activeCampaignIdRef = useRef("");
   const [loading, setLoading] = useState(true);
@@ -470,6 +475,57 @@ export default function Outreach() {
     await performSend("business_prospecting");
   };
 
+  const toLocalInputValue = (date) => {
+    const d = new Date(date);
+    const pad = (n) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+  const applyCampaignUpdate = (campaign) => {
+    setSelected(campaign);
+    setCampaigns((current) => current.map((c) => (c._id === campaign._id ? campaign : c)));
+  };
+  const openSchedule = () => {
+    setScheduleError("");
+    setScheduleValue(
+      selected?.scheduledSendAt
+        ? toLocalInputValue(selected.scheduledSendAt)
+        : toLocalInputValue(new Date(Date.now() + 60 * 60 * 1000)),
+    );
+    setScheduleOpen(true);
+  };
+  const submitSchedule = async () => {
+    if (!selected?._id || !scheduleValue) return;
+    setScheduleBusy(true);
+    setScheduleError("");
+    try {
+      const result = await updateCampaignScheduledSend(selected._id, new Date(scheduleValue).toISOString());
+      applyCampaignUpdate(result.campaign);
+      setScheduleOpen(false);
+      setNotice(
+        `Scheduled to auto-send ${result.approvedCount} approved draft${result.approvedCount === 1 ? "" : "s"} on ${new Date(result.campaign.scheduledSendAt).toLocaleString()}.`,
+      );
+    } catch (err) {
+      setScheduleError(err.response?.data?.error || "Unable to schedule this campaign's send.");
+    } finally {
+      setScheduleBusy(false);
+    }
+  };
+  const cancelSchedule = async () => {
+    if (!selected?._id) return;
+    setScheduleBusy(true);
+    setScheduleError("");
+    try {
+      const result = await updateCampaignScheduledSend(selected._id, null);
+      applyCampaignUpdate(result.campaign);
+      setScheduleOpen(false);
+      setNotice("Scheduled send canceled.");
+    } catch (err) {
+      setScheduleError(err.response?.data?.error || "Unable to cancel the scheduled send.");
+    } finally {
+      setScheduleBusy(false);
+    }
+  };
+
   const downloadBounceCorrectionCsv = () => {
     const rows = items
       .filter((item) => item.deliveryStatus === "bounced" && !item.replacement)
@@ -575,12 +631,26 @@ export default function Outreach() {
           >
             Confirm permission
           </Button>
+          <Button
+            variant="outline"
+            disabled={!selected || saving}
+            onClick={openSchedule}
+          >
+            <FiClock />
+            {selected?.scheduledSendAt ? "Scheduled send" : "Schedule send"}
+          </Button>
           <Button loading={saving} onClick={send}>
             <FiMail />
             Send selected · {selectedApprovedCount}
           </Button>
         </div>
       </header>
+      {selected?.scheduledSendAt && !selected?.scheduledSendCompletedAt ? (
+        <p className="outreach-notice">
+          Every currently approved draft in this campaign will auto-send on{" "}
+          {new Date(selected.scheduledSendAt).toLocaleString()}. Approving more drafts before then adds them to the send.
+        </p>
+      ) : null}
       <label className="outreach-allow-unverified">
         <input
           type="checkbox"
@@ -922,6 +992,43 @@ export default function Outreach() {
             <input type="checkbox" checked={coldAttested} onChange={(event) => setColdAttested(event.target.checked)} />
             <span>I confirm these are relevant business contacts, this message accurately identifies the sender and purpose, and I am authorized to conduct this outreach under the rules that apply to this campaign and its recipients.</span>
           </label>
+        </div>
+      </Modal>
+      <Modal
+        isOpen={scheduleOpen}
+        onClose={() => !scheduleBusy && setScheduleOpen(false)}
+        title="Schedule automatic send"
+        footer={
+          <>
+            {selected?.scheduledSendAt ? (
+              <Button variant="outline" disabled={scheduleBusy} onClick={cancelSchedule}>
+                Cancel scheduled send
+              </Button>
+            ) : null}
+            <Button variant="outline" disabled={scheduleBusy} onClick={() => setScheduleOpen(false)}>
+              Close
+            </Button>
+            <Button loading={scheduleBusy} disabled={!scheduleValue} onClick={submitSchedule}>
+              <FiClock /> Save schedule
+            </Button>
+          </>
+        }
+      >
+        <div className="outreach-schedule-form">
+          <p>
+            Every draft that is <strong>approved</strong> for this campaign at the scheduled time will be sent
+            automatically as opted-in marketing — no one needs to click Send. Approve drafts any time before then.
+          </p>
+          <label>
+            <span>Send at</span>
+            <input
+              className="select-input"
+              type="datetime-local"
+              value={scheduleValue}
+              onChange={(event) => setScheduleValue(event.target.value)}
+            />
+          </label>
+          {scheduleError ? <p className="form-error">{scheduleError}</p> : null}
         </div>
       </Modal>
       <Modal
