@@ -995,9 +995,12 @@ router.post("/", async (req, res) => {
 
 
 
+    // ticketPrice legitimately can be 0 (a free event) — a falsy check
+    // (!ticketPrice) rejected every free event as "missing" data, since
+    // !0 is true in JavaScript. Only actual absence should fail here.
     if (
       !name ||
-      (campaignKind !== "program" && (!startDate || !ticketPrice || !ticketGoal)) ||
+      (campaignKind !== "program" && (!startDate || ticketPrice === undefined || ticketPrice === null || ticketPrice === "" || !ticketGoal)) ||
       !audience ||
       audience.length === 0
     ) {
