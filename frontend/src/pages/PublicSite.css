@@ -2558,6 +2558,7 @@ button.public-text-link {
 .public-site.has-sticky-background .public-why-section,
 .public-site.has-sticky-background .public-curriculum-section,
 .public-site.has-sticky-background .public-testimonials,
+.public-site.has-sticky-background .public-homepage-faq,
 .public-site.has-sticky-background .public-final-section {
   background: color-mix(in srgb, var(--public-bg) 72%, transparent);
   backdrop-filter: blur(3px);
@@ -2603,6 +2604,7 @@ button.public-text-link {
   .public-site.has-sticky-background .public-hero-section,
   .public-site.has-sticky-background .public-curriculum-section,
   .public-site.has-sticky-background .public-testimonials,
+  .public-site.has-sticky-background .public-homepage-faq,
   .public-site.has-sticky-background .public-final-section {
     background: color-mix(in srgb, var(--public-bg) 82%, transparent);
   }

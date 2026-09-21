@@ -248,6 +248,9 @@ export function PublicLayout({ children }) {
               Testimonials
             </a>
           ) : null}
+          <Link onClick={close} to="/faq">
+            FAQ
+          </Link>
           <Link className="public-login" to="/login">
             Login
           </Link>
