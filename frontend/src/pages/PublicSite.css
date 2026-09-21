@@ -2341,6 +2341,17 @@ button.public-text-link {
   padding: 9px 11px;
   border-left: 2px solid var(--public-accent);
   background: color-mix(in srgb, var(--public-accent) 7%, transparent);
+  /* This short "result" line is the actual reason cards came out
+     different heights — a one-line result and a two-line result took up
+     different space, and nothing else here varies between cards.
+     Clamping to 2 lines and reserving that space either way makes every
+     card the same height regardless of how long the result text is. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+  line-height: 1.4;
+  min-height: calc(18px + 2 * 13px * 1.4);
 }
 .testimonial-grid small {
   color: var(--public-muted);
