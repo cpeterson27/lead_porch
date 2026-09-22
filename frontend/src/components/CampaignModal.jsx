@@ -18,6 +18,13 @@ const PROGRAM_AUDIENCES = [
   "Affiliate and referral partners",
 ];
 
+const STATUS_OPTIONS = [
+  { value: "active", label: "Active" },
+  { value: "paused", label: "Paused" },
+  { value: "completed", label: "Completed" },
+  { value: "draft", label: "Draft" },
+];
+
 const createEmptyForm = (campaignKind = "event") => ({
   name: "",
   campaignKind,
@@ -29,6 +36,7 @@ const createEmptyForm = (campaignKind = "event") => ({
   description: "",
   brand: { logoUrl: "", flyerUrl: "", websiteUrl: "", accentColor: "#173f36" },
   templateKey: BLANK_TEMPLATE_KEY,
+  status: "active",
 });
 
 export default function CampaignModal({
@@ -64,6 +72,7 @@ export default function CampaignModal({
           description: initialData.description || "",
           brand: { logoUrl: initialData.brand?.logoUrl || "", flyerUrl: initialData.brand?.flyerUrl || "", websiteUrl: initialData.brand?.websiteUrl || "", accentColor: initialData.brand?.accentColor || "#173f36" },
           templateKey: initialData.templateKey || BLANK_TEMPLATE_KEY,
+          status: initialData.status || "active",
         });
       } else {
         setForm(createEmptyForm(defaultCampaignKind));
@@ -160,10 +169,21 @@ export default function CampaignModal({
         </div>
 
         <div className="campaign-form-grid">
-          <div className="form-field span-2">
+          <div className={initialData ? "form-field" : "form-field span-2"}>
             <label htmlFor="campaign-name">Campaign name <span>*</span></label>
             <input id="campaign-name" type="text" placeholder={isProgram ? "e.g. Elite Operator Program — Fall Enrollment" : "e.g. Deal to Close Bootcamp — September"} value={form.name} onChange={handleChange("name")} />
           </div>
+
+          {initialData ? (
+            <div className="form-field">
+              <label htmlFor="campaign-status">Status</label>
+              <select id="campaign-status" value={form.status} onChange={handleChange("status")}>
+                {STATUS_OPTIONS.map((option) => (
+                  <option value={option.value} key={option.value}>{option.label}</option>
+                ))}
+              </select>
+            </div>
+          ) : null}
 
           {isProgram ? (
             <div className="form-field span-2">

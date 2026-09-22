@@ -822,6 +822,7 @@ router.patch("/:id/details", requireRole("owner", "admin", "member"), async (req
       audience,
       description,
       brand = {},
+      status,
     } = req.body || {};
 
     if (!name) return res.status(400).json({ error: "Name is required." });
@@ -833,6 +834,10 @@ router.patch("/:id/details", requireRole("owner", "admin", "member"), async (req
     if (!audience || audience.length === 0) {
       return res.status(400).json({ error: "Choose at least one target audience." });
     }
+    const STATUS_VALUES = ["draft", "active", "completed", "paused"];
+    if (status !== undefined && !STATUS_VALUES.includes(status)) {
+      return res.status(400).json({ error: "Choose a valid campaign status." });
+    }
 
     const normalizedGoal = ticketGoal === undefined || ticketGoal === null || ticketGoal === "" ? null : Number(ticketGoal);
     const normalizedStart = startDate ? new Date(startDate) : campaign.startDate;
@@ -840,6 +845,7 @@ router.patch("/:id/details", requireRole("owner", "admin", "member"), async (req
     campaign.name = name;
     campaign.description = description || "";
     campaign.audience = audience;
+    if (status !== undefined) campaign.status = status;
     campaign.brand = {
       logoUrl: String(brand.logoUrl ?? campaign.brand?.logoUrl ?? "").trim(),
       flyerUrl: String(brand.flyerUrl ?? campaign.brand?.flyerUrl ?? "").trim(),
