@@ -22,7 +22,16 @@ export default function Dashboard() {
   const { session } = useAuth();
   const { selectedId: initiativeId } = useInitiative();
   const [events,setEvents] = useState([]), [campaigns,setCampaigns] = useState([]), [analytics,setAnalytics] = useState(null), [morningLeads,setMorningLeads] = useState(null), [liveLeads,setLiveLeads] = useState(null), [loading,setLoading] = useState(true), [prompt,setPrompt] = useState(""), [promptFocused,setPromptFocused] = useState(false);
-  useEffect(()=>{let active=true;Promise.allSettled([fetchEvents(),fetchCampaigns(),fetchGrowthAnalytics(),fetchJarvisMorningLeadStatus(),fetchIntentSignals({bucket:"live_lead",limit:250})]).then(([eventResult,campaignResult,analyticsResult,leadResult,liveLeadResult])=>{if(!active)return;setEvents(eventResult.status==="fulfilled"&&Array.isArray(eventResult.value)?eventResult.value:[]);setCampaigns(campaignResult.status==="fulfilled"&&Array.isArray(campaignResult.value)?campaignResult.value:[]);setAnalytics(analyticsResult.status==="fulfilled"?analyticsResult.value:null);setMorningLeads(leadResult.status==="fulfilled"?leadResult.value:null);setLiveLeads(liveLeadResult.status==="fulfilled"?liveLeadResult.value:null);}).finally(()=>active&&setLoading(false));return()=>{active=false};},[]);
+  // Split into two waves rather than one Promise.allSettled gating the
+  // whole page on whichever of these five calls happens to be slowest
+  // (usually the analytics/lead endpoints, which do real aggregation
+  // work) — events and campaigns are simple, fast lookups the page
+  // actually needs before it can render anything meaningful, so only
+  // those two gate the loading screen. The other three populate a
+  // moment later; every place that reads them already uses ?. with a
+  // sensible fallback, so the page renders correctly with them still
+  // null and just fills in once each one arrives.
+  useEffect(()=>{let active=true;Promise.allSettled([fetchEvents(),fetchCampaigns()]).then(([eventResult,campaignResult])=>{if(!active)return;setEvents(eventResult.status==="fulfilled"&&Array.isArray(eventResult.value)?eventResult.value:[]);setCampaigns(campaignResult.status==="fulfilled"&&Array.isArray(campaignResult.value)?campaignResult.value:[]);}).finally(()=>active&&setLoading(false));Promise.allSettled([fetchGrowthAnalytics(),fetchJarvisMorningLeadStatus(),fetchIntentSignals({bucket:"live_lead",limit:250})]).then(([analyticsResult,leadResult,liveLeadResult])=>{if(!active)return;setAnalytics(analyticsResult.status==="fulfilled"?analyticsResult.value:null);setMorningLeads(leadResult.status==="fulfilled"?leadResult.value:null);setLiveLeads(liveLeadResult.status==="fulfilled"?liveLeadResult.value:null);});return()=>{active=false};},[]);
   const stage=(key)=>analytics?.funnel?.stages?.find((item)=>item.key===key)?.value||0;
   const firstName=String(session?.user?.name||"").trim().split(/\s+/)[0]||"there";
   const activeCampaigns=campaigns.filter((item)=>["active","running","scheduled"].includes(item.status)).length;
