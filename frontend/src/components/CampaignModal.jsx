@@ -222,7 +222,7 @@ export default function CampaignModal({
     setError("");
     const isProgram = form.campaignKind === "program";
 
-    if (!form.name || !form.audience.length || (!isProgram && (!form.startDate || !form.ticketPrice))) {
+    if (!form.name || !form.audience.length || (!isProgram && (!form.startDate || form.ticketPrice === "" || form.ticketPrice === null || form.ticketPrice === undefined))) {
       setError(isProgram
         ? "Add a campaign name and at least one audience."
         : "Add the event details and at least one audience.");
@@ -234,7 +234,7 @@ export default function CampaignModal({
         ...form,
         contentBriefId: form.templateKey.startsWith("content:") ? form.templateKey.slice("content:".length) : null,
         ticketPrice: Number(form.ticketPrice || 0),
-        ticketGoal: Number(form.ticketGoal || 0),
+        ticketGoal: form.ticketGoal === "" || form.ticketGoal === null || form.ticketGoal === undefined ? null : Number(form.ticketGoal),
       });
     } catch (err) {
       setError(err.response?.data?.error || err.message || "Unable to save campaign");

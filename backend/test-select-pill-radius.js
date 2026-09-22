@@ -20,9 +20,9 @@ function read(file) { return fs.readFileSync(path.join(root, file), "utf8"); }
 // !important to fight crm.css's with.
 const crmCss = read("frontend/src/styles/crm.css");
 assert.ok(
-  crmCss.includes(".select-input,select,input,textarea{border:1px solid var(--crm-line)!important;min-height:42px}"),
-  "crm.css's select/input/textarea rule must not force a square 3px radius — it silently overrides the project-wide pill-shape design system",
+  crmCss.includes(".select-input,select,input:not([type=\"checkbox\"]):not([type=\"radio\"]),textarea{border:1px solid var(--crm-line)!important;min-height:42px}"),
+  "crm.css's select/input/textarea rule must not force a square 3px radius, and must not apply its min-height:42px to checkboxes/toggles",
 );
 assert.ok(!/\.btn\{[^}]*border-radius:3px!important/.test(crmCss), "crm.css's .btn rule must not force a square 3px radius");
 
-console.log("Select pill-radius test passed: crm.css no longer fights the global pill-shape rule.");
+console.log("Select pill-radius test passed: crm.css no longer fights the global pill-shape rule or distorts toggle switches.");

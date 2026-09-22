@@ -1,10 +1,10 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { FiArrowRight, FiCalendar, FiTarget, FiUsers } from "react-icons/fi";
+import { FiArrowRight, FiCalendar, FiTarget } from "react-icons/fi";
 import Button from "../components/Button.jsx";
 import Modal from "../components/Modal.jsx";
 import CampaignModal from "../components/CampaignModal.jsx";
-import { createCampaign, deleteCampaign, fetchCampaignDeletionPreview, fetchCampaigns } from "../services/api.js";
+import { createCampaign, deleteCampaign, fetchCampaignDeletionPreview, fetchCampaigns, updateCampaignDetails } from "../services/api.js";
 import { getWorkspaceSettings } from "../utils/workspaceSettings.js";
 import useInitiative from "../context/useInitiative.js";
 import "./Campaigns.css";
@@ -18,6 +18,7 @@ export default function Campaigns() {
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
+  const [editingCampaign, setEditingCampaign] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [deleteTarget, setDeleteTarget] = useState(null);
@@ -55,9 +56,19 @@ export default function Campaigns() {
   };
 
   const handleCreate = async (values) => {
-    try { setSubmitting(true); setError(""); await createCampaign(values); setIsOpen(false); await loadCampaigns(); }
-    catch (err) { const message = err.response?.data?.error || err.message || "Unable to create campaign"; setError(message); throw err; }
-    finally { setSubmitting(false); }
+    try {
+      setSubmitting(true);
+      setError("");
+      if (editingCampaign) await updateCampaignDetails(editingCampaign._id, values);
+      else await createCampaign(values);
+      setIsOpen(false);
+      setEditingCampaign(null);
+      await loadCampaigns();
+    } catch (err) {
+      const message = err.response?.data?.error || err.message || `Unable to ${editingCampaign ? "save" : "create"} campaign`;
+      setError(message);
+      throw err;
+    } finally { setSubmitting(false); }
   };
 
   const confirmDelete = async () => {
@@ -74,18 +85,12 @@ export default function Campaigns() {
 
   const visibleCampaigns = selectedId === "all" ? campaigns : campaigns.filter((campaign) => campaign._id === selectedId);
   const activeCount = visibleCampaigns.filter((campaign) => campaign.status === "active").length;
-  const totalGoal = visibleCampaigns.reduce((sum, campaign) => sum + Number(campaign.ticketGoal || 0), 0);
-  const totalSold = visibleCampaigns.reduce((sum, campaign) => sum + Number(campaign.eventId?.eventbriteLogistics?.ticketsSold ?? campaign.ticketsSold ?? 0), 0);
-  const programOnly = visibleCampaigns.length > 0 && visibleCampaigns.every((campaign) => campaign.campaignKind === "program");
-  const totalEmailSent = visibleCampaigns.reduce((sum, campaign) => sum + Number(campaign.metrics?.sent || 0), 0);
-  const totalEmailOpened = visibleCampaigns.reduce((sum, campaign) => sum + Number(campaign.metrics?.opened || 0), 0);
 
   return <div className="page-dashboard campaigns-page">
     <div className="page-header"><div><p className="page-eyebrow">Campaign portfolio</p><h1 className="page-title">Campaigns</h1><p className="page-subtitle">See the objective, audience, progress, and next action for every campaign.</p></div><div className="campaign-create-actions"><Button variant="outline" onClick={() => { setError(""); setDefaultCampaignKind("event"); setIsOpen(true); }}>+ Event</Button><Button onClick={() => { setError(""); setDefaultCampaignKind("program"); setIsOpen(true); }}>+ Program</Button></div></div>
     <section className="campaign-summary">
       <div><FiTarget /><span><strong>{visibleCampaigns.length}</strong>{selectedId === "all" ? "Total campaigns" : "Selected workspace"}</span></div>
       <div><FiCalendar /><span><strong>{activeCount}</strong>Active now</span></div>
-      <div><FiUsers /><span><strong>{programOnly ? `${totalEmailOpened} / ${totalEmailSent}` : `${totalSold} / ${totalGoal}`}</strong>{programOnly ? "Email opens vs sent" : "Registrations vs goal"}</span></div>
     </section>
     {loading ? <div className="table-state">Loading campaigns…</div> : visibleCampaigns.length ? <section className="campaign-card-grid">
       {visibleCampaigns.map((campaign) => {
@@ -117,11 +122,11 @@ export default function Campaigns() {
             </>}
           </div>
           <div className="campaign-progress"><span style={{ width: `${isProgram ? emailProgress : progress}%` }} /></div>
-          <footer><span>{isProgram ? sent ? `${emailProgress}% open rate` : "No emails sent yet" : `${progress}% of registration goal`}</span><div><Button variant="ghost" size="sm" onClick={() => openDeleteModal(campaign)}>Delete</Button><Button variant="outline" size="sm" onClick={() => navigate(`/campaigns/${campaign._id}`)}>Open workspace <FiArrowRight /></Button></div></footer>
+          <footer><span>{isProgram ? sent ? `${emailProgress}% open rate` : "No emails sent yet" : `${progress}% of registration goal`}</span><div><Button variant="ghost" size="sm" onClick={() => openDeleteModal(campaign)}>Delete</Button><Button variant="ghost" size="sm" onClick={() => { setError(""); setEditingCampaign(campaign); setIsOpen(true); }}>Edit</Button><Button variant="outline" size="sm" onClick={() => navigate(`/campaigns/${campaign._id}`)}>Open workspace <FiArrowRight /></Button></div></footer>
         </article>;
       })}
     </section> : <div className="table-state table-state--empty">No campaigns are active yet.</div>}
-    <CampaignModal isOpen={isOpen} onClose={() => setIsOpen(false)} onSubmit={handleCreate} audienceOptions={audienceOptions} submitting={submitting} defaultCampaignKind={defaultCampaignKind} />
+    <CampaignModal isOpen={isOpen} onClose={() => { setIsOpen(false); setEditingCampaign(null); }} onSubmit={handleCreate} audienceOptions={audienceOptions} submitting={submitting} defaultCampaignKind={defaultCampaignKind} initialData={editingCampaign} />
     <Modal isOpen={Boolean(deleteTarget)} onClose={() => !deleting && setDeleteTarget(null)} title="Delete campaign" footer={<><Button variant="outline" disabled={deleting} onClick={() => setDeleteTarget(null)}>Cancel</Button><Button loading={deleting} onClick={confirmDelete}>Delete campaign</Button></>}>
       {deletePreview ? <div className="campaign-delete-dialog"><p><strong>{deletePreview.campaignName}</strong> will be removed. This cannot be undone.</p>{deletePreview.outreachCount ? <label className="form-field"><span><input type="checkbox" checked={deleteOptions.deleteOutreach} onChange={(event) => setDeleteOptions({ ...deleteOptions, deleteOutreach: event.target.checked })} /> Delete {deletePreview.outreachCount} related outreach record{deletePreview.outreachCount === 1 ? "" : "s"}</span><small>Required to delete this campaign. Sent and replied history will also be removed.</small></label> : <p>No outreach records are attached.</p>}{deletePreview.event ? <label className="form-field"><span><input type="checkbox" disabled={!deletePreview.event.canDelete} checked={deleteOptions.deleteEvent} onChange={(event) => setDeleteOptions({ ...deleteOptions, deleteEvent: event.target.checked })} /> Also delete the linked event</span><small>{deletePreview.event.canDelete ? "Leave this unchecked to keep the event for future use." : "This event is used by another campaign and will be kept."}</small></label> : null}</div> : <p>Checking related records…</p>}
     </Modal>

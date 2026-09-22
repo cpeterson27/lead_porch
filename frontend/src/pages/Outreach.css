@@ -36,6 +36,21 @@
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
+.outreach-header__back {
+  display: inline-block;
+  margin: 0 0 0.5rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #cfe0da;
+  font: inherit;
+  font-size: 0.86rem;
+  font-weight: 750;
+  cursor: pointer;
+}
+.outreach-header__back:hover {
+  color: #fff;
+}
 .outreach-notice {
   margin: 0;
   padding: 0.85rem 1rem;
@@ -224,7 +239,7 @@
 .outreach-summary strong {
   font-size: 1rem;
 }
-.outreach-usage-explainer{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;padding:14px;border:1px solid var(--border);border-radius:18px;background:var(--surface)}
+.outreach-usage-explainer{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:14px;border:1px solid var(--border);border-radius:18px;background:var(--surface)}
 .outreach-usage-explainer>div{display:grid;gap:4px;padding:12px 14px;border-radius:14px;background:var(--color-brand-soft)}
 .outreach-usage-explainer span{color:var(--text-muted);font-size:.76rem;font-weight:700}
 .outreach-usage-explainer strong{color:var(--color-brand);font-size:1.15rem}

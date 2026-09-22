@@ -801,6 +801,81 @@ router.patch("/:id/schedule", requireRole("owner", "admin"), async (req, res) =>
   }
 });
 
+// Edits the core fields CampaignModal collects at creation (name, date,
+// price, registration goal, audience, description) — CampaignModal already
+// supported pre-filling from an existing campaign for exactly this, but
+// nothing ever called it in edit mode because there was no update route to
+// call. Mirrors POST / 's field handling (a falsy check on ticketPrice
+// wrongly rejects a real $0/free event, so it's checked for actual
+// absence instead) and keeps the linked Event in sync for event campaigns,
+// the same denormalized pair the creation route maintains.
+router.patch("/:id/details", requireRole("owner", "admin", "member"), async (req, res) => {
+  try {
+    const campaign = await Campaign.findById(req.params.id);
+    if (!campaign) return res.status(404).json({ error: "Campaign not found." });
+
+    const {
+      name,
+      startDate,
+      ticketPrice,
+      ticketGoal,
+      audience,
+      description,
+      brand = {},
+    } = req.body || {};
+
+    if (!name) return res.status(400).json({ error: "Name is required." });
+    if (campaign.campaignKind !== "program") {
+      if (!startDate || ticketPrice === undefined || ticketPrice === null || ticketPrice === "") {
+        return res.status(400).json({ error: "Choose an event date and ticket price." });
+      }
+    }
+    if (!audience || audience.length === 0) {
+      return res.status(400).json({ error: "Choose at least one target audience." });
+    }
+
+    const normalizedGoal = ticketGoal === undefined || ticketGoal === null || ticketGoal === "" ? null : Number(ticketGoal);
+    const normalizedStart = startDate ? new Date(startDate) : campaign.startDate;
+
+    campaign.name = name;
+    campaign.description = description || "";
+    campaign.audience = audience;
+    campaign.brand = {
+      logoUrl: String(brand.logoUrl ?? campaign.brand?.logoUrl ?? "").trim(),
+      flyerUrl: String(brand.flyerUrl ?? campaign.brand?.flyerUrl ?? "").trim(),
+      websiteUrl: String(brand.websiteUrl ?? campaign.brand?.websiteUrl ?? "").trim(),
+      accentColor: String(brand.accentColor || campaign.brand?.accentColor || "#173f36").trim(),
+    };
+    if (campaign.campaignKind !== "program") {
+      campaign.startDate = normalizedStart;
+      campaign.ticketPrice = Number(ticketPrice);
+      campaign.ticketGoal = normalizedGoal;
+    }
+    await campaign.save();
+
+    if (campaign.eventId) {
+      const event = await Event.findById(campaign.eventId);
+      if (event) {
+        event.name = name;
+        event.description = description || "";
+        event.audience = audience;
+        if (campaign.campaignKind !== "program") {
+          event.startDate = normalizedStart;
+          event.ticketPrice = Number(ticketPrice);
+          event.ticketGoal = normalizedGoal;
+        }
+        await event.save();
+      }
+    }
+
+    await campaign.populate("eventId");
+    return res.json({ campaign });
+  } catch (error) {
+    console.error("CAMPAIGN DETAILS UPDATE ERROR:", error);
+    return res.status(400).json({ error: error.message || "Unable to save these campaign details." });
+  }
+});
+
 router.patch("/:id/scheduled-send", requireRole("owner", "admin"), async (req, res) => {
   try {
     const campaign = await Campaign.findById(req.params.id);

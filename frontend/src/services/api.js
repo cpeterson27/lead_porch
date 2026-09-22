@@ -939,6 +939,9 @@ export const fetchMarketingCampaign = async (campaignId) => {
 export const createCampaign = (campaignData) =>
   api.post("/campaigns", campaignData).then((res) => res.data);
 
+export const updateCampaignDetails = (campaignId, campaignData) =>
+  api.patch(`/campaigns/${campaignId}/details`, campaignData).then((res) => res.data);
+
 export const fetchCampaignDeletionPreview = (campaignId) =>
   api.get(`/campaigns/${campaignId}/deletion-preview`).then((res) => res.data);
 

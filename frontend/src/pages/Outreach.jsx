@@ -586,6 +586,13 @@ export default function Outreach() {
     <div className="page-dashboard outreach-page">
       <header className="outreach-header">
         <div>
+          <button
+            type="button"
+            className="outreach-header__back"
+            onClick={() => navigate("/campaigns")}
+          >
+            ← All campaigns
+          </button>
           <p className="outreach-eyebrow">Campaign delivery</p>
           <h1 className="page-title">Outreach</h1>
           <p>
@@ -699,8 +706,7 @@ export default function Outreach() {
       <aside className="outreach-usage-explainer">
         <div><span>Submitted today from this campaign</span><strong>{selectedCampaignSentToday}</strong></div>
         <div><span>Submitted over this campaign’s lifetime</span><strong>{selectedCampaignSentTotal}</strong></div>
-        <div><span>Provider account allowance</span><strong>See Resend Usage</strong></div>
-        <p>Your account-wide quota is determined by the active Resend Transactional plan and includes campaigns, test emails, transactional messages, and other verified domains. Lead Porch accepts up to 100 selected drafts per send request as a safe batch size; that is not a daily limit. “Delivered” is a cumulative campaign result—not today’s usage. Resend’s Emails and Usage pages are the authority for current plan consumption.</p>
+        <p>Lead Porch accepts up to 100 selected drafts per send request as a safe batch size; that is not a daily limit. “Delivered” is a cumulative campaign result—not today’s usage.</p>
       </aside>
       <DashboardCard
         title={selected ? `Messages for ${selected.name}` : "Outreach messages"}
