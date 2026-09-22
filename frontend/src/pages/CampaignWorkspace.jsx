@@ -79,6 +79,8 @@ export default function CampaignWorkspace() {
   const [templateSaving, setTemplateSaving] = useState(false);
   const [ideaGenerating, setIdeaGenerating] = useState(false);
   const [audienceIdeasGenerating, setAudienceIdeasGenerating] = useState(false);
+  const [bulkApprovingKey, setBulkApprovingKey] = useState("");
+  const [expandedDraftKey, setExpandedDraftKey] = useState("");
   const [ideaPrompt, setIdeaPrompt] = useState("");
   const [ideaImages, setIdeaImages] = useState([]);
   const [workspaceDefaultLogoUrl, setWorkspaceDefaultLogoUrl] = useState("");
@@ -490,6 +492,36 @@ export default function CampaignWorkspace() {
       : RESEARCH_EMAIL_AUDIENCES.find((item) => item.key === templateAudience)?.label ||
         campaign.audience?.[Number(templateAudience.replace("audience-", ""))] ||
         "Selected audience";
+  const audienceLabelForKey = (key) =>
+    RESEARCH_EMAIL_AUDIENCES.find((item) => item.key === key)?.label ||
+    campaign.audience?.[Number(key.replace("audience-", ""))] ||
+    key;
+
+  // Reviewing all 12 audience drafts one at a time — switch tabs, wait for
+  // the full Unlayer editor to reload, read, approve, repeat — was the
+  // actual bottleneck reported. campaign.emailAudienceTemplates already
+  // holds every draft's real subject/body in memory, so this renders all
+  // of them at once (rendered HTML, not the heavy editor) with one Approve
+  // click each, no tab-switching or editor reload required.
+  const draftAudienceTemplates = Object.entries(campaign.emailAudienceTemplates || {})
+    .filter(([, template]) => template?.status !== "approved" && (template?.subject || template?.body));
+
+  const approveAudienceDraft = async (key) => {
+    setBulkApprovingKey(key);
+    setError("");
+    try {
+      const result = await approveCampaignEmailTemplate(id, key);
+      setCampaign((current) => ({
+        ...current,
+        emailAudienceTemplates: { ...(current.emailAudienceTemplates || {}), [key]: result.template },
+      }));
+      setTemplateNotice(`"${audienceLabelForKey(key)}" approved.`);
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to approve this audience draft.");
+    } finally {
+      setBulkApprovingKey("");
+    }
+  };
 
   const generateIdeas = async () => {
     if (templateDirty && !window.confirm("Replace the current unsaved canvas with a new AI draft?")) return;
@@ -1125,6 +1157,49 @@ export default function CampaignWorkspace() {
                     >
                       Create all audience drafts with AI
                     </Button>
+                  </section>
+                ) : null}
+                {templateAudience === "general" && draftAudienceTemplates.length ? (
+                  <section className="campaign-audience-bulk-review">
+                    <div className="campaign-audience-bulk-review__heading">
+                      <strong>Review audience drafts · {draftAudienceTemplates.length} waiting</strong>
+                      <small>Approve each one right here — no need to switch tabs or reopen the editor for every audience.</small>
+                    </div>
+                    {draftAudienceTemplates.map(([key, template]) => {
+                      const expanded = expandedDraftKey === key;
+                      return (
+                        <article className="campaign-audience-bulk-review__row" key={key}>
+                          <header>
+                            <div>
+                              <strong>{audienceLabelForKey(key)}</strong>
+                              <span>{template.subject || "(no subject)"}</span>
+                            </div>
+                            <div className="campaign-audience-bulk-review__actions">
+                              <Button type="button" size="sm" variant="outline" onClick={() => setExpandedDraftKey(expanded ? "" : key)}>
+                                {expanded ? "Hide preview" : "Preview"}
+                              </Button>
+                              <Button
+                                type="button"
+                                size="sm"
+                                loading={bulkApprovingKey === key}
+                                disabled={Boolean(bulkApprovingKey) && bulkApprovingKey !== key}
+                                onClick={() => approveAudienceDraft(key)}
+                              >
+                                Approve
+                              </Button>
+                            </div>
+                          </header>
+                          {expanded ? (
+                            <iframe
+                              title={`Preview: ${audienceLabelForKey(key)}`}
+                              className="campaign-audience-bulk-review__frame"
+                              sandbox=""
+                              srcDoc={template.body || "<p>No body yet.</p>"}
+                            />
+                          ) : null}
+                        </article>
+                      );
+                    })}
                   </section>
                 ) : null}
                 <div className="campaign-personalization" aria-label="Email personalization fields">

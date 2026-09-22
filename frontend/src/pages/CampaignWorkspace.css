@@ -343,6 +343,69 @@
   white-space: nowrap;
 }
 
+.campaign-audience-bulk-review {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.campaign-audience-bulk-review__heading {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.campaign-audience-bulk-review__heading small {
+  color: var(--text-muted);
+}
+
+.campaign-audience-bulk-review__row {
+  display: grid;
+  gap: 0.6rem;
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-strong);
+}
+
+.campaign-audience-bulk-review__row header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.campaign-audience-bulk-review__row header > div:first-child {
+  display: grid;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.campaign-audience-bulk-review__row header span {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.campaign-audience-bulk-review__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.campaign-audience-bulk-review__frame {
+  width: 100%;
+  height: 420px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: #fff;
+}
+
 .campaign-personalization {
   display: grid;
   gap: 0.65rem;
