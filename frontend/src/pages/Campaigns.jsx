@@ -110,6 +110,7 @@ export default function Campaigns() {
               <span><small>Sent</small><strong>{sent}</strong></span>
               <span><small>Opened</small><strong>{opened}</strong>{delivered ? <small>{delivered} delivered</small> : null}</span>
             </> : <>
+              <span><small>Matched recipients</small><strong>{campaign.audienceMatch?.matchedCount || 0}</strong></span>
               <span><small>Date</small><strong>{campaign.startDate ? new Date(campaign.startDate).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Evergreen"}</strong></span>
               <span><small>Current buyer price</small><strong>{checkoutPrice ? `From $${checkoutPrice.toFixed(2)}` : `$${basePrice.toFixed(2)}`}</strong>{checkoutPrice > basePrice ? <small>${basePrice.toFixed(2)} base + fees</small> : null}</span>
               <span><small>Registrations</small><strong>{sold} / {goal || "—"}</strong></span>

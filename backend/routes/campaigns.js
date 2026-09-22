@@ -1034,9 +1034,11 @@ router.post("/", async (req, res) => {
     // ticketPrice legitimately can be 0 (a free event) — a falsy check
     // (!ticketPrice) rejected every free event as "missing" data, since
     // !0 is true in JavaScript. Only actual absence should fail here.
+    // ticketGoal is a tracking target, not something every event actually
+    // has (or needs) a fixed registration cap for — optional.
     if (
       !name ||
-      (campaignKind !== "program" && (!startDate || ticketPrice === undefined || ticketPrice === null || ticketPrice === "" || !ticketGoal)) ||
+      (campaignKind !== "program" && (!startDate || ticketPrice === undefined || ticketPrice === null || ticketPrice === "")) ||
       !audience ||
       audience.length === 0
     ) {
@@ -1066,7 +1068,7 @@ router.post("/", async (req, res) => {
           Number(ticketPrice),
 
         ticketGoal:
-          Number(ticketGoal),
+          ticketGoal === undefined || ticketGoal === null || ticketGoal === "" ? null : Number(ticketGoal),
 
         audience,
 

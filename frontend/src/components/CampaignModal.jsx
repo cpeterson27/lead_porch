@@ -222,7 +222,7 @@ export default function CampaignModal({
     setError("");
     const isProgram = form.campaignKind === "program";
 
-    if (!form.name || !form.audience.length || (!isProgram && (!form.startDate || !form.ticketPrice || !form.ticketGoal))) {
+    if (!form.name || !form.audience.length || (!isProgram && (!form.startDate || !form.ticketPrice))) {
       setError(isProgram
         ? "Add a campaign name and at least one audience."
         : "Add the event details and at least one audience.");
@@ -341,8 +341,8 @@ export default function CampaignModal({
                 <input id="campaign-price" type="number" min="0" step="0.01" placeholder="0.00" value={form.ticketPrice} onChange={handleChange("ticketPrice")} />
               </div>
               <div className="form-field">
-                <label htmlFor="campaign-goal">Registration goal <span>*</span></label>
-                <input id="campaign-goal" type="number" min="1" placeholder="100" value={form.ticketGoal} onChange={handleChange("ticketGoal")} />
+                <label htmlFor="campaign-goal">Registration goal <small>(optional)</small></label>
+                <input id="campaign-goal" type="number" min="0" placeholder="100" value={form.ticketGoal} onChange={handleChange("ticketGoal")} />
               </div>
             </>
           )}
