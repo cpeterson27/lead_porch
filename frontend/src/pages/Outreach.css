@@ -37,19 +37,22 @@
   text-transform: uppercase;
 }
 .outreach-header__back {
-  display: inline-block;
-  margin: 0 0 0.5rem;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: #cfe0da;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0 0 0.75rem;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: var(--radius-pill, 999px);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
   font: inherit;
-  font-size: 0.86rem;
+  font-size: 0.8rem;
   font-weight: 750;
   cursor: pointer;
 }
 .outreach-header__back:hover {
-  color: #fff;
+  background: rgba(255, 255, 255, 0.16);
 }
 .outreach-notice {
   margin: 0;
