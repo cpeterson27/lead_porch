@@ -322,7 +322,7 @@ export default function Outreach() {
   };
   const approveSelected = async () => {
     const ids = selectedOutreach.filter((item) => ["pending", "failed"].includes(item.status)).map((item) => item._id);
-    if (!selected || !ids.length) return setError("Select one or more pending or recoverable failed drafts to prepare.");
+    if (!selected || !ids.length) return setError("Select one or more pending or recoverable failed drafts to approve.");
     try {
       setSaving(true);
       setError("");
@@ -464,7 +464,7 @@ export default function Outreach() {
   };
   const send = () => {
     if (sendMode === "business_prospecting") {
-      if (!selectedApprovedCount) return setError("Prepare and select approved drafts before sending.");
+      if (!selectedApprovedCount) return setError("Approve and select approved drafts before sending.");
       setColdAttested(false);
       setColdSendOpen(true);
       return;
@@ -817,7 +817,7 @@ export default function Outreach() {
               Clear
             </Button>
             <Button size="sm" loading={saving} disabled={!(selectedPendingCount + selectedFailedCount)} onClick={approveSelected}>
-              Prepare selected · {selectedPendingCount + selectedFailedCount}
+              Approve selected · {selectedPendingCount + selectedFailedCount}
             </Button>
             <Button size="sm" loading={saving} disabled={!selectedApprovedCount} onClick={send}>
               <FiMail /> Send selected · {selectedApprovedCount}
@@ -992,8 +992,8 @@ export default function Outreach() {
                 await approve(issueReview);
                 setIssueReview(null);
                 setSendMode("business_prospecting");
-                setNotice("Draft prepared. Select it, choose Cold business prospecting, and send when ready.");
-              }}>Prepare this draft to retry</Button>
+                setNotice("Draft approved. Select it, choose Cold business prospecting, and send when ready.");
+              }}>Approve this draft to retry</Button>
             ) : null}
           </>
         }

@@ -61,15 +61,18 @@
 
 /* A color-changing button wasn't a clear enough on/off signal — a real
    switch (same visual pattern as .website-toggle elsewhere in the app)
-   makes the current state obvious at a glance. */
+   makes the current state obvious at a glance. Matches .outreach-header
+   .btn--outline's translucent-on-dark treatment (not a plain white card)
+   since this sits on the same dark green header. */
 .discovery-leads-toggle {
   display: flex;
   align-items: center;
   gap: 0.55rem;
   padding: 0.5rem 0.85rem;
-  border: 1px solid var(--border, #dce2de);
+  border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: var(--radius-pill, 999px);
-  background: var(--surface, #fff);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
   cursor: pointer;
   font-size: 0.85rem;
   font-weight: 700;

@@ -215,14 +215,15 @@ input[type="file"]::file-selector-button:hover {
  * circle into a tall oval. Locking the box dimensions themselves
  * guarantees a perfect circle regardless of the surrounding layout.
  */
-/* .website-toggle is a deliberately different widget — an on/off pill
-   switch with its own complete styling in WebsiteManagement.css, not a
-   plain checkbox. It has equal CSS specificity to these rules, so which
-   one "won" for its shape/color was really just down to build order —
-   the actual cause of the toggle sometimes rendering as a mangled
-   circle-in-a-pill (the "Website published" row). Excluding it here
-   lets its own styling apply unambiguously. */
-input[type="checkbox"]:not(.website-toggle input) {
+/* .website-toggle and .discovery-leads-toggle are deliberately different
+   widgets — on/off pill switches with their own complete styling (in
+   WebsiteManagement.css and CampaignWorkspace.css/Outreach.css), not plain
+   checkboxes. They have equal CSS specificity to these rules, so which one
+   "won" for shape/color was really just down to build order — the actual
+   cause of a toggle sometimes rendering as a mangled circle-in-a-pill (the
+   "Website published" row, and later "Accepting Discovery leads").
+   Excluding them here lets their own styling apply unambiguously. */
+input[type="checkbox"]:not(.website-toggle input):not(.discovery-leads-toggle input) {
   appearance: none;
   -webkit-appearance: none;
   width: 20px !important;
@@ -245,7 +246,7 @@ input[type="checkbox"]:not(.website-toggle input) {
   transition: background var(--transition-fast), border-color var(--transition-fast);
 }
 
-input[type="checkbox"]:not(.website-toggle input)::after {
+input[type="checkbox"]:not(.website-toggle input):not(.discovery-leads-toggle input)::after {
   content: "";
   width: 5px;
   height: 9px;
@@ -255,12 +256,12 @@ input[type="checkbox"]:not(.website-toggle input)::after {
   transition: transform var(--transition-fast);
 }
 
-input[type="checkbox"]:not(.website-toggle input):checked {
+input[type="checkbox"]:not(.website-toggle input):not(.discovery-leads-toggle input):checked {
   background: var(--color-brand);
   border-color: var(--color-brand);
 }
 
-input[type="checkbox"]:not(.website-toggle input):checked::after {
+input[type="checkbox"]:not(.website-toggle input):not(.discovery-leads-toggle input):checked::after {
   transform: rotate(45deg) translate(-1px, -1px) scale(1);
 }
 
