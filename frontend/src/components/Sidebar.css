@@ -34,7 +34,7 @@
 .sidebar__link{border-radius:13px;color:color-mix(in srgb,var(--app-sidebar-text,#f7faf8) 72%,transparent)}
 .sidebar__link:hover,.sidebar__link--active{color:var(--app-sidebar-text,#f7faf8);background:color-mix(in srgb,var(--app-sidebar-text,#f7faf8) 10%,transparent);border-color:color-mix(in srgb,var(--app-sidebar-text,#f7faf8) 16%,transparent)}
 .sidebar__link--active{box-shadow:inset 3px 0 var(--ai-violet),0 8px 24px rgba(0,0,0,.12)}
-.sidebar__workspace-switcher select{border-radius:13px;background:rgba(255,255,255,.055)}
+.sidebar__workspace-switcher select{border-radius:999px;background:rgba(255,255,255,.055)}
 .sidebar__collapse-toggle{border-color:rgba(155,140,255,.35);background:linear-gradient(145deg,#2e255f,#11131d 62%);box-shadow:0 8px 22px rgba(0,0,0,.36),inset 0 1px rgba(255,255,255,.25)}
 /* Attached directly to the sidebar's own right edge, vertically
    centered — the same small glossy circular arrow used elsewhere,

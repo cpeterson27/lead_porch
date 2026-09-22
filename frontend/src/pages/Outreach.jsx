@@ -652,15 +652,17 @@ export default function Outreach() {
           >
             Confirm permission
           </Button>
-          <Button
-            variant={selected?.acceptingDiscoveryLeads ? "primary" : "outline"}
-            disabled={!selected}
-            loading={discoveryLeadsBusy}
-            onClick={toggleDiscoveryLeads}
-          >
-            <FiUserPlus />
-            {selected?.acceptingDiscoveryLeads ? "Accepting Discovery leads" : "Not accepting Discovery leads"}
-          </Button>
+          <label className={`discovery-leads-toggle${discoveryLeadsBusy ? " is-busy" : ""}`}>
+            <input
+              type="checkbox"
+              checked={Boolean(selected?.acceptingDiscoveryLeads)}
+              disabled={!selected || discoveryLeadsBusy}
+              onChange={toggleDiscoveryLeads}
+            />
+            <span>
+              <FiUserPlus /> Accepting Discovery leads
+            </span>
+          </label>
           <Button
             variant="outline"
             disabled={!selected || saving}

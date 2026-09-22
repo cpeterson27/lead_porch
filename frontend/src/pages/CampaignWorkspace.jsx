@@ -899,13 +899,15 @@ export default function CampaignWorkspace() {
           </div>
         </div>
         <div className="campaign-workspace__actions">
-          <Button
-            variant={campaign.acceptingDiscoveryLeads ? "primary" : "outline"}
-            loading={discoveryLeadsBusy}
-            onClick={toggleDiscoveryLeads}
-          >
-            {campaign.acceptingDiscoveryLeads ? "Accepting Discovery leads" : "Not accepting Discovery leads"}
-          </Button>
+          <label className={`discovery-leads-toggle${discoveryLeadsBusy ? " is-busy" : ""}`}>
+            <input
+              type="checkbox"
+              checked={Boolean(campaign.acceptingDiscoveryLeads)}
+              disabled={discoveryLeadsBusy}
+              onChange={toggleDiscoveryLeads}
+            />
+            <span>Accepting Discovery leads</span>
+          </label>
           <Button
             variant="outline"
             onClick={() => navigate(`/discovery?tab=people&campaignId=${campaign._id}`)}
@@ -1099,7 +1101,7 @@ export default function CampaignWorkspace() {
                     {templateDirty
                       ? "Unsaved changes"
                       : emailTemplate.status === "approved"
-                        ? `Approved · version ${emailTemplate.currentVersion}`
+                        ? "Approved"
                         : "Draft saved"}
                   </strong>
                   {templateNotice ? (
