@@ -278,9 +278,9 @@ export default function Outreach() {
       const result = await generateOutreach(selected._id);
       await refreshItems(selected);
       const routing = Object.entries(result.routingSummary || {});
-      setNotice(routing.length
-        ? `Draft routing complete: ${routing.map(([label, count]) => `${count} ${label}`).join(" · ")}. Review is still required before sending.`
-        : "Draft refresh complete. Review is still required before sending.");
+      setNotice(result.message || (routing.length
+        ? `Draft routing complete: ${routing.map(([label, count]) => `${count} ${label}`).join(" · ")}.`
+        : "Draft refresh complete."));
     } catch (err) {
       setError(err.response?.data?.error || "Unable to generate outreach.");
     } finally {

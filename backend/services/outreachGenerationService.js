@@ -21,30 +21,26 @@ function cleanName(name = "") {
  * this same function so their behavior can't drift apart.
  */
 async function regenerateCampaignOutreach(campaign, { onlyMissing = false, actorUserId = null } = {}) {
-  let generalTemplate = campaign.emailTemplate?.currentVersion
-    ? await CampaignTemplateVersion.findOne({
-      campaignId: campaign._id,
-      version: campaign.emailTemplate.currentVersion,
-    })
-    : null;
+  // Confirmed live: a campaign with contacts already matched but no
+  // approved main template yet (owner hasn't written/approved real
+  // content) silently got a generic, unrelated hardcoded placeholder
+  // (services/campaignMasterTemplate.js's fallback — leftover boilerplate
+  // from an unrelated earlier product, complete with a broken empty image
+  // src) written in AS IF it were the campaign's real approved template,
+  // status "approved" and all — and every draft built from it then also
+  // auto-approved, ready to send with completely wrong content unless
+  // caught by eye first. There is no safe generic content to fall back to
+  // here; skipping until a human actually approves something real is the
+  // only correct behavior.
+  if (!campaign.emailTemplate?.currentVersion) {
+    return { outreach: [], createdCount: 0, updatedCount: 0, skippedExisting: 0, skippedMissingEmail: 0, routingSummary: {}, skippedNoApprovedTemplate: true };
+  }
+  const generalTemplate = await CampaignTemplateVersion.findOne({
+    campaignId: campaign._id,
+    version: campaign.emailTemplate.currentVersion,
+  });
   if (!generalTemplate) {
-    const template = require("./campaignMasterTemplate").effectiveTemplate(campaign);
-    const version = (await CampaignTemplateVersion.findOne({ campaignId: campaign._id }).sort({ version: -1 }).select("version"))?.version + 1 || 1;
-    generalTemplate = await CampaignTemplateVersion.create({
-      campaignId: campaign._id,
-      version,
-      subject: template.subject,
-      body: template.body,
-      designJson: template.designJson || null,
-      callToAction: template.callToAction,
-      callToActionUrl: template.callToActionUrl,
-      topic: template.topic,
-      approvedByUserId: actorUserId,
-      approvedAt: new Date(),
-    });
-    campaign.emailTemplate = { ...template, status: "approved", currentVersion: version, approvedAt: generalTemplate.approvedAt };
-    campaign.activeAudienceTemplateKey = "general";
-    await campaign.save();
+    return { outreach: [], createdCount: 0, updatedCount: 0, skippedExisting: 0, skippedMissingEmail: 0, routingSummary: {}, skippedNoApprovedTemplate: true };
   }
   const audienceTemplateDefinitions = Object.entries(campaign.emailAudienceTemplates || {})
     .filter(([, template]) => template?.status === "approved" && template?.currentVersion && template?.audienceLabel);
@@ -111,7 +107,16 @@ async function regenerateCampaignOutreach(campaign, { onlyMissing = false, actor
         skippedExisting++;
         continue;
       }
-      if (["pending", "failed"].includes(exists.status)) {
+      // An already-"approved" draft used to be frozen forever, even after
+      // the campaign's real template was later approved or re-approved —
+      // confirmed live: a campaign whose contacts matched before its main
+      // email was approved got its drafts auto-approved from the generic
+      // fallback above, and approving the REAL content afterward never
+      // touched them, leaving 334 wrong drafts sitting ready to send.
+      // Refreshing on a template-version mismatch (never touching
+      // anything already sent) closes that gap.
+      const isStaleApproved = exists.status === "approved" && exists.templateVersion !== recipientTemplate.version;
+      if (["pending", "failed"].includes(exists.status) || isStaleApproved) {
         exists.organization = draft.organization;
         exists.contactName = draft.contactName;
         exists.contactRole = draft.contactRole;

@@ -219,6 +219,7 @@ router.post("/generate", async (req,res)=>{
       skippedExisting,
       skippedMissingEmail,
       routingSummary,
+      skippedNoApprovedTemplate,
     } = await regenerateCampaignOutreach(campaign, {
       onlyMissing,
       actorUserId: req.auth.user._id,
@@ -259,7 +260,12 @@ router.post("/generate", async (req,res)=>{
 
       skippedMissingEmail,
 
-      routingSummary
+      routingSummary,
+
+      skippedNoApprovedTemplate,
+      message: skippedNoApprovedTemplate
+        ? "Approve this campaign's main email before generating drafts — there's nothing to build them from yet."
+        : undefined,
 
     });
 
