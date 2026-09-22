@@ -73,6 +73,8 @@ export default function CampaignWorkspace() {
   const [emailPreview, setEmailPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
+  const justSwitchedTemplateRef = useRef(null);
+  const [justSwitchedRevision, setJustSwitchedRevision] = useState(0);
   const [previewPanelOpen, setPreviewPanelOpen] = useState(true);
   const [templateAudience, setTemplateAudience] = useState("general");
   // Unlayer only loads its `design` prop once, on mount — bumping this key
@@ -107,6 +109,8 @@ export default function CampaignWorkspace() {
         setEmailTemplate(template);
         setTemplateDirty(false);
         setTemplateNotice("");
+        justSwitchedTemplateRef.current = template;
+        setJustSwitchedRevision((current) => current + 1);
       })
       .catch(() => {});
   }, [id, templateAudience]);
@@ -629,6 +633,17 @@ export default function CampaignWorkspace() {
       if (previewRevisionRef.current === revision) setPreviewLoading(false);
     }
   };
+  // Switching the audience dropdown used to leave the live-preview panel
+  // showing the PREVIOUS audience's content until "Refresh" was clicked —
+  // it only caught up indirectly, via the debounced effect below watching
+  // emailTemplate, which raced against the fetch that loads the newly
+  // selected template. Previewing that template directly, the moment it
+  // finishes loading, makes the panel match right away instead.
+  useEffect(() => {
+    if (!justSwitchedRevision || !justSwitchedTemplateRef.current) return;
+    previewTemplate({ silent: true, template: justSwitchedTemplateRef.current });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [justSwitchedRevision]);
   useEffect(() => {
     if (!id || !emailTemplate || !campaign) return undefined;
     const timer = window.setTimeout(
@@ -805,13 +820,13 @@ export default function CampaignWorkspace() {
                       }
                     >
                       <option value="general">
-                        {campaign.emailTemplate?.status === "approved" ? "✓ " : ""}
+                        {campaign.emailTemplate?.status === "approved" ? "✅ " : ""}
                         Main email · required fallback
                       </option>
                       <optgroup label="Optional research variations">
                         {RESEARCH_EMAIL_AUDIENCES.map((audience) => (
                           <option value={audience.key} key={audience.key}>
-                            {campaign.emailAudienceTemplates?.[audience.key]?.status === "approved" ? "✓ " : ""}
+                            {campaign.emailAudienceTemplates?.[audience.key]?.status === "approved" ? "✅ " : ""}
                             {audience.label}
                           </option>
                         ))}
@@ -823,7 +838,7 @@ export default function CampaignWorkspace() {
                               value={`audience-${index}`}
                               key={`${audience}-${index}`}
                             >
-                              {campaign.emailAudienceTemplates?.[`audience-${index}`]?.status === "approved" ? "✓ " : ""}
+                              {campaign.emailAudienceTemplates?.[`audience-${index}`]?.status === "approved" ? "✅ " : ""}
                               {audience}
                             </option>
                           ))}

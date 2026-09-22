@@ -571,10 +571,19 @@ router.post("/:id/email-template/audience-ideas", requireRole("owner", "admin", 
       });
 
       let generated = await runGeneration();
+      // Only textBlocks equality actually predicts whether the persisted
+      // body ends up personalized — it's what personalizeEmailBodyHtml
+      // substitutes with below, and what personalizeEmailDesign uses for
+      // designJson. Also requiring bodyHtml to be byte-identical before
+      // that meant a real repeat of the original bug slipped through:
+      // confirmed live, a model call left every textBlock completely
+      // unchanged while still returning a bodyHtml that merely differed
+      // in some irrelevant way (whitespace, an embedded subject), which
+      // never counted as "unchanged" and so never triggered a retry —
+      // the actual message content stayed unpersonalized regardless.
       const isUnchanged = sourceTextBlocks.length > 0
         && generated.textBlocks?.length === sourceTextBlocks.length
-        && generated.textBlocks.every((block, i) => block === sourceTextBlocks[i])
-        && generated.bodyHtml === baseTemplate.bodyHtml;
+        && generated.textBlocks.every((block, i) => block === sourceTextBlocks[i]);
       if (isUnchanged) {
         generated = await runGeneration("Your previous attempt returned every block completely unchanged from the source — that is not a valid audience adaptation. Rewrite the wording (not just the subject) so it actually speaks to this specific audience, while still preserving structure, facts, and length as instructed.");
       }

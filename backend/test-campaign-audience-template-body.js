@@ -29,9 +29,20 @@ console.log("Campaign audience-template body test passed: text-block detection c
 // HTML string that can silently drift from what was actually validated),
 // closes that gap.
 assert.ok(contents.includes("isUnchanged"), "generateForAudience must detect when the model returned every block unchanged");
-assert.ok(contents.includes("generated.bodyHtml === baseTemplate.bodyHtml"), "the unchanged-check must also cover bodyHtml, not just textBlocks");
 assert.ok(contents.includes('runGeneration("Your previous attempt returned every block completely unchanged'), "an unchanged result must trigger a corrective retry");
 assert.ok(contents.includes("function personalizeEmailBodyHtml("), "must derive the persisted body deterministically from validated text blocks");
 assert.ok(contents.includes("const substitutedBody = personalizeEmailBodyHtml(mainTemplate.body, sourceTextBlocks, generated.textBlocks)"), "the audience template's stored body must be built from the substitution helper, not trusted blindly from the model's own bodyHtml");
 
 console.log("Campaign audience-template body test passed: unchanged-output retry and deterministic body substitution are wired in.");
+
+// The retry condition ALSO requiring bodyHtml to be byte-identical before
+// counting as "unchanged" let a real repeat of this exact bug slip through
+// live: a model call left every textBlock completely untouched while its
+// separately-generated bodyHtml merely differed in some irrelevant way
+// (whitespace, an embedded subject line) — never triggering the retry,
+// so the actual message content stayed unpersonalized. Only textBlocks
+// equality predicts the outcome (it's what the substitution helper above
+// actually uses), so that's the only thing the retry check may depend on.
+assert.ok(!/isUnchanged = sourceTextBlocks\.length > 0[\s\S]{0,300}&&\s*generated\.bodyHtml === baseTemplate\.bodyHtml/.test(contents), "the unchanged-check must not also require bodyHtml equality — that let a real recurrence of this bug through undetected");
+
+console.log("Campaign audience-template body test passed: the retry check depends only on the signal that actually predicts the outcome.");
