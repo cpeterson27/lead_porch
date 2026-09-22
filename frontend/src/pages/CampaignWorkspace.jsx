@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Button from "../components/Button.jsx";
 import DashboardCard from "../components/DashboardCard.jsx";
-import Modal from "../components/Modal.jsx";
 import UnlayerEmailEditor from "../components/UnlayerEmailEditor.jsx";
 import {
   approveCampaignEmailTemplate,
@@ -78,10 +77,6 @@ export default function CampaignWorkspace() {
   const [templateSaving, setTemplateSaving] = useState(false);
   const [ideaGenerating, setIdeaGenerating] = useState(false);
   const [audienceIdeasGenerating, setAudienceIdeasGenerating] = useState(false);
-  const [bulkApprovingKey, setBulkApprovingKey] = useState("");
-  const [selectedDraftKeys, setSelectedDraftKeys] = useState([]);
-  const [bulkApproving, setBulkApproving] = useState(false);
-  const [previewDraftKey, setPreviewDraftKey] = useState("");
   const [ideaPrompt, setIdeaPrompt] = useState("");
   const [ideaImages, setIdeaImages] = useState([]);
   const [workspaceDefaultLogoUrl, setWorkspaceDefaultLogoUrl] = useState("");
@@ -493,75 +488,6 @@ export default function CampaignWorkspace() {
       : RESEARCH_EMAIL_AUDIENCES.find((item) => item.key === templateAudience)?.label ||
         campaign.audience?.[Number(templateAudience.replace("audience-", ""))] ||
         "Selected audience";
-  const audienceLabelForKey = (key) =>
-    RESEARCH_EMAIL_AUDIENCES.find((item) => item.key === key)?.label ||
-    campaign.audience?.[Number(key.replace("audience-", ""))] ||
-    key;
-
-  // Reviewing all 12 audience drafts one at a time — switch tabs, wait for
-  // the full Unlayer editor to reload, read, approve, repeat — was the
-  // actual bottleneck reported. campaign.emailAudienceTemplates already
-  // holds every draft's real subject/body in memory, so this renders all
-  // of them at once (rendered HTML, not the heavy editor), shows which
-  // ones are already approved (so a page refresh never loses that
-  // context), and lets many be approved together in one action instead
-  // of one click each.
-  const allAudienceTemplates = Object.entries(campaign?.emailAudienceTemplates || {})
-    .filter(([, template]) => template?.subject || template?.body);
-  const pendingAudienceKeys = allAudienceTemplates.filter(([, template]) => template.status !== "approved").map(([key]) => key);
-  const approvedAudienceCount = allAudienceTemplates.length - pendingAudienceKeys.length;
-  const previewDraftTemplate = previewDraftKey ? campaign?.emailAudienceTemplates?.[previewDraftKey] : null;
-
-  const toggleSelectedDraftKey = (key) =>
-    setSelectedDraftKeys((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
-  const toggleSelectAllPending = () =>
-    setSelectedDraftKeys((current) => current.length === pendingAudienceKeys.length ? [] : [...pendingAudienceKeys]);
-
-  const approveAudienceDraft = async (key) => {
-    setBulkApprovingKey(key);
-    setError("");
-    try {
-      const result = await approveCampaignEmailTemplate(id, key);
-      setCampaign((current) => ({
-        ...current,
-        emailAudienceTemplates: { ...(current.emailAudienceTemplates || {}), [key]: result.template },
-      }));
-      setSelectedDraftKeys((current) => current.filter((item) => item !== key));
-      setTemplateNotice(`"${audienceLabelForKey(key)}" approved.`);
-    } catch (err) {
-      setError(err.response?.data?.error || "Unable to approve this audience draft.");
-    } finally {
-      setBulkApprovingKey("");
-    }
-  };
-
-  const approveSelectedDrafts = async () => {
-    const keys = [...selectedDraftKeys];
-    if (!keys.length) return;
-    setBulkApproving(true);
-    setError("");
-    try {
-      const results = await Promise.allSettled(keys.map((key) => approveCampaignEmailTemplate(id, key)));
-      const updates = {};
-      let failedCount = 0;
-      results.forEach((result, index) => {
-        if (result.status === "fulfilled") updates[keys[index]] = result.value.template;
-        else failedCount += 1;
-      });
-      setCampaign((current) => ({
-        ...current,
-        emailAudienceTemplates: { ...(current.emailAudienceTemplates || {}), ...updates },
-      }));
-      setSelectedDraftKeys((current) => current.filter((key) => !updates[key]));
-      const approvedCount = Object.keys(updates).length;
-      setTemplateNotice(
-        `${approvedCount} audience draft${approvedCount === 1 ? "" : "s"} approved.${failedCount ? ` ${failedCount} failed — try those again.` : ""}`,
-      );
-    } finally {
-      setBulkApproving(false);
-    }
-  };
-
   const generateIdeas = async () => {
     if (templateDirty && !window.confirm("Replace the current unsaved canvas with a new AI draft?")) return;
     try {
@@ -1131,11 +1057,13 @@ export default function CampaignWorkspace() {
                       }
                     >
                       <option value="general">
+                        {campaign.emailTemplate?.status === "approved" ? "✓ " : ""}
                         Main email · required fallback
                       </option>
                       <optgroup label="Optional research variations">
                         {RESEARCH_EMAIL_AUDIENCES.map((audience) => (
                           <option value={audience.key} key={audience.key}>
+                            {campaign.emailAudienceTemplates?.[audience.key]?.status === "approved" ? "✓ " : ""}
                             {audience.label}
                           </option>
                         ))}
@@ -1147,6 +1075,7 @@ export default function CampaignWorkspace() {
                               value={`audience-${index}`}
                               key={`${audience}-${index}`}
                             >
+                              {campaign.emailAudienceTemplates?.[`audience-${index}`]?.status === "approved" ? "✓ " : ""}
                               {audience}
                             </option>
                           ))}
@@ -1182,86 +1111,6 @@ export default function CampaignWorkspace() {
                     </Button>
                   </section>
                 ) : null}
-                {templateAudience === "general" && allAudienceTemplates.length ? (
-                  <section className="campaign-audience-bulk-review">
-                    <div className="campaign-audience-bulk-review__heading">
-                      <strong>Audience drafts · {approvedAudienceCount} of {allAudienceTemplates.length} approved</strong>
-                      <small>Every draft's status stays visible here, even after a refresh. Select several and approve them together.</small>
-                    </div>
-                    {pendingAudienceKeys.length ? (
-                      <div className="campaign-audience-bulk-review__bulkbar">
-                        <label>
-                          <input
-                            type="checkbox"
-                            checked={selectedDraftKeys.length > 0 && selectedDraftKeys.length === pendingAudienceKeys.length}
-                            onChange={toggleSelectAllPending}
-                          />
-                          Select all pending ({pendingAudienceKeys.length})
-                        </label>
-                        <Button
-                          type="button"
-                          size="sm"
-                          loading={bulkApproving}
-                          disabled={!selectedDraftKeys.length}
-                          onClick={approveSelectedDrafts}
-                        >
-                          Approve selected · {selectedDraftKeys.length}
-                        </Button>
-                      </div>
-                    ) : null}
-                    <div className="campaign-audience-bulk-review__grid">
-                      {allAudienceTemplates.map(([key, template]) => {
-                        const approved = template.status === "approved";
-                        return (
-                          <article className={`campaign-audience-bulk-review__card${approved ? " is-approved" : ""}`} key={key}>
-                            {!approved ? (
-                              <input
-                                type="checkbox"
-                                className="campaign-audience-bulk-review__card-check"
-                                checked={selectedDraftKeys.includes(key)}
-                                onChange={() => toggleSelectedDraftKey(key)}
-                                aria-label={`Select ${audienceLabelForKey(key)} for bulk approval`}
-                              />
-                            ) : null}
-                            <span className={`campaign-audience-bulk-review__status is-${approved ? "approved" : "pending"}`}>
-                              {approved ? "Approved" : "Pending"}
-                            </span>
-                            <strong className="campaign-audience-bulk-review__card-label">{audienceLabelForKey(key)}</strong>
-                            <span className="campaign-audience-bulk-review__card-subject">{template.subject || "(no subject)"}</span>
-                            <select
-                              className="campaign-audience-bulk-review__card-action"
-                              value=""
-                              disabled={bulkApprovingKey === key}
-                              onChange={(event) => {
-                                const action = event.target.value;
-                                event.target.value = "";
-                                if (action === "preview") setPreviewDraftKey(key);
-                                if (action === "approve") approveAudienceDraft(key);
-                              }}
-                            >
-                              <option value="" disabled>{bulkApprovingKey === key ? "Approving…" : "Actions…"}</option>
-                              <option value="preview">Preview</option>
-                              {!approved ? <option value="approve">Approve</option> : null}
-                            </select>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  </section>
-                ) : null}
-                <Modal
-                  isOpen={Boolean(previewDraftKey)}
-                  onClose={() => setPreviewDraftKey("")}
-                  title={`Preview: ${audienceLabelForKey(previewDraftKey)}`}
-                  size="workspace"
-                >
-                  <iframe
-                    title={`Preview: ${audienceLabelForKey(previewDraftKey)}`}
-                    className="campaign-audience-bulk-review__frame"
-                    sandbox=""
-                    srcDoc={previewDraftTemplate?.body || "<p>No body yet.</p>"}
-                  />
-                </Modal>
                 <div className="campaign-personalization" aria-label="Email personalization fields">
                   <div>
                     <strong>Personalize your email</strong>

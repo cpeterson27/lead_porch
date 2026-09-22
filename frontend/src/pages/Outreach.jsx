@@ -93,7 +93,6 @@ export default function Outreach() {
   const [emailCorrection, setEmailCorrection] = useState(null);
   const [emailCorrectionError, setEmailCorrectionError] = useState("");
   const [replacementSendError, setReplacementSendError] = useState("");
-  const [approveAllOpen, setApproveAllOpen] = useState(false);
   const [deletePendingOpen, setDeletePendingOpen] = useState(false);
   const [issueReview, setIssueReview] = useState(null);
   const [coldSendOpen, setColdSendOpen] = useState(false);
@@ -297,22 +296,6 @@ export default function Outreach() {
       );
     } catch {
       setError("Unable to approve outreach.");
-    } finally {
-      setSaving(false);
-    }
-  };
-  const approveAll = async () => {
-    if (!selected || !counts.pending) return;
-    try {
-      setSaving(true);
-      setError("");
-      await approveAllOutreach(selected._id);
-      setApproveAllOpen(false);
-      await refreshItems(selected);
-    } catch (err) {
-      setError(
-        err.response?.data?.error || "Unable to approve pending drafts.",
-      );
     } finally {
       setSaving(false);
     }
@@ -614,13 +597,6 @@ export default function Outreach() {
           <Button variant="outline" loading={saving} onClick={generate}>
             <FiRefreshCw />
             Refresh drafts
-          </Button>
-          <Button
-            variant="outline"
-            disabled={!counts.pending || saving}
-            onClick={() => setApproveAllOpen(true)}
-          >
-            Approve pending · {counts.pending || 0}
           </Button>
           <Button
             variant="outline"
@@ -1103,34 +1079,6 @@ export default function Outreach() {
             )}
           </div>
         ) : null}
-      </Modal>
-      <Modal
-        isOpen={approveAllOpen}
-        onClose={() => !saving && setApproveAllOpen(false)}
-        title="Approve all pending drafts"
-        footer={
-          <>
-            <Button
-              variant="outline"
-              disabled={saving}
-              onClick={() => setApproveAllOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button loading={saving} onClick={approveAll}>
-              Approve {counts.pending || 0} drafts
-            </Button>
-          </>
-        }
-      >
-        <p>
-          This approves every pending draft for{" "}
-          <strong>{selected?.name || "the selected campaign"}</strong>.
-        </p>
-        <p>
-          Approval does not send email. You will still need to click{" "}
-          <strong>Send approved</strong> separately.
-        </p>
       </Modal>
       <Modal
         isOpen={deletePendingOpen}
