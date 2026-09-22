@@ -449,50 +449,71 @@
   font-size: 0.88rem;
 }
 
-.campaign-audience-bulk-review__row {
+/* 3-4 across on a normal desktop width instead of one full-width row per
+   audience — with up to 10-12 audiences that vertical list pushed the
+   actual Unlayer canvas far down the page ("I can barely see the email as
+   I design it"). Each card is compact; preview opens in a modal instead of
+   pushing the grid taller, so browsing many drafts never costs layout
+   space. */
+.campaign-audience-bulk-review__grid {
   display: grid;
-  gap: 0.5rem;
-  padding: 0.6rem 0.75rem;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.6rem;
+}
+
+.campaign-audience-bulk-review__card {
+  position: relative;
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.65rem 0.7rem;
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-md);
   background: var(--surface-strong);
 }
 
-.campaign-audience-bulk-review__row.is-approved {
+.campaign-audience-bulk-review__card.is-approved {
   opacity: 0.7;
 }
 
-.campaign-audience-bulk-review__row header {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
-  align-items: center;
-  gap: 0.75rem;
+.campaign-audience-bulk-review__card-check {
+  position: absolute;
+  top: 0.6rem;
+  right: 0.65rem;
+  margin: 0;
 }
 
-.campaign-audience-bulk-review__check-spacer {
-  display: inline-block;
-  width: 1rem;
-}
-
-.campaign-audience-bulk-review__row header > div {
-  display: grid;
-  gap: 0.1rem;
-  min-width: 0;
-}
-
-.campaign-audience-bulk-review__row header span {
-  color: var(--text-muted);
-  font-size: 0.85rem;
+.campaign-audience-bulk-review__card-label {
+  padding-right: 1.4rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 0.88rem;
+}
+
+.campaign-audience-bulk-review__card-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.campaign-audience-bulk-review__card-action {
+  margin-top: 0.2rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface);
+  color: var(--text);
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .campaign-audience-bulk-review__status {
-  flex-shrink: 0;
+  justify-self: start;
   padding: 0.15rem 0.6rem;
   border-radius: var(--radius-pill, 999px);
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 700;
   white-space: nowrap;
 }
@@ -507,15 +528,10 @@
   background: color-mix(in srgb, var(--text-muted) 14%, transparent);
 }
 
-.campaign-audience-bulk-review__actions {
-  display: flex;
-  gap: 0.5rem;
-  flex-shrink: 0;
-}
-
 .campaign-audience-bulk-review__frame {
   width: 100%;
-  height: 420px;
+  height: 60vh;
+  min-height: 420px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   background: #fff;
@@ -701,6 +717,28 @@
   grid-template-columns: minmax(0, 1.6fr) minmax(340px, 1fr);
   gap: var(--space-4);
   align-items: start;
+}
+
+/* Hiding the live-preview panel (a merge-tag-rendered duplicate of what
+   Unlayer's own canvas already shows while designing) gives the actual
+   design canvas the full row — the panel is one click away again via the
+   restore button, so nothing is lost, just reclaimed while actively
+   designing. */
+.campaign-email-workspace--full {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.campaign-email-workspace__preview-restore {
+  align-self: start;
+  padding: 0.6rem 1rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
 }
 
 .campaign-email-workspace__editor {

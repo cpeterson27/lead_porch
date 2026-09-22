@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Button from "../components/Button.jsx";
 import DashboardCard from "../components/DashboardCard.jsx";
+import Modal from "../components/Modal.jsx";
 import UnlayerEmailEditor from "../components/UnlayerEmailEditor.jsx";
 import {
   approveCampaignEmailTemplate,
@@ -80,7 +81,7 @@ export default function CampaignWorkspace() {
   const [bulkApprovingKey, setBulkApprovingKey] = useState("");
   const [selectedDraftKeys, setSelectedDraftKeys] = useState([]);
   const [bulkApproving, setBulkApproving] = useState(false);
-  const [expandedDraftKey, setExpandedDraftKey] = useState("");
+  const [previewDraftKey, setPreviewDraftKey] = useState("");
   const [ideaPrompt, setIdeaPrompt] = useState("");
   const [ideaImages, setIdeaImages] = useState([]);
   const [workspaceDefaultLogoUrl, setWorkspaceDefaultLogoUrl] = useState("");
@@ -96,6 +97,7 @@ export default function CampaignWorkspace() {
   const [emailPreview, setEmailPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState("");
+  const [previewPanelOpen, setPreviewPanelOpen] = useState(true);
   const [templateAudience, setTemplateAudience] = useState("general");
   // Unlayer only loads its `design` prop once, on mount — bumping this key
   // forces a clean remount (and re-load) when restoring a historical
@@ -508,6 +510,7 @@ export default function CampaignWorkspace() {
     .filter(([, template]) => template?.subject || template?.body);
   const pendingAudienceKeys = allAudienceTemplates.filter(([, template]) => template.status !== "approved").map(([key]) => key);
   const approvedAudienceCount = allAudienceTemplates.length - pendingAudienceKeys.length;
+  const previewDraftTemplate = previewDraftKey ? campaign?.emailAudienceTemplates?.[previewDraftKey] : null;
 
   const toggleSelectedDraftKey = (key) =>
     setSelectedDraftKeys((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
@@ -1206,56 +1209,59 @@ export default function CampaignWorkspace() {
                         </Button>
                       </div>
                     ) : null}
-                    {allAudienceTemplates.map(([key, template]) => {
-                      const approved = template.status === "approved";
-                      const expanded = expandedDraftKey === key;
-                      return (
-                        <article className={`campaign-audience-bulk-review__row${approved ? " is-approved" : ""}`} key={key}>
-                          <header>
+                    <div className="campaign-audience-bulk-review__grid">
+                      {allAudienceTemplates.map(([key, template]) => {
+                        const approved = template.status === "approved";
+                        return (
+                          <article className={`campaign-audience-bulk-review__card${approved ? " is-approved" : ""}`} key={key}>
                             {!approved ? (
                               <input
                                 type="checkbox"
+                                className="campaign-audience-bulk-review__card-check"
                                 checked={selectedDraftKeys.includes(key)}
                                 onChange={() => toggleSelectedDraftKey(key)}
+                                aria-label={`Select ${audienceLabelForKey(key)} for bulk approval`}
                               />
-                            ) : <span className="campaign-audience-bulk-review__check-spacer" />}
-                            <div>
-                              <strong>{audienceLabelForKey(key)}</strong>
-                              <span>{template.subject || "(no subject)"}</span>
-                            </div>
+                            ) : null}
                             <span className={`campaign-audience-bulk-review__status is-${approved ? "approved" : "pending"}`}>
                               {approved ? "Approved" : "Pending"}
                             </span>
-                            <div className="campaign-audience-bulk-review__actions">
-                              <Button type="button" size="sm" variant="outline" onClick={() => setExpandedDraftKey(expanded ? "" : key)}>
-                                {expanded ? "Hide" : "Preview"}
-                              </Button>
-                              {!approved ? (
-                                <Button
-                                  type="button"
-                                  size="sm"
-                                  loading={bulkApprovingKey === key}
-                                  disabled={bulkApproving || (Boolean(bulkApprovingKey) && bulkApprovingKey !== key)}
-                                  onClick={() => approveAudienceDraft(key)}
-                                >
-                                  Approve
-                                </Button>
-                              ) : null}
-                            </div>
-                          </header>
-                          {expanded ? (
-                            <iframe
-                              title={`Preview: ${audienceLabelForKey(key)}`}
-                              className="campaign-audience-bulk-review__frame"
-                              sandbox=""
-                              srcDoc={template.body || "<p>No body yet.</p>"}
-                            />
-                          ) : null}
-                        </article>
-                      );
-                    })}
+                            <strong className="campaign-audience-bulk-review__card-label">{audienceLabelForKey(key)}</strong>
+                            <span className="campaign-audience-bulk-review__card-subject">{template.subject || "(no subject)"}</span>
+                            <select
+                              className="campaign-audience-bulk-review__card-action"
+                              value=""
+                              disabled={bulkApprovingKey === key}
+                              onChange={(event) => {
+                                const action = event.target.value;
+                                event.target.value = "";
+                                if (action === "preview") setPreviewDraftKey(key);
+                                if (action === "approve") approveAudienceDraft(key);
+                              }}
+                            >
+                              <option value="" disabled>{bulkApprovingKey === key ? "Approving…" : "Actions…"}</option>
+                              <option value="preview">Preview</option>
+                              {!approved ? <option value="approve">Approve</option> : null}
+                            </select>
+                          </article>
+                        );
+                      })}
+                    </div>
                   </section>
                 ) : null}
+                <Modal
+                  isOpen={Boolean(previewDraftKey)}
+                  onClose={() => setPreviewDraftKey("")}
+                  title={`Preview: ${audienceLabelForKey(previewDraftKey)}`}
+                  size="workspace"
+                >
+                  <iframe
+                    title={`Preview: ${audienceLabelForKey(previewDraftKey)}`}
+                    className="campaign-audience-bulk-review__frame"
+                    sandbox=""
+                    srcDoc={previewDraftTemplate?.body || "<p>No body yet.</p>"}
+                  />
+                </Modal>
                 <div className="campaign-personalization" aria-label="Email personalization fields">
                   <div>
                     <strong>Personalize your email</strong>
@@ -1355,7 +1361,7 @@ export default function CampaignWorkspace() {
                   ) : null}
                 </div>
               </div>
-              <div className="campaign-email-workspace">
+              <div className={`campaign-email-workspace${previewPanelOpen ? "" : " campaign-email-workspace--full"}`}>
                 <div className="campaign-email-workspace__editor">
                   <UnlayerEmailEditor
                     key={editorInstanceKey}
@@ -1374,43 +1380,61 @@ export default function CampaignWorkspace() {
                     link, use {"{{eventLink}}"} as its URL.
                   </small>
                 </div>
-                <div className="campaign-email-workspace__preview">
-                  <header>
-                    <div>
-                      <span>Live preview</span>
-                      <strong>
-                        {emailPreview?.subject || "Preparing preview…"}
-                      </strong>
-                    </div>
-                    <small className={`campaign-preview-status ${previewLoading ? "is-loading" : ""}`}>
-                      <i aria-hidden="true" />
-                      {previewLoading ? "Updating" : "Updated"}
-                    </small>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      loading={previewLoading}
-                      onClick={refreshPreviewNow}
-                    >
-                      Refresh
-                    </Button>
-                  </header>
-                  {previewError ? (
-                    <p className="form-error">{previewError}</p>
-                  ) : null}
-                  {emailPreview ? (
-                    <iframe
-                      title="Live campaign email preview"
-                      srcDoc={emailPreview.html}
-                      sandbox="allow-popups allow-popups-to-escape-sandbox"
-                    />
-                  ) : (
-                    <div className="campaign-preview-placeholder">
-                      Start with a blank email, add a row, and your preview will appear here.
-                    </div>
-                  )}
-                </div>
+                {previewPanelOpen ? (
+                  <div className="campaign-email-workspace__preview">
+                    <header>
+                      <div>
+                        <span>Live preview</span>
+                        <strong>
+                          {emailPreview?.subject || "Preparing preview…"}
+                        </strong>
+                      </div>
+                      <small className={`campaign-preview-status ${previewLoading ? "is-loading" : ""}`}>
+                        <i aria-hidden="true" />
+                        {previewLoading ? "Updating" : "Updated"}
+                      </small>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        loading={previewLoading}
+                        onClick={refreshPreviewNow}
+                      >
+                        Refresh
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPreviewPanelOpen(false)}
+                      >
+                        Hide
+                      </Button>
+                    </header>
+                    {previewError ? (
+                      <p className="form-error">{previewError}</p>
+                    ) : null}
+                    {emailPreview ? (
+                      <iframe
+                        title="Live campaign email preview"
+                        srcDoc={emailPreview.html}
+                        sandbox="allow-popups allow-popups-to-escape-sandbox"
+                      />
+                    ) : (
+                      <div className="campaign-preview-placeholder">
+                        Start with a blank email, add a row, and your preview will appear here.
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="campaign-email-workspace__preview-restore"
+                    onClick={() => setPreviewPanelOpen(true)}
+                  >
+                    Show live preview
+                  </button>
+                )}
               </div>
               <div className="campaign-idea-generator">
                 <label>
