@@ -470,9 +470,6 @@ export default function Outreach() {
       });
       applyCampaignUpdate(result.campaign);
       setScheduleOpen(false);
-      setNotice(
-        `Scheduled to auto-send ${result.approvedCount} approved draft${result.approvedCount === 1 ? "" : "s"} on ${new Date(result.campaign.scheduledSendAt).toLocaleString()}.`,
-      );
     } catch (err) {
       setScheduleError(err.response?.data?.error || "Unable to schedule this campaign's send.");
     } finally {
@@ -638,17 +635,10 @@ export default function Outreach() {
         </div>
       </header>
       {selected?.acceptingDiscoveryLeads ? (
-        <p className="outreach-notice">
-          New people a Discovery schedule finds and qualifies will be added straight to this campaign. Turn "Accepting
-          Discovery leads" off any time to stop — it also turns off automatically the moment this campaign's scheduled
-          send completes.
-        </p>
+        <p className="outreach-notice">New Discovery leads are added to this campaign automatically.</p>
       ) : null}
       {selected?.scheduledSendAt && !selected?.scheduledSendCompletedAt ? (
-        <p className="outreach-notice">
-          Every currently approved draft in this campaign will auto-send on{" "}
-          {new Date(selected.scheduledSendAt).toLocaleString()}. Approving more drafts before then adds them to the send.
-        </p>
+        <p className="outreach-notice">Auto-sends approved drafts on {new Date(selected.scheduledSendAt).toLocaleString()}.</p>
       ) : null}
       {error ? <p className="form-error">{error}</p> : null}
       {notice ? <p className="outreach-notice">{notice}</p> : null}
