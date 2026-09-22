@@ -248,6 +248,9 @@ export function PublicLayout({ children }) {
               Testimonials
             </a>
           ) : null}
+          <Link onClick={close} to="/faq">
+            FAQ
+          </Link>
           <Link className="public-login" to="/login">
             Login
           </Link>
@@ -284,6 +287,7 @@ export function PublicLayout({ children }) {
             <a href="/#about">About</a>
             {showTeam ? <a href="/#team">Team</a> : null}
             {showResults ? <a href="/#results">Results</a> : null}
+            <Link to="/faq">FAQ</Link>
           </div>
           <div className="public-footer-col">
             <div className="public-footer-label">CONNECT</div>

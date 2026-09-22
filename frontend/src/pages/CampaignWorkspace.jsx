@@ -74,8 +74,6 @@ export default function CampaignWorkspace() {
   const [scheduleSaving, setScheduleSaving] = useState(false);
   const [scheduleNotice, setScheduleNotice] = useState("");
   const [emailTemplate, setEmailTemplate] = useState(null);
-  const [templateVersions, setTemplateVersions] = useState([]);
-  const [templateHistoryOpen, setTemplateHistoryOpen] = useState(false);
   const [templateSaving, setTemplateSaving] = useState(false);
   const [ideaGenerating, setIdeaGenerating] = useState(false);
   const [audienceIdeasGenerating, setAudienceIdeasGenerating] = useState(false);
@@ -130,11 +128,10 @@ export default function CampaignWorkspace() {
   useEffect(() => {
     if (!id) return;
     fetchCampaignEmailTemplate(id, templateAudience)
-      .then(({ template, versions }) => {
+      .then(({ template }) => {
         setEmailTemplate(template);
         setTemplateDirty(false);
         setTemplateNotice("");
-        setTemplateVersions(versions || []);
       })
       .catch(() => {});
   }, [id, templateAudience]);
@@ -626,23 +623,6 @@ export default function CampaignWorkspace() {
       setError("One of those inspiration images could not be read.");
     }
   };
-  const loadHistoricalTemplate = (version) => {
-    setEmailTemplate({
-      subject: version.subject || "",
-      body: version.body || "",
-      designJson: version.designJson || null,
-      callToAction: version.callToAction || "",
-      callToActionUrl: version.callToActionUrl || "",
-      additionalButtons: version.additionalButtons || [],
-      topic: version.topic || emailTemplate?.topic || "event_invitations",
-      status: "draft",
-      currentVersion: emailTemplate?.currentVersion || 0,
-    });
-    setTemplateHistoryOpen(false);
-    setEmailPreview(null);
-    setTemplateDirty(true);
-    setEditorInstanceKey((current) => current + 1);
-  };
   // The live editor debounces its own auto-sync into `emailTemplate` (see
   // UnlayerEmailEditor's onDesignUpdated), so state is usually fresh — but
   // "usually" isn't good enough right before a save. Force an immediate
@@ -728,7 +708,6 @@ export default function CampaignWorkspace() {
           ? "Template approved. Pending drafts already in the queue are being refreshed to match — this happens in the background, no need to wait."
           : "Template approved.",
       );
-      setTemplateVersions((current) => [result.version, ...current]);
     } catch (err) {
       setError(
         err.response?.data?.error || "Unable to approve the campaign email.",
@@ -1408,68 +1387,6 @@ export default function CampaignWorkspace() {
                   Approve new version
                 </Button>
               </div>
-              {templateVersions.length ? (
-                <section className="campaign-template-history">
-                  <button
-                    type="button"
-                    className="campaign-template-history__toggle"
-                    onClick={() => setTemplateHistoryOpen((open) => !open)}
-                  >
-                    <span>
-                      <strong>Template history</strong>
-                      <small>
-                        {templateVersions.length} saved version
-                        {templateVersions.length === 1 ? "" : "s"} · sent
-                        copies are preserved
-                      </small>
-                    </span>
-                    <b>{templateHistoryOpen ? "Hide" : "View all"}</b>
-                  </button>
-                  {templateHistoryOpen ? (
-                    <div className="campaign-template-history__list">
-                      {templateVersions.map((version) => (
-                        <article key={version.version}>
-                          <header>
-                            <span>Version {version.version}</span>
-                            <small>
-                              {version.approvedAt
-                                ? new Date(
-                                    version.approvedAt,
-                                  ).toLocaleString()
-                                : "Approval date unavailable"}
-                            </small>
-                          </header>
-                          <strong>{version.subject}</strong>
-                          <small>
-                            {version.audienceLabel ||
-                              "Historical campaign template"}
-                            {version.sentCount
-                              ? ` · used for ${version.sentCount} sent email${version.sentCount === 1 ? "" : "s"}`
-                              : " · never sent"}
-                          </small>
-                          <footer>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => loadHistoricalTemplate(version)}
-                            >
-                              Use as new draft
-                            </Button>
-                            {version.lastSentAt ? (
-                              <small>
-                                Last sent{" "}
-                                {new Date(
-                                  version.lastSentAt,
-                                ).toLocaleString()}
-                              </small>
-                            ) : null}
-                          </footer>
-                        </article>
-                      ))}
-                    </div>
-                  ) : null}
-                </section>
-              ) : null}
             </div>
           ) : (
             <p>Loading the master template…</p>
