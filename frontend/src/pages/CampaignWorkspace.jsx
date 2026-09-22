@@ -7,21 +7,17 @@ import {
   approveCampaignEmailTemplate,
   fetchCampaign,
   fetchCampaignEmailTemplate,
-  previewCampaignAudience,
   fetchWorkspaceConfig,
   generateCampaignEmailIdeas,
   generateCampaignAudienceTemplates,
   previewCampaignEmailTemplate,
   saveCampaignEmailTemplate,
-  updateCampaignAudienceTags,
   updateCampaignBrand,
   updateCampaignDiscoveryLeads,
-  updateCampaignSchedule,
   uploadEventImage,
 } from "../services/api.js";
 import "./CampaignWorkspace.css";
 import "./CampaignAudience.css";
-import "./CampaignRegistration.css";
 
 const formatDate = (value) =>
   value
@@ -31,14 +27,6 @@ const formatDate = (value) =>
         year: "numeric",
       })
     : "Evergreen";
-const formatMoney = (value) =>
-  Number(value || 0).toLocaleString("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 0,
-  });
-const dateInputValue = (value) =>
-  value ? new Date(value).toISOString().slice(0, 10) : "";
 const normalizeBrandAssets = (row) => {
   const brand = row?.brand || {};
   return {
@@ -71,8 +59,6 @@ export default function CampaignWorkspace() {
   const [campaign, setCampaign] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [scheduleSaving, setScheduleSaving] = useState(false);
-  const [scheduleNotice, setScheduleNotice] = useState("");
   const [emailTemplate, setEmailTemplate] = useState(null);
   const [templateSaving, setTemplateSaving] = useState(false);
   const [ideaGenerating, setIdeaGenerating] = useState(false);
@@ -83,9 +69,6 @@ export default function CampaignWorkspace() {
   const [workspaceDefaultAccentColor, setWorkspaceDefaultAccentColor] = useState("");
   const [logoSaving, setLogoSaving] = useState(false);
   const [discoveryLeadsBusy, setDiscoveryLeadsBusy] = useState(false);
-  const [audienceTagsSaving, setAudienceTagsSaving] = useState(false);
-  const [audienceMatch, setAudienceMatch] = useState(null);
-  const [newAudienceTag, setNewAudienceTag] = useState("");
   const [templateDirty, setTemplateDirty] = useState(false);
   const [templateNotice, setTemplateNotice] = useState("");
   const [copiedToken, setCopiedToken] = useState("");
@@ -117,11 +100,6 @@ export default function CampaignWorkspace() {
         setError(err.response?.data?.error || "Unable to load campaign."),
       )
       .finally(() => setLoading(false));
-  }, [id]);
-
-  useEffect(() => {
-    if (!id) return;
-    previewCampaignAudience(id).then(setAudienceMatch).catch(() => {});
   }, [id]);
 
   useEffect(() => {
@@ -417,54 +395,6 @@ export default function CampaignWorkspace() {
       setTemplateNotice("“Add to Calendar” button added, linked to this campaign's event date. Recipients tap it to add the event straight to their own calendar.");
     } catch (err) {
       setError(err.message || "Unable to insert the add-to-calendar button right now.");
-    }
-  };
-
-  const saveAudienceTags = async (nextAudience) => {
-    setAudienceTagsSaving(true);
-    setError("");
-    try {
-      setCampaign(normalizeBrandAssets(await updateCampaignAudienceTags(id, nextAudience)));
-    } catch (err) {
-      setError(err.response?.data?.error || "Unable to update the target audience.");
-    } finally {
-      setAudienceTagsSaving(false);
-    }
-  };
-
-  const addAudienceTag = () => {
-    const value = newAudienceTag.trim();
-    if (!value) return;
-    if ((campaign.audience || []).some((tag) => tag.toLowerCase() === value.toLowerCase())) {
-      setNewAudienceTag("");
-      return;
-    }
-    setNewAudienceTag("");
-    saveAudienceTags([...(campaign.audience || []), value]);
-  };
-
-  const removeAudienceTag = (tag) => {
-    saveAudienceTags((campaign.audience || []).filter((item) => item !== tag));
-  };
-
-  const saveSchedule = async () => {
-    try {
-      setScheduleSaving(true);
-      setScheduleNotice("");
-      setCampaign(
-        normalizeBrandAssets(
-          await updateCampaignSchedule(id, campaign.startDate),
-        ),
-      );
-      const refreshed = await fetchCampaignEmailTemplate(id, templateAudience);
-      setEmailTemplate(refreshed.template);
-      setScheduleNotice(
-        "Event date saved. Every campaign template now uses the updated date.",
-      );
-    } catch (err) {
-      setError(err.response?.data?.error || "Unable to save the event date.");
-    } finally {
-      setScheduleSaving(false);
     }
   };
 
@@ -776,30 +706,6 @@ export default function CampaignWorkspace() {
 
   const isProgram = campaign.campaignKind === "program";
   const metrics = campaign.metrics || {};
-  const overview = isProgram
-    ? [
-        ["Offer", campaign.programName || "Premium program"],
-        [
-          "Target audience segments",
-          campaign.audience?.length || 0,
-          "The groups you chose to target when this campaign was created — see and edit them on the Target audience step.",
-        ],
-        ["Campaign type", "Program enrollment"],
-      ]
-    : [
-        ["Event date", formatDate(campaign.startDate)],
-        ["Ticket price", formatMoney(campaign.ticketPrice)],
-        ["Registration goal", campaign.ticketGoal || "Not specified"],
-        [
-          "Target audience segments",
-          campaign.audience?.length || 0,
-          "The groups you chose to target when this campaign was created — see and edit them on the Target audience step.",
-        ],
-      ];
-  const registrationLinks = [
-    ["Eventbrite", campaign.registrationLinks?.eventbrite],
-    ["Meetup", campaign.registrationLinks?.meetup],
-  ].filter(([, link]) => link?.enabled && link?.url);
   return (
     <div className="page-dashboard campaign-workspace">
       <header className="campaign-workspace__header">
@@ -869,184 +775,51 @@ export default function CampaignWorkspace() {
       </section>
 
       <section className="campaign-workspace__grid">
-        <details className="campaign-collapsible">
-          <summary>
-            <span>Campaign setup</span>
-            <small>Event date, description, and registration channels</small>
-          </summary>
-          <DashboardCard title="Campaign details">
-            <div className="campaign-overview-list">
-              {overview.map(([label, value]) => (
-                <div key={label}>
-                  <span>{label}</span>
-                  <strong>{value}</strong>
-                </div>
-              ))}
-            </div>
-            {campaign.description ? (
-              <p className="campaign-workspace__description">
-                {campaign.description}
-              </p>
-            ) : null}
-            {!isProgram ? (
-              <section className="campaign-date-card">
-                <div>
-                  <span>Event date</span>
-                  <strong>{formatDate(campaign.startDate)}</strong>
-                </div>
-                <input
-                  aria-label="Event date"
-                  type="date"
-                  value={dateInputValue(campaign.startDate)}
-                  onChange={(event) =>
-                    setCampaign((current) => ({
-                      ...current,
-                      startDate: `${event.target.value}T12:00:00.000Z`,
-                    }))
-                  }
-                />
-                <Button
-                  variant="outline"
-                  loading={scheduleSaving}
-                  onClick={saveSchedule}
-                >
-                  Save date
-                </Button>
-                {scheduleNotice ? <p role="status">{scheduleNotice}</p> : null}
-              </section>
-            ) : null}
-          </DashboardCard>
-          {!isProgram && (
-            <DashboardCard title="Registration channels">
-              {registrationLinks.length ? (
-                <div className="campaign-registration-links">
-                  {registrationLinks.map(([provider, link], index) => (
-                    <a
-                      href={link.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      key={provider}
-                    >
-                      <span>
-                        {index === 0
-                          ? "Primary registration"
-                          : "Additional listing"}
-                      </span>
-                      <strong>{provider}</strong>
-                      <small>
-                        {index === 0
-                          ? "Ticket checkout and main email button"
-                          : "Meetup discovery and RSVPs"}{" "}
-                        ↗
-                      </small>
-                    </a>
-                  ))}
-                </div>
-              ) : (
-                <p className="campaign-workspace__empty">
-                  No registration channels connected yet.
-                </p>
-              )}
-            </DashboardCard>
-          )}
-        </details>
-
-        <details className="campaign-collapsible">
-          <summary>
-            <span>Target audience</span>
-            <small>
-              {campaign.audience?.length
-                ? `${campaign.audience.length} group${campaign.audience.length === 1 ? "" : "s"} configured`
-                : "No target groups yet"}
-            </small>
-          </summary>
-          <DashboardCard title="Choose who this email is for">
-            <p className="campaign-audience-intro">
-              Keep these groups broad — Lead Porch matches contacts to this
-              campaign by comparing their title, industry, and company
-              against the groups below. Find and add contacts from the{" "}
-              <button type="button" className="campaign-inline-link" onClick={() => navigate(`/discovery?tab=people&campaignId=${campaign._id}`)}>
-                Discovery
-              </button>{" "}
-              page.
-            </p>
-                <div className="campaign-audience-groups campaign-audience-groups--editable">
-                  {(campaign.audience || []).map((audience) => (
-                    <span key={audience}>
-                      {audience}
-                      <button
-                        type="button"
-                        aria-label={`Remove ${audience}`}
-                        disabled={audienceTagsSaving}
-                        onClick={() => removeAudienceTag(audience)}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                  {!(campaign.audience || []).length ? (
-                    <em>No target groups yet — add at least one below.</em>
-                  ) : null}
-                </div>
-                <div className="campaign-audience-add">
-                  <input
-                    value={newAudienceTag}
-                    onChange={(event) => setNewAudienceTag(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        addAudienceTag();
-                      }
-                    }}
-                    placeholder="e.g. Real estate investors"
-                    disabled={audienceTagsSaving}
-                  />
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    loading={audienceTagsSaving}
-                    disabled={!newAudienceTag.trim()}
-                    onClick={addAudienceTag}
-                  >
-                    Add group
-                  </Button>
-                </div>
-                <div className="campaign-audience-database-actions">
-                  <div><strong>{audienceMatch?.matched || 0} matching CRM contacts</strong><small>{audienceMatch?.alreadyAssigned || 0} already connected · only eligible contacts matching these groups are included</small></div>
-                  <Button variant="outline" size="sm" onClick={() => navigate("/crm/contacts")}>Choose contacts manually</Button>
-                </div>
-          </DashboardCard>
-        </details>
-
         <DashboardCard title="Email campaign studio" className="campaign-email-studio">
           {emailTemplate ? (
             <div className="campaign-template-editor">
               <div className="campaign-email-meta">
-                <div className="campaign-template-editor__status">
-                  <span
-                    className={`campaign-status-dot ${!templateDirty && emailTemplate.status === "approved" ? "is-approved" : ""}`}
-                  />{" "}
-                  <strong>
-                    {templateDirty
-                      ? "Unsaved changes"
-                      : emailTemplate.status === "approved"
-                        ? "Approved"
-                        : "Draft saved"}
-                  </strong>
-                  {templateNotice ? (
-                    <small role="status">{templateNotice}</small>
-                  ) : null}
-                </div>
-                <div
-                  className="campaign-routing-explainer"
-                  aria-label="You do not assign contacts here. Lead Porch routes each contact automatically."
-                >
-                  <strong>Automatic recipient routing</strong>
-                  <span>
-                    Start with one main email. Audience versions are optional;
-                    Lead Porch previews every routing decision before drafts are created.
-                  </span>
-                </div>
+                {templateNotice ? (
+                  <p className="campaign-template-editor__notice" role="status">{templateNotice}</p>
+                ) : null}
+                <section className="campaign-jarvis-start">
+                  <div className="campaign-jarvis-start__label">
+                    <span className="campaign-jarvis-start__badge">Jarvis</span>
+                    Need a starting point? Tell it what to focus on and it'll draft the email.
+                  </div>
+                  <div className="campaign-jarvis-start__row">
+                    <input
+                      value={ideaPrompt}
+                      onChange={(event) => setIdeaPrompt(event.target.value)}
+                      placeholder="e.g. Make it urgent about the early-bird deadline, keep it casual"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      loading={ideaGenerating}
+                      onClick={generateIdeas}
+                    >
+                      Generate
+                    </Button>
+                  </div>
+                  <div className="campaign-jarvis-start__images">
+                    <label className="campaign-idea-images__upload">
+                      Add inspiration images
+                      <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={ideaImages.length >= 3 || ideaGenerating} onChange={(event) => { addIdeaImages(event.target.files); event.target.value = ""; }} />
+                    </label>
+                    {ideaImages.length ? (
+                      <div className="campaign-idea-images__previews">
+                        {ideaImages.map((image) => (
+                          <figure key={image.id}>
+                            <img src={image.dataUrl} alt={`${image.name} inspiration preview`} />
+                            <figcaption title={image.name}>{image.name}</figcaption>
+                            <button type="button" aria-label={`Remove ${image.name}`} onClick={() => setIdeaImages((current) => current.filter((item) => item.id !== image.id))}>×</button>
+                          </figure>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                </section>
                 <div className="campaign-email-meta__row">
                   <label aria-description="Individual overrides are optional.">
                     <span>Template you are editing</span>
@@ -1284,44 +1057,6 @@ export default function CampaignWorkspace() {
                     Show live preview
                   </button>
                 )}
-              </div>
-              <div className="campaign-idea-generator">
-                <label>
-                  <span>Tell AI what to focus on (optional)</span>
-                  <input
-                    value={ideaPrompt}
-                    onChange={(event) => setIdeaPrompt(event.target.value)}
-                    placeholder="e.g. Make it urgent about the early-bird deadline, keep it casual"
-                  />
-                </label>
-                <div className="campaign-idea-images">
-                  <div>
-                    <strong>Inspiration images (optional)</strong>
-                    <small>Add up to 3 screenshots, flyers, photos, or design references. AI will study them for ideas; they are not automatically inserted into the email.</small>
-                  </div>
-                  <label className="campaign-idea-images__upload">
-                    Add images
-                    <input type="file" accept="image/jpeg,image/png,image/webp" multiple disabled={ideaImages.length >= 3 || ideaGenerating} onChange={(event) => { addIdeaImages(event.target.files); event.target.value = ""; }} />
-                  </label>
-                  {ideaImages.length ? (
-                    <div className="campaign-idea-images__previews">
-                      {ideaImages.map((image) => (
-                        <figure key={image.id}>
-                          <img src={image.dataUrl} alt={`${image.name} inspiration preview`} />
-                          <figcaption title={image.name}>{image.name}</figcaption>
-                          <button type="button" aria-label={`Remove ${image.name}`} onClick={() => setIdeaImages((current) => current.filter((item) => item.id !== image.id))}>×</button>
-                        </figure>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-                <Button
-                  variant="outline"
-                  loading={ideaGenerating}
-                  onClick={generateIdeas}
-                >
-                  Generate ideas with AI
-                </Button>
               </div>
               <div className="campaign-template-editor__actions">
                 <Button

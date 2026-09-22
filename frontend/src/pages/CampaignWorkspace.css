@@ -165,168 +165,12 @@
   letter-spacing: -0.04em;
 }
 
-/* Collapsible "Campaign setup" / "Target audience" sections — these are
-   configured once and rarely revisited, so they start collapsed above the
-   always-visible email design studio instead of forcing step-by-step
-   navigation through them every time. */
-.campaign-collapsible {
-  flex: 0 1 auto;
-  min-width: 260px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: var(--surface);
-  /* The global "Ask Jarvis" widget (layouts/DashboardLayout.css) is fixed
-     at right:22px/bottom:22px on every page — clearing extra space below
-     the last collapsible keeps its pill from sitting on top of content. */
-}
-
-.campaign-collapsible[open] {
-  flex-basis: 100%;
-}
-
-.campaign-collapsible > summary {
-  display: flex;
-  align-items: baseline;
-  gap: 0.6rem;
-  padding: 0.65rem 0.85rem;
-  list-style: none;
-  cursor: pointer;
-  font-weight: 750;
-  color: var(--text);
-}
-
-.campaign-collapsible > summary::-webkit-details-marker { display: none; }
-
-.campaign-collapsible > summary::before {
-  content: "›";
-  display: inline-block;
-  transition: transform 0.15s ease;
-  color: var(--text-muted);
-  font-size: 1.1rem;
-}
-
-.campaign-collapsible[open] > summary::before {
-  transform: rotate(90deg);
-}
-
-.campaign-collapsible > summary small {
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  font-weight: 500;
-}
-
-.campaign-collapsible > summary:hover { background: var(--surface-strong); }
-
-.campaign-collapsible > .dashboard-card {
-  border: 0;
-  border-top: 1px solid var(--border);
-  border-radius: 0;
-  margin: 0;
-}
-
-.campaign-collapsible > .dashboard-card + .dashboard-card {
-  border-top: 1px solid var(--border);
-}
-
 .campaign-workspace__grid {
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
   gap: 0.65rem;
   margin-bottom: 90px;
-}
-
-.campaign-overview-list {
-  display: grid;
-  gap: 0.8rem;
-}
-
-.campaign-overview-list > div {
-  display: grid;
-  gap: 0.18rem;
-  padding-bottom: 0.8rem;
-  border-bottom: 1px solid var(--border);
-}
-
-.campaign-overview-list > div:last-child {
-  border: 0;
-  padding-bottom: 0;
-}
-
-.campaign-overview-list span {
-  color: var(--text-muted);
-  font-size: 0.8rem;
-}
-
-.campaign-overview-list strong {
-  line-height: 1.45;
-}
-
-.campaign-overview-list__linked {
-  display: grid;
-  gap: 0.18rem;
-  padding: 0.6rem;
-  margin: -0.6rem -0.6rem 0.2rem;
-  border: 0;
-  border-bottom: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  background: transparent;
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
-}
-
-.campaign-overview-list__linked:hover {
-  background: var(--surface-strong);
-}
-
-.campaign-overview-list__linked small {
-  color: var(--accent);
-  font-size: 0.76rem;
-  font-weight: 700;
-}
-
-.campaign-workspace__description,
-.campaign-workspace__empty {
-  margin: var(--space-4) 0 0;
-  line-height: 1.6;
-  color: var(--text);
-}
-
-.campaign-workspace__empty {
-  color: var(--text-muted);
-}
-
-.campaign-date-card {
-  display: grid;
-  grid-template-columns: 1fr minmax(180px, 0.45fr) auto;
-  align-items: center;
-  gap: var(--space-4);
-  margin-top: var(--space-4);
-  padding: var(--space-4);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface-strong);
-}
-
-.campaign-date-card > div {
-  display: grid;
-  gap: 0.2rem;
-}
-
-.campaign-date-card span {
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  font-weight: 800;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.campaign-date-card p[role="status"] {
-  grid-column: 1 / -1;
-  margin: 0;
-  color: var(--color-success);
-  font-weight: 700;
 }
 
 /* Email design tab
@@ -538,49 +382,69 @@
   cursor: pointer;
 }
 
-.campaign-template-editor__status {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  flex-wrap: wrap;
-  padding: 0.7rem 0.9rem;
+.campaign-template-editor__notice {
+  margin: 0;
+  padding: 0.6rem 0.9rem;
   border-radius: var(--radius-md);
   background: var(--surface-strong);
-}
-
-.campaign-template-editor__status small {
   color: var(--text-muted);
+  font-size: 0.84rem;
 }
 
-.campaign-status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-warning);
+/* A compact, branded entry point at the very top of the studio — offered
+   as a starting point, not a big box competing with the actual editor
+   below it for attention. */
+.campaign-jarvis-start {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
 }
 
-.campaign-status-dot.is-approved {
-  background: var(--color-success);
-}
-
-.campaign-routing-explainer {
+.campaign-jarvis-start__label {
   display: flex;
   align-items: center;
-  gap: 0.65rem;
-  padding: 0.8rem 0.9rem;
-  border: 1px solid var(--color-success-soft);
-  border-radius: var(--radius-md);
-  background: var(--color-success-soft);
-}
-
-.campaign-routing-explainer strong {
-  color: var(--color-success);
-  white-space: nowrap;
-}
-
-.campaign-routing-explainer span {
+  gap: 0.5rem;
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: 0.82rem;
+}
+
+.campaign-jarvis-start__badge {
+  flex: 0 0 auto;
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--accent);
+  color: var(--accent-contrast, #fff);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.campaign-jarvis-start__row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.campaign-jarvis-start__row input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.86rem;
+}
+
+.campaign-jarvis-start__images {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
 }
 
 /* Editor + live preview side by side, sharing this one section instead of
@@ -671,36 +535,6 @@
   white-space: nowrap;
 }
 
-.campaign-idea-generator {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: end;
-  gap: var(--space-3);
-}
-
-.campaign-idea-generator label {
-  display: grid;
-  gap: 0.4rem;
-}
-
-.campaign-idea-generator label > span {
-  color: var(--text-muted);
-  font-size: 0.76rem;
-  font-weight: 750;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
-.campaign-idea-generator input {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 0.7rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--text);
-  font: inherit;
-}
 .campaign-idea-images{background:var(--surface-strong);border:1px solid var(--border);border-radius:var(--radius-lg);display:grid;gap:.75rem;grid-column:1/-1;padding:.85rem 1rem}.campaign-idea-images>div:first-child strong,.campaign-idea-images>div:first-child small{display:block}.campaign-idea-images>div:first-child strong{color:var(--text);font-size:.84rem}.campaign-idea-images>div:first-child small{color:var(--text-muted);font-size:.76rem;line-height:1.45;margin-top:.15rem}.campaign-idea-images__upload{background:var(--accent);border-radius:var(--radius-pill);color:var(--accent-contrast,#fff)!important;cursor:pointer;font-size:.78rem!important;font-weight:800;justify-self:start;letter-spacing:0!important;padding:.58rem .9rem;text-transform:none!important}.campaign-idea-images__upload:has(input:disabled){cursor:not-allowed;opacity:.5}.campaign-idea-images__upload input{display:none}.campaign-idea-images__previews{display:grid!important;gap:.65rem!important;grid-template-columns:repeat(3,minmax(0,120px))}.campaign-idea-images__previews figure{margin:0;position:relative}.campaign-idea-images__previews img{aspect-ratio:1;border:1px solid var(--border);border-radius:var(--radius-md);display:block;object-fit:cover;width:100%}.campaign-idea-images__previews figcaption{color:var(--text-muted);font-size:.68rem;overflow:hidden;padding-top:.25rem;text-overflow:ellipsis;white-space:nowrap}.campaign-idea-images__previews button{align-items:center;background:var(--surface);border:1px solid var(--border);border-radius:50%;color:var(--text);cursor:pointer;display:flex;font-size:1rem;height:25px;justify-content:center;line-height:1;padding:0;position:absolute;right:5px;top:5px;width:25px}
 
 .campaign-email-workspace__preview iframe {
@@ -1039,13 +873,13 @@
     flex: 1;
   }
   .campaign-email-meta__row,
-  .campaign-date-card,
-  .campaign-idea-generator,
   .campaign-audience-ai-action {
     grid-template-columns: 1fr;
   }
+  .campaign-jarvis-start__row {
+    flex-direction: column;
+  }
   .campaign-template-editor__actions .btn,
-  .campaign-idea-generator .btn,
   .campaign-audience-ai-action .btn {
     width: 100%;
   }

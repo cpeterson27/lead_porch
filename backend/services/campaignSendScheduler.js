@@ -24,7 +24,7 @@ async function runDueCampaignSends() {
       // findActiveCampaign), whether or not the send itself succeeds.
       const claimed = await Campaign.findOneAndUpdate(
         { _id: campaign._id, scheduledSendCompletedAt: null },
-        { $set: { scheduledSendCompletedAt: new Date(), acceptingDiscoveryLeads: false } },
+        { $set: { scheduledSendCompletedAt: new Date(), acceptingDiscoveryLeads: false, status: "completed" } },
         { new: false },
       );
       if (!claimed) continue;
