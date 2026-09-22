@@ -78,6 +78,8 @@ export default function CampaignWorkspace() {
   const [ideaGenerating, setIdeaGenerating] = useState(false);
   const [audienceIdeasGenerating, setAudienceIdeasGenerating] = useState(false);
   const [bulkApprovingKey, setBulkApprovingKey] = useState("");
+  const [selectedDraftKeys, setSelectedDraftKeys] = useState([]);
+  const [bulkApproving, setBulkApproving] = useState(false);
   const [expandedDraftKey, setExpandedDraftKey] = useState("");
   const [ideaPrompt, setIdeaPrompt] = useState("");
   const [ideaImages, setIdeaImages] = useState([]);
@@ -498,10 +500,19 @@ export default function CampaignWorkspace() {
   // the full Unlayer editor to reload, read, approve, repeat — was the
   // actual bottleneck reported. campaign.emailAudienceTemplates already
   // holds every draft's real subject/body in memory, so this renders all
-  // of them at once (rendered HTML, not the heavy editor) with one Approve
-  // click each, no tab-switching or editor reload required.
-  const draftAudienceTemplates = Object.entries(campaign?.emailAudienceTemplates || {})
-    .filter(([, template]) => template?.status !== "approved" && (template?.subject || template?.body));
+  // of them at once (rendered HTML, not the heavy editor), shows which
+  // ones are already approved (so a page refresh never loses that
+  // context), and lets many be approved together in one action instead
+  // of one click each.
+  const allAudienceTemplates = Object.entries(campaign?.emailAudienceTemplates || {})
+    .filter(([, template]) => template?.subject || template?.body);
+  const pendingAudienceKeys = allAudienceTemplates.filter(([, template]) => template.status !== "approved").map(([key]) => key);
+  const approvedAudienceCount = allAudienceTemplates.length - pendingAudienceKeys.length;
+
+  const toggleSelectedDraftKey = (key) =>
+    setSelectedDraftKeys((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
+  const toggleSelectAllPending = () =>
+    setSelectedDraftKeys((current) => current.length === pendingAudienceKeys.length ? [] : [...pendingAudienceKeys]);
 
   const approveAudienceDraft = async (key) => {
     setBulkApprovingKey(key);
@@ -512,11 +523,39 @@ export default function CampaignWorkspace() {
         ...current,
         emailAudienceTemplates: { ...(current.emailAudienceTemplates || {}), [key]: result.template },
       }));
+      setSelectedDraftKeys((current) => current.filter((item) => item !== key));
       setTemplateNotice(`"${audienceLabelForKey(key)}" approved.`);
     } catch (err) {
       setError(err.response?.data?.error || "Unable to approve this audience draft.");
     } finally {
       setBulkApprovingKey("");
+    }
+  };
+
+  const approveSelectedDrafts = async () => {
+    const keys = [...selectedDraftKeys];
+    if (!keys.length) return;
+    setBulkApproving(true);
+    setError("");
+    try {
+      const results = await Promise.allSettled(keys.map((key) => approveCampaignEmailTemplate(id, key)));
+      const updates = {};
+      let failedCount = 0;
+      results.forEach((result, index) => {
+        if (result.status === "fulfilled") updates[keys[index]] = result.value.template;
+        else failedCount += 1;
+      });
+      setCampaign((current) => ({
+        ...current,
+        emailAudienceTemplates: { ...(current.emailAudienceTemplates || {}), ...updates },
+      }));
+      setSelectedDraftKeys((current) => current.filter((key) => !updates[key]));
+      const approvedCount = Object.keys(updates).length;
+      setTemplateNotice(
+        `${approvedCount} audience draft${approvedCount === 1 ? "" : "s"} approved.${failedCount ? ` ${failedCount} failed — try those again.` : ""}`,
+      );
+    } finally {
+      setBulkApproving(false);
     }
   };
 
@@ -1138,34 +1177,68 @@ export default function CampaignWorkspace() {
                     </Button>
                   </section>
                 ) : null}
-                {templateAudience === "general" && draftAudienceTemplates.length ? (
+                {templateAudience === "general" && allAudienceTemplates.length ? (
                   <section className="campaign-audience-bulk-review">
                     <div className="campaign-audience-bulk-review__heading">
-                      <strong>Review audience drafts · {draftAudienceTemplates.length} waiting</strong>
-                      <small>Approve each one right here — no need to switch tabs or reopen the editor for every audience.</small>
+                      <strong>Audience drafts · {approvedAudienceCount} of {allAudienceTemplates.length} approved</strong>
+                      <small>Every draft's status stays visible here, even after a refresh. Select several and approve them together.</small>
                     </div>
-                    {draftAudienceTemplates.map(([key, template]) => {
+                    {pendingAudienceKeys.length ? (
+                      <div className="campaign-audience-bulk-review__bulkbar">
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={selectedDraftKeys.length > 0 && selectedDraftKeys.length === pendingAudienceKeys.length}
+                            onChange={toggleSelectAllPending}
+                          />
+                          Select all pending ({pendingAudienceKeys.length})
+                        </label>
+                        <Button
+                          type="button"
+                          size="sm"
+                          loading={bulkApproving}
+                          disabled={!selectedDraftKeys.length}
+                          onClick={approveSelectedDrafts}
+                        >
+                          Approve selected · {selectedDraftKeys.length}
+                        </Button>
+                      </div>
+                    ) : null}
+                    {allAudienceTemplates.map(([key, template]) => {
+                      const approved = template.status === "approved";
                       const expanded = expandedDraftKey === key;
                       return (
-                        <article className="campaign-audience-bulk-review__row" key={key}>
+                        <article className={`campaign-audience-bulk-review__row${approved ? " is-approved" : ""}`} key={key}>
                           <header>
+                            {!approved ? (
+                              <input
+                                type="checkbox"
+                                checked={selectedDraftKeys.includes(key)}
+                                onChange={() => toggleSelectedDraftKey(key)}
+                              />
+                            ) : <span className="campaign-audience-bulk-review__check-spacer" />}
                             <div>
                               <strong>{audienceLabelForKey(key)}</strong>
                               <span>{template.subject || "(no subject)"}</span>
                             </div>
+                            <span className={`campaign-audience-bulk-review__status is-${approved ? "approved" : "pending"}`}>
+                              {approved ? "Approved" : "Pending"}
+                            </span>
                             <div className="campaign-audience-bulk-review__actions">
                               <Button type="button" size="sm" variant="outline" onClick={() => setExpandedDraftKey(expanded ? "" : key)}>
-                                {expanded ? "Hide preview" : "Preview"}
+                                {expanded ? "Hide" : "Preview"}
                               </Button>
-                              <Button
-                                type="button"
-                                size="sm"
-                                loading={bulkApprovingKey === key}
-                                disabled={Boolean(bulkApprovingKey) && bulkApprovingKey !== key}
-                                onClick={() => approveAudienceDraft(key)}
-                              >
-                                Approve
-                              </Button>
+                              {!approved ? (
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  loading={bulkApprovingKey === key}
+                                  disabled={bulkApproving || (Boolean(bulkApprovingKey) && bulkApprovingKey !== key)}
+                                  onClick={() => approveAudienceDraft(key)}
+                                >
+                                  Approve
+                                </Button>
+                              ) : null}
                             </div>
                           </header>
                           {expanded ? (
