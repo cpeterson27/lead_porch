@@ -1,24 +1,15 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Button from "./Button.jsx";
 import Modal from "./Modal.jsx";
-import { fetchContentBriefs, fetchWorkspaceConfig, generateAiImage, uploadEventImage } from "../services/api.js";
+import { fetchWorkspaceConfig } from "../services/api.js";
 import "./CampaignModal.css";
 
-const BLANK_TEMPLATE = { key: "blank", name: "Start blank", description: "Skip the pre-written copy and write the email yourself." };
-
-const EVENT_TEMPLATES = [
-  BLANK_TEMPLATE,
-  { key: "event_investor", name: "Investor invitation", description: "A direct invitation for qualified real-estate investors." },
-  { key: "event_operator", name: "Operator invitation", description: "For property managers, operators, and multifamily leaders." },
-  { key: "event_partner", name: "Partner invitation", description: "For affiliates and referral partners who can share the event." },
-];
-
-const PROGRAM_TEMPLATES = [
-  BLANK_TEMPLATE,
-  { key: "program_enrollment", name: "Program enrollment", description: "Invite qualified people to join a course, membership, coaching program, or community." },
-  { key: "program_operator", name: "Direct offer", description: "Promote a service or offer directly to the people most likely to need it." },
-  { key: "program_partner", name: "Partner referral", description: "Ask affiliates and strategic partners to refer the right people." },
-];
+// Every campaign starts blank — logo, website URL, and a flyer are all
+// handled directly in the email design page instead (drop a logo in,
+// insert a button linking anywhere, generate a flyer there), so none of
+// that belongs on this form too. Offering a template/starting-point choice
+// here was also just one more decision in the way; it's always blank now.
+const BLANK_TEMPLATE_KEY = "blank";
 
 const PROGRAM_AUDIENCES = [
   "Prospective members",
@@ -37,7 +28,7 @@ const createEmptyForm = (campaignKind = "event") => ({
   audience: [],
   description: "",
   brand: { logoUrl: "", flyerUrl: "", websiteUrl: "", accentColor: "#173f36" },
-  templateKey: campaignKind === "program" ? PROGRAM_TEMPLATES[0].key : EVENT_TEMPLATES[0].key,
+  templateKey: BLANK_TEMPLATE_KEY,
 });
 
 export default function CampaignModal({
@@ -51,69 +42,8 @@ export default function CampaignModal({
 }) {
   const [form, setForm] = useState(() => createEmptyForm(defaultCampaignKind));
   const [error, setError] = useState("");
-  const [savedTemplates, setSavedTemplates] = useState([]);
   const [newAudience, setNewAudience] = useState("");
-  const [logoUploading, setLogoUploading] = useState(false);
-  const [flyerPrompt, setFlyerPrompt] = useState("");
-  const [flyerGenerating, setFlyerGenerating] = useState(false);
-  const [flyerUrl, setFlyerUrl] = useState("");
-  const [flyerError, setFlyerError] = useState("");
-  const [referenceImage, setReferenceImage] = useState("");
-  const [referenceImageName, setReferenceImageName] = useState("");
-  const [revisionPrompt, setRevisionPrompt] = useState("");
-  const [generationNumber, setGenerationNumber] = useState(0);
 
-  const generateFlyer = async ({ retry = false } = {}) => {
-    if (!flyerPrompt.trim() || flyerGenerating) return;
-    setFlyerGenerating(true);
-    setFlyerError("");
-    try {
-      const revision = revisionPrompt.trim();
-      const retryDirection = retry
-        ? (revision || "Create a clearly different professional composition while preserving the person's recognizable face and natural appearance.")
-        : revision;
-      const prompt = [
-        referenceImage ? "Use the uploaded person as the featured subject. Preserve her recognizable facial features, skin tone, hair, and natural appearance; do not substitute a different person." : "",
-        flyerPrompt.trim(),
-        retryDirection ? `Revision direction: ${retryDirection}` : "",
-        "Create polished flyer artwork with legible hierarchy and text-safe areas. Do not invent credentials, testimonials, prices, dates, or claims.",
-      ].filter(Boolean).join("\n\n");
-      const result = await generateAiImage({ prompt, referenceImage, quality: "medium", campaignId: initialData?._id || null });
-      setFlyerUrl(result.url);
-      setGenerationNumber((current) => current + 1);
-      setRevisionPrompt("");
-    } catch (err) {
-      setFlyerError(err.response?.data?.code === "IMAGE_GENERATION_DISABLED" ? "Image generation isn't turned on for this workspace yet." : (err.response?.data?.error || "Unable to generate that image."));
-    } finally {
-      setFlyerGenerating(false);
-    }
-  };
-
-  const chooseReferenceImage = async (file) => {
-    if (!file) return;
-    if (!["image/jpeg", "image/png", "image/webp"].includes(file.type) || file.size > 5 * 1024 * 1024) {
-      setFlyerError("Choose a JPG, PNG, or WEBP photo smaller than 5 MB.");
-      return;
-    }
-    try {
-      const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      setReferenceImage(dataUrl);
-      setReferenceImageName(file.name);
-      setFlyerError("");
-    } catch {
-      setFlyerError("Unable to read that reference photo.");
-    }
-  };
-
-  const templateOptions = useMemo(
-    () => (form.campaignKind === "program" ? PROGRAM_TEMPLATES : EVENT_TEMPLATES),
-    [form.campaignKind],
-  );
   const availableAudiences = form.campaignKind === "program"
     ? [...new Set([...PROGRAM_AUDIENCES, ...audienceOptions])]
     : audienceOptions;
@@ -123,7 +53,6 @@ export default function CampaignModal({
     const resetForm = window.setTimeout(() => {
       if (initialData) {
         const campaignKind = initialData.campaignKind || "event";
-        const choices = campaignKind === "program" ? PROGRAM_TEMPLATES : EVENT_TEMPLATES;
         setForm({
           name: initialData.name || "",
           campaignKind,
@@ -134,7 +63,7 @@ export default function CampaignModal({
           audience: initialData.audience || [],
           description: initialData.description || "",
           brand: { logoUrl: initialData.brand?.logoUrl || "", flyerUrl: initialData.brand?.flyerUrl || "", websiteUrl: initialData.brand?.websiteUrl || "", accentColor: initialData.brand?.accentColor || "#173f36" },
-          templateKey: initialData.templateKey || choices[0].key,
+          templateKey: initialData.templateKey || BLANK_TEMPLATE_KEY,
         });
       } else {
         setForm(createEmptyForm(defaultCampaignKind));
@@ -146,34 +75,18 @@ export default function CampaignModal({
           .catch(() => {});
       }
       setError("");
-      setFlyerPrompt("");
-      setFlyerUrl(initialData?.brand?.flyerUrl || "");
-      setFlyerError("");
-      setReferenceImage("");
-      setReferenceImageName("");
-      setRevisionPrompt("");
-      setGenerationNumber(0);
     }, 0);
     return () => window.clearTimeout(resetForm);
   }, [isOpen, initialData, defaultCampaignKind]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    fetchContentBriefs("email_template")
-      .then((response) => setSavedTemplates(response.data || []))
-      .catch(() => setSavedTemplates([]));
-  }, [isOpen]);
 
   const handleChange = (field) => (event) => {
     setForm((current) => ({ ...current, [field]: event.target.value }));
   };
 
   const setCampaignKind = (campaignKind) => {
-    const choices = campaignKind === "program" ? PROGRAM_TEMPLATES : EVENT_TEMPLATES;
     setForm((current) => ({
       ...current,
       campaignKind,
-      templateKey: choices[0].key,
       audience: [],
     }));
   };
@@ -194,29 +107,6 @@ export default function CampaignModal({
     setNewAudience("");
   };
 
-  const uploadLogo = async (file) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/") || file.size > 8 * 1024 * 1024) {
-      setError("Choose a PNG, JPG, or WEBP logo smaller than 8 MB.");
-      return;
-    }
-    try {
-      setLogoUploading(true);
-      const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
-      const uploaded = await uploadEventImage({ file: dataUrl, filename: file.name });
-      setForm((current) => ({ ...current, brand: { ...current.brand, logoUrl: uploaded.url } }));
-    } catch (err) {
-      setError(err.response?.data?.error || "Unable to upload the program logo.");
-    } finally {
-      setLogoUploading(false);
-    }
-  };
-
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
@@ -232,7 +122,7 @@ export default function CampaignModal({
     try {
       await onSubmit({
         ...form,
-        contentBriefId: form.templateKey.startsWith("content:") ? form.templateKey.slice("content:".length) : null,
+        contentBriefId: null,
         ticketPrice: Number(form.ticketPrice || 0),
         ticketGoal: form.ticketGoal === "" || form.ticketGoal === null || form.ticketGoal === undefined ? null : Number(form.ticketGoal),
       });
@@ -241,7 +131,6 @@ export default function CampaignModal({
     }
   };
 
-  const selectedTemplate = templateOptions.find((template) => template.key === form.templateKey);
   const isProgram = form.campaignKind === "program";
 
   return (
@@ -277,59 +166,10 @@ export default function CampaignModal({
           </div>
 
           {isProgram ? (
-            <>
-              <div className="form-field span-2">
-                <label htmlFor="program-name">What are you promoting?</label>
-                <input id="program-name" type="text" placeholder="e.g. Multifamily Mentorship on Skool" value={form.programName} onChange={handleChange("programName")} />
-              </div>
-              <div className="form-field">
-                <label htmlFor="program-logo">Program logo</label>
-                <input id="program-logo" type="file" accept="image/*" onChange={(event) => uploadLogo(event.target.files?.[0])} />
-                <small>{logoUploading ? "Uploading…" : "Used in the workspace and program emails."}</small>
-              </div>
-              <div className="form-field">
-                <label htmlFor="program-site">Program website</label>
-                <input id="program-site" type="url" placeholder="https://" value={form.brand.websiteUrl} onChange={(event) => setForm((current) => ({ ...current, brand: { ...current.brand, websiteUrl: event.target.value } }))} />
-              </div>
-              {form.brand.logoUrl ? <div className="program-logo-preview span-2"><img src={form.brand.logoUrl} alt="Program logo preview" /><button type="button" onClick={() => setForm((current) => ({ ...current, brand: { ...current.brand, logoUrl: "" } }))}>Remove logo</button></div> : null}
-
-              <div className="form-field span-2 ai-flyer-generator">
-                <label htmlFor="ai-flyer-prompt">Generate a flyer with AI</label>
-                <div className="ai-flyer-reference">
-                  <div><strong>Reference photo (optional)</strong><small>Upload a clear photo of Ellie to feature her in the flyer and preserve her appearance.</small></div>
-                  <label className="ai-flyer-reference__picker" htmlFor="ai-flyer-reference-image">{referenceImage ? "Replace photo" : "Upload Ellie’s photo"}</label>
-                  <input id="ai-flyer-reference-image" className="ai-flyer-reference__input" type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => chooseReferenceImage(event.target.files?.[0])} />
-                </div>
-                {referenceImage ? (
-                  <div className="ai-flyer-reference__preview">
-                    <img src={referenceImage} alt="Ellie reference preview" />
-                    <span>{referenceImageName}</span>
-                    <button type="button" onClick={() => { setReferenceImage(""); setReferenceImageName(""); }}>Remove</button>
-                  </div>
-                ) : null}
-                <div className="ai-flyer-generator__row">
-                  <input id="ai-flyer-prompt" type="text" placeholder="e.g. A bold flyer announcing early enrollment for the Multifamily Mentorship program" value={flyerPrompt} onChange={(event) => setFlyerPrompt(event.target.value)} />
-                  <Button type="button" size="sm" variant="outline" loading={flyerGenerating} disabled={!flyerPrompt.trim()} onClick={generateFlyer}>Generate</Button>
-                </div>
-                <small>Real OpenAI image generation — a rough draft to react to, not final artwork. Nothing is posted anywhere.</small>
-                {flyerError ? <p className="form-error">{flyerError}</p> : null}
-                {flyerUrl ? (
-                  <div className="ai-flyer-result span-2">
-                    <img src={flyerUrl} alt={`Generated flyer draft ${generationNumber || 1}`} />
-                    <div className="ai-flyer-result__actions">
-                      <strong>Flyer draft {generationNumber || 1}</strong>
-                      <a href={flyerUrl} target="_blank" rel="noreferrer">Open full size</a>
-                      <button type="button" onClick={() => setForm((current) => ({ ...current, brand: { ...current.brand, flyerUrl } }))}>{form.brand.flyerUrl === flyerUrl ? "Selected for email campaign" : "Use in email campaign"}</button>
-                    </div>
-                    <div className="ai-flyer-revision">
-                      <label htmlFor="ai-flyer-revision">What should change?</label>
-                      <input id="ai-flyer-revision" type="text" placeholder="e.g. Make the headline larger and use a brighter background" value={revisionPrompt} onChange={(event) => setRevisionPrompt(event.target.value)} />
-                      <Button type="button" size="sm" variant="outline" loading={flyerGenerating} onClick={() => generateFlyer({ retry: true })}>Try again</Button>
-                    </div>
-                  </div>
-                ) : null}
-              </div>
-            </>
+            <div className="form-field span-2">
+              <label htmlFor="program-name">What are you promoting?</label>
+              <input id="program-name" type="text" placeholder="e.g. Multifamily Mentorship on Skool" value={form.programName} onChange={handleChange("programName")} />
+            </div>
           ) : (
             <>
               <div className="form-field">
@@ -346,34 +186,7 @@ export default function CampaignModal({
               </div>
             </>
           )}
-
-          <div className="form-field span-2">
-            <label htmlFor="campaign-description">Campaign brief</label>
-            <textarea id="campaign-description" rows="3" placeholder="What is the offer, why now, and what should the audience do next?" value={form.description} onChange={handleChange("description")} />
-          </div>
         </div>
-
-        <section className="campaign-template-panel" aria-labelledby="template-title">
-          <div>
-            <p className="eyebrow">Email starting point</p>
-            <h4 id="template-title">Template for this audience</h4>
-          </div>
-          <div className="template-choice-list">
-            {templateOptions.map((template) => (
-              <label className={form.templateKey === template.key ? "template-choice is-selected" : "template-choice"} key={template.key}>
-                <input type="radio" name="templateKey" value={template.key} checked={form.templateKey === template.key} onChange={handleChange("templateKey")} />
-                <span><strong>{template.name}</strong><small>{template.description}</small></span>
-              </label>
-            ))}
-            {savedTemplates.map((template) => (
-              <label className={form.templateKey === `content:${template._id}` ? "template-choice is-selected" : "template-choice"} key={template._id}>
-                <input type="radio" name="templateKey" value={`content:${template._id}`} checked={form.templateKey === `content:${template._id}`} onChange={handleChange("templateKey")} />
-                <span><strong>{template.title}</strong><small>Saved Jarvis or AI Content email template</small></span>
-              </label>
-            ))}
-          </div>
-          {selectedTemplate ? <p className="template-help">Selected: {selectedTemplate.description}</p> : null}
-        </section>
 
         <fieldset className="audience-panel">
           <legend>Target audience <span>*</span></legend>
