@@ -500,7 +500,7 @@ export default function CampaignWorkspace() {
   // holds every draft's real subject/body in memory, so this renders all
   // of them at once (rendered HTML, not the heavy editor) with one Approve
   // click each, no tab-switching or editor reload required.
-  const draftAudienceTemplates = Object.entries(campaign.emailAudienceTemplates || {})
+  const draftAudienceTemplates = Object.entries(campaign?.emailAudienceTemplates || {})
     .filter(([, template]) => template?.status !== "approved" && (template?.subject || template?.body));
 
   const approveAudienceDraft = async (key) => {
