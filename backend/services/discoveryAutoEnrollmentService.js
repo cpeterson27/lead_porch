@@ -46,7 +46,7 @@ async function findActiveCampaign(workspaceId) {
  * "not_a_fit" is left exactly where a manual search already leaves it —
  * sitting in the review queue for a human to look at.
  */
-async function autoGradeApproveAndEnroll({ workspaceId, discoveryRunId, scheduleName = "" }) {
+async function autoGradeApproveAndEnroll({ workspaceId, auth, discoveryRunId, scheduleName = "" }) {
   const summary = { graded: 0, qualified: 0, saved: 0, campaignId: null, campaignName: "", errors: [] };
   const pending = await GroundingResearchResult.find({
     workspaceId, discoveryRunId, type: "person", status: "pending_review", qualificationLabel: "",
@@ -56,7 +56,7 @@ async function autoGradeApproveAndEnroll({ workspaceId, discoveryRunId, schedule
   for (let index = 0; index < pending.length; index += GRADE_BATCH_SIZE) {
     const batchIds = pending.slice(index, index + GRADE_BATCH_SIZE).map((row) => String(row._id));
     try {
-      await qualifyAndRecommend({ workspaceId, resultIds: batchIds });
+      await qualifyAndRecommend({ workspaceId, auth, resultIds: batchIds });
       summary.graded += batchIds.length;
     } catch (error) {
       summary.errors.push(`Grading failed: ${error.message || error}`);

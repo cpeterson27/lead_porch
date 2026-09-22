@@ -37,6 +37,7 @@
 const PublicWebDiscoveryRun = require("../models/PublicWebDiscoveryRun");
 const DiscoverySchedule = require("../models/DiscoverySchedule");
 const { autoGradeApproveAndEnroll } = require("./discoveryAutoEnrollmentService");
+const { buildWorkspaceSystemAuth } = require("./systemAuthService");
 const { nextScheduledRun } = require("./discoveryScheduleTimeService");
 const GroundingResearchResult = require("../models/GroundingResearchResult");
 const JarvisMemoryNote = require("../models/JarvisMemoryNote");
@@ -1394,17 +1395,30 @@ async function runDueDiscoverySchedules(dependencies = {}) {
       const claimed = await ScheduleModel.findOneAndUpdate({ _id: schedule._id, $or: [{ leaseExpiresAt: null }, { leaseExpiresAt: { $lte: now } }] }, { $set: { leaseOwner: WORKER_ID, leaseExpiresAt: new Date(Date.now() + LEASE_MS) }, $unset: { runRequestedAt: 1 } }, { new: true });
       if (!claimed) continue;
       try {
+        // Every step below that actually calls the LLM (deriving the
+        // Apollo/PDL ICP, grading candidates) goes through
+        // agentExecutionService.runAgent(), which strictly requires
+        // auth.workspaceId to match the workspace being acted on — there's
+        // no bypass for a system/background caller. A scheduled run has no
+        // HTTP session to build that from, so this was never provided and
+        // every run here failed immediately (confirmed live: every
+        // schedule's lastRunMessage read "Agent workspace context does not
+        // match the caller", every run, forever). Build a real auth context
+        // from the schedule's own creator once per claim instead.
+        // eslint-disable-next-line no-await-in-loop
+        const auth = await buildWorkspaceSystemAuth({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId });
+        if (!auth) { const error = new Error("No active workspace member is available to run this schedule as."); error.code = "DISCOVERY_SCHEDULE_NO_AUTH"; throw error; }
         let run = claimed.currentRunId ? await RunModel.findOne({ _id: claimed.currentRunId, workspaceId: claimed.workspaceId, status: { $in: ["queued", "running"] } }) : null;
         if (!run) {
           // eslint-disable-next-line no-await-in-loop
           const proposeScheduledRun = claimed.targetType === "person" ? proposeStudentSearchPreset : proposePublicWebDiscoveryRun;
-          run = await proposeScheduledRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, programNoteId: claimed.programNoteId, coachingProgramId: claimed.coachingProgramId, locations: claimed.apolloPdlIcp?.locations || [] }, dependencies);
+          run = await proposeScheduledRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, auth, programNoteId: claimed.programNoteId, coachingProgramId: claimed.coachingProgramId, locations: claimed.apolloPdlIcp?.locations || [] }, dependencies);
           // eslint-disable-next-line no-await-in-loop
           run = await approvePublicWebDiscoveryRun({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, runId: run._id, jobs: claimed.jobs?.length ? claimed.jobs : undefined, dailyCandidateTarget: claimed.dailyCandidateTarget, pageLimitPerQuery: claimed.pageLimitPerQuery, queryLimitPerRun: claimed.queryLimitPerRun, providerCreditCapUsd: claimed.providerCreditCapUsd, includePdlCrossReference: claimed.includePdlCrossReference, includePdlPersonSearch: claimed.includePdlPersonSearch, maxPdlPersonSearchCredits: claimed.maxPdlPersonSearchCredits, maxPdlCrossReferenceCredits: claimed.maxPdlCrossReferenceCredits, includeApolloPersonSearch: claimed.includeApolloPersonSearch, maxApolloPersonSearchCredits: claimed.maxApolloPersonSearchCredits, sources: claimed.sources, maxAttemptsPerJob: claimed.maxAttemptsPerJob, apolloPdlIcp: claimed.apolloPdlIcp }, dependencies);
           claimed.currentRunId = run._id;
         }
         // eslint-disable-next-line no-await-in-loop
-        const outcome = await processNextBatch({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, runId: run._id, batchSize: 3 }, dependencies);
+        const outcome = await processNextBatch({ workspaceId: claimed.workspaceId, userId: claimed.createdByUserId, auth, runId: run._id, batchSize: 3 }, dependencies);
         claimed.lastRunAt = now;
         const terminal = ["completed", "stopped_at_cap", "failed", "canceled"].includes(outcome.run?.status);
         claimed.lastRunStatus = outcome.run?.status === "completed" || outcome.run?.status === "stopped_at_cap" ? "completed" : terminal ? "failed" : "partial";
@@ -1416,7 +1430,7 @@ async function runDueDiscoverySchedules(dependencies = {}) {
         if (claimed.lastRunStatus === "completed") {
           try {
             // eslint-disable-next-line no-await-in-loop
-            const enrollment = await autoGradeApproveAndEnroll({ workspaceId: claimed.workspaceId, discoveryRunId: run._id, scheduleName: claimed.name });
+            const enrollment = await autoGradeApproveAndEnroll({ workspaceId: claimed.workspaceId, auth, discoveryRunId: run._id, scheduleName: claimed.name });
             if (enrollment.saved) {
               claimed.lastRunMessage += ` · ${enrollment.saved} auto-added to ${enrollment.campaignName || "the CRM"}.`;
             }
