@@ -161,6 +161,27 @@
   grid-template-columns: 1fr 1fr;
 }
 
+/* Keeps switching audiences and approving them in one glance-and-click
+   loop, no scrolling to a button at the bottom of the page and no
+   reopening the dropdown for every single one — that round trip was the
+   actual slow part of reviewing a dozen-plus audiences. */
+.campaign-review-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.campaign-review-nav span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.campaign-review-nav .btn:last-child {
+  margin-left: auto;
+}
+
 .campaign-audience-ai-action {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

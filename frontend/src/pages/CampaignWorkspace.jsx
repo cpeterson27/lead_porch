@@ -705,6 +705,26 @@ export default function CampaignWorkspace() {
 
   const isProgram = campaign.campaignKind === "program";
   const metrics = campaign.metrics || {};
+  // Same order the dropdown itself lists them in, so Previous/Next moves
+  // through exactly what's visible there — built once here instead of
+  // reopening the dropdown for every single audience during a review pass,
+  // which was the actual slow part: switch, scroll down to Approve, scroll
+  // back up, reopen the dropdown, repeat, for up to a dozen-plus audiences.
+  const templateAudienceKeys = [
+    "general",
+    ...RESEARCH_EMAIL_AUDIENCES.map((audience) => audience.key),
+    ...(campaign.audience || []).map((_, index) => `audience-${index}`),
+  ];
+  const templateAudienceIndex = templateAudienceKeys.indexOf(templateAudience);
+  const goToAudience = (delta) => {
+    const nextIndex = templateAudienceIndex + delta;
+    if (nextIndex < 0 || nextIndex >= templateAudienceKeys.length) return;
+    if (templateDirty && !window.confirm("Discard unsaved changes to this template?")) return;
+    setTemplateAudience(templateAudienceKeys[nextIndex]);
+  };
+  const currentTemplateApproved = templateAudience === "general"
+    ? campaign.emailTemplate?.status === "approved"
+    : campaign.emailAudienceTemplates?.[templateAudience]?.status === "approved";
   return (
     <div className="page-dashboard campaign-workspace">
       <header className="campaign-workspace__header">
@@ -855,6 +875,36 @@ export default function CampaignWorkspace() {
                       }
                     />
                   </label>
+                </div>
+                <div className="campaign-review-nav">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={templateAudienceIndex <= 0}
+                    onClick={() => goToAudience(-1)}
+                  >
+                    ← Previous
+                  </Button>
+                  <span>{templateAudienceIndex + 1} of {templateAudienceKeys.length}</span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    disabled={templateAudienceIndex >= templateAudienceKeys.length - 1}
+                    onClick={() => goToAudience(1)}
+                  >
+                    Next →
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    loading={templateSaving}
+                    disabled={currentTemplateApproved && !templateDirty}
+                    onClick={approveTemplate}
+                  >
+                    {currentTemplateApproved && !templateDirty ? "Approved" : "Approve"}
+                  </Button>
                 </div>
                 {templateAudience === "general" ? (
                   <section className="campaign-audience-ai-action">
