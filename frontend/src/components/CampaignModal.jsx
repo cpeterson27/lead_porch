@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import Button from "./Button.jsx";
 import Modal from "./Modal.jsx";
-import { fetchWorkspaceConfig } from "../services/api.js";
 import "./CampaignModal.css";
 
 // Every campaign starts blank — logo, website URL, and a flyer are all
@@ -75,13 +74,12 @@ export default function CampaignModal({
           status: initialData.status || "active",
         });
       } else {
+        // No accent-color picker exists on this form — it only ever
+        // mirrored the workspace's branding color, and fetching that
+        // client-side after the form was already visible was a real race
+        // against a fast submit. The server now resolves the real color
+        // directly at creation time, so this form doesn't need to guess.
         setForm(createEmptyForm(defaultCampaignKind));
-        fetchWorkspaceConfig()
-          .then((config) => {
-            const accentColor = config.branding?.accentColor;
-            if (accentColor) setForm((current) => ({ ...current, brand: { ...current.brand, accentColor } }));
-          })
-          .catch(() => {});
       }
       setError("");
     }, 0);

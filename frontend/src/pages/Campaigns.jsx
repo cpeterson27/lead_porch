@@ -122,7 +122,7 @@ export default function Campaigns() {
             </>}
           </div>
           <div className="campaign-progress"><span style={{ width: `${isProgram ? emailProgress : progress}%` }} /></div>
-          <footer><span>{isProgram ? sent ? `${emailProgress}% open rate` : "No emails sent yet" : `${progress}% of registration goal`}</span><div><Button variant="ghost" size="sm" onClick={() => openDeleteModal(campaign)}>Delete</Button><Button variant="ghost" size="sm" onClick={() => { setError(""); setEditingCampaign(campaign); setIsOpen(true); }}>Edit</Button><Button variant="outline" size="sm" onClick={() => navigate(`/campaigns/${campaign._id}`)}>Open workspace <FiArrowRight /></Button></div></footer>
+          <footer><span>{isProgram ? sent ? `${emailProgress}% open rate` : "No emails sent yet" : `${progress}% of registration goal`}</span><div><Button variant="outline" size="sm" onClick={() => openDeleteModal(campaign)}>Delete</Button><Button variant="outline" size="sm" onClick={() => { setError(""); setEditingCampaign(campaign); setIsOpen(true); }}>Edit</Button><Button variant="outline" size="sm" onClick={() => navigate(`/campaigns/${campaign._id}`)}>Open <FiArrowRight /></Button></div></footer>
         </article>;
       })}
     </section> : <div className="table-state table-state--empty">No campaigns are active yet.</div>}

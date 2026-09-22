@@ -7,6 +7,7 @@ const Outreach = require("../models/Outreach");
 const { applyCanonicalEventDate, formatEventDate, generateOutreachDraft, generateOutreachSuggestions } = require("../utils/outreachGenerator");
 const { getCampaignTemplate } = require("../services/campaignTemplates");
 const ContentBrief = require("../models/ContentBrief");
+const WorkspaceConfig = require("../models/WorkspaceConfig");
 const { assignCampaignMatches, getCampaignMatches } = require("../services/campaignAudienceService");
 const { effectiveTemplate } = require("../services/campaignMasterTemplate");
 const { requireRole } = require("../middleware/auth");
@@ -1236,6 +1237,18 @@ router.post("/", async (req, res) => {
       callToActionUrl: "",
     } : getCampaignTemplate(templateKey, { campaignName: name, programName });
 
+    // The create-campaign form has no accent-color picker of its own — it
+    // only ever mirrors the workspace's current branding color, fetched
+    // client-side after the form is already visible. That's a real race:
+    // submitting before that fetch resolves silently bakes in the form's
+    // hardcoded placeholder default instead (confirmed live: a campaign
+    // created this way ended up with #173f36 while every other campaign,
+    // and the workspace's actual branding, was #8bc53f). Resolving the
+    // real color server-side, ignoring whatever the client happened to
+    // send for it, removes that race as a possibility entirely.
+    const workspaceConfig = await WorkspaceConfig.findOne({ workspaceId: req.auth.workspaceId }).select("branding.accentColor").lean();
+    const resolvedAccentColor = workspaceConfig?.branding?.accentColor || String(brand.accentColor || "").trim() || "#173f36";
+
     const campaign =
       await Campaign.create({
 
@@ -1247,7 +1260,7 @@ router.post("/", async (req, res) => {
           logoUrl: String(brand.logoUrl || "").trim(),
           flyerUrl: String(brand.flyerUrl || "").trim(),
           websiteUrl: String(brand.websiteUrl || "").trim(),
-          accentColor: String(brand.accentColor || "#173f36").trim(),
+          accentColor: resolvedAccentColor,
         },
 
         name:

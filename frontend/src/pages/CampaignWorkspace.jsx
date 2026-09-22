@@ -13,7 +13,6 @@ import {
   previewCampaignEmailTemplate,
   saveCampaignEmailTemplate,
   updateCampaignBrand,
-  updateCampaignDiscoveryLeads,
   uploadEventImage,
 } from "../services/api.js";
 import "./CampaignWorkspace.css";
@@ -68,7 +67,6 @@ export default function CampaignWorkspace() {
   const [workspaceDefaultLogoUrl, setWorkspaceDefaultLogoUrl] = useState("");
   const [workspaceDefaultAccentColor, setWorkspaceDefaultAccentColor] = useState("");
   const [logoSaving, setLogoSaving] = useState(false);
-  const [discoveryLeadsBusy, setDiscoveryLeadsBusy] = useState(false);
   const [templateDirty, setTemplateDirty] = useState(false);
   const [templateNotice, setTemplateNotice] = useState("");
   const [copiedToken, setCopiedToken] = useState("");
@@ -175,20 +173,6 @@ export default function CampaignWorkspace() {
       setCampaign(normalizeBrandAssets(await updateCampaignBrand(id, { accentColor })));
     } catch (err) {
       setError(err.response?.data?.error || "Unable to save the accent color.");
-    }
-  };
-
-  const toggleDiscoveryLeads = async () => {
-    const accepting = !campaign.acceptingDiscoveryLeads;
-    setDiscoveryLeadsBusy(true);
-    setError("");
-    try {
-      const result = await updateCampaignDiscoveryLeads(id, accepting);
-      setCampaign(normalizeBrandAssets(result.campaign));
-    } catch (err) {
-      setError(err.response?.data?.error || "Unable to update this campaign's Discovery-lead setting.");
-    } finally {
-      setDiscoveryLeadsBusy(false);
     }
   };
 
@@ -308,7 +292,7 @@ export default function CampaignWorkspace() {
                   text: "Button text →",
                   textAlign: "center",
                   containerPadding: "16px",
-                  backgroundColor: campaign.brand?.accentColor || "#173f36",
+                  backgroundColor: campaign.brand?.accentColor || workspaceDefaultAccentColor || "#173f36",
                   color: "#ffffff",
                   borderRadius: "999px",
                   href: { name: "web", values: { href: "{{eventLink}}", target: "_blank" } },
@@ -373,7 +357,7 @@ export default function CampaignWorkspace() {
                   text: "Add to Calendar",
                   textAlign: "center",
                   containerPadding: "16px",
-                  backgroundColor: campaign.brand?.accentColor || "#173f36",
+                  backgroundColor: campaign.brand?.accentColor || workspaceDefaultAccentColor || "#173f36",
                   color: "#ffffff",
                   borderRadius: "999px",
                   href: { name: "web", values: { href: addToCalendarUrl, target: "_blank" } },
@@ -631,7 +615,7 @@ export default function CampaignWorkspace() {
           ...template,
           logoUrl: campaign.brand?.logoUrl || "",
           flyerUrl: campaign.brand?.flyerUrl || "",
-          accentColor: campaign.brand?.accentColor || "#173f36",
+          accentColor: campaign.brand?.accentColor || workspaceDefaultAccentColor || "#173f36",
         });
       if (previewRevisionRef.current === revision) setEmailPreview(nextPreview);
     } catch (err) {
@@ -734,15 +718,6 @@ export default function CampaignWorkspace() {
           </div>
         </div>
         <div className="campaign-workspace__actions">
-          <label className={`discovery-leads-toggle${discoveryLeadsBusy ? " is-busy" : ""}`}>
-            <input
-              type="checkbox"
-              checked={Boolean(campaign.acceptingDiscoveryLeads)}
-              disabled={discoveryLeadsBusy}
-              onChange={toggleDiscoveryLeads}
-            />
-            <span>Accepting Discovery leads</span>
-          </label>
           <Button
             variant="outline"
             onClick={() => navigate(`/discovery?tab=people&campaignId=${campaign._id}`)}
@@ -989,7 +964,7 @@ export default function CampaignWorkspace() {
                     key={editorInstanceKey}
                     ref={messageRef}
                     design={emailTemplate.designJson}
-                    accentColor={campaign.brand?.accentColor || "#173f36"}
+                    accentColor={campaign.brand?.accentColor || workspaceDefaultAccentColor || "#173f36"}
                     onDesignChange={handleDesignChange}
                     onUploadImage={uploadInlineImage}
                   />

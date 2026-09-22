@@ -33,7 +33,9 @@
 .campaign-card__meta small { color: var(--text-muted); font-size: .64rem; text-transform: uppercase; }
 .campaign-progress { background: #e7e4dc; border-radius: 999px; height: 5px; overflow: hidden; }
 .campaign-progress span { background: linear-gradient(90deg,#1f6658,#61c5a9); display: block; height: 100%; }
-.campaign-card footer > div { display: flex; gap: 6px; }
+.campaign-card footer { flex-wrap: wrap; gap: 8px; }
+.campaign-card footer > div { display: flex; flex-wrap: wrap; gap: 6px; }
+.campaign-card footer .btn { white-space: nowrap; }
 @media (max-width: 650px) {
   .campaign-card-grid { grid-template-columns: 1fr; }
   .campaign-card__meta { grid-template-columns: 1fr; }
