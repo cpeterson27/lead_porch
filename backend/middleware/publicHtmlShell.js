@@ -56,6 +56,17 @@ function absoluteUrl(value, origin) {
   }
 }
 
+// Same Cloudinary resize pattern WorkspaceThemeContext.jsx already uses
+// client-side for the dashboard's own favicon variants — reused here so
+// the server-rendered public shell (what Google's favicon crawler and
+// browser tabs actually read) gets real, properly-sized icons too,
+// instead of one raw image with no size declared at all.
+function faviconVariant(url, size) {
+  return url?.includes("res.cloudinary.com/") && url.includes("/image/upload/")
+    ? url.replace("/image/upload/", `/image/upload/c_fill,w_${size},h_${size},f_png/`)
+    : url;
+}
+
 function safeJson(value) {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
@@ -241,7 +252,10 @@ async function renderShell(req) {
     `<meta name="robots" content="${meta.indexable ? "index,follow,max-image-preview:large" : "noindex,follow"}">`,
     `<link rel="canonical" href="${safeCanonical}">`,
     meta.favicon ? `<link rel="icon" href="${safeFavicon}">` : "",
-    meta.favicon ? `<link rel="apple-touch-icon" href="${safeFavicon}">` : "",
+    ...(meta.favicon
+      ? [16, 32, 48, 192, 512].map((size) => `<link rel="icon" sizes="${size}x${size}" type="image/png" href="${escapeHtml(faviconVariant(meta.favicon, size))}">`)
+      : []),
+    meta.favicon ? `<link rel="apple-touch-icon" sizes="180x180" href="${escapeHtml(faviconVariant(meta.favicon, 180))}">` : "",
     ...(meta.schemas || []).map((schema) => `<script type="application/ld+json">${safeJson({ "@context": "https://schema.org", ...schema })}</script>`),
   ]
     .filter(Boolean)
