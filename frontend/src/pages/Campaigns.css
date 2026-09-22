@@ -16,7 +16,7 @@
 .campaign-summary svg { color: #236557; font-size: .95rem; }
 .campaign-summary span { color: var(--text-muted); display: flex; align-items: baseline; gap: 5px; font-size: .74rem; }
 .campaign-summary strong { color: var(--text); font-size: .92rem; }
-.campaign-card-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+.campaign-card-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); }
 .campaign-card { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 8px 22px rgba(20,42,36,.045); display: grid; gap: 11px; padding: 16px; }
 .campaign-card header,
 .campaign-card footer { align-items: center; display: flex; justify-content: space-between; }
