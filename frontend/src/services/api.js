@@ -889,9 +889,9 @@ export const updateCampaignSchedule = (campaignId, startDate) =>
     .patch(`/campaigns/${campaignId}/schedule`, { startDate })
     .then((res) => res.data);
 
-export const updateCampaignScheduledSend = (campaignId, scheduledSendAt) =>
+export const updateCampaignScheduledSend = (campaignId, scheduledSendAt, options = {}) =>
   api
-    .patch(`/campaigns/${campaignId}/scheduled-send`, { scheduledSendAt })
+    .patch(`/campaigns/${campaignId}/scheduled-send`, { scheduledSendAt, ...options })
     .then((res) => res.data);
 
 export const updateCampaignDiscoveryLeads = (campaignId, accepting) =>
@@ -1644,11 +1644,6 @@ export const approveAllOutreach = (campaignId, outreachIds) =>
 export const deletePendingOutreach = (campaignId) =>
   api
     .delete("/outreach/bulk/pending", { data: { campaignId } })
-    .then((res) => res.data);
-
-export const recordCampaignConsent = (campaignId, details) =>
-  api
-    .post("/outreach/record-consent", { campaignId, ...details })
     .then((res) => res.data);
 
 export const previewCampaignEmailTemplate = (campaignId, template) =>

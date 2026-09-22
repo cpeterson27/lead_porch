@@ -818,13 +818,27 @@ router.patch("/:id/scheduled-send", requireRole("owner", "admin"), async (req, r
       return res.status(400).json({ error: "Choose a real date and time in the future." });
     }
     const approvedCount = await Outreach.countDocuments({ campaignId: campaign._id, status: "approved" });
-    if (!approvedCount) return res.status(400).json({ error: "Approve at least one draft before scheduling — nothing approved yet means nothing to send." });
+    // A campaign still "accepting Discovery leads" can legitimately have zero
+    // approved drafts right now and still be worth scheduling ahead of time
+    // — e.g. scheduling tonight's 8am send before a 6am Discovery search has
+    // even run yet; drafts from an already-approved template auto-approve
+    // as Discovery adds people, so there's something to send by the time
+    // this fires even though there's nothing yet at schedule time.
+    if (!approvedCount && !campaign.acceptingDiscoveryLeads) {
+      return res.status(400).json({ error: "Approve at least one draft (or turn on Accepting Discovery leads) before scheduling — nothing approved and no leads incoming means nothing to send." });
+    }
+    // Cold-outreach ("business_prospecting") sends normally require an
+    // in-the-moment attestation the manual send flow collects live — an
+    // unattended background send can't provide that, so it's collected once
+    // here instead, at schedule time, and covers every send this schedule
+    // triggers until the schedule changes.
+    const deliveryPurpose = req.body?.deliveryPurpose === "marketing" ? "marketing" : "business_prospecting";
+    if (deliveryPurpose === "business_prospecting" && req.body?.prospectingAttested !== true) {
+      return res.status(400).json({ error: "Confirm you're authorized to send cold business outreach to these contacts before scheduling." });
+    }
     campaign.scheduledSendAt = scheduledSendAt;
-    // Scheduling only ever covers the standard "marketing" delivery purpose
-    // — the stricter cold-outreach ("business_prospecting") category
-    // requires an explicit, in-the-moment attestation the manual send
-    // already collects, which an unattended background send can't provide.
-    campaign.scheduledSendDeliveryPurpose = "marketing";
+    campaign.scheduledSendDeliveryPurpose = deliveryPurpose;
+    campaign.scheduledSendProspectingAttestedAt = deliveryPurpose === "business_prospecting" ? new Date() : null;
     campaign.scheduledSendCompletedAt = null;
     campaign.scheduledSendResult = null;
     await campaign.save();

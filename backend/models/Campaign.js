@@ -128,6 +128,14 @@ const campaignSchema = new mongoose.Schema(
   // once processed so the poller never double-sends the same schedule.
   scheduledSendAt: { type: Date, default: null },
   scheduledSendDeliveryPurpose: { type: String, enum: ["marketing", "business_prospecting"], default: "marketing" },
+  // A "business_prospecting" send normally requires an in-the-moment human
+  // attestation (the manual "Send selected" flow collects this via a
+  // checkbox each time) — an unattended background send can't provide
+  // that. Recording it once here, at schedule time, is what makes cold
+  // outreach eligible for scheduling at all: the owner explicitly attests
+  // when they set up the schedule, and that attestation covers every send
+  // it triggers until the schedule is changed.
+  scheduledSendProspectingAttestedAt: { type: Date, default: null },
   scheduledSendCompletedAt: { type: Date, default: null },
   scheduledSendResult: { type: mongoose.Schema.Types.Mixed, default: null },
 

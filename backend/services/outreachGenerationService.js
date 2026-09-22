@@ -125,7 +125,14 @@ async function regenerateCampaignOutreach(campaign, { onlyMissing = false, actor
         exists.templateAudienceKey = recipientAudienceKey;
         exists.templateAudienceLabel = recipientAudienceLabel;
         exists.emailTopic = recipientTemplate.topic;
-        exists.status = "pending";
+        // The template this draft is built from (general or audience) is
+        // already human-approved by the time it can be routed here — that
+        // approval IS the review step; requiring a second manual approval
+        // per recipient on top of it just blocks the scheduled send from
+        // ever reaching contacts a Discovery schedule adds same-day.
+        exists.status = "approved";
+        exists.deliveryStatus = "";
+        exists.failedAt = null;
         exists.errorMessage = "";
         await exists.save();
         updatedCount++;
@@ -152,7 +159,7 @@ async function regenerateCampaignOutreach(campaign, { onlyMissing = false, actor
       templateAudienceKey: recipientAudienceKey,
       templateAudienceLabel: recipientAudienceLabel,
       emailTopic: recipientTemplate.topic,
-      status: "pending",
+      status: "approved",
     });
     createdCount++;
   }

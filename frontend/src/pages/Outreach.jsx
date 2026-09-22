@@ -12,7 +12,6 @@ import {
   fetchOutreach,
   fetchOutreachPreview,
   generateOutreach,
-  recordCampaignConsent,
   replaceBouncedOutreachEmail,
   sendOutreachTestEmail,
   sendEmails,
@@ -96,16 +95,14 @@ export default function Outreach() {
   const [replacementSendError, setReplacementSendError] = useState("");
   const [approveAllOpen, setApproveAllOpen] = useState(false);
   const [deletePendingOpen, setDeletePendingOpen] = useState(false);
-  const [consentConfirmOpen, setConsentConfirmOpen] = useState(false);
   const [issueReview, setIssueReview] = useState(null);
-  const [sendMode, setSendMode] = useState("marketing");
   const [coldSendOpen, setColdSendOpen] = useState(false);
   const [coldAttested, setColdAttested] = useState(false);
-  const [allowUnverified, setAllowUnverified] = useState(false);
   const [selectedOutreachIds, setSelectedOutreachIds] = useState([]);
   const [bulkCorrecting, setBulkCorrecting] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleValue, setScheduleValue] = useState("");
+  const [scheduleAttested, setScheduleAttested] = useState(false);
   const [scheduleBusy, setScheduleBusy] = useState(false);
   const [discoveryLeadsBusy, setDiscoveryLeadsBusy] = useState(false);
   const [scheduleError, setScheduleError] = useState("");
@@ -350,21 +347,6 @@ export default function Outreach() {
       setSaving(false);
     }
   };
-  const confirmConsent = async () => {
-    if (!selected) return;
-    try {
-      setSaving(true);
-      setError("");
-      const result = await recordCampaignConsent(selected._id, { attested: true });
-      setConsentConfirmOpen(false);
-      await refreshItems(selected);
-      setNotice(result.message || `Recorded permission for ${result.updatedCount || 0} contact${result.updatedCount === 1 ? "" : "s"}.`);
-    } catch (err) {
-      setError(err.response?.data?.error || "Unable to record permission for these contacts.");
-    } finally {
-      setSaving(false);
-    }
-  };
   const sendTest = async () => {
     if (!preview?._id) return;
     try {
@@ -424,7 +406,7 @@ export default function Outreach() {
       setSaving(false);
     }
   };
-  const performSend = async (deliveryPurpose = "marketing") => {
+  const performSend = async () => {
     const ids = selectedOutreach.filter((item) => item.status === "approved").map((item) => item._id);
     if (!ids.length)
       return setError("Select approved drafts before sending. Use Select next 25 or Select next 50 below.");
@@ -432,9 +414,8 @@ export default function Outreach() {
       setSaving(true);
       setError("");
       const result = await sendEmails(ids, {
-        allowUnverified,
-        deliveryPurpose,
-        prospectingAttested: deliveryPurpose === "business_prospecting",
+        deliveryPurpose: "business_prospecting",
+        prospectingAttested: true,
       });
       setSelectedOutreachIds((current) => current.filter((id) => !ids.includes(id)));
       if (!result.failedCount) setNotice(`${result.sentCount} email${result.sentCount === 1 ? "" : "s"} accepted by Resend. Delivery updates will appear automatically; no other approved drafts were touched.`);
@@ -463,18 +444,14 @@ export default function Outreach() {
     }
   };
   const send = () => {
-    if (sendMode === "business_prospecting") {
-      if (!selectedApprovedCount) return setError("Approve and select approved drafts before sending.");
-      setColdAttested(false);
-      setColdSendOpen(true);
-      return;
-    }
-    return performSend("marketing");
+    if (!selectedApprovedCount) return setError("Approve and select approved drafts before sending.");
+    setColdAttested(false);
+    setColdSendOpen(true);
   };
   const confirmColdSend = async () => {
     if (!coldAttested) return;
     setColdSendOpen(false);
-    await performSend("business_prospecting");
+    await performSend();
   };
 
   const toLocalInputValue = (date) => {
@@ -493,14 +470,21 @@ export default function Outreach() {
         ? toLocalInputValue(selected.scheduledSendAt)
         : toLocalInputValue(new Date(Date.now() + 60 * 60 * 1000)),
     );
+    // Once this campaign has ever had a scheduling attestation on file, later
+    // reschedules (e.g. moving tomorrow's 8am send to 9am) don't need to ask
+    // again — only a brand-new schedule needs the one-time confirmation.
+    setScheduleAttested(Boolean(selected?.scheduledSendProspectingAttestedAt));
     setScheduleOpen(true);
   };
   const submitSchedule = async () => {
-    if (!selected?._id || !scheduleValue) return;
+    if (!selected?._id || !scheduleValue || !scheduleAttested) return;
     setScheduleBusy(true);
     setScheduleError("");
     try {
-      const result = await updateCampaignScheduledSend(selected._id, new Date(scheduleValue).toISOString());
+      const result = await updateCampaignScheduledSend(selected._id, new Date(scheduleValue).toISOString(), {
+        deliveryPurpose: "business_prospecting",
+        prospectingAttested: true,
+      });
       applyCampaignUpdate(result.campaign);
       setScheduleOpen(false);
       setNotice(
@@ -645,13 +629,6 @@ export default function Outreach() {
           >
             Delete pending · {counts.pending || 0}
           </Button>
-          <Button
-            variant="outline"
-            disabled={!selected || saving}
-            onClick={() => setConsentConfirmOpen(true)}
-          >
-            Confirm permission
-          </Button>
           <label className={`discovery-leads-toggle${discoveryLeadsBusy ? " is-busy" : ""}`}>
             <input
               type="checkbox"
@@ -690,29 +667,6 @@ export default function Outreach() {
           {new Date(selected.scheduledSendAt).toLocaleString()}. Approving more drafts before then adds them to the send.
         </p>
       ) : null}
-      <label className="outreach-allow-unverified">
-        <input
-          type="checkbox"
-          checked={allowUnverified}
-          onChange={(event) => setAllowUnverified(event.target.checked)}
-        />
-        Send even if the email isn't verified
-        <small>
-          Only skips the verification requirement — suppressed, unsubscribed,
-          and no-consent contacts are still blocked.
-        </small>
-      </label>
-      <fieldset className="outreach-send-mode">
-        <legend>Sending purpose</legend>
-        <label>
-          <input type="radio" name="send-purpose" value="marketing" checked={sendMode === "marketing"} onChange={() => setSendMode("marketing")} />
-          <span><strong>Opted-in marketing</strong><small>For subscribers who explicitly requested this topic.</small></span>
-        </label>
-        <label>
-          <input type="radio" name="send-purpose" value="business_prospecting" checked={sendMode === "business_prospecting"} onChange={() => setSendMode("business_prospecting")} />
-          <span><strong>Cold business prospecting</strong><small>For relevant business contacts. Unsubscribed, suppressed, bounced, and unverified addresses remain blocked.</small></span>
-        </label>
-      </fieldset>
       {error ? <p className="form-error">{error}</p> : null}
       {notice ? <p className="outreach-notice">{notice}</p> : null}
       {dailyQuotaFailures ? (
@@ -991,8 +945,7 @@ export default function Outreach() {
               <Button loading={saving} onClick={async () => {
                 await approve(issueReview);
                 setIssueReview(null);
-                setSendMode("business_prospecting");
-                setNotice("Draft approved. Select it, choose Cold business prospecting, and send when ready.");
+                setNotice("Draft approved. Select it and send when ready.");
               }}>Approve this draft to retry</Button>
             ) : null}
           </>
@@ -1047,7 +1000,7 @@ export default function Outreach() {
             <Button variant="outline" disabled={scheduleBusy} onClick={() => setScheduleOpen(false)}>
               Close
             </Button>
-            <Button loading={scheduleBusy} disabled={!scheduleValue} onClick={submitSchedule}>
+            <Button loading={scheduleBusy} disabled={!scheduleValue || !scheduleAttested} onClick={submitSchedule}>
               <FiClock /> Save schedule
             </Button>
           </>
@@ -1056,7 +1009,10 @@ export default function Outreach() {
         <div className="outreach-schedule-form">
           <p>
             Every draft that is <strong>approved</strong> for this campaign at the scheduled time will be sent
-            automatically as opted-in marketing — no one needs to click Send. Approve drafts any time before then.
+            automatically as cold business prospecting — no one needs to click Send. New Discovery leads added and
+            approved before then (their draft is auto-approved once the template they use is approved) are included
+            automatically. Lead Porch still blocks every unsubscribed, suppressed, bounced, complained, invalid,
+            archived, or unverified address — that's enforced regardless of this attestation.
           </p>
           <label>
             <span>Send at</span>
@@ -1066,6 +1022,10 @@ export default function Outreach() {
               value={scheduleValue}
               onChange={(event) => setScheduleValue(event.target.value)}
             />
+          </label>
+          <label className="outreach-schedule-attestation">
+            <input type="checkbox" checked={scheduleAttested} onChange={(event) => setScheduleAttested(event.target.checked)} />
+            <span>I confirm these are relevant business contacts, this message accurately identifies the sender and purpose, and I am authorized to conduct this outreach under the rules that apply to this campaign and its recipients. This covers every send this schedule triggers, not just the next one.</span>
           </label>
           {scheduleError ? <p className="form-error">{scheduleError}</p> : null}
         </div>
@@ -1185,30 +1145,6 @@ export default function Outreach() {
       >
         <p>This permanently deletes only the unsent drafts waiting for review in <strong>{selected?.name || "this campaign"}</strong>.</p>
         <p>Approved, sent, delivered, and replied-to emails are not touched.</p>
-      </Modal>
-      <Modal
-        isOpen={consentConfirmOpen}
-        onClose={() => !saving && setConsentConfirmOpen(false)}
-        title="Confirm permission to email these contacts"
-        footer={
-          <>
-            <Button variant="outline" disabled={saving} onClick={() => setConsentConfirmOpen(false)}>Cancel</Button>
-            <Button loading={saving} onClick={confirmConsent}>I confirm, record permission</Button>
-          </>
-        }
-      >
-        <p>
-          This marks every contact with a pending, approved, or failed draft
-          in <strong>{selected?.name || "this campaign"}</strong> as having
-          given permission to receive this campaign's email — it clears any
-          unsubscribe on file and opts them into this campaign's topic.
-        </p>
-        <p>
-          Only confirm this if you actually have permission to email these
-          contacts (they opted in, requested contact, or you have another
-          legitimate basis). This does not verify their email address —
-          use <strong>Send even if the email isn't verified</strong> for that.
-        </p>
       </Modal>
     </div>
   );

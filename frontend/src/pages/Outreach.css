@@ -140,26 +140,6 @@
   box-shadow: none;
 }
 .outreach-header__actions .btn svg { flex: 0 0 auto; width: 1rem; height: 1rem; font-size: 1rem; }
-.outreach-allow-unverified {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  flex-wrap: wrap;
-  margin: -0.4rem 0 0.6rem;
-  color: var(--text);
-  font-size: 0.84rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-.outreach-allow-unverified input {
-  align-self: center;
-}
-.outreach-allow-unverified small {
-  flex-basis: 100%;
-  color: var(--text-muted);
-  font-size: 0.76rem;
-  font-weight: 500;
-}
 .outreach-header .btn--outline {
   color: #fff;
   border-color: rgba(255, 255, 255, 0.35);
@@ -689,22 +669,10 @@
 }
 .outreach-page{max-width:1580px}.outreach-header{min-height:230px!important;border-color:rgba(255,255,255,.12)!important;border-radius:28px!important;background:radial-gradient(circle at 85% 20%,rgba(41,199,237,.2),transparent 28%),radial-gradient(circle at 15% 0,rgba(116,87,255,.3),transparent 42%),linear-gradient(135deg,#10121f,#1b1934)!important;box-shadow:0 28px 80px rgba(28,24,70,.18)}.outreach-eyebrow{color:#68dff0!important}.outreach-page .dashboard-card,.outreach-controls{border-color:rgba(47,42,102,.08)!important;border-radius:20px!important;box-shadow:0 16px 44px rgba(36,29,93,.06)!important}
 .outreach-page,.outreach-page h1,.outreach-page h2,.outreach-page h3,.outreach-page button,.outreach-page input,.outreach-page select{font-family:var(--font-sans,Inter,ui-sans-serif,system-ui,sans-serif)!important}.outreach-page select,.outreach-page input{border-radius:999px!important}.outreach-page .btn,.outreach-page button{border-radius:999px}.outreach-header{box-shadow:none!important}
-.outreach-send-mode {
-  border: 1px solid var(--color-border, #ddd7ca);
-  border-radius: 16px;
-  display: flex;
-  gap: 12px;
-  margin: 14px 0;
-  padding: 12px 16px 16px;
-}
-.outreach-send-mode legend { font-weight: 700; padding: 0 6px; }
-.outreach-send-mode label { align-items: flex-start; cursor: pointer; display: flex; flex: 1; gap: 10px; }
-.outreach-send-mode input { margin-top: 4px; }
-.outreach-send-mode span { display: grid; gap: 3px; }
-.outreach-send-mode small { color: var(--color-text-muted, #69736f); line-height: 1.4; }
 .outreach-issue-review, .outreach-cold-confirmation, .outreach-schedule-form { display: grid; gap: 14px; }
 .outreach-cold-confirmation label { align-items: flex-start; background: #f6f3ff; border: 1px solid #ddd5ff; border-radius: 12px; display: flex; gap: 10px; padding: 14px; }
 .outreach-cold-confirmation input { margin-top: 4px; }
 .outreach-schedule-form label { display: grid; gap: 6px; font-weight: 600; }
 .outreach-schedule-form input[type="datetime-local"] { border-radius: var(--radius-pill, 999px); }
-@media (max-width: 760px) { .outreach-send-mode { flex-direction: column; } }
+.outreach-schedule-form label.outreach-schedule-attestation { align-items: flex-start; background: #f6f3ff; border: 1px solid #ddd5ff; border-radius: 12px; display: flex; font-weight: 400; gap: 10px; padding: 14px; }
+.outreach-schedule-form label.outreach-schedule-attestation input { margin-top: 4px; }
