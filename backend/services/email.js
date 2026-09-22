@@ -272,7 +272,13 @@ async function sendTestEmail(
   }
 
   try {
-    const { text, html } = await renderEmailContent(outreachItem, {
+    // The real send path (sendEmail, above) includes List-Unsubscribe
+    // headers on every message — a documented, significant signal Gmail
+    // and other major providers weight for inbox placement, especially
+    // for a newer sending domain. This test path was building the exact
+    // same rendered content but silently dropping that header, sending
+    // with strictly worse signals than a real recipient would ever get.
+    const { text, html, unsubscribeUrl } = await renderEmailContent(outreachItem, {
       preview: true,
     });
     const gmailConnection = await IntegrationConnection.findOne({
@@ -289,6 +295,10 @@ async function sendTestEmail(
       text,
       html,
       replyTo,
+      headers: unsubscribeUrl ? {
+        "List-Unsubscribe": `<${unsubscribeUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      } : undefined,
     });
     return {
       success: true,
