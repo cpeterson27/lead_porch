@@ -1,8 +1,10 @@
-import { lazy, Suspense, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   FiArrowRight,
   FiCheck,
+  FiChevronLeft,
+  FiChevronRight,
   FiExternalLink,
   FiMapPin,
   FiMenu,
@@ -1507,19 +1509,116 @@ export function ContactPage() {
     </PublicLayout>
   );
 }
+const WEEKDAY_LABELS = ["S", "M", "T", "W", "T", "F", "S"];
+const MONTH_LABEL_FORMATTER = new Intl.DateTimeFormat("en-US", { month: "long", year: "numeric" });
+
+// Pure calendar-grid math (which weekday day N falls on, how many days in
+// the month) — deliberately never touches the coach's timezone. A day cell
+// only needs to know its own year/month/day to render and to build the same
+// "YYYY-MM-DD" key slotsByDay uses; introducing a timezone conversion here
+// would risk an off-by-one day in some viewer timezones for no benefit.
+function monthGrid(year, month) {
+  const firstWeekday = new Date(Date.UTC(year, month, 1)).getUTCDay();
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const cells = [
+    ...Array(firstWeekday).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, index) => index + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks = [];
+  for (let index = 0; index < cells.length; index += 7) weeks.push(cells.slice(index, index + 7));
+  return weeks;
+}
+
+function dayKey(year, month, day) {
+  return `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+// A day's grid cell renders open/blocked directly from real availability
+// data (slotsByDay), which the server already computed against the coach's
+// actual Google Calendar free/busy — so two students can never even see,
+// let alone pick, the same open day/time here.
+function AvailabilityCalendar({ slotsByDay, timezone, selectedDay, onSelectDay }) {
+  const today = new Date();
+  const [view, setView] = useState({ year: today.getFullYear(), month: today.getMonth() });
+  const weeks = useMemo(() => monthGrid(view.year, view.month), [view.year, view.month]);
+  const todayKey = useMemo(() => {
+    const formatter = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" });
+    return formatter.format(today);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timezone]);
+  const canGoBack = view.year > today.getFullYear() || (view.year === today.getFullYear() && view.month > today.getMonth());
+  return (
+    <div className="discovery-calendar">
+      <div className="discovery-calendar__header">
+        <button type="button" aria-label="Previous month" disabled={!canGoBack} onClick={() => setView((current) => (current.month === 0 ? { year: current.year - 1, month: 11 } : { year: current.year, month: current.month - 1 }))}>
+          <FiChevronLeft />
+        </button>
+        <strong>{MONTH_LABEL_FORMATTER.format(new Date(view.year, view.month, 1))}</strong>
+        <button type="button" aria-label="Next month" onClick={() => setView((current) => (current.month === 11 ? { year: current.year + 1, month: 0 } : { year: current.year, month: current.month + 1 }))}>
+          <FiChevronRight />
+        </button>
+      </div>
+      <div className="discovery-calendar__weekdays">
+        {WEEKDAY_LABELS.map((label, index) => <span key={`${label}-${index}`}>{label}</span>)}
+      </div>
+      <div className="discovery-calendar__grid">
+        {weeks.map((week, weekIndex) => week.map((day, dayIndex) => {
+          if (!day) return <span key={`${weekIndex}-${dayIndex}`} className="discovery-calendar__cell discovery-calendar__cell--empty" />;
+          const key = dayKey(view.year, view.month, day);
+          const hasSlots = slotsByDay.has(key);
+          const isPast = key < todayKey;
+          return (
+            <button
+              key={key}
+              type="button"
+              className={`discovery-calendar__cell${hasSlots ? " has-availability" : ""}${key === selectedDay ? " is-selected" : ""}`}
+              disabled={!hasSlots || isPast}
+              onClick={() => onSelectDay(key)}
+            >
+              {day}
+            </button>
+          );
+        }))}
+      </div>
+      <div className="discovery-calendar__legend"><span className="discovery-calendar__dot" /> Available</div>
+    </div>
+  );
+}
+
 export function DiscoveryCallPage() {
   const { site } = useWorkspaceTheme(),
     p = site?.publicSite || {},
     workspaceName = site?.branding?.publicSiteName || site?.workspace?.name || "us";
   const [availability, setAvailability] = useState(null),
+    [selectedDay, setSelectedDay] = useState(""),
     [selected, setSelected] = useState(""),
     [form, setForm] = useState({ name: "", email: "", phone: "", notes: "", smsConsent: false }),
     [booking, setBooking] = useState(false),
     [result, setResult] = useState(null),
     [bookingError, setBookingError] = useState("");
+  const timezone = availability?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const slotsByDay = useMemo(() => {
+    const map = new Map();
+    const formatter = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" });
+    for (const slot of availability?.slots || []) {
+      const key = formatter.format(new Date(slot));
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(slot);
+    }
+    return map;
+  }, [availability, timezone]);
   useEffect(() => {
     if (!p.discoveryCallAvailability?.coachProfileId) return;
-    fetchDiscoveryCallAvailability().then((data) => { setAvailability(data); setSelected(data.slots?.[0] || ""); }).catch(() => setAvailability({ slots: [] }));
+    fetchDiscoveryCallAvailability().then((data) => {
+      setAvailability(data);
+      const firstSlot = data.slots?.[0] || "";
+      setSelected(firstSlot);
+      if (firstSlot) {
+        const tz = data.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
+        setSelectedDay(new Intl.DateTimeFormat("en-CA", { timeZone: tz, year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date(firstSlot)));
+      }
+    }).catch(() => setAvailability({ slots: [] }));
   }, [p.discoveryCallAvailability?.coachProfileId]);
   const submitBooking = async (event) => {
     event.preventDefault(); setBooking(true); setBookingError("");
@@ -1560,7 +1659,7 @@ export function DiscoveryCallPage() {
           result ? <section className="discovery-booking-success"><h2>Your call is booked.</h2><p>A Google Calendar invitation has been sent to your email for {new Date(result.startsAt).toLocaleString()}.</p></section> :
           <form className="discovery-booking-form" onSubmit={submitBooking}>
             <h2>Choose an available time</h2>
-            {availability?.slots?.length ? <><label>Available appointment times<select required value={selected} onChange={(event) => setSelected(event.target.value)}>{availability.slots.map((slot) => <option key={slot} value={slot}>{new Date(slot).toLocaleString([], { weekday: "long", month: "long", day: "numeric", hour: "numeric", minute: "2-digit", timeZoneName: "short" })}</option>)}</select></label><div className="discovery-booking-form__grid"><label>Name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label><label>Email<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label><label>Phone (optional)<input type="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label></div><label>What would you like to discuss? (optional)<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>{form.phone ? <label className="discovery-booking-form__sms-consent"><input type="checkbox" checked={form.smsConsent} onChange={(event) => setForm({ ...form, smsConsent: event.target.checked })} /> I agree to receive text messages about my discovery call and future updates. Message and data rates may apply. Reply STOP to opt out.</label> : null}{bookingError ? <p className="form-error">{bookingError}</p> : null}<button className="public-button" disabled={booking}>{booking ? "Reserving…" : "Book discovery call"}</button></> : availability ? <p>No appointment times are currently available. Please check again soon or contact {workspaceName}.</p> : <p>Loading available times…</p>}
+            {availability?.slots?.length ? <><AvailabilityCalendar slotsByDay={slotsByDay} timezone={timezone} selectedDay={selectedDay} onSelectDay={(key) => { setSelectedDay(key); setSelected(slotsByDay.get(key)?.[0] || ""); }} />{selectedDay && slotsByDay.has(selectedDay) ? <div className="discovery-calendar__times"><label>Available times on {new Date(`${selectedDay}T12:00:00`).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</label><div className="discovery-calendar__time-grid">{slotsByDay.get(selectedDay).map((slot) => <button key={slot} type="button" className={`discovery-calendar__time${slot === selected ? " is-selected" : ""}`} onClick={() => setSelected(slot)}>{new Date(slot).toLocaleString([], { hour: "numeric", minute: "2-digit" })}</button>)}</div><small>{new Date(selected || slotsByDay.get(selectedDay)[0]).toLocaleString([], { timeZoneName: "short" }).split(", ").pop()}</small></div> : <p className="discovery-calendar__prompt">Pick a highlighted day above to see available times.</p>}<div className="discovery-booking-form__grid"><label>Name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label><label>Email<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label><label>Phone (optional)<input type="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label></div><label>What would you like to discuss? (optional)<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>{form.phone ? <label className="discovery-booking-form__sms-consent"><input type="checkbox" checked={form.smsConsent} onChange={(event) => setForm({ ...form, smsConsent: event.target.checked })} /> I agree to receive text messages about my discovery call and future updates. Message and data rates may apply. Reply STOP to opt out.</label> : null}{bookingError ? <p className="form-error">{bookingError}</p> : null}<button className="public-button" disabled={booking || !selected}>{booking ? "Reserving…" : "Book discovery call"}</button></> : availability ? <p>No appointment times are currently available. Please check again soon or contact {workspaceName}.</p> : <p>Loading available times…</p>}
           </form>
         ) : bookingEmbedUrl ? (
           <>
