@@ -20,9 +20,30 @@ const {
 // fix: it applies inside sendEmail itself so every caller (manual "Send
 // selected", the scheduled auto-send pipeline) is protected the same way,
 // no matter how many drafts get approved/selected at once.
+//
+// RAMP_START_DATE anchors an automatic warm-up: raising the cap every day to
+// match however many new leads Discovery happens to find would recreate the
+// exact burst pattern above on a rolling basis, permanently — the fix for
+// deliverability and the desire for more daily volume are the same lever,
+// not two separate ones. Instead the cap grows on a fixed, conservative
+// schedule (25% every 3 days) regardless of lead volume, capped at a ceiling
+// well above what a single day's sending window needs. EMAIL_SEND_HOURLY_LIMIT
+// still overrides this entirely when explicitly set, for a manual hard cap.
+const RAMP_START_DATE = new Date("2026-09-23T00:00:00Z");
+const RAMP_BASE = 100;
+const RAMP_GROWTH_PER_PERIOD = 1.25;
+const RAMP_PERIOD_DAYS = 3;
+const RAMP_CEILING = 500;
+
+function rampedHourlyLimit() {
+  const daysSinceStart = Math.max(0, (Date.now() - RAMP_START_DATE.getTime()) / (24 * 60 * 60 * 1000));
+  const periods = Math.floor(daysSinceStart / RAMP_PERIOD_DAYS);
+  return Math.min(RAMP_CEILING, Math.round(RAMP_BASE * RAMP_GROWTH_PER_PERIOD ** periods));
+}
+
 const sendTimestamps = [];
 function checkHourlySendCap() {
-  const limit = Math.max(1, Number(process.env.EMAIL_SEND_HOURLY_LIMIT) || 100);
+  const limit = Math.max(1, Number(process.env.EMAIL_SEND_HOURLY_LIMIT) || rampedHourlyLimit());
   const windowMs = 60 * 60 * 1000;
   const now = Date.now();
   while (sendTimestamps.length && now - sendTimestamps[0] > windowMs) sendTimestamps.shift();
@@ -30,7 +51,7 @@ function checkHourlySendCap() {
     const retryInMinutes = Math.ceil((windowMs - (now - sendTimestamps[0])) / 60000);
     return {
       allowed: false,
-      message: `Paused for deliverability: this domain is still building sending reputation, so campaign email is capped at ${limit}/hour. Try again in about ${retryInMinutes} minute${retryInMinutes === 1 ? "" : "s"}, or raise EMAIL_SEND_HOURLY_LIMIT once volume has been ramped up safely.`,
+      message: `Paused for deliverability: this domain is still building sending reputation, so campaign email is capped at ${limit}/hour right now (rising automatically every ${RAMP_PERIOD_DAYS} days as long as it stays safe). Try again in about ${retryInMinutes} minute${retryInMinutes === 1 ? "" : "s"}, or set EMAIL_SEND_HOURLY_LIMIT to override this manually.`,
     };
   }
   sendTimestamps.push(now);
