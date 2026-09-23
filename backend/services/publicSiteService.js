@@ -400,7 +400,15 @@ function sanitizedConfig(workspace, config) {
         question: String(item.question || "").slice(0, 300),
         answer: String(item.answer || "").slice(0, 2000),
       })).filter((item) => item.question && item.answer),
-      homepageLinks: (p.homepageLinks || []).filter((path) => ["/about", "/coaching-programs", "/faq", "/resources", "/testimonials", "/contact", "/book-a-call"].includes(path)),
+      // Confirmed live: toggling "Show link on homepage" for an individual
+      // program page and saving silently reverted it — this whitelist
+      // predates program pages getting that toggle at all (they used to
+      // show an "Edit page" button instead), so any /coaching-programs/<slug>
+      // path was stripped out on every save before it ever reached the
+      // database. The fixed-page whitelist stays (those are exact, known
+      // paths); individual program paths are validated by pattern instead,
+      // since they're dynamic per-program.
+      homepageLinks: (p.homepageLinks || []).filter((path) => ["/about", "/coaching-programs", "/faq", "/resources", "/testimonials", "/contact", "/book-a-call"].includes(path) || /^\/coaching-programs\/[a-z0-9-]+$/.test(path)),
       seoPages: {
         aboutHeading: String(p.seoPages?.aboutHeading || "Experience, perspective, and practical support.").slice(0, 300),
         programsHeading: String(p.seoPages?.programsHeading || "Support designed around the work ahead.").slice(0, 300),

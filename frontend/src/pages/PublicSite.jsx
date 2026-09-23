@@ -1159,7 +1159,8 @@ export function PublicHome() {
           <nav className="public-homepage-links" aria-label="Explore more">
             {p.homepageLinks.filter((path) => path !== "/faq").map((path) => {
               const labels = { "/about": "About Ellie", "/coaching-programs": "All programs", "/resources": "Resources", "/testimonials": "Student stories", "/contact": "Contact", "/book-a-call": "Book a discovery call" };
-              return <Link key={path} to={path}>{labels[path] || path}</Link>;
+              const program = site?.programs?.find((row) => `/coaching-programs/${row.slug}` === path);
+              return <Link key={path} to={path}>{labels[path] || program?.title || program?.name || path}</Link>;
             })}
           </nav>
         ) : null}
