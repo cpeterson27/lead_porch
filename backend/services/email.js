@@ -22,7 +22,7 @@ const {
 // no matter how many drafts get approved/selected at once.
 const sendTimestamps = [];
 function checkHourlySendCap() {
-  const limit = Math.max(1, Number(process.env.EMAIL_SEND_HOURLY_LIMIT) || 20);
+  const limit = Math.max(1, Number(process.env.EMAIL_SEND_HOURLY_LIMIT) || 100);
   const windowMs = 60 * 60 * 1000;
   const now = Date.now();
   while (sendTimestamps.length && now - sendTimestamps[0] > windowMs) sendTimestamps.shift();
