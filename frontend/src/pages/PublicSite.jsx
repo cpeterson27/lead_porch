@@ -290,6 +290,8 @@ export function PublicLayout({ children }) {
             {showTeam ? <a href="/#team">Team</a> : null}
             {showResults ? <a href="/#results">Results</a> : null}
             <Link to="/faq">FAQ</Link>
+            <Link to="/resources">Resources</Link>
+            <Link to="/testimonials">Testimonials</Link>
           </div>
           <div className="public-footer-col">
             <div className="public-footer-label">CONNECT</div>
