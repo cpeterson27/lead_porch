@@ -12,13 +12,6 @@ const APP_ASSETS = [
     "Shown in the browser tab while staff are working.",
   ],
 ];
-const SOCIALS = [
-  ["Facebook", "https://facebook.com/"],
-  ["Instagram", "https://instagram.com/"],
-  ["LinkedIn", "https://linkedin.com/"],
-  ["X", "https://x.com/"],
-  ["YouTube", "https://youtube.com/"],
-];
 
 function ColorSwatch({ value, onChange, label }) {
   return (
@@ -221,13 +214,6 @@ export default function WorkspaceBrandingEditor({
       ...current,
       publicSite: { ...current.publicSite, [key]: value },
     }));
-  const patchSocial = (label, url) => {
-    const current = config.publicSite?.socialLinks || [];
-    const others = current.filter(
-      (item) => item.label.toLowerCase() !== label.toLowerCase(),
-    );
-    patchSite("socialLinks", url.trim() ? [...others, { label, url }] : others);
-  };
   const upload = async (scope, key, file) => {
     if (!file) return;
     if (
@@ -418,33 +404,6 @@ export default function WorkspaceBrandingEditor({
             <strong>{brand.publicSiteName || "Your website"}</strong>
           )}
           <button type="button">Primary action</button>
-        </div>
-        <div className="social-profile-editor">
-          <header>
-            <h4>Social profiles</h4>
-            <p>Add the profiles visitors can open from your public website.</p>
-          </header>
-          {SOCIALS.map(([label, placeholder]) => {
-            const item = (config.publicSite?.socialLinks || []).find(
-              (row) => row.label.toLowerCase() === label.toLowerCase(),
-            );
-            return (
-              <label key={label}>
-                <strong>{label}</strong>
-                <input
-                  type="url"
-                  value={item?.url || ""}
-                  placeholder={placeholder}
-                  onChange={(event) => patchSocial(label, event.target.value)}
-                />
-                <span
-                  className={`social-profile-state ${item?.url ? "is-on" : ""}`}
-                >
-                  {item?.url ? "Displayed" : "Hidden"}
-                </span>
-              </label>
-            );
-          })}
         </div>
       </section>
       <section
