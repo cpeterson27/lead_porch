@@ -480,7 +480,11 @@ function ProgramCards({ programs = [] }) {
                   {program.duration?.value ? " · " : ""}
                   {formatLabel(program)}
                 </div>
-                <div className="public-accelerator-title">{program.title}</div>
+                {program.slug ? (
+                  <Link className="public-accelerator-title" to={`/coaching-programs/${program.slug}`}>{program.title}</Link>
+                ) : (
+                  <div className="public-accelerator-title">{program.title}</div>
+                )}
                 <p className="public-accelerator-summary">
                   {program.summary || program.description || "Personalized support for your next stage of growth."}
                 </p>
@@ -625,7 +629,11 @@ function ProgramCards({ programs = [] }) {
                   )}
                 </div>
                 <div className="public-program-content">
-                  <div className="public-program-title">{program.title}</div>
+                  {program.slug ? (
+                    <Link className="public-program-title" to={`/coaching-programs/${program.slug}`}>{program.title}</Link>
+                  ) : (
+                    <div className="public-program-title">{program.title}</div>
+                  )}
                   {expanded === String(program.id) ? (
                     <div
                       className="public-program-desc"
