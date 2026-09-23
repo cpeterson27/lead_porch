@@ -51,9 +51,16 @@ export default function CampaignModal({
   const [error, setError] = useState("");
   const [newAudience, setNewAudience] = useState("");
 
+  // form.audience is included here too, not just the predefined/prop
+  // lists — confirmed live: clicking "Add audience" correctly added the
+  // typed value into form.audience, but this grid only ever rendered
+  // PROGRAM_AUDIENCES + audienceOptions, so a just-added custom audience
+  // (or one already set on a campaign being edited, if it isn't in either
+  // list) never appeared as a checkbox — it silently "worked" with zero
+  // visible feedback, indistinguishable from doing nothing.
   const availableAudiences = form.campaignKind === "program"
-    ? [...new Set([...PROGRAM_AUDIENCES, ...audienceOptions])]
-    : audienceOptions;
+    ? [...new Set([...PROGRAM_AUDIENCES, ...audienceOptions, ...form.audience])]
+    : [...new Set([...audienceOptions, ...form.audience])];
 
   useEffect(() => {
     if (!isOpen) return;
