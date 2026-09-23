@@ -1155,15 +1155,6 @@ export function PublicHome() {
           </section>
         ) : null}
 
-        {p.homepageLinks?.filter((path) => path !== "/faq").length ? (
-          <nav className="public-homepage-links" aria-label="Explore more">
-            {p.homepageLinks.filter((path) => path !== "/faq").map((path) => {
-              const labels = { "/about": "About Ellie", "/coaching-programs": "All programs", "/resources": "Resources", "/testimonials": "Student stories", "/contact": "Contact", "/book-a-call": "Book a discovery call" };
-              const program = site?.programs?.find((row) => `/coaching-programs/${row.slug}` === path);
-              return <Link key={path} to={path}>{labels[path] || program?.title || program?.name || path}</Link>;
-            })}
-          </nav>
-        ) : null}
 
         {visibility.programs !== false ? (
           <section className="public-curriculum-section" id="programs">
