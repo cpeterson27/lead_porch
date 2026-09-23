@@ -11,7 +11,7 @@ const {
 
 async function renderEmailContent(
   outreachItem,
-  { contact = null, preview = false } = {},
+  { contact = null, preview = false, unsubscribeUrlOverride = "" } = {},
 ) {
   const workspace = outreachItem.workspaceId
     ? await Workspace.findById(outreachItem.workspaceId)
@@ -36,9 +36,9 @@ async function renderEmailContent(
       : await Contact.findOne({
           email: String(outreachItem.contactEmail || "").toLowerCase(),
         }));
-  const unsubscribeUrl = resolvedContact
+  const unsubscribeUrl = unsubscribeUrlOverride || (resolvedContact
     ? `${publicBackendUrl()}/api/unsubscribe/${encodeURIComponent(createUnsubscribeToken(resolvedContact))}`
-    : "#";
+    : "#");
   const businessName =
     workspaceConfig?.legalBusinessName || workspace?.name || "Lead Porch";
   const postalAddress =
@@ -282,8 +282,13 @@ async function sendTestEmail(
     // was previewing a strictly worse version of it. Confirmed live: real
     // campaign sends used "Ellie Baxter <team@elliescoaching.com>" while
     // every test send used "Ellies Coaching <team@elliescoaching.com>".
+    // Use a real one-click-shaped URL without attaching the test mailbox to
+    // the lead's suppression record. A tester clicking Unsubscribe must never
+    // accidentally unsubscribe the contact whose draft is being reviewed.
+    const testUnsubscribeUrl = `${publicBackendUrl()}/api/unsubscribe/test-preview`;
     const { text, html, unsubscribeUrl } = await renderEmailContent(outreachItem, {
       preview: true,
+      unsubscribeUrlOverride: testUnsubscribeUrl,
     });
     const workspaceConfig = await WorkspaceConfig.findOne({
       ...(outreachItem.workspaceId ? { workspaceId: outreachItem.workspaceId } : {}),
@@ -314,7 +319,10 @@ async function sendTestEmail(
         process.env.EMAIL_FROM ||
         `${senderName} <onboarding@resend.dev>`,
       to: recipient,
-      subject: `[TEST] ${outreachItem.subject || "A message from Ellie's Coaching"}`,
+      // A deliverability test must be byte-for-byte representative of the
+      // production subject. Prefixing it with "[TEST]" made Gmail evaluate a
+      // different message than the one leads receive.
+      subject: outreachItem.subject || "A message from Ellie's Coaching",
       text,
       html,
       replyTo,
@@ -328,6 +336,11 @@ async function sendTestEmail(
       message: `Test email sent to ${recipient}.`,
       id: response.messageId,
       recipient,
+      senderEmail,
+      sameAddressWarning:
+        senderEmail.toLowerCase() === String(recipient).trim().toLowerCase()
+          ? "This test was sent from and to the same address. Gmail may treat self-sent mail from a third-party delivery service as suspicious, so use a different mailbox for a representative inbox-placement test."
+          : "",
     };
   } catch (error) {
     return { success: false, message: error.message };

@@ -150,7 +150,11 @@ router.post("/:id/test", requireRole("owner", "admin"), async (req, res) => {
     if (!outreach) {
       return res.status(404).json({ error: "Outreach email not found." });
     }
-    const result = await sendTestEmail(outreach);
+    const recipient = String(req.body?.recipient || "team@elliescoaching.com").trim().toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
+      return res.status(400).json({ error: "Enter a valid test recipient email address." });
+    }
+    const result = await sendTestEmail(outreach, recipient);
     if (!result.success) {
       return res.status(400).json({ error: result.message || "Unable to send test email." });
     }
@@ -158,6 +162,8 @@ router.post("/:id/test", requireRole("owner", "admin"), async (req, res) => {
       message: result.message,
       messageId: result.id,
       recipient: result.recipient,
+      senderEmail: result.senderEmail,
+      warning: result.sameAddressWarning,
     });
   } catch (error) {
     return res.status(500).json({ error: error.message || "Unable to send test email." });

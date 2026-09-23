@@ -30,4 +30,11 @@ console.log("Outreach test-email headers test passed: test sends now carry the s
 assert.ok(testEmailBody.includes("workspaceConfig?.invitationIdentity?.senderEmail"), "sendTestEmail must resolve the same workspace sender identity sendEmail uses, not a generic fallback");
 assert.ok(testEmailBody.includes("workspaceConfig?.invitationIdentity?.senderName"), "sendTestEmail must use the workspace's real sender name, not a hardcoded generic one");
 
+// The recipient can now be a separate Gmail/Outlook mailbox. Sending from
+// team@elliescoaching.com back to itself through a third-party provider is a
+// self-spoofing-looking pattern and does not predict inbox placement for a
+// real lead. The subject must also remain identical to production.
+assert.ok(testEmailBody.includes("to: recipient"), "sendTestEmail must deliver to the explicitly selected test mailbox");
+assert.ok(!testEmailBody.includes("subject: `[TEST]"), "sendTestEmail must not alter the production subject with a TEST prefix");
+
 console.log("Outreach test-email headers test passed: test sends now use the same sender identity as real sends.");

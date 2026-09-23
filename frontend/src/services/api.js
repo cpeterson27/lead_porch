@@ -1104,8 +1104,8 @@ export const fetchOutreachAnalytics = () =>
 export const fetchOutreachPreview = (outreachId) =>
   api.get(`/outreach/${outreachId}/preview`).then((res) => res.data);
 
-export const sendOutreachTestEmail = (outreachId) =>
-  api.post(`/outreach/${outreachId}/test`).then((res) => res.data);
+export const sendOutreachTestEmail = (outreachId, recipient) =>
+  api.post(`/outreach/${outreachId}/test`, { recipient }).then((res) => res.data);
 
 export const fetchContacts = (params = {}) =>
   api.get("/contacts", { params }).then((res) => res.data);

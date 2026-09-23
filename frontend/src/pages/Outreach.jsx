@@ -110,6 +110,9 @@ export default function Outreach() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testSending, setTestSending] = useState(false);
+  const [testRecipient, setTestRecipient] = useState(() =>
+    window.localStorage.getItem("leadporch.outreachTestRecipient") || "team@elliescoaching.com",
+  );
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [deliverySyncedAt, setDeliverySyncedAt] = useState(null);
@@ -332,12 +335,18 @@ export default function Outreach() {
   };
   const sendTest = async () => {
     if (!preview?._id) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testRecipient.trim())) {
+      setError("Enter a valid test recipient email address.");
+      return;
+    }
     try {
       setTestSending(true);
       setError("");
       setNotice("");
-      const result = await sendOutreachTestEmail(preview._id);
-      setNotice(result.message || "Test email sent to team@elliescoaching.com.");
+      const recipient = testRecipient.trim().toLowerCase();
+      window.localStorage.setItem("leadporch.outreachTestRecipient", recipient);
+      const result = await sendOutreachTestEmail(preview._id, recipient);
+      setNotice([result.message || `Test email sent to ${recipient}.`, result.warning].filter(Boolean).join(" "));
     } catch (err) {
       setError(err.response?.data?.error || "Unable to send the test email.");
     } finally {
@@ -1011,9 +1020,10 @@ export default function Outreach() {
             <Button
               variant="outline"
               loading={testSending}
+              disabled={!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testRecipient.trim())}
               onClick={sendTest}
             >
-              Send test to team@elliescoaching.com
+              Send exact test
             </Button>
             {preview?.replacementDraft ? (
               <Button loading={saving} onClick={sendReplacement}>
@@ -1046,6 +1056,20 @@ export default function Outreach() {
               </div>
             ) : null}
             {replacementSendError ? <p className="form-error">{replacementSendError}</p> : null}
+            <div className="outreach-test-recipient">
+              <label>
+                <span>Test recipient</span>
+                <input
+                  type="email"
+                  value={testRecipient}
+                  onChange={(event) => setTestRecipient(event.target.value)}
+                  placeholder="A mailbox you can check"
+                />
+              </label>
+              <small>
+                This sends the exact production subject, sender, HTML, images, reply-to, and unsubscribe headers. For a meaningful Gmail test, use a mailbox different from the sender address—sending team@elliescoaching.com back to itself can look like spoofed mail.
+              </small>
+            </div>
             <p>
               <strong>To</strong> {preview.contactName || "Contact"}{" "}
               {preview.contactEmail ? `<${preview.contactEmail}>` : ""}

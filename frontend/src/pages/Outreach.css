@@ -514,6 +514,27 @@
   white-space: pre-wrap;
   line-height: 1.55;
 }
+.outreach-preview .outreach-test-recipient {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+  white-space: normal;
+}
+.outreach-test-recipient label { display: grid; gap: 0.35rem; font-weight: 700; }
+.outreach-test-recipient input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+.outreach-test-recipient small { color: var(--text-muted); line-height: 1.45; }
 .outreach-preview__frame {
   width: 100%;
   height: min(620px, 52vh);

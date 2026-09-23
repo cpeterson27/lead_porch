@@ -43,6 +43,8 @@ async function preferences(req, res, oneClick = false) {
   }
 }
 
+router.get("/test-preview", (_req, res) => res.type("html").send("<!doctype html><title>Test email</title><main style='max-width:620px;margin:8vh auto;font:16px Arial,sans-serif;line-height:1.6'><h1>Test email only</h1><p>No contact was unsubscribed. Production campaign emails use each recipient’s own preference link.</p></main>"));
+router.post("/test-preview", (_req, res) => res.status(200).end());
 router.get("/:token", (req, res) => preferences(req, res, false));
 router.post("/:token", (req, res) => preferences(req, res, true));
 
