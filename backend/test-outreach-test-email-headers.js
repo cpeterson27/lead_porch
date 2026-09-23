@@ -18,3 +18,16 @@ assert.ok(testEmailBody.includes("unsubscribeUrl } = await renderEmailContent"),
 assert.ok(testEmailBody.includes('"List-Unsubscribe": `<${unsubscribeUrl}>`'), "sendTestEmail must send the same List-Unsubscribe header the real send path does");
 
 console.log("Outreach test-email headers test passed: test sends now carry the same unsubscribe signal as real sends.");
+
+// A test send is meant to preview what a real recipient gets — but it was
+// sending from a completely different identity ("Ellies Coaching"/"Growth
+// Operator", a generic fallback) than the real send path uses ("Ellie
+// Baxter <team@elliescoaching.com>", the workspace's actual configured
+// person). Confirmed live via Resend's own send log: every real campaign
+// send used the real identity; every test send used the generic one.
+// That's a second, real, structural difference a spam filter can key on
+// independent of any content in the message itself.
+assert.ok(testEmailBody.includes("workspaceConfig?.invitationIdentity?.senderEmail"), "sendTestEmail must resolve the same workspace sender identity sendEmail uses, not a generic fallback");
+assert.ok(testEmailBody.includes("workspaceConfig?.invitationIdentity?.senderName"), "sendTestEmail must use the workspace's real sender name, not a hardcoded generic one");
+
+console.log("Outreach test-email headers test passed: test sends now use the same sender identity as real sends.");

@@ -273,23 +273,46 @@ async function sendTestEmail(
 
   try {
     // The real send path (sendEmail, above) includes List-Unsubscribe
-    // headers on every message — a documented, significant signal Gmail
-    // and other major providers weight for inbox placement, especially
-    // for a newer sending domain. This test path was building the exact
-    // same rendered content but silently dropping that header, sending
-    // with strictly worse signals than a real recipient would ever get.
+    // headers on every message, AND sends from the workspace's configured
+    // person (e.g. "Ellie Baxter <team@elliescoaching.com>") — this test
+    // path was silently dropping the header AND sending from a generic
+    // fallback display name ("Ellies Coaching"/"Growth Operator") instead,
+    // via a completely different, unauthenticated-feeling identity. A
+    // test was never actually previewing what a real send looks like; it
+    // was previewing a strictly worse version of it. Confirmed live: real
+    // campaign sends used "Ellie Baxter <team@elliescoaching.com>" while
+    // every test send used "Ellies Coaching <team@elliescoaching.com>".
     const { text, html, unsubscribeUrl } = await renderEmailContent(outreachItem, {
       preview: true,
     });
+    const workspaceConfig = await WorkspaceConfig.findOne({
+      ...(outreachItem.workspaceId ? { workspaceId: outreachItem.workspaceId } : {}),
+      key: "primary",
+    }).lean();
+    const workspace = outreachItem.workspaceId
+      ? await Workspace.findById(outreachItem.workspaceId).select("name").lean()
+      : null;
     const gmailConnection = await IntegrationConnection.findOne({
+      ...(outreachItem.workspaceId ? { workspaceId: outreachItem.workspaceId } : {}),
       provider: "gmail",
       status: "connected",
     }).select("settings");
     const replyTo =
+      String(workspaceConfig?.invitationIdentity?.replyToEmail || "").trim() ||
       String(process.env.EMAIL_REPLY_TO || "").trim() ||
       String(gmailConnection?.settings?.email || "").trim();
+    const senderEmail = String(workspaceConfig?.invitationIdentity?.senderEmail || "").trim();
+    const senderName = String(
+      workspaceConfig?.invitationIdentity?.senderName ||
+        workspace?.name ||
+        workspaceConfig?.workspaceName ||
+        "Lead Porch",
+    ).trim();
     const response = await integrationHub.execute("resend", "sendEmail", {
-      from: process.env.EMAIL_FROM || "Growth Operator <onboarding@resend.dev>",
+      from:
+        (senderEmail ? `${senderName} <${senderEmail}>` : "") ||
+        process.env.EMAIL_FROM ||
+        `${senderName} <onboarding@resend.dev>`,
       to: recipient,
       subject: `[TEST] ${outreachItem.subject || "A message from Ellie's Coaching"}`,
       text,
