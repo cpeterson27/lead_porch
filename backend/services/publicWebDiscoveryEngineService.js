@@ -39,6 +39,7 @@ const DiscoverySchedule = require("../models/DiscoverySchedule");
 const { autoGradeApproveAndEnroll } = require("./discoveryAutoEnrollmentService");
 const { buildWorkspaceSystemAuth } = require("./systemAuthService");
 const { nextScheduledRun } = require("./discoveryScheduleTimeService");
+const { runWithWorkspace } = require("../tenancy/workspaceContext");
 const GroundingResearchResult = require("../models/GroundingResearchResult");
 const JarvisMemoryNote = require("../models/JarvisMemoryNote");
 const Contact = require("../models/Contact");
@@ -1395,6 +1396,20 @@ async function runDueDiscoverySchedules(dependencies = {}) {
       const claimed = await ScheduleModel.findOneAndUpdate({ _id: schedule._id, $or: [{ leaseExpiresAt: null }, { leaseExpiresAt: { $lte: now } }] }, { $set: { leaseOwner: WORKER_ID, leaseExpiresAt: new Date(Date.now() + LEASE_MS) }, $unset: { runRequestedAt: 1 } }, { new: true });
       if (!claimed) continue;
       try {
+        // Every write triggered anywhere in this call chain (Contact/
+        // Organization creation via autoGradeApproveAndEnroll included)
+        // goes through the workspacePlugin, which only stamps the correct
+        // workspaceId when it's read from runWithWorkspace's async-local
+        // context. A scheduled run has no HTTP request to set that context
+        // for it the way every other code path gets it, so it was never
+        // set here — confirmed live: 307 of 309 contacts a schedule run
+        // "auto-added" this morning were created with workspaceId: null,
+        // making them invisible to every workspace-scoped query in the
+        // app (Contacts page, campaign matching, outreach generation —
+        // all of it) despite existing in the database and the run log
+        // claiming success. Wrapping the whole claim in the same
+        // workspace context every other path already uses is the fix.
+        await runWithWorkspace(claimed.workspaceId, async () => {
         // Every step below that actually calls the LLM (deriving the
         // Apollo/PDL ICP, grading candidates) goes through
         // agentExecutionService.runAgent(), which strictly requires
@@ -1438,6 +1453,7 @@ async function runDueDiscoverySchedules(dependencies = {}) {
             console.error("Discovery auto-enrollment failed:", { scheduleId: String(claimed._id), message: error.message });
           }
         }
+        });
       } catch (error) {
         claimed.lastRunStatus = "failed";
         claimed.lastRunMessage = error.message;
