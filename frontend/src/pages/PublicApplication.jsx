@@ -135,7 +135,12 @@ export default function PublicApplication({ embedded: embeddedOverride, search: 
   const embedded = embeddedOverride ?? new URLSearchParams(search).get("embed") === "1";
 
   const content = (
-      <main className={`application-page ${embedded ? "application-page--embedded" : ""}`}>
+      /* public-inner is what every other public page's main wrapper uses to
+         sit above .public-sticky-background (position: relative; z-index: 1
+         in PublicSite.css) — this page was missing it, so its content was
+         fully present and correctly styled in the DOM (confirmed live) but
+         painted underneath the fixed background photo, appearing blank. */
+      <main className={`public-inner application-page ${embedded ? "application-page--embedded" : ""}`}>
         <section className="application-hero">
           <div className="application-hero__copy">
             <p className="public-kicker">Program application</p>
