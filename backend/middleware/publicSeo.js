@@ -1,5 +1,6 @@
 const express = require("express");
 const publicSiteService = require("../services/publicSiteService");
+const WorkspaceConfig = require("../models/WorkspaceConfig");
 
 const router = express.Router();
 
@@ -72,5 +73,37 @@ router.get("/sitemap.xml", async (req, res, next) => {
     next(error);
   }
 });
+
+// Google's favicon crawler (and every browser tab) checks /favicon.ico at
+// the domain root regardless of what <link rel="icon"> tags say, and treats
+// a stable same-domain file as the real identity signal — confirmed live:
+// elliescoaching.com/favicon.ico 404'd, so Google kept its generic globe
+// cached even though the homepage's <link> tags did point at a real image
+// (a versioned, third-party Cloudinary URL, which isn't the stable
+// same-domain source Google's own favicon guidance asks for). Proxying the
+// workspace's actual configured favicon through this same-domain path is
+// the fix — resolved per-request by host, same as workspaceMeta() in
+// publicHtmlShell.js, since this is a multi-tenant app and different custom
+// domains can belong to different workspaces.
+async function serveFavicon(req, res) {
+  try {
+    const ws = await publicSiteService.workspace(req);
+    const config = await WorkspaceConfig.findOne({ workspaceId: ws._id, key: "primary" }).select("branding").lean();
+    const branding = config?.branding || {};
+    const source = String(branding.faviconUrl || branding.publicSiteLogoUrl || branding.logoUrl || "").trim();
+    if (!source) return res.status(404).end();
+    const upstream = await fetch(source);
+    if (!upstream.ok) return res.status(404).end();
+    const buffer = Buffer.from(await upstream.arrayBuffer());
+    res
+      .type(upstream.headers.get("content-type") || "image/png")
+      .set("Cache-Control", "public, max-age=86400")
+      .send(buffer);
+  } catch {
+    res.status(404).end();
+  }
+}
+router.get("/favicon.ico", serveFavicon);
+router.get("/favicon.png", serveFavicon);
 
 module.exports = { publicSeo: router, publicOrigin, xml };

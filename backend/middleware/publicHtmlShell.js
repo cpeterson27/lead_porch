@@ -56,17 +56,6 @@ function absoluteUrl(value, origin) {
   }
 }
 
-// Same Cloudinary resize pattern WorkspaceThemeContext.jsx already uses
-// client-side for the dashboard's own favicon variants — reused here so
-// the server-rendered public shell (what Google's favicon crawler and
-// browser tabs actually read) gets real, properly-sized icons too,
-// instead of one raw image with no size declared at all.
-function faviconVariant(url, size) {
-  return url?.includes("res.cloudinary.com/") && url.includes("/image/upload/")
-    ? url.replace("/image/upload/", `/image/upload/c_fill,w_${size},h_${size},f_png/`)
-    : url;
-}
-
 function safeJson(value) {
   return JSON.stringify(value).replace(/</g, "\\u003c");
 }
@@ -168,8 +157,17 @@ async function workspaceMeta(req) {
   // client-side JS (WorkspaceThemeContext swapping a <link> tag in after
   // React hydrates) — invisible to Googlebot's favicon crawler, which reads
   // the server-rendered <head> directly. Rendering it here server-side is
-  // the actual fix for the favicon never appearing in search results.
-  const favicon = absoluteUrl(branding.faviconUrl || branding.publicSiteLogoUrl || branding.logoUrl, origin);
+  // part of the fix; the other part (below) is that the tags now point at
+  // this same domain's own /favicon.ico and /favicon.png (proxied by
+  // publicSeo.js) instead of a versioned, third-party Cloudinary URL —
+  // confirmed live: elliescoaching.com/favicon.ico 404'd, and Google's own
+  // favicon guidance asks for one stable same-domain file, which a raw
+  // Cloudinary link never was. hasFavicon only needs to know whether a
+  // source image is configured at all; the URL itself is now always the
+  // same-domain path.
+  const hasFavicon = Boolean(branding.faviconUrl || branding.publicSiteLogoUrl || branding.logoUrl);
+  const favicon = hasFavicon ? `${origin}/favicon.png` : "";
+  const faviconIco = hasFavicon ? `${origin}/favicon.ico` : "";
   const organizationId = `${origin}/#organization`;
   const organization = {
     "@type": "Organization",
@@ -212,6 +210,7 @@ async function workspaceMeta(req) {
     description: truncate(defaults.description, 160),
     image,
     favicon,
+    faviconIco,
     canonical,
     indexable: defaults.indexable,
     schemas,
@@ -225,6 +224,7 @@ async function renderShell(req) {
     description: "",
     image: "",
     favicon: "",
+    faviconIco: "",
     canonical: `${publicOrigin(req)}${req.path || "/"}`,
     indexable: false,
     schemas: [],
@@ -251,11 +251,17 @@ async function renderShell(req) {
     meta.image ? `<meta name="twitter:image" content="${safeImage}">` : "",
     `<meta name="robots" content="${meta.indexable ? "index,follow,max-image-preview:large" : "noindex,follow"}">`,
     `<link rel="canonical" href="${safeCanonical}">`,
-    meta.favicon ? `<link rel="icon" href="${safeFavicon}">` : "",
+    // Every favicon tag below consistently points at this same domain's own
+    // stable /favicon.ico and /favicon.png (proxied by publicSeo.js from
+    // whatever image is actually configured) — not a versioned third-party
+    // Cloudinary URL, and not a different URL per declared size. Browsers
+    // and Google's favicon crawler don't need genuinely different images
+    // per size here; they need one consistent, reliably-fetchable source.
+    meta.faviconIco ? `<link rel="icon" href="${escapeHtml(meta.faviconIco)}">` : "",
     ...(meta.favicon
-      ? [16, 32, 48, 192, 512].map((size) => `<link rel="icon" sizes="${size}x${size}" type="image/png" href="${escapeHtml(faviconVariant(meta.favicon, size))}">`)
+      ? [16, 32, 48, 192, 512].map((size) => `<link rel="icon" sizes="${size}x${size}" type="image/png" href="${safeFavicon}">`)
       : []),
-    meta.favicon ? `<link rel="apple-touch-icon" sizes="180x180" href="${escapeHtml(faviconVariant(meta.favicon, 180))}">` : "",
+    meta.favicon ? `<link rel="apple-touch-icon" sizes="180x180" href="${safeFavicon}">` : "",
     ...(meta.schemas || []).map((schema) => `<script type="application/ld+json">${safeJson({ "@context": "https://schema.org", ...schema })}</script>`),
   ]
     .filter(Boolean)
