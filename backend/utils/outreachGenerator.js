@@ -79,6 +79,55 @@ function textToHtml(value = "") {
     .join("\n");
 }
 
+// A saved campaign body can be a full HTML document exported by the Unlayer
+// design canvas (starts with a DOCTYPE/<html>, has its own <head>/<style>),
+// not just a fragment from the simple rich-text editor. Stripping tags with
+// a bare `<[^>]+>` regex removes the <style> tags themselves but leaves the
+// CSS rules that were between them as visible text — confirmed live in a
+// sent message's raw MIME: the plain-text part started with
+// "@media only screen and (min-width: 520px) { .u-row {...". Removing
+// <head>/<style>/<script> as whole blocks (content included) before
+// stripping remaining tags is what actually produces clean text.
+function htmlToPlainText(value = "") {
+  return String(value)
+    .replace(/<head[\s\S]*?<\/head>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<!--[\s\S]*?-->/g, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|li|h[1-6])>/gi, "\n\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, "\"")
+    .replace(/&#39;/gi, "'")
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+// True only for a full HTML document (what the Unlayer canvas exports) —
+// not a fragment like "<p>Hi {{firstName}}</p>" from the simple rich-text
+// editor, which still needs the existing <html><body> wrapper below it to
+// become a valid, sendable document.
+function isCompleteHtmlDocument(value = "") {
+  return /^\s*(<!DOCTYPE\s+html|<html[\s>])/i.test(String(value));
+}
+
+// Inserts before the LAST </body> in the document rather than the first —
+// a plain single-occurrence .replace("</body>", ...) put injected content
+// (an auto-generated CTA button row, in this case) inside whichever </body>
+// happened to appear first, which is only safe when there's exactly one.
+function insertBeforeFinalBodyClose(html, content) {
+  if (!content) return html;
+  const lastIndex = html.toLowerCase().lastIndexOf("</body>");
+  if (lastIndex === -1) return `${html}${content}`;
+  return `${html.slice(0, lastIndex)}${content}${html.slice(lastIndex)}`;
+}
+
 function formatEventDate(value) {
   if (!value) return "";
   const date = new Date(value);
@@ -218,7 +267,7 @@ Ellie's Coaching
   const savedBodyIsHtml = /^\s*</.test(savedBody);
   const subject = fillTemplate(hasSavedSubject ? savedSubject : `Partner With ${campaignName}`, variables);
   const plainSourceBody = hasSavedBody
-    ? (savedBodyIsHtml ? savedBody.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() : savedBody)
+    ? (savedBodyIsHtml ? htmlToPlainText(savedBody) : savedBody)
     : fallbackEmailDraft;
   let emailDraft = applyCanonicalEventDate(fillTemplate(plainSourceBody, variables), eventDate, campaignName);
   if (eventLink && !emailDraft.includes(eventLink)) {
@@ -228,18 +277,32 @@ Ellie's Coaching
     emailDraft = `${emailDraft}\n\nAlso listed on Meetup:\n${meetupLink}`;
   }
 
-  const htmlBody = hasSavedBody ? `
+  const filledSavedBody = savedBodyIsHtml
+    ? applyCanonicalEventDate(fillTemplate(savedBody, variables), eventDate, campaignName)
+    : textToHtml(applyCanonicalEventDate(fillTemplate(savedBody, variables), eventDate, campaignName));
+  // savedBody can be either a small HTML fragment from the simple rich-text
+  // editor (needs the <!DOCTYPE html><html><body> wrapper below to become a
+  // valid, sendable document) or a COMPLETE document already exported by the
+  // Unlayer design canvas, which has its own <!DOCTYPE>/<html>/<head>. Wrapping
+  // the latter in another one produces two full HTML documents nested inside
+  // each other — confirmed live in a sent message's raw MIME/htmlBody: 2
+  // DOCTYPEs, 2 <html>, 2 <body>, 2 </body>, 2 </html>. A complete document
+  // is used as-is; only the auto-generated CTA button row (if any) still
+  // needs inserting, into ITS <body>, before its own closing tag.
+  const htmlBody = hasSavedBody
+    ? (savedBodyIsHtml && isCompleteHtmlDocument(savedBody)
+        ? insertBeforeFinalBodyClose(filledSavedBody, emailButtonRow(emailButtons, campaign.brand?.accentColor || "#173f36"))
+        : `
 <!DOCTYPE html>
 <html>
 <body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">
-${savedBodyIsHtml
-    ? applyCanonicalEventDate(fillTemplate(savedBody, variables), eventDate, campaignName)
-    : textToHtml(applyCanonicalEventDate(fillTemplate(savedBody, variables), eventDate, campaignName))}
+${filledSavedBody}
 ${flyerUrl && !savedBodyIsHtml ? `<img src="${escapeHtml(flyerUrl)}" alt="${escapeHtml(campaign.programName || campaignName)}" style="display:block;width:100%;max-width:600px;height:auto;border-radius:8px;margin:28px 0;">` : ""}
 ${emailButtonRow(emailButtons, campaign.brand?.accentColor || "#173f36")}
 </body>
 </html>
-`.trim() : `
+`.trim())
+    : `
 <!DOCTYPE html>
 <html>
 <body style="font-family:Arial,sans-serif;line-height:1.6;color:#333;">

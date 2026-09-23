@@ -111,9 +111,17 @@ async function renderEmailContent(
   // No logo is ever auto-inserted here — the sender controls entirely
   // whether one appears and where, by dragging it into the Unlayer editor
   // themselves (see CampaignWorkspace.jsx's "Insert logo" control).
-  html = html.includes("</body>")
-    ? html.replace("</body>", `${footerHtml}</body>`)
-    : `${html}${footerHtml}`;
+  // Targets the LAST </body>, not the first: a single .replace() only ever
+  // touches the first match, which is only safe when exactly one </body>
+  // is present. Defense in depth alongside the outreach-generator fix that
+  // stops a complete Unlayer document from being double-wrapped in the
+  // first place — this keeps the footer landing at the true end of the
+  // message even if some other draft-generation path ever produces more
+  // than one closing body tag.
+  const lastBodyCloseIndex = html.toLowerCase().lastIndexOf("</body>");
+  html = lastBodyCloseIndex === -1
+    ? `${html}${footerHtml}`
+    : `${html.slice(0, lastBodyCloseIndex)}${footerHtml}${html.slice(lastBodyCloseIndex)}`;
   return { text, html, unsubscribeUrl };
 }
 
