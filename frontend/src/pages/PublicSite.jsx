@@ -285,15 +285,16 @@ export function PublicLayout({ children }) {
           </div>
           <div className="public-footer-col">
             <div className="public-footer-label">EXPLORE</div>
-            {showPrograms ? <a href="/#programs">Programs</a> : null}
-            <a href="/#about">About</a>
+            {showPrograms ? <Link to="/coaching-programs">Programs</Link> : null}
+            <Link to="/about">About</Link>
             {showTeam ? <a href="/#team">Team</a> : null}
             {showResults ? <a href="/#results">Results</a> : null}
             <Link to="/faq">FAQ</Link>
           </div>
           <div className="public-footer-col">
             <div className="public-footer-label">CONNECT</div>
-            <a href="/#contact">Contact</a>
+            <Link to="/contact">Contact</Link>
+            {site?.publicSite?.discoveryCallEnabled ? <Link to="/book-a-call">Discovery call</Link> : null}
             {showPrograms ? <a href="/#programs">Application</a> : null}
             {socials.map((link) => (
               <a
