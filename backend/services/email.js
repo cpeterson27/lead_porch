@@ -9,6 +9,34 @@ const {
   publicBackendUrl,
 } = require("../utils/unsubscribe");
 
+// Confirmed live via Resend's send log: 106 campaign emails went out in a
+// single hour (2026-09-22 19:00 UTC) to 106 recipients this domain had never
+// contacted before, dispatched by 5 parallel workers with no pacing — the
+// only prior cap was "100 selected drafts per HTTP request," a request-size
+// limit, not a deliverability throttle. A sudden volume spike like that from
+// a domain with almost no prior sending history is exactly the shape Gmail's
+// bulk-sender heuristics are built to catch, independent of SPF/DKIM/DMARC
+// (all of which were already correct). This rolling-window cap is the real
+// fix: it applies inside sendEmail itself so every caller (manual "Send
+// selected", the scheduled auto-send pipeline) is protected the same way,
+// no matter how many drafts get approved/selected at once.
+const sendTimestamps = [];
+function checkHourlySendCap() {
+  const limit = Math.max(1, Number(process.env.EMAIL_SEND_HOURLY_LIMIT) || 20);
+  const windowMs = 60 * 60 * 1000;
+  const now = Date.now();
+  while (sendTimestamps.length && now - sendTimestamps[0] > windowMs) sendTimestamps.shift();
+  if (sendTimestamps.length >= limit) {
+    const retryInMinutes = Math.ceil((windowMs - (now - sendTimestamps[0])) / 60000);
+    return {
+      allowed: false,
+      message: `Paused for deliverability: this domain is still building sending reputation, so campaign email is capped at ${limit}/hour. Try again in about ${retryInMinutes} minute${retryInMinutes === 1 ? "" : "s"}, or raise EMAIL_SEND_HOURLY_LIMIT once volume has been ramped up safely.`,
+    };
+  }
+  sendTimestamps.push(now);
+  return { allowed: true };
+}
+
 async function renderEmailContent(
   outreachItem,
   { contact = null, preview = false, unsubscribeUrlOverride = "" } = {},
@@ -176,6 +204,10 @@ async function sendEmail(outreachItem, { allowUnverified = false, deliveryPurpos
   });
   if (!eligibility.eligible) {
     return { success: false, message: eligibility.message };
+  }
+  const cap = checkHourlySendCap();
+  if (!cap.allowed) {
+    return { success: false, message: cap.message };
   }
   const contact = eligibility.contact;
   let rendered;

@@ -113,6 +113,7 @@ export default function Outreach() {
   const [testRecipient, setTestRecipient] = useState(() =>
     window.localStorage.getItem("leadporch.outreachTestRecipient") || "team@elliescoaching.com",
   );
+  const [testItemId, setTestItemId] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [deliverySyncedAt, setDeliverySyncedAt] = useState(null);
@@ -237,6 +238,19 @@ export default function Outreach() {
   const selectedPendingCount = selectedOutreach.filter((item) => item.status === "pending").length;
   const selectedApprovedCount = selectedOutreach.filter((item) => item.status === "approved").length;
   const selectedFailedCount = selectedOutreach.filter((item) => item.status === "failed").length;
+  const testableItems = useMemo(
+    () =>
+      [...items].sort((a, b) => {
+        const rank = { approved: 0, pending: 1, sent: 2, failed: 3 };
+        return (rank[a.status] ?? 4) - (rank[b.status] ?? 4);
+      }),
+    [items],
+  );
+  useEffect(() => {
+    if (testableItems.some((item) => item._id === testItemId)) return undefined;
+    const syncTestItem = window.setTimeout(() => setTestItemId(testableItems[0]?._id || ""), 0);
+    return () => window.clearTimeout(syncTestItem);
+  }, [testableItems, testItemId]);
   useEffect(() => {
     const resetPage = window.setTimeout(() => setPage(1), 0);
     return () => window.clearTimeout(resetPage);
@@ -333,8 +347,11 @@ export default function Outreach() {
       setSaving(false);
     }
   };
-  const sendTest = async () => {
-    if (!preview?._id) return;
+  const sendTest = async (itemId = testItemId || preview?._id) => {
+    if (!itemId) {
+      setError("Choose which draft to send as a test.");
+      return;
+    }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testRecipient.trim())) {
       setError("Enter a valid test recipient email address.");
       return;
@@ -345,7 +362,7 @@ export default function Outreach() {
       setNotice("");
       const recipient = testRecipient.trim().toLowerCase();
       window.localStorage.setItem("leadporch.outreachTestRecipient", recipient);
-      const result = await sendOutreachTestEmail(preview._id, recipient);
+      const result = await sendOutreachTestEmail(itemId, recipient);
       setNotice([result.message || `Test email sent to ${recipient}.`, result.warning].filter(Boolean).join(" "));
     } catch (err) {
       setError(err.response?.data?.error || "Unable to send the test email.");
@@ -688,6 +705,52 @@ export default function Outreach() {
         </label>
         <p><strong>{selected?.name || "Choose a campaign"}</strong><span>{counts.active || 0} messages need attention</span></p>
       </section>
+      <section className="outreach-test-send">
+        <strong>Send test email</strong>
+        <span>One place to preview any draft exactly as it would be delivered — sender, subject, HTML, and unsubscribe header all match production.</span>
+        <div className="outreach-test-send__row">
+          <label>
+            <span>Draft to preview</span>
+            <select
+              className="select-input"
+              value={testItemId}
+              onChange={(event) => setTestItemId(event.target.value)}
+              disabled={!testableItems.length}
+            >
+              {testableItems.length ? (
+                testableItems.map((item) => (
+                  <option key={item._id} value={item._id}>
+                    {(item.contactName || item.contactEmail || "Contact")}
+                    {item.subject ? ` — ${item.subject}` : ""}
+                  </option>
+                ))
+              ) : (
+                <option value="">No drafts available yet</option>
+              )}
+            </select>
+          </label>
+          <label>
+            <span>Send to</span>
+            <input
+              type="email"
+              value={testRecipient}
+              onChange={(event) => setTestRecipient(event.target.value)}
+              placeholder="A mailbox you can check"
+            />
+          </label>
+          <Button
+            variant="outline"
+            loading={testSending}
+            disabled={!testItemId || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testRecipient.trim())}
+            onClick={() => sendTest(testItemId)}
+          >
+            Send exact test
+          </Button>
+        </div>
+        <small>
+          For a meaningful Gmail test, use a mailbox different from the sender address — sending team@elliescoaching.com back to itself can look like spoofed mail.
+        </small>
+      </section>
       <section className="outreach-summary">
         {viewStatuses.map(
           (status) => (
@@ -1017,14 +1080,6 @@ export default function Outreach() {
         title="Review outreach email"
         footer={
           <>
-            <Button
-              variant="outline"
-              loading={testSending}
-              disabled={!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(testRecipient.trim())}
-              onClick={sendTest}
-            >
-              Send exact test
-            </Button>
             {preview?.replacementDraft ? (
               <Button loading={saving} onClick={sendReplacement}>
                 <FiMail />
@@ -1056,20 +1111,6 @@ export default function Outreach() {
               </div>
             ) : null}
             {replacementSendError ? <p className="form-error">{replacementSendError}</p> : null}
-            <div className="outreach-test-recipient">
-              <label>
-                <span>Test recipient</span>
-                <input
-                  type="email"
-                  value={testRecipient}
-                  onChange={(event) => setTestRecipient(event.target.value)}
-                  placeholder="A mailbox you can check"
-                />
-              </label>
-              <small>
-                This sends the exact production subject, sender, HTML, images, reply-to, and unsubscribe headers. For a meaningful Gmail test, use a mailbox different from the sender address—sending team@elliescoaching.com back to itself can look like spoofed mail.
-              </small>
-            </div>
             <p>
               <strong>To</strong> {preview.contactName || "Contact"}{" "}
               {preview.contactEmail ? `<${preview.contactEmail}>` : ""}

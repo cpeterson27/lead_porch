@@ -514,17 +514,32 @@
   white-space: pre-wrap;
   line-height: 1.55;
 }
-.outreach-preview .outreach-test-recipient {
+.outreach-test-send {
   display: grid;
-  gap: 0.45rem;
-  padding: 0.85rem;
+  gap: 0.6rem;
+  padding: 1rem;
   border: 1px solid color-mix(in srgb, var(--accent) 20%, var(--border));
   border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--accent) 5%, var(--surface));
-  white-space: normal;
 }
-.outreach-test-recipient label { display: grid; gap: 0.35rem; font-weight: 700; }
-.outreach-test-recipient input {
+.outreach-test-send > span { color: var(--text-muted); font-size: 0.82rem; line-height: 1.45; }
+.outreach-test-send__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+  align-items: end;
+}
+.outreach-test-send__row label {
+  display: grid;
+  gap: 0.35rem;
+  flex: 1 1 220px;
+  min-width: 220px;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.outreach-test-send__row input,
+.outreach-test-send__row select {
   width: 100%;
   box-sizing: border-box;
   padding: 0.7rem 0.9rem;
@@ -534,7 +549,7 @@
   color: var(--text);
   font: inherit;
 }
-.outreach-test-recipient small { color: var(--text-muted); line-height: 1.45; }
+.outreach-test-send small { color: var(--text-muted); line-height: 1.45; }
 .outreach-preview__frame {
   width: 100%;
   height: min(620px, 52vh);
