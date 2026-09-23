@@ -137,14 +137,28 @@ async function getCampaignMatches(campaignId) {
   const campaign = await Campaign.findById(campaignId);
   if (!campaign) throw new Error("Campaign not found");
 
+  // Deliberately does NOT require researchStatus: "qualified" / qualifyContact:
+  // true here — those used to gate this query, which meant a contact could
+  // only ever be matched into a campaign audience if it had *already* been
+  // manually qualified first. Nothing swept the CRM to qualify contacts on
+  // its own, so every contact that came in through anything other than the
+  // Apollo/Discovery auto-qualify path (see assignCampaignMatches below) or
+  // a manual Contacts-page bulk assign sat permanently unreachable —
+  // confirmed live: 624 of 1,010 active contacts were stuck at
+  // needs_research/ready_for_review this way. Matching now runs against the
+  // full eligible pool (verified, addressable contacts); researchStatus and
+  // qualifyContact are which we now WRITE for a genuine audience match, not
+  // a precondition for finding one. A contact missing title/company/industry
+  // still won't match anything real, since matchReasons has no text to key
+  // on — this doesn't loosen matching quality, only who's allowed to be
+  // considered.
   const base = {
     status: { $nin: ["archived", "unsubscribed", "invalid", "rejected"] },
-    researchStatus: "qualified",
-    qualifyContact: true,
     emailStatus: "verified",
     email: { $exists: true, $nin: ["", null] },
+    name: { $exists: true, $nin: ["", null] },
   };
-  const eligible = await Contact.find(base).select("name email company title industry tags keywords lists notes seniority audienceProfiles campaignIds campaignTemplateOverrides").lean();
+  const eligible = await Contact.find(base).select("name email company title industry tags keywords lists notes seniority audienceProfiles campaignIds campaignTemplateOverrides researchStatus qualifyContact").lean();
   const audienceTemplateDefinitions = Object.entries(campaign.emailAudienceTemplates || {})
     .filter(([, template]) => template?.status === "approved" && template?.currentVersion && template?.audienceLabel)
     .map(([key, template]) => ({ key, label: template.audienceLabel }));
@@ -192,9 +206,30 @@ async function getCampaignMatches(campaignId) {
 
 async function assignCampaignMatches(campaignId) {
   const preview = await getCampaignMatches(campaignId);
+  // Never auto-qualify or assign contacts into a campaign that isn't active
+  // (draft, completed, etc.) — matching now reaches into the full CRM, not
+  // just contacts someone already qualified by hand, so this guard is what
+  // keeps that from silently touching campaigns nobody meant to populate.
+  if (preview.campaign.status !== "active") {
+    return {
+      ...preview.counts,
+      assigned: 0,
+      skipped: "Campaign is not active — no contacts were matched or qualified.",
+      contacts: [],
+    };
+  }
   const ids = preview.matches.map(({ contact }) => contact._id);
   if (ids.length) {
-    await Contact.updateMany({ _id: { $in: ids } }, { $addToSet: { campaignIds: preview.campaign._id } });
+    await Contact.updateMany(
+      { _id: { $in: ids } },
+      {
+        $addToSet: { campaignIds: preview.campaign._id },
+        // A match here IS the qualification event for contacts that were
+        // previously stuck at needs_research/ready_for_review — see the
+        // comment on getCampaignMatches' base query above.
+        $set: { qualifyContact: true, researchStatus: "qualified", stage: "Qualified" },
+      },
+    );
   }
   preview.campaign.audienceMatch = {
     matchedCount: ids.length,

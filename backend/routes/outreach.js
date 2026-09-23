@@ -9,6 +9,7 @@ const EmailSuppression = require("../models/EmailSuppression");
 const { renderEmailContent, sendEmail, sendTestEmail } = require("../services/email");
 const { requireRole } = require("../middleware/auth");
 const { regenerateCampaignOutreach } = require("../services/outreachGenerationService");
+const { assignCampaignMatches } = require("../services/campaignAudienceService");
 
 
 const router = express.Router();
@@ -217,6 +218,14 @@ router.post("/generate", async (req,res)=>{
       const missing = [!eventbriteUrl && "Eventbrite", !meetupUrl && "Meetup"].filter(Boolean);
       if (missing.length) return res.status(400).json({ error: `Add the ${missing.join(" and ")} link${missing.length === 1 ? "" : "s"} to this campaign before generating event emails. Every event draft must include both registration links.` });
     }
+
+    // Re-sync the audience match against the full CRM before generating
+    // drafts, every time — not just at campaign creation. This is what
+    // actually reaches contacts that were stuck at needs_research/
+    // ready_for_review (nothing previously qualified them automatically);
+    // assignCampaignMatches itself is a no-op for a non-active campaign, so
+    // this never touches a draft/completed campaign's audience.
+    await assignCampaignMatches(campaignId);
 
     const {
       outreach,
