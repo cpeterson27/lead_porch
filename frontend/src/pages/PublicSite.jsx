@@ -285,18 +285,15 @@ export function PublicLayout({ children }) {
           </div>
           <div className="public-footer-col">
             <div className="public-footer-label">EXPLORE</div>
-            {showPrograms ? <Link to="/coaching-programs">Programs</Link> : null}
-            <Link to="/about">About</Link>
+            {showPrograms ? <a href="/#programs">Programs</a> : null}
+            <a href="/#about">About</a>
             {showTeam ? <a href="/#team">Team</a> : null}
             {showResults ? <a href="/#results">Results</a> : null}
             <Link to="/faq">FAQ</Link>
-            <Link to="/resources">Resources</Link>
-            <Link to="/testimonials">Testimonials</Link>
           </div>
           <div className="public-footer-col">
             <div className="public-footer-label">CONNECT</div>
-            <Link to="/contact">Contact</Link>
-            {site?.publicSite?.discoveryCallEnabled ? <Link to="/book-a-call">Discovery call</Link> : null}
+            <a href="/#contact">Contact</a>
             {showPrograms ? <a href="/#programs">Application</a> : null}
             {socials.map((link) => (
               <a
@@ -480,11 +477,7 @@ function ProgramCards({ programs = [] }) {
                   {program.duration?.value ? " · " : ""}
                   {formatLabel(program)}
                 </div>
-                {program.slug ? (
-                  <Link className="public-accelerator-title" to={`/coaching-programs/${program.slug}`}>{program.title}</Link>
-                ) : (
-                  <div className="public-accelerator-title">{program.title}</div>
-                )}
+                <div className="public-accelerator-title">{program.title}</div>
                 <p className="public-accelerator-summary">
                   {program.summary || program.description || "Personalized support for your next stage of growth."}
                 </p>
@@ -629,11 +622,7 @@ function ProgramCards({ programs = [] }) {
                   )}
                 </div>
                 <div className="public-program-content">
-                  {program.slug ? (
-                    <Link className="public-program-title" to={`/coaching-programs/${program.slug}`}>{program.title}</Link>
-                  ) : (
-                    <div className="public-program-title">{program.title}</div>
-                  )}
+                  <div className="public-program-title">{program.title}</div>
                   {expanded === String(program.id) ? (
                     <div
                       className="public-program-desc"
