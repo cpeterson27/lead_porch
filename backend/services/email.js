@@ -51,6 +51,7 @@ function checkHourlySendCap() {
     const retryInMinutes = Math.ceil((windowMs - (now - sendTimestamps[0])) / 60000);
     return {
       allowed: false,
+      code: "RATE_LIMITED",
       message: `Paused for deliverability: this domain is still building sending reputation, so campaign email is capped at ${limit}/hour right now (rising automatically every ${RAMP_PERIOD_DAYS} days as long as it stays safe). Try again in about ${retryInMinutes} minute${retryInMinutes === 1 ? "" : "s"}, or set EMAIL_SEND_HOURLY_LIMIT to override this manually.`,
     };
   }
@@ -236,7 +237,7 @@ async function sendEmail(outreachItem, { allowUnverified = false, deliveryPurpos
   }
   const cap = checkHourlySendCap();
   if (!cap.allowed) {
-    return { success: false, message: cap.message };
+    return { success: false, message: cap.message, code: cap.code };
   }
   const contact = eligibility.contact;
   let rendered;

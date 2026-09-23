@@ -5,7 +5,7 @@ const { startCommunicationJobRunner, runDueCommunicationJobs } = require("./serv
 const { startAutomationRunner, runDueAutomations } = require("./services/automationRunner");
 const { startSocialPublishingRunner, runDueSocialPublishing } = require("./services/socialPublishingRunner");
 const { startLinkedinSequenceRunner, runDueEnrollments } = require("./services/linkedinSequenceService");
-const { startCampaignSendScheduler, runDueCampaignSends } = require("./services/campaignSendScheduler");
+const { startCampaignSendScheduler, runDueCampaignSends, startApprovedOutreachSweep, runApprovedOutreachSweep } = require("./services/campaignSendScheduler");
 
 const mongoUri = process.env.MONGO_URI;
 if (!mongoUri) {
@@ -29,12 +29,14 @@ connectDatabase(mongoUri)
     // *either* process. A campaign scheduled to send stayed unclaimed and
     // unsent indefinitely, silently, with no error anywhere to notice.
     await runDueCampaignSends();
+    await runApprovedOutreachSweep();
     startResearchMonitorRunner();
     startCommunicationJobRunner({ force: true });
     startAutomationRunner({ force: true });
     startSocialPublishingRunner({ force: true });
     startLinkedinSequenceRunner();
     startCampaignSendScheduler({ force: true });
+    startApprovedOutreachSweep({ force: true });
   })
   .catch((error) => {
     console.error("Research worker failed to start:", error.message || error);

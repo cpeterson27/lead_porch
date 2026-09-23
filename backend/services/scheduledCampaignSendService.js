@@ -15,6 +15,7 @@ async function sendApprovedOutreachForCampaign(campaignId, { deliveryPurpose = "
   const items = await Outreach.find({ campaignId, status: "approved" });
   let sentCount = 0;
   let failedCount = 0;
+  let pausedCount = 0;
   const failures = [];
 
   const processItem = async (item) => {
@@ -45,6 +46,22 @@ async function sendApprovedOutreachForCampaign(campaignId, { deliveryPurpose = "
       item.deliveryPurpose = deliveryPurpose;
       item.prospectingAttestedAt = deliveryPurpose === "business_prospecting" ? new Date() : null;
       sentCount++;
+      await item.save();
+    } else if (result.code === "RATE_LIMITED") {
+      // Confirmed live: a scheduled send fires exactly once, and used to
+      // mark every draft it couldn't get to within the hourly cap as
+      // permanently "failed" — requiring a human to notice and manually
+      // re-approve each one. Since nothing else ever retried them, a
+      // campaign larger than one hour's cap silently abandoned most of
+      // its recipients forever. Leaving status as "approved" (instead of
+      // "failed") is what lets runApprovedOutreachSweep's periodic pass
+      // pick this back up automatically once the rate window clears —
+      // deliveryStatus/errorMessage still record what happened so it's
+      // visible in the meantime.
+      item.deliveryStatus = "delayed";
+      item.errorMessage = result.message;
+      pausedCount++;
+      await item.save();
     } else {
       item.status = "failed";
       item.deliveryStatus = "failed";
@@ -52,8 +69,8 @@ async function sendApprovedOutreachForCampaign(campaignId, { deliveryPurpose = "
       item.errorMessage = result.message;
       failedCount++;
       failures.push({ outreachId: item._id, email: item.contactEmail, message: result.message });
+      await item.save();
     }
-    await item.save();
   };
 
   let nextIndex = 0;
@@ -68,7 +85,7 @@ async function sendApprovedOutreachForCampaign(campaignId, { deliveryPurpose = "
 
   if (sentCount > 0) await Campaign.updateOne({ _id: campaignId }, { $inc: { "metrics.sent": sentCount } });
 
-  return { totalCount: items.length, sentCount, failedCount, failures };
+  return { totalCount: items.length, sentCount, failedCount, pausedCount, failures };
 }
 
 module.exports = { sendApprovedOutreachForCampaign };
