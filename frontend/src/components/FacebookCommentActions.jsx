@@ -123,7 +123,7 @@ export default function FacebookCommentActions({
           Delete comment
         </button>
       </div>
-      {notice ? <p role="status">{notice}</p> : null}
+      {notice ? <p role="status" className="facebook-comment-actions__notice">{notice}</p> : null}
       {error ? (
         <p role="alert" className="form-error">
           {error}
