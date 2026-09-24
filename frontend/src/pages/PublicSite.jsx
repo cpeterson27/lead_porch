@@ -1692,7 +1692,7 @@ export function DiscoveryCallPage() {
             <button type="button" onClick={() => beginBooking()}>Book your discovery call <FiArrowRight /></button>
           </div>
           <div className="discovery-hero__content">
-            <p className="public-kicker">A clear next step for your investing goals</p>
+            <p className="discovery-hero__audience"><span /> For real estate investors ready to take focused action</p>
             <h1>{p.discoveryCallHeading || "Book a Discovery Call"}</h1>
             <p>{p.discoveryCallCopy || "Tell us where you are in your investing journey. Meet with Ellie, ask honest questions, and identify the coaching path or next step that fits your goals."}</p>
             <div className="discovery-hero__actions">
@@ -1706,42 +1706,6 @@ export function DiscoveryCallPage() {
             </div>
           ) : null}
         </section>
-
-        <section className="discovery-intro">
-          <p className="public-kicker">Start with your goals</p>
-          <h2>This is a strategy conversation, not a generic sales call.</h2>
-          <p>We’ll look at what you’re working toward, where you feel stuck, and the level of guidance that would make the biggest difference. You’ll leave with a clearer direction whether or not a program is the right fit.</p>
-          <div className="discovery-value-grid">
-            <article><span>01</span><h3>Clarify your direction</h3><p>Turn a broad investing goal into a focused, practical next move.</p></article>
-            <article><span>02</span><h3>Choose the right support</h3><p>Compare Ellie’s actual programs against your experience and timeline.</p></article>
-            <article><span>03</span><h3>Know what comes next</h3><p>Leave the call understanding the path forward and what it requires.</p></article>
-          </div>
-        </section>
-
-        {programs.length ? <section className="discovery-programs">
-          <div className="discovery-section-heading">
-            <p className="public-kicker">Choose what you want to discuss</p>
-            <h2>Which coaching path feels closest to what you need?</h2>
-            <p>You do not have to know for certain. Your choice simply helps Ellie prepare for a more useful conversation.</p>
-          </div>
-          <div className="discovery-program-grid">
-            {programs.map((program) => (
-              <article className={`discovery-program-card${form.programId === String(program.id) ? " is-selected" : ""}`} key={program.id}>
-                <span>{program.tierLabel || program.coachingFormat || "Coaching program"}</span>
-                <h3>{program.title}</h3>
-                <p>{program.summary || program.audience || "Explore whether this coaching path fits your goals and current stage."}</p>
-                {program.highlights?.length ? <ul>{program.highlights.slice(0, 3).map((item) => <li key={item}><FiCheck />{item}</li>)}</ul> : null}
-                <button type="button" onClick={() => beginBooking(String(program.id))}>Discuss this program <FiArrowRight /></button>
-              </article>
-            ))}
-            <article className={`discovery-program-card discovery-program-card--open${form.programId === "not_sure" ? " is-selected" : ""}`}>
-              <span>Not sure yet</span>
-              <h3>Help me choose</h3>
-              <p>Share where you are now and Ellie can help identify the most sensible next step.</p>
-              <button type="button" onClick={() => beginBooking("not_sure")}>Talk through my options <FiArrowRight /></button>
-            </article>
-          </div>
-        </section> : null}
 
         <section className="discovery-booking-section" ref={bookingRef}>
           <div className="discovery-section-heading">
@@ -1798,9 +1762,31 @@ export function DiscoveryCallPage() {
         )}
         </section>
 
-        <section className="discovery-fit-section">
-          <div><p className="public-kicker">A productive conversation</p><h2>Come ready to talk honestly about where you are.</h2></div>
-          <div className="discovery-fit-section__copy"><p>This call is most useful when you want a real plan, welcome direct guidance, and are prepared to follow through. You do not need to have every answer before you book.</p><ul><li><FiCheck /> Your current investing experience</li><li><FiCheck /> The outcome you want to create</li><li><FiCheck /> The obstacle slowing you down</li><li><FiCheck /> The support and accountability you need</li></ul></div>
+        <section className="discovery-editorial">
+          <h2>The problem</h2>
+          <p className="discovery-editorial__lead">Information is everywhere. The hard part is turning what you know into a focused plan—and following that plan long enough to create momentum.</p>
+          <p>You may know you want to invest in multifamily real estate, raise capital, improve your acquisitions process, or manage an existing asset more effectively. But when every decision depends on you figuring out the next step alone, it is easy to stay busy without moving forward.</p>
+          <p>A discovery call gives you space to explain where you are, what you have already tried, and what outcome you are working toward. Ellie can then help you separate the immediate priority from everything that can wait.</p>
+        </section>
+
+        <section className="discovery-editorial discovery-editorial--soft">
+          <h2>Why this isn’t another course</h2>
+          <p className="discovery-editorial__lead">Ellie’s programs are built around guided implementation, direct feedback, and accountability—not simply handing you more information.</p>
+          <p>The right program depends on your current experience and the problem you need to solve. That is why the booking form lets you choose from every active coaching option in one simple dropdown. If you are unsure, choose <strong>“I’m not sure—help me choose.”</strong></p>
+          <h3>What we’ll cover on the call</h3>
+          <ul className="discovery-editorial__list">
+            <li><FiCheck /><div><strong>Your current position</strong><span>What you have done so far and where progress has slowed.</span></div></li>
+            <li><FiCheck /><div><strong>Your investing goal</strong><span>The outcome you want and the timeline you are working with.</span></div></li>
+            <li><FiCheck /><div><strong>The right coaching path</strong><span>Which of Ellie’s programs best matches the support you need now.</span></div></li>
+            <li><FiCheck /><div><strong>Your next step</strong><span>A clear direction for moving forward after the conversation.</span></div></li>
+          </ul>
+        </section>
+
+        <section className="discovery-editorial">
+          <h2>Who this is for</h2>
+          <p className="discovery-editorial__lead">This conversation is for people who are serious about taking action and want practical guidance from someone who understands the work.</p>
+          <p>You do not need to know which program is right before you book. You do need to be willing to speak honestly about your goals, your current obstacles, and the support you need to move forward.</p>
+          <button className="public-button" type="button" onClick={() => beginBooking()}>Choose your program and time <FiArrowRight /></button>
         </section>
 
         {testimonials.length ? <section className="discovery-proof-section"><div className="discovery-section-heading"><p className="public-kicker">Student perspectives</p><h2>Hear from people who chose to move forward.</h2></div><Testimonials rows={testimonials} /></section> : null}

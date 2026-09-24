@@ -2786,3 +2786,78 @@ button.public-text-link {
   .discovery-booking-form__steps button { font-size: 10px; }
   .discovery-booking-form__grid { grid-template-columns: 1fr; }
 }
+
+/* Reference-led discovery page: intentionally a clean white sales page even
+   when the rest of the public site uses a photographic or dark theme. */
+.public-site.has-sticky-background .discovery-call-page,
+.discovery-call-page {
+  position: relative;
+  z-index: 2;
+  background: #fff;
+  color: #0d0d0f;
+  --public-bg: #fff;
+  --public-surface: #fff;
+  --public-text: #0d0d0f;
+  --public-muted: #5f6065;
+  --public-border: #dedede;
+}
+.discovery-hero { padding: 40px max(24px, calc((100vw - 1260px) / 2)) 90px; background: #fff; }
+.discovery-hero__topline { max-width: 1220px; margin-bottom: 52px; border-color: #d8d8d8; background: #fff; box-shadow: 0 5px 14px rgb(0 0 0 / 7%); }
+.discovery-hero__content { max-width: 1060px; }
+.discovery-hero__audience { display: flex; align-items: center; justify-content: center; gap: 12px; margin: 0 0 28px; color: #202024; font-size: 16px; }
+.discovery-hero__audience span { width: 8px; height: 8px; border-radius: 50%; background: var(--public-accent); }
+.discovery-hero__content h1 { max-width: 1040px; margin: 0 auto 28px; color: #09090b; font-size: clamp(64px, 8vw, 108px); }
+.discovery-hero__content > p:not(.public-kicker, .discovery-hero__audience) { max-width: 900px; color: #303034; font-size: clamp(19px, 2vw, 26px); line-height: 1.5; }
+.discovery-hero__actions { margin-top: 32px; }
+.discovery-call-page__video { max-width: 1220px; margin-top: 62px; border-radius: 22px; box-shadow: none; }
+.discovery-booking-section { padding-top: 92px; padding-bottom: 110px; background: #fff; }
+.discovery-booking-section > .discovery-section-heading { margin-bottom: 42px; }
+.discovery-booking-section > .discovery-section-heading .public-kicker { color: var(--public-accent); }
+.discovery-booking-section > .discovery-section-heading h2 { color: #09090b; font-family: var(--public-body-font, "DM Sans"), sans-serif; font-size: clamp(46px, 6vw, 68px); font-weight: 750; letter-spacing: -.045em; }
+.discovery-booking-form,
+.discovery-booking-success { max-width: 1120px; border-color: #d6d6d6; border-radius: 16px; background: #fff; box-shadow: 0 8px 24px rgb(0 0 0 / 6%); }
+.discovery-booking-form__steps { padding: 28px 32px; background: #fff; }
+.discovery-booking-form__panel { padding: clamp(32px, 5vw, 62px); }
+.discovery-booking-form__title h3 { color: #0d0d0f; font-size: clamp(28px, 4vw, 42px); }
+.discovery-booking-form__title p,
+.discovery-booking-form label { color: #56575b; }
+.discovery-booking-form input,
+.discovery-booking-form select,
+.discovery-booking-form textarea { border-color: #d3d3d3; background: #fff; color: #111; }
+.discovery-editorial { max-width: 1160px; margin: 0 auto; padding: clamp(82px, 10vw, 150px) 38px; background: #fff; color: #111; text-align: center; }
+.discovery-editorial--soft { max-width: none; padding-right: max(38px, calc((100vw - 1080px) / 2)); padding-left: max(38px, calc((100vw - 1080px) / 2)); background: #fafafa; }
+.discovery-editorial h2 { margin: 0 0 54px; color: #08080a; font-family: var(--public-body-font, "DM Sans"), sans-serif; font-size: clamp(44px, 6vw, 68px); font-weight: 800; letter-spacing: -.045em; }
+.discovery-editorial h3 { margin: 96px 0 48px; font-family: var(--public-body-font, "DM Sans"), sans-serif; font-size: clamp(36px, 5vw, 56px); letter-spacing: -.04em; }
+.discovery-editorial > p { max-width: 1040px; margin: 0 auto 34px; color: #222226; font-size: clamp(18px, 2.1vw, 25px); line-height: 1.72; }
+.discovery-editorial > .discovery-editorial__lead { max-width: 980px; margin-bottom: 44px; font-size: clamp(22px, 2.8vw, 32px); line-height: 1.55; }
+.discovery-editorial__list { display: grid; max-width: 1040px; gap: 0; margin: 0 auto; padding: 0; text-align: left; list-style: none; }
+.discovery-editorial__list li { display: grid; grid-template-columns: 28px 1fr; gap: 18px; padding: 26px 0; border-bottom: 1px solid #ddd; }
+.discovery-editorial__list svg { margin-top: 5px; color: var(--public-accent); font-size: 20px; }
+.discovery-editorial__list div { display: grid; gap: 8px; }
+.discovery-editorial__list strong { font-size: clamp(19px, 2vw, 25px); }
+.discovery-editorial__list span { color: #55565b; font-size: 16px; line-height: 1.6; }
+.discovery-editorial > .public-button { margin-top: 24px; }
+.discovery-fit-section { display: none; }
+.discovery-proof-section,
+.discovery-faq-section { background: #fff; color: #111; }
+.discovery-proof-section { border-top: 1px solid #e5e5e5; }
+.discovery-proof-section .discovery-section-heading h2,
+.discovery-faq-section .discovery-section-heading h2 { color: #111; }
+.discovery-faq-list p { color: #55565b; }
+.discovery-final-cta { background: color-mix(in srgb, var(--public-accent) 11%, #fff); color: #111; }
+.discovery-final-cta h2 { color: #111; }
+
+@media (max-width: 760px) {
+  .discovery-hero { padding-top: 22px; padding-bottom: 66px; }
+  .discovery-hero__topline { margin-bottom: 54px; }
+  .discovery-hero__audience { font-size: 13px; text-align: center; }
+  .discovery-hero__content h1 { font-size: clamp(52px, 16vw, 72px); }
+  .discovery-hero__content > p:not(.public-kicker, .discovery-hero__audience) { font-size: 18px; }
+  .discovery-booking-section { padding-top: 72px; }
+  .discovery-editorial,
+  .discovery-editorial--soft { padding: 82px 22px; }
+  .discovery-editorial h2 { margin-bottom: 36px; }
+  .discovery-editorial h3 { margin-top: 68px; }
+  .discovery-editorial > p,
+  .discovery-editorial > .discovery-editorial__lead { font-size: 18px; line-height: 1.7; }
+}
