@@ -1,4 +1,4 @@
-.social-capabilities{display:grid;gap:14px;grid-template-columns:repeat(5,1fr);margin-bottom:28px}.social-capabilities article,.social-queue>article{background:#fff;border:1px solid rgba(0,0,0,.05);border-radius:20px;padding:20px}.social-capabilities article{display:grid;gap:8px;text-transform:capitalize;box-shadow:0 1px 3px rgba(0,0,0,.04)}.social-capabilities span,.social-queue header span,.social-queue em{border-radius:999px;font-size:.7rem;font-style:normal;font-weight:700;padding:6px 12px;width:max-content}.status-api{background:#e6f4d7;color:#416d0f}.status-human_assisted{background:#fff0cc;color:#805d00}.status-unavailable{background:#f0f0f2;color:#8e8e93}.social-queue article>header,.social-queue footer{align-items:start;display:flex;justify-content:space-between}.social-editor-modal label{display:grid;gap:7px}.social-editor-modal input,.social-editor-modal textarea,.social-editor-modal select,.social-queue input{border:1px solid #ccd5cf;border-radius:10px;font:inherit;padding:11px}.social-editor-modal textarea{min-height:140px}.social-queue{display:grid;gap:20px;grid-template-columns:repeat(auto-fill,minmax(340px,1fr))}.social-queue article>header>div:last-child,.social-queue footer{display:flex;flex-wrap:wrap;gap:8px}.social-queue article>p{line-height:1.65;white-space:pre-wrap}.social-queue article>img{border-radius:16px;display:block;margin:15px 0;max-height:220px;width:100%;object-fit:cover}.social-queue article>a{display:block;margin:10px 0}.social-queue footer{border-top:1px solid #eee;margin-top:18px;padding-top:16px}.social-queue details{margin-top:15px}@media(max-width:900px){.social-capabilities{grid-template-columns:1fr 1fr}.social-queue article>header{display:grid;gap:12px}}@media(max-width:560px){.social-capabilities{grid-template-columns:1fr}.social-queue footer>*{width:100%}}
+.social-capabilities{display:grid;gap:14px;grid-template-columns:repeat(5,1fr);margin-bottom:28px}.social-capabilities article,.social-queue>article{background:#fff;border:1px solid rgba(0,0,0,.05);border-radius:18px;padding:18px}.social-capabilities article{display:grid;gap:8px;text-transform:capitalize;box-shadow:0 1px 3px rgba(0,0,0,.04)}.social-capabilities span,.social-queue header span,.social-queue em{border-radius:999px;font-size:.7rem;font-style:normal;font-weight:700;padding:6px 12px;width:max-content}.status-api{background:#e6f4d7;color:#416d0f}.status-human_assisted{background:#fff0cc;color:#805d00}.status-unavailable{background:#f0f0f2;color:#8e8e93}.social-queue article>header,.social-queue footer{align-items:start;display:flex;justify-content:space-between}.social-editor-modal label{display:grid;gap:7px}.social-editor-modal input,.social-editor-modal textarea,.social-editor-modal select,.social-queue input{border:1px solid #ccd5cf;border-radius:10px;font:inherit;padding:11px}.social-editor-modal textarea{min-height:140px}.social-queue{display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(320px,1fr))}.social-queue article>header>div:last-child,.social-queue footer{display:flex;flex-wrap:wrap;gap:8px}.social-queue article>p{line-height:1.65;white-space:pre-wrap}.social-queue article>img{border-radius:16px;display:block;margin:15px 0;max-height:220px;width:100%;object-fit:cover}.social-queue article>a{display:block;margin:10px 0}.social-queue footer{border-top:1px solid #eee;margin-top:18px;padding-top:16px}.social-queue details{margin-top:15px}@media(max-width:900px){.social-capabilities{grid-template-columns:1fr 1fr}.social-queue article>header{display:grid;gap:12px}}@media(max-width:560px){.social-capabilities{grid-template-columns:1fr}.social-queue footer>*{width:100%}}
 
 /* Apple-style card polish for the queue grid */
 .social-queue>article{box-shadow:0 1px 3px rgba(0,0,0,.04);transition:box-shadow .15s ease,transform .15s ease}
@@ -203,16 +203,27 @@
 .social-receipts summary::-webkit-details-marker{display:none}
 .social-receipts summary::before{content:"›";display:inline-block;margin-right:6px;transition:transform .15s ease}
 .social-receipts[open] summary::before{transform:rotate(90deg)}
-.social-receipts__row{display:flex!important;align-items:center;gap:10px;padding:9px 0;border-top:1px solid #f0f0f2;font-size:.8rem}
+/* Confirmed live: this row rendered "Facebook" and "published" one letter
+   per line on a narrower card. The article this row lives in sets
+   overflow-wrap:anywhere (needed elsewhere, for long unbroken post IDs/
+   URLs) — since overflow-wrap is inherited, it cascaded down and let the
+   flex algorithm break short fixed labels at any character once the row
+   ran out of horizontal room, instead of just wrapping the row. Letting
+   the row wrap as whole groups, and explicitly protecting the short fixed
+   labels (icon/platform/status) from ever being broken mid-word, fixes
+   this regardless of card width. */
+.social-receipts__row{display:flex!important;flex-wrap:wrap;align-items:center;row-gap:4px;column-gap:10px;padding:10px 0;border-top:1px solid #f0f0f2;font-size:.8rem}
 .social-receipts__icon{width:22px;height:22px;border-radius:6px;display:grid;place-items:center;color:#fff;font-size:.68rem;flex:0 0 22px}
+.social-receipts__row strong,
+.social-receipts__row .social-status-pill{flex-shrink:0;overflow-wrap:normal;white-space:nowrap}
 .social-receipts__row--facebook .social-receipts__icon{background:var(--brand-facebook)}
 .social-receipts__row--instagram .social-receipts__icon{background:linear-gradient(45deg,#f58529,#dd2a7b,#8134af,#515bd4)}
 .social-receipts__row--linkedin .social-receipts__icon{background:var(--brand-linkedin)}
 .social-receipts__row--x .social-receipts__icon{background:var(--brand-x)}
 .social-receipts__row--tiktok .social-receipts__icon{background:#000}
-.social-receipts__id{color:#8e8e93;font-size:.74rem;overflow-wrap:anywhere}
-.social-receipts__time{color:#8e8e93;font-size:.74rem;white-space:nowrap}
-.social-receipts__link{font-size:.74rem;font-weight:600;white-space:nowrap}
+.social-receipts__id{color:#8e8e93;font-size:.74rem;overflow-wrap:anywhere;flex:1 1 auto;min-width:80px}
+.social-receipts__time{color:#8e8e93;font-size:.74rem;white-space:nowrap;flex-shrink:0}
+.social-receipts__link{font-size:.74rem;font-weight:600;white-space:nowrap;flex-shrink:0}
 @media(max-width:560px){.social-post-performance__stat{min-width:100%}}
 .social-ai-result__meta{margin:.35rem 0 0;font-size:.75rem;color:#5c5c66;font-weight:600}
 .social-ai-result__objections{margin:.35rem 0 0;padding-left:1.1rem;font-size:.78rem}
