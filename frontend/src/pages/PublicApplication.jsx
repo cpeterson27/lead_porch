@@ -17,10 +17,15 @@ const initial = {
   email: "",
   phone: "",
   coachingProgramId: "",
+  professionOrBusiness: "",
   investingExperience: "",
   currentSituation: "",
   goals: "",
   desiredStartTimeline: "",
+  capitalReadiness: "",
+  biggestObstacle: "",
+  whyNow: "",
+  willingnessToInvest: "",
   message: "",
   referralCode: "",
   smsConsent: false,
@@ -276,6 +281,16 @@ export default function PublicApplication({ embedded: embeddedOverride, search: 
               </legend>
               <div className="application-grid">
                 <label className="wide">
+                  {config?.questionLabels?.professionOrBusiness ||
+                    "What do you do for work / your business?"}
+                  <textarea
+                    value={form.professionOrBusiness}
+                    onChange={(event) =>
+                      set("professionOrBusiness", event.target.value)
+                    }
+                  />
+                </label>
+                <label className="wide">
                   {config?.questionLabels?.investingExperience ||
                     "Investing experience"}
                   <textarea
@@ -327,6 +342,44 @@ export default function PublicApplication({ embedded: embeddedOverride, search: 
                       }
                     />
                   )}
+                </label>
+                <label>
+                  {config?.questionLabels?.capitalReadiness ||
+                    "How ready are you to invest capital right now?"}
+                  <input
+                    value={form.capitalReadiness}
+                    onChange={(event) =>
+                      set("capitalReadiness", event.target.value)
+                    }
+                  />
+                </label>
+                <label className="wide">
+                  {config?.questionLabels?.biggestObstacle ||
+                    "What's the biggest obstacle in your way?"}
+                  <textarea
+                    value={form.biggestObstacle}
+                    onChange={(event) =>
+                      set("biggestObstacle", event.target.value)
+                    }
+                  />
+                </label>
+                <label className="wide">
+                  {config?.questionLabels?.whyNow ||
+                    "Why is now the right time for you?"}
+                  <textarea
+                    value={form.whyNow}
+                    onChange={(event) => set("whyNow", event.target.value)}
+                  />
+                </label>
+                <label>
+                  {config?.questionLabels?.willingnessToInvest ||
+                    "Are you ready to invest in coaching to reach these goals?"}
+                  <input
+                    value={form.willingnessToInvest}
+                    onChange={(event) =>
+                      set("willingnessToInvest", event.target.value)
+                    }
+                  />
                 </label>
                 <label className="wide">
                   {config?.questionLabels?.message ||

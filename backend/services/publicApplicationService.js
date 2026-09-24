@@ -93,6 +93,10 @@ function publicConfig(config) {
     ),
     logoUrl: clean(app.logoUrl, 1000),
     questionLabels: {
+      professionOrBusiness: clean(
+        labels.professionOrBusiness || "What do you do for work / your business?",
+        160,
+      ),
       investingExperience: clean(
         labels.investingExperience || "Investing experience",
         160,
@@ -104,6 +108,19 @@ function publicConfig(config) {
       goals: clean(labels.goals || "Goals", 160),
       desiredStartTimeline: clean(
         labels.desiredStartTimeline || "Desired start timeline",
+        160,
+      ),
+      capitalReadiness: clean(
+        labels.capitalReadiness || "How ready are you to invest capital right now?",
+        160,
+      ),
+      biggestObstacle: clean(
+        labels.biggestObstacle || "What's the biggest obstacle in your way?",
+        160,
+      ),
+      whyNow: clean(labels.whyNow || "Why is now the right time for you?", 160),
+      willingnessToInvest: clean(
+        labels.willingnessToInvest || "Are you ready to invest in coaching to reach these goals?",
         160,
       ),
       message: clean(labels.message || "Anything else we should know?", 160),
@@ -313,10 +330,15 @@ async function submit(
     coachingProgramId: program._id,
     assignedUserId,
     answers: {
+      professionOrBusiness: clean(input.professionOrBusiness, 1000),
       investingExperience: clean(input.investingExperience, 3000),
       currentSituation: clean(input.currentSituation, 3000),
       goals: clean(input.goals, 3000),
       desiredStartTimeline: clean(input.desiredStartTimeline, 500),
+      capitalReadiness: clean(input.capitalReadiness, 1000),
+      biggestObstacle: clean(input.biggestObstacle, 2000),
+      whyNow: clean(input.whyNow, 2000),
+      willingnessToInvest: clean(input.willingnessToInvest, 1000),
       message: clean(input.message, 5000),
     },
     consent: {
