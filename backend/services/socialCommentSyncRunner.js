@@ -109,7 +109,7 @@ async function runDueSocialSync() {
 
 function startCommentSyncRunner({ force = false } = {}) {
   if (timer || (!force && process.env.COMMUNICATION_WORKER_MODE === "external")) return timer;
-  const interval = Math.max(60000, Number(process.env.COMMENT_SYNC_INTERVAL_MS) || 3 * 60000);
+  const interval = Math.max(60000, Number(process.env.COMMENT_SYNC_INTERVAL_MS) || 60000);
   timer = setInterval(() => runDueSocialSync().catch((error) => console.error("Comment sync runner failed:", error.message)), interval);
   timer.unref?.();
   return timer;

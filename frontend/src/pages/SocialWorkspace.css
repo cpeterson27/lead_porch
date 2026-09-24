@@ -291,7 +291,7 @@
   padding: 11px 12px;
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 14px;
+  border-radius: 12px !important;
   cursor: pointer;
   font: inherit;
   transition: background var(--transition-fast), border-color var(--transition-fast);
@@ -303,9 +303,21 @@
 }
 
 .social-thread-list button.selected {
-  background: #fff;
-  border-color: rgba(0, 122, 255, 0.22);
-  box-shadow: 0 3px 14px rgba(0, 0, 0, 0.07);
+  background: var(--color-brand-soft, #eef4f1);
+  border-color: transparent;
+  box-shadow: none;
+  position: relative;
+}
+
+.social-thread-list button.selected:before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--color-brand, #235d49);
 }
 
 .social-thread-list strong {
