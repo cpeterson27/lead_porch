@@ -529,7 +529,7 @@ function ProgramCards({ programs = [] }) {
                     setApplying(program);
                   }}
                 >
-                  Apply to program <FiArrowRight />
+                  Apply Now <FiArrowRight />
                 </button>
                 {program.instantEnroll?.enabled ? (
                   <button
@@ -664,7 +664,7 @@ function ProgramCards({ programs = [] }) {
                       setApplying(program);
                     }}
                   >
-                    Apply to program <FiArrowRight />
+                    Enroll Now <FiArrowRight />
                   </button>
                   {program.instantEnroll?.enabled ? (
                     <button

@@ -3,7 +3,7 @@ const workspacePlugin = require("../tenancy/workspacePlugin");
 
 const schema = new mongoose.Schema({
   workspaceId: { type: mongoose.Schema.Types.ObjectId, ref: "Workspace", required: true, index: true },
-  kind: { type: String, enum: ["campaign_message", "session_reminder", "onboarding"], required: true, index: true },
+  kind: { type: String, enum: ["campaign_message", "session_reminder", "onboarding", "payment_reminder"], required: true, index: true },
   channel: { type: String, enum: ["email", "sms"], required: true, index: true },
   purpose: { type: String, enum: ["transactional", "marketing"], required: true },
   status: { type: String, enum: ["pending", "processing", "sent", "blocked", "failed", "cancelled"], default: "pending", index: true },
