@@ -831,7 +831,7 @@
 
 .social-funnel-bar-row {
   display: grid;
-  grid-template-columns: 120px 1fr 90px;
+  grid-template-columns: 120px 1fr 52px 90px;
   align-items: center;
   gap: 12px;
 }
@@ -844,26 +844,23 @@
 
 .social-funnel-bar-row__track {
   position: relative;
-  height: 30px;
+  height: 14px;
   background: var(--color-surface-subtle);
-  border-radius: 8px;
+  border-radius: 999px;
   overflow: hidden;
 }
 
 .social-funnel-bar-row__fill {
   height: 100%;
-  border-radius: 8px;
+  border-radius: 999px;
   transition: width var(--transition-base);
 }
 
 .social-funnel-bar-row__value {
-  position: absolute;
-  right: 10px;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   font-weight: 760;
   color: var(--color-text);
+  text-align: right;
 }
 
 .social-funnel-bar-row__rate {
@@ -874,7 +871,7 @@
 
 @media (max-width: 640px) {
   .social-funnel-bar-row {
-    grid-template-columns: 90px 1fr;
+    grid-template-columns: 90px 1fr 40px;
   }
   .social-funnel-bar-row__rate {
     grid-column: 1/-1;

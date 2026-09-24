@@ -488,35 +488,38 @@ function ProgramCards({ programs = [] }) {
                     ))}
                   </ul>
                 ) : null}
-                {expanded === String(program.id) ? (
+                {expanded === String(program.id) && program.description ? (
                   <div
                     className="public-accelerator-desc"
                     id={`program-details-${program.id}`}
                   >
-                    {program.description || program.summary}
+                    {program.description}
                   </div>
                 ) : null}
                 <div className="public-accelerator-footer">
                   <span className="public-accelerator-price">
                     {money(program)}
                   </span>
-                  <button
-                    type="button"
-                    className="public-text-link"
-                    aria-expanded={expanded === String(program.id)}
-                    aria-controls={`program-details-${program.id}`}
-                    onClick={() =>
-                      setExpanded((current) =>
-                        current === String(program.id)
-                          ? ""
-                          : String(program.id),
-                      )
-                    }
-                  >
-                    {expanded === String(program.id)
-                      ? "Hide details"
-                      : "Learn more"}
-                  </button>
+                  {program.description &&
+                  program.description !== program.summary ? (
+                    <button
+                      type="button"
+                      className="public-text-link"
+                      aria-expanded={expanded === String(program.id)}
+                      aria-controls={`program-details-${program.id}`}
+                      onClick={() =>
+                        setExpanded((current) =>
+                          current === String(program.id)
+                            ? ""
+                            : String(program.id),
+                        )
+                      }
+                    >
+                      {expanded === String(program.id)
+                        ? "Hide details"
+                        : "Learn more"}
+                    </button>
+                  ) : null}
                 </div>
                 <button
                   type="button"
@@ -1604,6 +1607,7 @@ export function DiscoveryCallPage() {
     [result, setResult] = useState(null),
     [bookingError, setBookingError] = useState("");
   const bookingRef = useRef(null);
+  const identityComplete = form.name.trim().length > 1 && /^\S+@\S+\.\S+$/.test(form.email);
   const timezone = availability?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const slotsByDay = useMemo(() => {
     const map = new Map();
@@ -1721,15 +1725,20 @@ export function DiscoveryCallPage() {
               <button type="button" className={step === "time" ? "is-active" : ""} disabled={step !== "time"}><span>2</span>Choose a time</button>
             </div>
             {step === "details" ? <div className="discovery-booking-form__panel">
-              <div className="discovery-booking-form__title"><span>1</span><div><h3>Tell us a little about you</h3><p>This helps Ellie make the conversation specific to your goals.</p></div></div>
-              <label>Program you want to discuss<select required value={form.programId} onChange={(event) => setForm({ ...form, programId: event.target.value })}><option value="">Choose one</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.title}</option>)}<option value="not_sure">I’m not sure — help me choose</option></select></label>
-              <div className="discovery-booking-form__grid"><label>Full name<input required autoComplete="name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label><label>Email address<input required type="email" autoComplete="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label><label>Phone (optional)<input type="tel" autoComplete="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label><label>Investing experience<select value={form.experience} onChange={(event) => setForm({ ...form, experience: event.target.value })}><option value="">Choose one</option><option>Exploring my first investment</option><option>Actively pursuing my first deal</option><option>I own one or more properties</option><option>I’m ready to scale my portfolio</option></select></label></div>
-              <label>What is the primary goal you want help with?<textarea required value={form.primaryGoal} onChange={(event) => setForm({ ...form, primaryGoal: event.target.value })} placeholder="Tell Ellie what you want to accomplish and what is getting in the way." /></label>
-              <label>When are you hoping to take action?<select value={form.timeline} onChange={(event) => setForm({ ...form, timeline: event.target.value })}><option value="">Choose one</option><option>As soon as possible</option><option>Within the next 30 days</option><option>Within the next 3 months</option><option>I’m researching for later</option></select></label>
-              <label>Anything else Ellie should know? (optional)<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
-              {form.phone ? <label className="discovery-booking-form__sms-consent"><input type="checkbox" checked={form.smsConsent} onChange={(event) => setForm({ ...form, smsConsent: event.target.checked })} /> I agree to receive text messages about my discovery call and future updates. Message and data rates may apply. Reply STOP to opt out.</label> : null}
-              {bookingError ? <p className="form-error">{bookingError}</p> : null}
-              <button className="public-button discovery-booking-form__continue" type="button" onClick={showTimes}>Continue to available times <FiArrowRight /></button>
+              <div className="discovery-booking-form__title"><span>1</span><div><h3>Discovery call</h3><p>Start with your name and email. The remaining questions will open automatically.</p></div></div>
+              <div className="discovery-booking-form__identity"><label>Full name<input required autoComplete="name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Your full name" /></label><label>Email address<input required type="email" autoComplete="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="you@example.com" /></label></div>
+              {identityComplete ? <div className="discovery-booking-form__additional">
+                <h4>Additional information</h4>
+                <fieldset><legend>Which program would you like to discuss?</legend><div className="discovery-booking-form__choices">{programs.map((program) => <label key={program.id}><input required type="radio" name="programId" value={program.id} checked={form.programId === String(program.id)} onChange={(event) => setForm({ ...form, programId: event.target.value })} /><span>{program.title}</span></label>)}<label><input required type="radio" name="programId" value="not_sure" checked={form.programId === "not_sure"} onChange={(event) => setForm({ ...form, programId: event.target.value })} /><span>I’m not sure — help me choose</span></label></div></fieldset>
+                <fieldset><legend>How much investing experience do you have?</legend><div className="discovery-booking-form__choices">{["Exploring my first investment", "Actively pursuing my first deal", "I own one or more properties", "I’m ready to scale my portfolio"].map((option) => <label key={option}><input type="radio" name="experience" value={option} checked={form.experience === option} onChange={(event) => setForm({ ...form, experience: event.target.value })} /><span>{option}</span></label>)}</div></fieldset>
+                <label>What is the primary goal you want help with?<textarea required value={form.primaryGoal} onChange={(event) => setForm({ ...form, primaryGoal: event.target.value })} placeholder="Tell Ellie what you want to accomplish and what is getting in the way." /></label>
+                <fieldset><legend>When are you hoping to take action?</legend><div className="discovery-booking-form__choices">{["As soon as possible", "Within the next 30 days", "Within the next 3 months", "I’m researching for later"].map((option) => <label key={option}><input type="radio" name="timeline" value={option} checked={form.timeline === option} onChange={(event) => setForm({ ...form, timeline: event.target.value })} /><span>{option}</span></label>)}</div></fieldset>
+                <label>Phone (optional)<input type="tel" autoComplete="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label>
+                <label>Anything else Ellie should know? (optional)<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
+                {form.phone ? <label className="discovery-booking-form__sms-consent"><input type="checkbox" checked={form.smsConsent} onChange={(event) => setForm({ ...form, smsConsent: event.target.checked })} /> I agree to receive text messages about my discovery call and future updates. Message and data rates may apply. Reply STOP to opt out.</label> : null}
+                {bookingError ? <p className="form-error">{bookingError}</p> : null}
+                <button className="public-button discovery-booking-form__continue" type="button" onClick={showTimes}>Accept and choose a time <FiArrowRight /></button>
+              </div> : null}
             </div> : <div className="discovery-booking-form__panel">
               <div className="discovery-booking-form__title"><span>2</span><div><h3>Choose an available time</h3><p>All available times are shown in {timezone}.</p></div></div>
               {availability?.slots?.length ? <><AvailabilityCalendar slotsByDay={slotsByDay} timezone={timezone} selectedDay={selectedDay} onSelectDay={(key) => { setSelectedDay(key); setSelected(slotsByDay.get(key)?.[0] || ""); }} />{selectedDay && slotsByDay.has(selectedDay) ? <div className="discovery-calendar__times"><label>Available times on {new Date(`${selectedDay}T12:00:00`).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</label><div className="discovery-calendar__time-grid">{slotsByDay.get(selectedDay).map((slot) => <button key={slot} type="button" className={`discovery-calendar__time${slot === selected ? " is-selected" : ""}`} onClick={() => setSelected(slot)}>{new Date(slot).toLocaleString([], { hour: "numeric", minute: "2-digit" })}</button>)}</div><small>{new Date(selected || slotsByDay.get(selectedDay)[0]).toLocaleString([], { timeZoneName: "short" }).split(", ").pop()}</small></div> : <p className="discovery-calendar__prompt">Pick a highlighted day above to see available times.</p>}{bookingError ? <p className="form-error">{bookingError}</p> : null}<button className="public-button discovery-booking-form__continue" disabled={booking || !selected}>{booking ? "Reserving…" : "Confirm discovery call"}</button></> : availability ? <p>No appointment times are currently available. Please check again soon or contact {workspaceName}.</p> : <p>Loading available times…</p>}
@@ -1772,7 +1781,7 @@ export function DiscoveryCallPage() {
         <section className="discovery-editorial discovery-editorial--soft">
           <h2>Why this isn’t another course</h2>
           <p className="discovery-editorial__lead">Ellie’s programs are built around guided implementation, direct feedback, and accountability—not simply handing you more information.</p>
-          <p>The right program depends on your current experience and the problem you need to solve. That is why the booking form lets you choose from every active coaching option in one simple dropdown. If you are unsure, choose <strong>“I’m not sure—help me choose.”</strong></p>
+          <p>The right program depends on your current experience and the problem you need to solve. The booking form shows every active coaching option in one clear list. If you are unsure, choose <strong>“I’m not sure—help me choose.”</strong></p>
           <h3>What we’ll cover on the call</h3>
           <ul className="discovery-editorial__list">
             <li><FiCheck /><div><strong>Your current position</strong><span>What you have done so far and where progress has slowed.</span></div></li>

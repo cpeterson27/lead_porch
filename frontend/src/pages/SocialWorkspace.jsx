@@ -453,8 +453,8 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                                   background: FUNNEL_COLORS[index % FUNNEL_COLORS.length],
                                 }}
                               />
-                              <strong className="social-funnel-bar-row__value">{stage.value}</strong>
                             </div>
+                            <strong className="social-funnel-bar-row__value">{stage.value}</strong>
                             <span className="social-funnel-bar-row__rate">
                               {index > 0 ? `${growth.socialFunnel.conversions[index - 1].rate}% conv.` : ""}
                             </span>
