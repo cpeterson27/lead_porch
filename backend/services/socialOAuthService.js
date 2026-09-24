@@ -770,11 +770,19 @@ function subscriptionFields(asset) {
     ? asset.parentId
       ? // A Page-linked Instagram Business Account has no subscribed_apps edge
         // of its own (confirmed: Meta returns "(#100) Tried accessing
-        // nonexisting field" for a direct call on the IG asset id) — but
-        // Meta does deliver its comment/mention webhooks through the parent
-        // Page's own subscribed_apps call when these Instagram field names
-        // are included alongside the Page's own fields in that same request.
-        ["comments", "live_comments", "mentions", "messages"]
+        // nonexisting field" for a direct call on the IG asset id). Adding
+        // Instagram-specific field names ("comments", "live_comments",
+        // "mentions") to the Page's own subscribed_apps call was tried and
+        // confirmed live to make Meta reject the ENTIRE request — Meta's own
+        // error names this Page's actual allowed field list, which has no
+        // Instagram fields on it at all: "(#100) Param subscribed_fields[12]
+        // must be one of {feed, mention, name, picture, category,
+        // description, conversations, ..., messages, message_reactions,
+        // ...}". So Instagram comments genuinely cannot reach this workspace
+        // via a live webhook through this Page-linked connection — only
+        // "messages" (DMs) can. Comments have to be pulled on demand
+        // instead (see metaRecentPostService.syncPostComments).
+        ["messages"]
       : [
           "comments",
           "live_comments",
