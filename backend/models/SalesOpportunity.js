@@ -51,7 +51,8 @@ const salesOpportunitySchema = new mongoose.Schema({
   },
   applicationId: { type: mongoose.Schema.Types.ObjectId, ref: "CoachingApplication", default: null, index: true },
   coachingProgramId: { type: mongoose.Schema.Types.ObjectId, ref: "CoachingProgram", default: null, index: true },
-  value: { type: Number, default: 0, min: 0 },
+  value: { type: Number, default: 0, min: 0 }, // Contracted Revenue — the full deal value, set once from the first successful payment or plan total
+  cashCollected: { type: Number, default: 0, min: 0 }, // Cash Collected — running total of what has actually been paid so far, distinct from the contracted value above
   currency: { type: String, default: "USD", uppercase: true, trim: true, maxlength: 3 },
   probability: { type: Number, default: 0, min: 0, max: 100 },
   expectedCloseAt: { type: Date, default: null },

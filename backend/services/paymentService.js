@@ -7,6 +7,7 @@ const Contact = require("../models/Contact");
 const CoachingApplication = require("../models/CoachingApplication");
 const CoachingProgram = require("../models/CoachingProgram");
 const SalesOpportunity = require("../models/SalesOpportunity");
+const PaymentPlan = require("../models/PaymentPlan");
 const Enrollment = require("../models/Enrollment");
 const CrmActivity = require("../models/CrmActivity");
 const { encryptCredentials, decryptCredentials } = require("../utils/credentialEncryption");
@@ -194,6 +195,31 @@ async function refund({ workspaceId, userId, transactionId, amountMinor, reason,
 // unconditional enrollment intent; nothing less than that (checkout merely
 // started, a client-side claim) can ever reach here in the first place.
 async function maybeEnroll(transaction) { if (transaction.paymentPlanId || !transaction.contactId || !transaction.coachingProgramId || transaction.enrollmentId) return; const existing = await Enrollment.findOne({ workspaceId: transaction.workspaceId, contactId: transaction.contactId, coachingProgramId: transaction.coachingProgramId, status: { $ne: "cancelled" } }); if (existing) { transaction.enrollmentId = existing._id; await transaction.save(); return; } const enrollment = await coachingDomainService.createEnrollment({ workspaceId: transaction.workspaceId, contactId: transaction.contactId, coachingProgramId: transaction.coachingProgramId, sourceOpportunityId: transaction.salesOpportunityId, status: "pending", createdBy: transaction.createdBy }); transaction.enrollmentId = enrollment._id; await transaction.save(); }
+// A paid client moves the CRM automatically instead of relying on staff to
+// notice — but "Closed Won" and "Cash Collected" are deliberately kept
+// separate: a deal is Won the moment someone commits and pays anything
+// (deposit or in full), while Cash Collected keeps accumulating separately
+// as a payment plan's later installments come in. Contracted Revenue
+// (opportunity.value) is set once, from the plan's full total if this is a
+// plan payment or from this transaction's own amount if it's a one-time
+// payment — never overwritten afterward, so a partial refund or a later
+// installment doesn't silently change what was actually contracted.
+async function closeOpportunityWon(transaction) {
+  if (!transaction.salesOpportunityId) return;
+  const opportunity = await SalesOpportunity.findOne({ _id: transaction.salesOpportunityId, workspaceId: transaction.workspaceId });
+  if (!opportunity || opportunity.stageKey === "lost") return;
+  if (!opportunity.value) {
+    if (transaction.paymentPlanId) {
+      const plan = await PaymentPlan.findOne({ _id: transaction.paymentPlanId, workspaceId: transaction.workspaceId }).select("totalAmountMinor");
+      opportunity.value = plan ? plan.totalAmountMinor / 100 : transaction.amountMinor / 100;
+    } else {
+      opportunity.value = transaction.amountMinor / 100;
+    }
+  }
+  opportunity.cashCollected = Math.round(((opportunity.cashCollected || 0) + transaction.amountMinor / 100) * 100) / 100;
+  if (opportunity.stageKey !== "won") { opportunity.stageKey = "won"; opportunity.wonAt = transaction.paidAt || new Date(); opportunity.nextAction = "Begin onboarding"; }
+  await opportunity.save();
+}
 async function processSquareWebhook({ rawBody, signature }) {
   const provider = getPaymentProvider("square");
   if (!provider.verifyWebhookSignature(rawBody, signature)) throw Object.assign(new Error("Square webhook signature is invalid"), { code: "SQUARE_WEBHOOK_SIGNATURE_INVALID", status: 401 });
@@ -259,7 +285,7 @@ async function processSquareWebhook({ rawBody, signature }) {
     transaction.externalPaymentId = payment.id;
     transaction.providerUpdatedAt = incomingAt;
     if (!transaction.providerEventIds.includes(eventId)) transaction.providerEventIds.push(eventId);
-    if (squareStatus === "COMPLETED" && !["paid", "partially_refunded", "refunded"].includes(transaction.status)) { transaction.status = "paid"; transaction.paidAt = dateFrom(payment.created_at) || new Date(); await transaction.save(); await paymentPlanService.syncTransaction(transaction); if (transaction.coachingApplicationId && !transaction.paymentPlanId) await CoachingApplication.updateOne({ _id: transaction.coachingApplicationId, workspaceId: transaction.workspaceId }, { $set: { "payment.status": "paid", "payment.paidAt": transaction.paidAt } }); if (transaction.contactId && !transaction.paymentPlanId) { await Contact.updateOne({ _id: transaction.contactId, workspaceId: transaction.workspaceId }, { $set: { "paymentSummary.status": "paid", "paymentSummary.lastTransactionId": transaction._id, "paymentSummary.lastAmountMinor": transaction.amountMinor, "paymentSummary.lastPaidAt": transaction.paidAt } }); await CrmActivity.create({ workspaceId: transaction.workspaceId, contactId: transaction.contactId, type: "system", title: "Payment verified", body: transaction.description, source: "integration", metadata: { paymentTransactionId: transaction._id, provider: "square", amountMinor: transaction.amountMinor, currency: transaction.currency, webhookEventId: eventId } }); } await maybeEnroll(transaction); }
+    if (squareStatus === "COMPLETED" && !["paid", "partially_refunded", "refunded"].includes(transaction.status)) { transaction.status = "paid"; transaction.paidAt = dateFrom(payment.created_at) || new Date(); await transaction.save(); await paymentPlanService.syncTransaction(transaction); if (transaction.coachingApplicationId && !transaction.paymentPlanId) await CoachingApplication.updateOne({ _id: transaction.coachingApplicationId, workspaceId: transaction.workspaceId }, { $set: { "payment.status": "paid", "payment.paidAt": transaction.paidAt } }); if (transaction.contactId && !transaction.paymentPlanId) { await Contact.updateOne({ _id: transaction.contactId, workspaceId: transaction.workspaceId }, { $set: { "paymentSummary.status": "paid", "paymentSummary.lastTransactionId": transaction._id, "paymentSummary.lastAmountMinor": transaction.amountMinor, "paymentSummary.lastPaidAt": transaction.paidAt } }); await CrmActivity.create({ workspaceId: transaction.workspaceId, contactId: transaction.contactId, type: "system", title: "Payment verified", body: transaction.description, source: "integration", metadata: { paymentTransactionId: transaction._id, provider: "square", amountMinor: transaction.amountMinor, currency: transaction.currency, webhookEventId: eventId } }); } await maybeEnroll(transaction); await closeOpportunityWon(transaction); }
     else if (["FAILED", "CANCELED"].includes(squareStatus) && !["paid", "partially_refunded", "refunded"].includes(transaction.status)) { transaction.status = squareStatus === "FAILED" ? "failed" : "canceled"; transaction.canceledAt = squareStatus === "CANCELED" ? incomingAt : transaction.canceledAt; await transaction.save(); await paymentPlanService.syncTransaction(transaction); if (transaction.coachingApplicationId && !transaction.paymentPlanId) await CoachingApplication.updateOne({ _id: transaction.coachingApplicationId, workspaceId: transaction.workspaceId }, { $set: { "payment.status": transaction.status } }); if (transaction.contactId && !transaction.paymentPlanId) await Contact.updateOne({ _id: transaction.contactId, workspaceId: transaction.workspaceId }, { $set: { "paymentSummary.status": transaction.status } }); }
     else await transaction.save();
     await completeReceipt("processed"); return { processed: true };
