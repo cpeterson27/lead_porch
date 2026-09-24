@@ -4,6 +4,7 @@ const Contact = require("../models/Contact");
 const Workspace = require("../models/Workspace");
 const WorkspaceConfig = require("../models/WorkspaceConfig");
 const EmailSuppression = require("../models/EmailSuppression");
+const EmailSendPace = require("../models/EmailSendPace");
 const {
   createUnsubscribeToken,
   publicBackendUrl,
@@ -41,21 +42,25 @@ function rampedHourlyLimit() {
   return Math.min(RAMP_CEILING, Math.round(RAMP_BASE * RAMP_GROWTH_PER_PERIOD ** periods));
 }
 
-const sendTimestamps = [];
-function checkHourlySendCap() {
+// Durable (MongoDB-backed) rolling-window cap — an in-memory array here
+// previously reset to zero on every server restart (every Manual Deploy),
+// letting an active campaign blow well past its intended hourly rate any
+// time a deploy happened mid-send. See models/EmailSendPace.js.
+async function checkHourlySendCap() {
   const limit = Math.max(1, Number(process.env.EMAIL_SEND_HOURLY_LIMIT) || rampedHourlyLimit());
   const windowMs = 60 * 60 * 1000;
-  const now = Date.now();
-  while (sendTimestamps.length && now - sendTimestamps[0] > windowMs) sendTimestamps.shift();
-  if (sendTimestamps.length >= limit) {
-    const retryInMinutes = Math.ceil((windowMs - (now - sendTimestamps[0])) / 60000);
+  const since = new Date(Date.now() - windowMs);
+  const count = await EmailSendPace.countDocuments({ sentAt: { $gte: since } });
+  if (count >= limit) {
+    const oldest = await EmailSendPace.findOne({ sentAt: { $gte: since } }).sort({ sentAt: 1 }).select("sentAt").lean();
+    const retryInMinutes = oldest ? Math.max(1, Math.ceil((windowMs - (Date.now() - oldest.sentAt.getTime())) / 60000)) : 60;
     return {
       allowed: false,
       code: "RATE_LIMITED",
       message: `Paused for deliverability: this domain is still building sending reputation, so campaign email is capped at ${limit}/hour right now (rising automatically every ${RAMP_PERIOD_DAYS} days as long as it stays safe). Try again in about ${retryInMinutes} minute${retryInMinutes === 1 ? "" : "s"}, or set EMAIL_SEND_HOURLY_LIMIT to override this manually.`,
     };
   }
-  sendTimestamps.push(now);
+  await EmailSendPace.create({ sentAt: new Date() });
   return { allowed: true };
 }
 
@@ -235,7 +240,7 @@ async function sendEmail(outreachItem, { allowUnverified = false, deliveryPurpos
   if (!eligibility.eligible) {
     return { success: false, message: eligibility.message };
   }
-  const cap = checkHourlySendCap();
+  const cap = await checkHourlySendCap();
   if (!cap.allowed) {
     return { success: false, message: cap.message, code: cap.code };
   }
