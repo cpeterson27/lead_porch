@@ -1291,6 +1291,7 @@ export default function Content() {
                       />
                       <Button
                         size="sm"
+                        variant="secondary"
                         disabled={
                           saving ||
                           !publishAt ||

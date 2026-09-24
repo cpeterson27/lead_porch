@@ -228,3 +228,27 @@
 .social-ai-result__meta{margin:.35rem 0 0;font-size:.75rem;color:#5c5c66;font-weight:600}
 .social-ai-result__objections{margin:.35rem 0 0;padding-left:1.1rem;font-size:.78rem}
 .social-ai-result__objections li{margin-bottom:.15rem}
+
+/* Visual redesign pass: connected-accounts strip, card rhythm, footer actions */
+.social-capabilities{gap:12px}
+.social-capabilities article{gap:10px;padding:16px;border-color:rgba(0,0,0,.04);transition:box-shadow .15s ease,transform .15s ease,border-color .15s ease}
+.social-capabilities article:hover{box-shadow:0 10px 28px rgba(0,0,0,.08);transform:translateY(-2px);border-color:rgba(0,0,0,.08)}
+.social-capabilities__icon{width:40px;height:40px;border-radius:12px;font-size:1.1rem;box-shadow:0 6px 14px rgba(0,0,0,.12)}
+.social-capabilities article strong{font-size:.92rem;letter-spacing:-.01em;color:#1d1d1f}
+.social-capabilities article small{color:#8e8e93;font-size:.74rem}
+
+.social-queue>article{padding:20px}
+.social-queue article>header h2{font-size:1.1rem;letter-spacing:-.01em}
+.social-queue article>header{margin-bottom:2px}
+.social-queue article>p{margin:10px 0}
+.social-queue article>img{max-height:200px}
+.social-queue article>a{font-size:.85rem;font-weight:600;color:var(--color-brand,#235d49);background:#f0f5f2;border-radius:999px;padding:8px 14px;width:max-content;text-decoration:none}
+.social-queue article>a:hover{background:#e4ece6}
+
+/* Footer: left-aligned action flow instead of edge-stretched space-between,
+   so a wrapped second row of buttons reads as a continuation, not a
+   mismatched second line of spread-out pills. Delete is visually pushed to
+   the far edge since it's the one destructive, non-workflow action. */
+.social-queue footer{justify-content:flex-start;gap:8px}
+.social-queue footer .btn--danger{margin-left:auto}
+@media(max-width:560px){.social-queue footer .btn--danger{margin-left:0}}
