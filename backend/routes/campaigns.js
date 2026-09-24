@@ -137,6 +137,16 @@ function personalizeEmailBodyHtml(sourceBodyHtml, sourceTextBlocks, replacementT
 // ==================================
 // GET ALL CAMPAIGNS
 // ==================================
+router.get("/deliverability", async (req, res) => {
+  try {
+    const { getDeliverabilityHistory } = require("../services/resendDeliverabilityService");
+    const days = Math.min(30, Math.max(1, Number(req.query.days) || 7));
+    res.json(await getDeliverabilityHistory({ days }));
+  } catch (error) {
+    console.error("CAMPAIGN DELIVERABILITY ERROR:", error.message);
+    res.status(500).json({ error: "Unable to load deliverability data from Resend right now." });
+  }
+});
 router.get("/", async (req, res) => {
   try {
     const campaigns = await Campaign.find()
