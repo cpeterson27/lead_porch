@@ -80,8 +80,21 @@ async function runApprovedOutreachSweep() {
     const campaignIds = await Outreach.distinct("campaignId", { status: "approved" });
     const results = [];
     for (const campaignId of campaignIds) {
-      const campaign = await Campaign.findById(campaignId).select("workspaceId");
+      const campaign = await Campaign.findById(campaignId).select("workspaceId scheduledSendAt scheduledSendCompletedAt");
       if (!campaign) continue;
+      // Confirmed live: a campaign scheduled for a future send time (e.g.
+      // 8am) had its approved drafts sent hours early overnight — this
+      // sweep existed only to resume a send that had ALREADY started and
+      // hit its rate cap, but it had no awareness of "not due yet" at all,
+      // so anything sitting in "approved" got swept up on the very next
+      // tick regardless of the campaign's own schedule. A campaign with a
+      // future scheduledSendAt that hasn't fired yet (scheduledSendCompletedAt
+      // still null) is skipped here — runDueCampaignSends is what's allowed
+      // to make that campaign's first move, at or after its scheduled time;
+      // this sweep only ever continues a send that trigger already started.
+      if (campaign.scheduledSendAt && !campaign.scheduledSendCompletedAt && campaign.scheduledSendAt.getTime() > Date.now()) {
+        continue;
+      }
       try {
         const result = await runWithWorkspace(campaign.workspaceId, () =>
           sendApprovedOutreachForCampaign(campaignId, { deliveryPurpose: "business_prospecting" }));
