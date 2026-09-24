@@ -1011,3 +1011,45 @@
 
 /* Social setup and ambassador distribution use the same dashboard system. */
 .social-workspace{width:100%!important;max-width:1580px!important;margin:0 auto!important;font-family:var(--font-sans,Inter,ui-sans-serif,system-ui,sans-serif)!important}.social-workspace h1,.social-workspace h2,.social-workspace h3,.social-workspace button,.social-workspace input,.social-workspace select,.social-workspace textarea{font-family:inherit!important}.social-workspace .page-header{padding:clamp(26px,4vw,48px)!important;border-radius:28px!important;color:#fff!important;background:radial-gradient(circle at 85% 15%,rgba(41,199,237,.2),transparent 30%),linear-gradient(135deg,#10121f,#211b4c)!important;box-shadow:none!important}.social-workspace .page-header h1,.social-workspace .page-header p{color:#fff!important}.social-workspace>nav{display:flex!important;gap:7px!important;padding:8px!important;border:1px solid rgba(47,42,102,.09)!important;border-radius:18px!important;background:#fff!important;overflow:auto}.social-workspace>nav a{border-radius:999px!important;white-space:nowrap}.social-workspace>nav a.active{color:#fff!important;background:linear-gradient(135deg,#7457ff,#5269ed)!important}.social-panel{border:1px solid rgba(47,42,102,.09)!important;border-radius:20px!important;box-shadow:none!important;background:#fff!important}.social-panel .social-panel{border:0!important;border-radius:0!important}.social-workspace fieldset{border:1px solid rgba(47,42,102,.1)!important;border-radius:16px!important;padding:18px!important}.social-workspace input:not([type="checkbox"]):not([type="radio"]),.social-workspace select{min-height:44px!important;border-radius:999px!important;background:#f8f8fc!important}.social-workspace textarea{border-radius:14px!important;background:#f8f8fc!important}.social-workspace button{border-radius:999px!important}.social-stat-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:10px!important}.social-stat-grid article{border-radius:16px!important;background:#fafafe!important}
+
+/* ── Analytics: KPI cards with icon accents ─────────────────────────────── */
+.social-stat-grid--kpi{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))!important;gap:12px!important}
+.social-stat-grid--kpi article{position:relative;overflow:hidden;padding-top:18px!important}
+.social-stat-grid--kpi article:before{content:"";position:absolute;top:0;left:0;right:0;height:3px;background:var(--kpi-color,var(--color-brand))}
+.social-kpi-icon{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:#fff;background:var(--kpi-color,var(--color-brand));font-size:.9rem;margin-bottom:2px}
+.social-kpi-note{margin:-4px 0 4px;font-size:.78rem;color:var(--color-text-muted);line-height:1.5}
+
+/* ── Analytics: attribution donut + legend ──────────────────────────────── */
+.social-attribution-layout{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.social-attribution-chart{position:relative;flex:0 0 180px;width:180px;height:180px}
+.social-attribution-chart__center{position:absolute;inset:0;display:grid;place-items:center;text-align:center;pointer-events:none}
+.social-attribution-chart__center strong{display:block;font-size:1.4rem;font-weight:800;color:var(--color-text);letter-spacing:-.02em}
+.social-attribution-chart__center span{font-size:.68rem;color:var(--color-text-muted);text-transform:uppercase;letter-spacing:.06em}
+.social-attribution-legend{list-style:none;margin:0;padding:0;display:grid;gap:10px;flex:1 1 200px;min-width:180px}
+.social-attribution-legend li{display:grid;grid-template-columns:10px 1fr auto;align-items:center;column-gap:8px;row-gap:2px}
+.social-attribution-legend__dot{width:10px;height:10px;border-radius:50%}
+.social-attribution-legend__name{font-size:.85rem;font-weight:600;color:var(--color-text);text-transform:capitalize}
+.social-attribution-legend li strong{font-size:.9rem;font-weight:700;color:var(--color-text)}
+.social-attribution-legend li small{grid-column:2/-1;color:var(--color-text-muted);font-size:.72rem}
+
+/* ── Analytics: connected account insight cards ─────────────────────────── */
+.social-account-insight-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-top:4px}
+.social-account-insight-card{border:1px solid var(--color-border);border-radius:16px;padding:14px 16px;display:grid;gap:10px}
+.social-account-insight-card header{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.social-account-insight-card__icon{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;color:#fff;font-size:.78rem;flex:0 0 28px}
+.social-account-insight-card--facebook .social-account-insight-card__icon{background:#1877f2}
+.social-account-insight-card--instagram .social-account-insight-card__icon{background:linear-gradient(45deg,#f58529,#dd2a7b,#8134af,#515bd4)}
+.social-account-insight-card header strong{font-size:.88rem;color:var(--color-text);flex:1}
+.social-account-insight-card .social-status-pill{display:inline-flex!important;align-items:center;gap:4px;font-size:.68rem}
+.social-account-insight-card .social-status-pill svg{font-size:.85em}
+.social-account-insight-card dl{margin:0;display:grid;grid-template-columns:repeat(2,1fr);gap:8px}
+.social-account-insight-card dt{margin:0;color:var(--color-text-muted);font-size:.68rem;text-transform:uppercase;letter-spacing:.05em}
+.social-account-insight-card dd{margin:2px 0 0;font-weight:700;color:var(--color-text);font-size:1rem}
+.social-account-insight-card p{margin:0;font-size:.78rem;color:var(--color-text-muted)}
+.social-status-pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;font-size:.7rem;font-weight:700}
+.social-status-pill--published{background:#e6f4d7;color:#2f6b1f}
+.social-status-pill--pending_approval{background:#fff0cc;color:#805d00}
+.social-status-pill--failed{background:#fde8e8;color:#b3261e}
+
+/* ── Funnel chart: fewer, richer gradients instead of one hue ───────────── */
+@media(max-width:640px){.social-attribution-layout{flex-direction:column;align-items:stretch}.social-attribution-chart{margin:0 auto}}

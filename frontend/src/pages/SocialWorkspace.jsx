@@ -1,5 +1,17 @@
 import { useEffect, useState } from "react";
-import { FaFacebookF, FaInstagram } from "react-icons/fa6";
+import {
+  FaFacebookF,
+  FaInstagram,
+  FaComments,
+  FaUserGroup,
+  FaClipboardCheck,
+  FaPhone,
+  FaGraduationCap,
+  FaSackDollar,
+  FaCircleCheck,
+  FaCircleExclamation,
+  FaCircleQuestion,
+} from "react-icons/fa6";
 import {
   FunnelChart,
   Funnel,
@@ -7,6 +19,8 @@ import {
   LabelList,
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
+  PieChart,
+  Pie,
 } from "recharts";
 import { Link, NavLink, useParams, useSearchParams } from "react-router-dom";
 import SocialLeads from "./SocialLeads.jsx";
@@ -63,7 +77,23 @@ const STAGE_LABELS = {
   enrollments: "Enrollments",
 };
 const PLATFORM_ICONS = { facebook: FaFacebookF, instagram: FaInstagram };
-const FUNNEL_COLORS = ["#1f5c50", "#2f7566", "#3f8f7d", "#5aab93", "#7fc4ad", "#a8dcc9"];
+const FUNNEL_COLORS = ["#235d49", "#1877f2", "#8134af", "#dd2a7b", "#f58529", "#c9a227"];
+const KPI_META = {
+  interactions: { icon: FaComments, color: "#1877f2" },
+  conversations: { icon: FaUserGroup, color: "#8134af" },
+  leads: { icon: FaUserGroup, color: "#235d49" },
+  applications: { icon: FaClipboardCheck, color: "#dd2a7b" },
+  calls_booked: { icon: FaPhone, color: "#f58529" },
+  enrollments: { icon: FaGraduationCap, color: "#0a66c2" },
+  revenue: { icon: FaSackDollar, color: "#2f6b1f" },
+};
+const PROVIDER_COLORS = { instagram: "#dd2a7b", facebook: "#1877f2", linkedin: "#0a66c2", x: "#0f1419", tiktok: "#25d3c4" };
+const STATUS_META = {
+  available: { icon: FaCircleCheck, label: "Available", tone: "published" },
+  permission_required: { icon: FaCircleQuestion, label: "Permission required", tone: "pending_approval" },
+  authorization_required: { icon: FaCircleQuestion, label: "Reconnect needed", tone: "pending_approval" },
+  unavailable: { icon: FaCircleExclamation, label: "Unavailable", tone: "failed" },
+};
 function FunnelTooltip({ active, payload }) {
   if (!active || !payload?.length) return null;
   const row = payload[0]?.payload;
@@ -392,14 +422,22 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
               }));
               return (
                 <>
-                  <div className="social-stat-grid">
-                    {kpis.map((kpi) => (
-                      <article key={kpi.key}>
-                        <strong>{kpi.value}</strong>
-                        <span>{kpi.label}</span>
-                      </article>
-                    ))}
+                  <div className="social-stat-grid social-stat-grid--kpi">
+                    {kpis.map((kpi) => {
+                      const meta = KPI_META[kpi.key];
+                      const Icon = meta?.icon;
+                      return (
+                        <article key={kpi.key} style={{ "--kpi-color": meta?.color || "var(--color-brand)" }}>
+                          <span className="social-kpi-icon">{Icon ? <Icon /> : null}</span>
+                          <strong>{kpi.value}</strong>
+                          <span>{kpi.label}</span>
+                        </article>
+                      );
+                    })}
                   </div>
+                  <p className="social-kpi-note">
+                    Interactions counts every comment and DM Lead Porch has synced from your connected Facebook and Instagram accounts, combined — including anything sent while testing. It updates automatically as new activity comes in.
+                  </p>
 
                   <div className="social-panel social-funnel-panel">
                     <h3>Social funnel</h3>
@@ -622,81 +660,113 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
             <p>Loading CTA performance…</p>
           )}
 
-          <div className="social-analytics-secondary">
-            <div className="social-panel social-panel--secondary">
-              <h3>Known social attribution</h3>
-              <p>{data.attributionNote}</p>
-              <div style={{ overflowX: "auto" }}>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Provider</th>
-                      <th>Interactions</th>
-                      <th>Contacts</th>
-                      <th>Tracked clicks</th>
-                      <th>Applications</th>
-                      <th>Linked enrollments</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {data.rows.map((row) => (
-                      <tr key={row.provider}>
-                        <th>{row.provider}</th>
-                        <td>{row.interactions}</td>
-                        <td>{row.identifiableContacts}</td>
-                        <td>{row.trackedClicks}</td>
-                        <td>{row.attributedApplications}</td>
-                        <td>{row.linkedEnrollments}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-            <div className="social-panel social-panel--secondary">
-              <h3>Connected account insights</h3>
-              <p>{data.metricsNote}</p>
-              {data.providerInsights?.assets?.length ? (
-                <div style={{ overflowX: "auto" }}>
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Account</th>
-                        <th>Followers</th>
-                        <th>Reach</th>
-                        <th>Engagements</th>
-                        <th>Profile views</th>
-                        <th>Status</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.providerInsights.assets.map((row) => (
-                        <tr key={`${row.provider}:${row.assetId}`}>
-                          <th>{row.assetName || row.provider}</th>
-                          <td>{row.followers ?? "—"}</td>
-                          <td>{row.reach ?? "—"}</td>
-                          <td>{row.engagements ?? "—"}</td>
-                          <td>{row.profileViews ?? "—"}</td>
-                          <td>
-                            {row.status === "available"
-                              ? "Available"
-                              : row.status === "permission_required"
-                                ? "Permission required"
-                                : "Unavailable"}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+          {(() => {
+            const attributionTotal = (data.rows || []).reduce((sum, row) => sum + row.interactions, 0);
+            const attributionPie = (data.rows || [])
+              .filter((row) => row.interactions > 0)
+              .map((row) => ({ name: human(row.provider), key: row.provider, value: row.interactions }));
+            return (
+              <div className="social-analytics-secondary">
+                <div className="social-panel social-panel--secondary">
+                  <h3>Known social attribution</h3>
+                  <p>{data.attributionNote}</p>
+                  {attributionTotal ? (
+                    <div className="social-attribution-layout">
+                      <div className="social-attribution-chart">
+                        <ResponsiveContainer width="100%" height={180}>
+                          <PieChart>
+                            <RechartsTooltip formatter={(value, _name, item) => [`${value} interactions`, item.payload.name]} />
+                            <Pie
+                              data={attributionPie}
+                              dataKey="value"
+                              nameKey="name"
+                              innerRadius={48}
+                              outerRadius={72}
+                              paddingAngle={attributionPie.length > 1 ? 3 : 0}
+                              isAnimationActive
+                            >
+                              {attributionPie.map((entry) => (
+                                <Cell key={entry.key} fill={PROVIDER_COLORS[entry.key] || "#8e8e93"} />
+                              ))}
+                            </Pie>
+                          </PieChart>
+                        </ResponsiveContainer>
+                        <div className="social-attribution-chart__center">
+                          <strong>{attributionTotal}</strong>
+                          <span>total</span>
+                        </div>
+                      </div>
+                      <ul className="social-attribution-legend">
+                        {data.rows.map((row) => (
+                          <li key={row.provider}>
+                            <span className="social-attribution-legend__dot" style={{ background: PROVIDER_COLORS[row.provider] || "#8e8e93" }} />
+                            <span className="social-attribution-legend__name">{human(row.provider)}</span>
+                            <strong>{row.interactions}</strong>
+                            <small>
+                              {row.identifiableContacts} contact{row.identifiableContacts === 1 ? "" : "s"} · {row.attributedApplications} application{row.attributedApplications === 1 ? "" : "s"}
+                            </small>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <p>No social interactions recorded yet.</p>
+                  )}
                 </div>
-              ) : (
-                <p>
-                  No selected Facebook or Instagram account insights are
-                  available yet.
-                </p>
-              )}
-            </div>
-          </div>
+                <div className="social-panel social-panel--secondary">
+                  <h3>Connected account insights</h3>
+                  <p>{data.metricsNote}</p>
+                  {data.providerInsights?.assets?.length ? (
+                    <div className="social-account-insight-grid">
+                      {data.providerInsights.assets.map((row) => {
+                        const Icon = PLATFORM_ICONS[row.provider];
+                        const statusMeta = STATUS_META[row.status] || STATUS_META.unavailable;
+                        const StatusIcon = statusMeta.icon;
+                        const stats = [
+                          ["Followers", row.followers],
+                          ["Reach", row.reach],
+                          ["Engagements", row.engagements],
+                          ["Profile views", row.profileViews],
+                        ].filter(([, value]) => value !== null && value !== undefined);
+                        return (
+                          <article key={`${row.provider}:${row.assetId}`} className={`social-account-insight-card social-account-insight-card--${row.provider}`}>
+                            <header>
+                              <span className="social-account-insight-card__icon">{Icon ? <Icon /> : null}</span>
+                              <strong>{row.assetName || row.provider}</strong>
+                              <span className={`social-status-pill social-status-pill--${statusMeta.tone}`}>
+                                <StatusIcon aria-hidden="true" /> {statusMeta.label}
+                              </span>
+                            </header>
+                            {stats.length ? (
+                              <dl>
+                                {stats.map(([label, value]) => (
+                                  <div key={label}>
+                                    <dt>{label}</dt>
+                                    <dd>{value}</dd>
+                                  </div>
+                                ))}
+                              </dl>
+                            ) : (
+                              <p>
+                                {row.status === "permission_required"
+                                  ? `Grant ${row.requiredPermission || "the required permission"} to see this account's metrics.`
+                                  : row.error || "Meta did not return metrics for this account."}
+                              </p>
+                            )}
+                          </article>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <p>
+                      No selected Facebook or Instagram account insights are
+                      available yet.
+                    </p>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
         </>
       ) : null}
 
