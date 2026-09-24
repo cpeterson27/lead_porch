@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 require("dotenv").config();
+const serverStartedAt = new Date().toISOString();
 const { connectDatabase } = require("./config/database");
 const Contact = require("./models/Contact");
 
@@ -238,6 +239,14 @@ connectDatabase(mongoUri)
     app.use("/api/growth-operators", growthOperatorsRouter);
     app.use("/api/bootcamp-campaigns", bootcampCampaignsRouter);
     app.use("/api/jarvis", jarvisRouter);
+    // Confirmed live: repeated confusion tonight over whether a pushed fix
+    // was actually deployed, twice leading to real premature campaign sends
+    // because the old code was still running. RENDER_GIT_COMMIT is set
+    // automatically by Render on every deploy, no config needed — this
+    // makes "is my fix actually live" a direct check instead of a guess.
+    app.get("/api/version", (req, res) => {
+      res.json({ commit: process.env.RENDER_GIT_COMMIT || "unknown", startedAt: serverStartedAt });
+    });
     app.use("/api/webhooks", webhooksRouter);
     app.use("/api/partners", partnersRouter);
     app.use("/api/content", contentRouter);

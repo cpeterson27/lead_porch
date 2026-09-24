@@ -42,6 +42,39 @@ function rampedHourlyLimit() {
   return Math.min(RAMP_CEILING, Math.round(RAMP_BASE * RAMP_GROWTH_PER_PERIOD ** periods));
 }
 
+// Confirmed live, twice tonight: a campaign scheduled for a specific future
+// moment (e.g. "tomorrow 8am") had its approved drafts sent overnight
+// anyway, because scheduledSendAt is a one-time field — nothing resets it
+// after a send completes, so it offers no protection for an "Evergreen"
+// campaign's second, third, ... day. Guarding one scheduled instant can
+// never be a durable fix for a recurring campaign; a hard business-hours
+// window that every send path funnels through (this function, the one
+// choke point every trigger — scheduled send, the approved-outreach sweep,
+// manual "Send selected" — already calls) is what actually prevents "sent
+// in the middle of the night" from recurring, independent of scheduling
+// mechanics entirely.
+function checkSendWindow() {
+  // Read fresh on every call, like EMAIL_SEND_HOURLY_LIMIT above — not
+  // cached at module load, so a test (or an emergency override) can change
+  // it without depending on require() ordering, and so it can be adjusted
+  // without a restart.
+  const timezone = process.env.EMAIL_SEND_WINDOW_TIMEZONE || "America/Los_Angeles";
+  const startHour = Number(process.env.EMAIL_SEND_WINDOW_START_HOUR) || 8;
+  const endHour = Number(process.env.EMAIL_SEND_WINDOW_END_HOUR) || 19;
+  const hour = Number(
+    new Intl.DateTimeFormat("en-US", { timeZone: timezone, hour: "2-digit", hour12: false }).format(new Date()),
+  );
+  if (hour >= startHour && hour < endHour) return { allowed: true };
+  const hoursUntilOpen = hour < startHour
+    ? startHour - hour
+    : 24 - hour + startHour;
+  return {
+    allowed: false,
+    code: "RATE_LIMITED",
+    message: `Paused outside sending hours (${startHour}:00–${endHour}:00, ${timezone}) — no campaign email goes out overnight, regardless of what triggered it. Resumes automatically in about ${hoursUntilOpen} hour${hoursUntilOpen === 1 ? "" : "s"}.`,
+  };
+}
+
 // Durable (MongoDB-backed) rolling-window cap — an in-memory array here
 // previously reset to zero on every server restart (every Manual Deploy),
 // letting an active campaign blow well past its intended hourly rate any
@@ -239,6 +272,10 @@ async function sendEmail(outreachItem, { allowUnverified = false, deliveryPurpos
   });
   if (!eligibility.eligible) {
     return { success: false, message: eligibility.message };
+  }
+  const window = checkSendWindow();
+  if (!window.allowed) {
+    return { success: false, message: window.message, code: window.code };
   }
   const cap = await checkHourlySendCap();
   if (!cap.allowed) {

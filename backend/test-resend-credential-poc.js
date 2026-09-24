@@ -1,4 +1,20 @@
 require("dotenv").config();
+// sendEmail() refuses to send outside business hours regardless of what
+// triggered it (see services/email.js) — read as module-level constants at
+// require time, so this must be set before services/email is first
+// required. This test exercises the send path itself, not time-of-day
+// behavior, so it opens the window fully rather than becoming flaky
+// depending on what time it happens to run.
+process.env.EMAIL_SEND_WINDOW_START_HOUR = "0";
+process.env.EMAIL_SEND_WINDOW_END_HOUR = "24";
+// The hourly cap is now durable (MongoDB-backed, see EmailSendPace) rather
+// than an in-memory array reset on every process start — correct for
+// production, but it means repeated real test runs against the same
+// database accumulate real send records and can trip the cap. This test
+// exercises the send path itself, not rate-limiting behavior, so it opens
+// the cap fully via the existing manual-override env var rather than
+// depending on how many sends happened earlier tonight.
+process.env.EMAIL_SEND_HOURLY_LIMIT = "999999";
 const assert = require("assert");
 const crypto = require("crypto");
 const mongoose = require("mongoose");
