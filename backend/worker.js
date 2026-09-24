@@ -1,4 +1,5 @@
 require("dotenv").config();
+require("./utils/errorReporting").initErrorReporting();
 const { connectDatabase } = require("./config/database");
 const { startResearchMonitorRunner, runDueResearchMonitors } = require("./services/researchMonitorService");
 const { startCommunicationJobRunner, runDueCommunicationJobs } = require("./services/communicationJobRunner");

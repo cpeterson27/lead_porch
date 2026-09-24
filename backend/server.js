@@ -2,6 +2,8 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 require("dotenv").config();
+const { initErrorReporting, Sentry } = require("./utils/errorReporting");
+initErrorReporting();
 const serverStartedAt = new Date().toISOString();
 const { connectDatabase } = require("./config/database");
 const Contact = require("./models/Contact");
@@ -289,6 +291,7 @@ connectDatabase(mongoUri)
     // — true for every route in the app, not just this one.
     app.use("/api", (err, req, res, next) => {
       if (res.headersSent) return next(err);
+      if (process.env.SENTRY_DSN) Sentry.captureException(err, { extra: { method: req.method, path: req.originalUrl } });
       console.error(`[API error] ${req.method} ${req.originalUrl}:`, err);
       res.status(err.statusCode || err.status || 400).json({
         error: err.message || "Something went wrong. Try again.",

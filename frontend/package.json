@@ -46,6 +46,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@sentry/react": "^11.0.0",
     "@zxing/browser": "^0.2.1",
     "axios": "^1.18.1",
     "papaparse": "^5.5.4",
