@@ -1097,6 +1097,37 @@ async function knownIdsForPublications(workspaceId, publications) {
   );
   return { providerPostIds, commentIds };
 }
+router.post(
+  "/content/:id/comments/sync",
+  wrap(async (req, res) => {
+    const workspaceId = req.auth.workspaceId;
+    const item = await ContentBrief.findOne({
+      _id: req.params.id,
+      workspaceId,
+      type: "social",
+    })
+      .select("social.publications")
+      .lean();
+    if (!item) return res.status(404).json({ error: "Content not found" });
+    const metaRecentPostService = require("../services/metaRecentPostService");
+    const targets = (item.social?.publications || []).filter(
+      (row) => ["facebook", "instagram"].includes(row.provider) && row.providerPostId && row.assetId,
+    );
+    const results = await Promise.all(
+      targets.map((row) =>
+        metaRecentPostService.syncPostComments({
+          workspaceId,
+          provider: row.provider,
+          assetId: row.assetId,
+          postId: row.providerPostId,
+        }),
+      ),
+    );
+    const synced = results.reduce((sum, row) => sum + (row.synced || 0), 0);
+    const errors = results.filter((row) => row.error).map((row) => row.error);
+    res.json({ synced, errors });
+  }),
+);
 router.get(
   "/content/:id/comments",
   wrap(async (req, res) => {

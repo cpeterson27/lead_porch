@@ -585,7 +585,8 @@ function CommentGroups({ threads, destinations, onReload }) {
 function PostComments({ item }) {
   const [open, setOpen] = useState(false),
     [threads, setThreads] = useState(null),
-    [error, setError] = useState("");
+    [error, setError] = useState(""),
+    [syncing, setSyncing] = useState(false);
   const destinations = publishedDestinations(item).map((row) => row.provider);
   const load = () => {
     fetchSocialWorkspace(`content/${item._id}/comments`)
@@ -605,23 +606,52 @@ function PostComments({ item }) {
     setOpen(next);
     if (next && threads === null) load();
   };
+  // Pulls in comments that were already on the post before Lead Porch's
+  // webhook subscription picked them up — a webhook only ever reports new
+  // activity going forward, so anything posted earlier needs to be fetched
+  // directly from Meta on demand instead.
+  const sync = async () => {
+    try {
+      setSyncing(true);
+      setError("");
+      const result = await mutateSocialWorkspace(`content/${item._id}/comments/sync`, {});
+      if (result?.errors?.length) setError(result.errors[0]);
+      reloadAfterChange();
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to sync comments from Meta.");
+    } finally {
+      setSyncing(false);
+    }
+  };
   const totalCount =
     threads?.reduce((sum, row) => sum + row.messages.length, 0) || 0;
   return (
     <div className="social-post-comments">
-      <button
-        type="button"
-        className="social-post-comments__toggle"
-        onClick={toggle}
-      >
-        <span
-          className={`social-post-comments__chevron${open ? " social-post-comments__chevron--open" : ""}`}
-          aria-hidden="true"
+      <div className="social-post-comments__head">
+        <button
+          type="button"
+          className="social-post-comments__toggle"
+          onClick={toggle}
         >
-          ›
-        </span>
-        Comments{threads !== null ? ` (${totalCount})` : ""}
-      </button>
+          <span
+            className={`social-post-comments__chevron${open ? " social-post-comments__chevron--open" : ""}`}
+            aria-hidden="true"
+          >
+            ›
+          </span>
+          Comments{threads !== null ? ` (${totalCount})` : ""}
+        </button>
+        {open && (
+          <button
+            type="button"
+            className="social-post-comments__sync"
+            onClick={sync}
+            disabled={syncing}
+          >
+            {syncing ? "Syncing…" : "Sync from Meta"}
+          </button>
+        )}
+      </div>
       {open && (
         <div className="social-post-comments__panel">
           {error ? <p className="form-error">{error}</p> : null}

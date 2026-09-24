@@ -873,7 +873,14 @@ async function provisionMetaSubscriptions(connection, selected, http = axios) {
         });
       }
     } catch (error) {
+      // Meta's own error text (e.g. which exact field it rejected) never
+      // reaches server logs today, only a sanitized "HTTP 400 · provider
+      // code 100" summary — that's enough for a user-facing message but not
+      // enough to diagnose a subscription rejection without live log
+      // access, so the raw provider message is captured here too, truncated
+      // to a safe length. It is not rendered anywhere in the app UI.
       const message = safeProviderError(error, "Webhook subscription failed");
+      const providerDetail = String(error?.response?.data?.error?.message || "").slice(0, 300);
       for (const member of bucket.members)
         results.push({
           assetId: member.assetId,
@@ -881,7 +888,7 @@ async function provisionMetaSubscriptions(connection, selected, http = axios) {
           fields: member.fields,
           status: "failed",
           verifiedAt: new Date(),
-          error: message,
+          error: providerDetail ? `${message} — ${providerDetail}` : message,
         });
     }
   }

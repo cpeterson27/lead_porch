@@ -172,4 +172,51 @@ async function commentLikeStatus({ workspaceId, assetId, commentId }, deps = dep
   }
 }
 
-module.exports = { recentPosts, postContext, postEngagement, postCommentIds, commentLikeStatus };
+// Backfills comments that were already on a post before its webhook
+// subscription existed (or that arrived while it was misconfigured) — a
+// webhook only ever reports *new* activity going forward, so a post's
+// existing comments have no other way into Lead Porch. Pulls the post's own
+// /comments edge directly and replays each one through the exact same
+// normalize+ingest pipeline a live webhook event uses, so contact matching,
+// automations and the Comments panel all treat it identically. Ingestion is
+// idempotent (SocialProviderEvent dedupes by providerEventId), so calling
+// this again after new comments arrive re-fetches everything but only
+// actually creates records for what's genuinely new.
+async function syncPostComments({ workspaceId, provider, assetId, postId }, deps = dependencies) {
+  if (!workspaceId || !["facebook", "instagram"].includes(provider) || !clean(assetId) || !clean(postId)) return { synced: 0, ignored: 0 };
+  const resolved = await resolveAsset({ workspaceId, provider, assetId }, deps);
+  if (!resolved) return { synced: 0, ignored: 0, error: "Reconnect this social account to sync comments" };
+  const { connection, token, version, host } = resolved;
+  const fields = provider === "facebook"
+    ? "comments.summary(true).limit(100){id,message,from,created_time}"
+    : "comments.summary(true).limit(100){id,text,from,timestamp}";
+  let response;
+  try {
+    response = await deps.http.get(`https://${host}/${version}/${encodeURIComponent(postId)}`, { params: { fields, access_token: token }, timeout: 15000 });
+  } catch (error) {
+    return { synced: 0, ignored: 0, error: "Meta could not confirm this post's comments right now" };
+  }
+  const { ingestMetaComment } = require("./conversations/metaMessagingAdapter");
+  const comments = response.data?.comments?.data || [];
+  let synced = 0, ignored = 0;
+  for (const comment of comments) {
+    const change = {
+      field: "comments",
+      value: {
+        comment_id: comment.id,
+        id: comment.id,
+        from: comment.from,
+        text: comment.text || comment.message,
+        created_time: comment.created_time || comment.timestamp,
+        post_id: postId,
+        media_id: postId,
+      },
+    };
+    const result = await ingestMetaComment({ connection, assetId, change, entryTime: Date.now() });
+    if (result?.ignored || result?.duplicate) ignored += 1;
+    else synced += 1;
+  }
+  return { synced, ignored };
+}
+
+module.exports = { recentPosts, postContext, postEngagement, postCommentIds, commentLikeStatus, syncPostComments };
