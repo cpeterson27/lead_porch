@@ -479,7 +479,7 @@ router.get(
       .lean();
     if (!thread)
       return res.status(404).json({ error: "Social conversation not found" });
-    const messages = await ConversationMessage.find({
+    const rawMessages = await ConversationMessage.find({
       workspaceId: req.auth.workspaceId,
       threadId: thread._id,
       deletedAt: null,
@@ -488,6 +488,13 @@ router.get(
       .sort({ createdAt: 1 })
       .limit(500)
       .lean();
+    // Sorted by when the message actually happened, not by database insert
+    // order — those normally match, but a backfill (a synced DM/comment
+    // batch, for instance) can insert older messages after newer ones,
+    // which would otherwise leave the conversation reading newest-first.
+    const messages = [...rawMessages].sort(
+      (a, b) => new Date(a.sentAt || a.receivedAt || a.createdAt).getTime() - new Date(b.sentAt || b.receivedAt || b.createdAt).getTime(),
+    );
     const identity = thread.contactIds?.[0]
       ? await SocialIdentity.findOne({
           workspaceId: req.auth.workspaceId,
@@ -1160,16 +1167,24 @@ router.get(
       .lean();
     const metaRecentPostService = require("../services/metaRecentPostService");
     const withMessages = await Promise.all(
-      threads.map(async (thread) => ({
-        thread,
-        messages: await ConversationMessage.find({
+      threads.map(async (thread) => {
+        const rawMessages = await ConversationMessage.find({
           workspaceId,
           threadId: thread._id,
           deletedAt: null,
         })
           .populate("createdBy", "name")
           .sort({ createdAt: 1 })
-          .lean(),
+          .lean();
+        // See /inbox/:id — sorted by when each message actually happened,
+        // not database insert order, so a backfilled comment/reply can't
+        // land out of sequence.
+        const messages = [...rawMessages].sort(
+          (a, b) => new Date(a.sentAt || a.receivedAt || a.createdAt).getTime() - new Date(b.sentAt || b.receivedAt || b.createdAt).getTime(),
+        );
+        return {
+        thread,
+        messages,
         // Instagram permanently allows only one private reply per comment —
         // once Meta has confirmed one, removing our own local copy of that
         // reply (which only ever tidies up Lead Porch's view, never Meta's
@@ -1193,7 +1208,8 @@ router.get(
                 commentId: thread.metadata?.commentId,
               })
             : null,
-      })),
+        };
+      }),
     );
     res.json({ threads: withMessages });
   }),
