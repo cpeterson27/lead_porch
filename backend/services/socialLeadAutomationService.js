@@ -520,6 +520,48 @@ async function ingestSocialEvent(event, options = {}) {
           ...event.sourceMetadata,
         },
       });
+      // Meta sometimes omits the commenter's identity entirely (confirmed
+      // live: Facebook returns no "from" field at all for a comment from
+      // someone who has no prior relationship with this app/Page — a
+      // privacy restriction on Meta's side, not something Lead Porch
+      // controls). Without an identity there is no contact to attach this
+      // to and no automation can safely target it, but the comment itself
+      // is still real and still visible on the live post — so it still
+      // gets a thread of its own, just without a linked contact, so the
+      // Comments panel shows it instead of silently dropping it.
+      if (["comment_received", "mention_received"].includes(event.eventType) && (event.text || "").trim()) {
+        const conversation = await (options.ingestMessage || ingestProviderMessage)({
+          thread: {
+            channel: event.provider,
+            provider: "meta",
+            providerThreadId: `${event.provider}:${event.assetId}:anonymous:comment:${event.sourceMetadata?.commentId || event.providerEventId}`,
+            participants: [{ kind: "external", role: "from", address: "", name: "Someone" }],
+            contactIds: [],
+            metadata: {
+              assetId: event.assetId,
+              socialOrigin: true,
+              contentId: event.contentId || "",
+              contentBriefId: event.contentBriefId || null,
+              interactionType: event.eventType === "comment_received" ? "comment" : "mention",
+              sourceMetadata: event.sourceMetadata || {},
+              commentId: event.sourceMetadata?.commentId || "",
+              identityUnavailable: true,
+            },
+          },
+          message: {
+            opensMessagingWindow: false,
+            providerMessageId: event.messageId || event.providerEventId,
+            direction: "inbound",
+            body: event.text || "",
+            sender: { name: "Someone", address: "" },
+            recipients: [{ address: event.assetId, role: "to" }],
+            deliveryStatus: "received",
+            sentAt: event.occurredAt || new Date(),
+            metadata: {},
+          },
+        });
+        console.log(`[Social lead automation] identity-less comment recorded for display: threadId=${conversation.thread._id} channel=${event.provider}`);
+      }
       reserved.record.processingStatus = "processed";
       reserved.record.processedAt = new Date();
       await reserved.record.save();

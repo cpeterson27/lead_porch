@@ -536,12 +536,17 @@ async function pipeline() {
       "Facebook customer information and in-thread lead form converge by scoped Meta identity",
     );
     assert.equal(identities.length, 2);
-    const count = contacts.length;
+    const count = contacts.length, inboxCountBeforeAnonymous = inbox.length;
     assert.equal(
       (await ingestSocialEvent(anonymous, options)).contextOnly,
       true,
     );
-    assert.equal(contacts.length, count);
+    assert.equal(contacts.length, count, "An identity-less event still creates no contact");
+    // A mention with no identity still has a default body ("Your account
+    // was mentioned"), so it still gets its own no-contact thread for
+    // display — same as a comment Meta won't disclose an identity for.
+    assert.equal(inbox.length, inboxCountBeforeAnonymous + 1);
+    assert.deepEqual(inbox.at(-1).thread.contactIds, []);
     assert.equal(
       (
         await ingestSocialEvent(
@@ -565,6 +570,7 @@ async function pipeline() {
     assert.equal(editUpdates[0].update.$set.body, "Corrected");
     assert(
       inbox.every((row) =>
+        row.thread.contactIds.length === 0 ||
         contacts.some((contact) => contact._id === row.thread.contactIds[0]),
       ),
     );
