@@ -247,7 +247,16 @@ async function syncPageMessages({ workspaceId, provider, assetId }, deps = depen
   const { ingestMetaMessage } = require("./conversations/metaMessagingAdapter");
   let synced = 0, ignored = 0;
   for (const conversation of response.data?.data || []) {
-    for (const message of conversation.messages?.data || []) {
+    // Meta returns each conversation's messages newest-first. Every message
+    // ingested into the same thread overwrites its preview/lastMessageAt
+    // unconditionally (see ingestProviderMessage), so ingesting in that
+    // order left the OLDEST message in the batch as the final, stale
+    // preview — sorting oldest-first here means the true latest message is
+    // always the last one processed, and wins.
+    const chronological = [...(conversation.messages?.data || [])].sort(
+      (a, b) => new Date(a.created_time).getTime() - new Date(b.created_time).getTime(),
+    );
+    for (const message of chronological) {
       if (String(message.from?.id || "") === String(assetId)) continue;
       const event = {
         sender: { id: message.from?.id },
