@@ -109,7 +109,12 @@ async function runDueSocialSync() {
 
 function startCommentSyncRunner({ force = false } = {}) {
   if (timer || (!force && process.env.COMMUNICATION_WORKER_MODE === "external")) return timer;
-  const interval = Math.max(60000, Number(process.env.COMMENT_SYNC_INTERVAL_MS) || 60000);
+  // This runs across every workspace on one shared timer, so it stays more
+  // conservative than the per-workspace foreground fast-poll (inbox/sync,
+  // 5s, only while someone has the Inbox open) — that's what actually
+  // makes an active test feel fast; this background tick is the safety net
+  // for everyone else, the rest of the time.
+  const interval = Math.max(30000, Number(process.env.COMMENT_SYNC_INTERVAL_MS) || 30000);
   timer = setInterval(() => runDueSocialSync().catch((error) => console.error("Comment sync runner failed:", error.message)), interval);
   timer.unref?.();
   return timer;

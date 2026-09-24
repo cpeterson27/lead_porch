@@ -623,6 +623,24 @@ function PostComments({ item }) {
       setSyncing(false);
     }
   };
+  // While this post's Comments panel is actually open and visible, ask Meta
+  // directly every few seconds instead of waiting on the slower background
+  // poller — the same reasoning as the Social Inbox's fast-poll: Meta will
+  // not push new comments to Lead Porch on its own, so the only way to make
+  // "automatic" feel fast is to ask more often while someone is actually
+  // watching.
+  useEffect(() => {
+    if (!open) return undefined;
+    const tick = () => {
+      if (document.visibilityState !== "visible") return;
+      mutateSocialWorkspace(`content/${item._id}/comments/sync`, {})
+        .then(() => load())
+        .catch(() => {});
+    };
+    const timer = window.setInterval(tick, 5000);
+    return () => window.clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, item._id]);
   const totalCount =
     threads?.reduce((sum, row) => sum + row.messages.length, 0) || 0;
   return (

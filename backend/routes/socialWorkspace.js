@@ -410,6 +410,48 @@ async function attachPostTitles(threads) {
   }));
   return Array.isArray(threads) ? enriched : enriched[0];
 }
+// On-demand version of the background message poller (services/
+// socialCommentSyncRunner.js), scoped to just this workspace instead of
+// every workspace — the frontend calls this every few seconds while the
+// Inbox is actually open and visible, so a new DM shows up within a couple
+// of seconds of being sent instead of waiting for the next slow background
+// tick. The background poll still covers everyone else, all the time.
+router.post(
+  "/inbox/sync",
+  wrap(async (req, res) => {
+    const SocialConnection = require("../models/SocialConnection");
+    const metaRecentPostService = require("../services/metaRecentPostService");
+    const connections = await SocialConnection.find({
+      workspaceId: req.auth.workspaceId,
+      provider: { $in: ["meta", "instagram"] },
+      status: "connected",
+    }).select("provider assets selectedAssetIds");
+    let synced = 0;
+    for (const connection of connections) {
+      const targets = (connection.assets || []).filter(
+        (asset) =>
+          ["facebook_page", "instagram_business"].includes(asset.type) &&
+          (connection.selectedAssetIds || []).map(String).includes(String(asset.id)),
+      );
+      for (const asset of targets) {
+        const provider = asset.type === "instagram_business" ? "instagram" : "facebook";
+        try {
+          const result = await metaRecentPostService.syncPageMessages({
+            workspaceId: req.auth.workspaceId,
+            provider,
+            assetId: asset.id,
+          });
+          synced += result?.synced || 0;
+        } catch {
+          // Fails soft — this runs every few seconds while the Inbox is open, so a single
+          // transient Meta error here is invisible; the next tick (or the background
+          // poller) picks it back up.
+        }
+      }
+    }
+    res.json({ synced });
+  }),
+);
 router.get(
   "/inbox",
   wrap(async (req, res) => {

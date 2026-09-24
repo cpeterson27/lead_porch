@@ -194,11 +194,24 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
     };
     document.addEventListener("visibilitychange", onVisible);
     const fallback = setInterval(refresh, 60000);
+    // Meta will not push a new DM or comment to Lead Porch on its own (see
+    // services/socialCommentSyncRunner.js) — a slow background poll covers
+    // everyone all the time, but while someone actually has the Inbox open
+    // and is watching it, asking Meta directly every few seconds gets a new
+    // message showing up within a couple of seconds instead of up to a
+    // minute later. SSE (above) then reflects that DB change instantly once
+    // it lands, so this is the one remaining real latency source. Paused
+    // whenever the tab isn't visible so it doesn't run unattended.
+    const fastSync = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      mutateSocialWorkspace("inbox/sync", {}).catch(() => {});
+    }, 5000);
     return () => {
       active = false;
       source.close();
       document.removeEventListener("visibilitychange", onVisible);
       clearInterval(fallback);
+      clearInterval(fastSync);
     };
   }, [section, selected, filter, provider]);
   const action = async (fn) => {
