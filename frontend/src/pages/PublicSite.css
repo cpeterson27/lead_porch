@@ -2912,3 +2912,103 @@ button.public-text-link {
   .discovery-calendar { padding: 14px 10px; }
   .discovery-calendar__cell { width: 34px; height: 34px; }
 }
+
+/* Final discovery-page scale and typography alignment. The public homepage
+   uses the configured body face for its bold display type, so this page does
+   the same instead of introducing a separate editorial serif treatment. */
+.discovery-call-page h1,
+.discovery-call-page h2,
+.discovery-call-page h3,
+.discovery-call-page h4,
+.discovery-program-card h3 {
+  font-family: var(--public-body-font, "DM Sans"), ui-sans-serif, system-ui, sans-serif;
+  font-weight: 750;
+  line-height: 1.08;
+  letter-spacing: -.035em;
+}
+.discovery-hero {
+  padding: 22px max(20px, calc((100vw - 1080px) / 2)) 40px;
+}
+.discovery-hero__topline {
+  max-width: 900px;
+  margin-bottom: 26px;
+  padding: 8px 9px 8px 18px;
+}
+.discovery-hero__topline button { padding: 10px 18px; }
+.discovery-hero__audience { margin-bottom: 14px; font-size: 13px; }
+.discovery-hero__content { max-width: 820px; }
+.discovery-hero__content h1 {
+  max-width: 760px;
+  margin-bottom: 14px;
+  font-size: clamp(36px, 4.5vw, 56px);
+  font-weight: 750;
+  line-height: 1.02;
+}
+.discovery-hero__content > p:not(.public-kicker, .discovery-hero__audience) {
+  max-width: 680px;
+  font-size: clamp(15px, 1.3vw, 18px);
+  line-height: 1.48;
+}
+.discovery-hero__actions { margin-top: 18px; }
+.discovery-call-page__video { max-width: 900px; margin-top: 36px; border-radius: 16px; }
+.discovery-booking-section { padding: 38px 20px 50px; }
+.discovery-booking-section > .discovery-section-heading { margin-bottom: 20px; }
+.discovery-booking-section > .discovery-section-heading h2 { font-size: clamp(28px, 3.2vw, 36px); }
+.discovery-booking-form,
+.discovery-booking-success { max-width: 680px; }
+.discovery-booking-form__steps { padding: 14px 20px; }
+.discovery-booking-form__steps button { font-size: 11px; }
+.discovery-booking-form__steps button span { width: 23px; height: 23px; }
+.discovery-booking-form__panel { padding: 22px 26px 26px; }
+.discovery-booking-form__title { gap: 12px; margin-bottom: 16px; }
+.discovery-booking-form__title > span { width: 34px; height: 34px; flex-basis: 34px; }
+.discovery-booking-form__title h3 { font-size: 20px; }
+.discovery-booking-form__title p { font-size: 12px; }
+.discovery-booking-form__additional { gap: 14px; margin-top: 20px; padding-top: 18px; }
+.discovery-booking-form__additional h4 { font-size: 17px; }
+.discovery-booking-form__choices label { min-height: 42px; padding: 8px 12px; }
+.discovery-booking-form__choices span { font-size: 13px; }
+#main-content .discovery-booking-form input:not([type="radio"]):not([type="checkbox"]),
+#main-content .discovery-booking-form select { min-height: 42px; padding: 8px 12px; }
+#main-content .discovery-booking-form textarea { min-height: 78px; padding: 10px 12px; }
+.discovery-calendar { max-width: 440px; padding: 12px 14px; }
+.discovery-calendar__header { margin-bottom: 8px; }
+.discovery-calendar__header button { width: 30px; height: 30px; }
+.discovery-calendar__cell { width: 32px; height: 32px; font-size: 12px; }
+.discovery-calendar__times { max-width: 440px; }
+.discovery-calendar__time-grid { grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); }
+.discovery-calendar__time { padding: 8px 6px; font-size: 12px; }
+.discovery-editorial,
+.discovery-editorial--soft { max-width: 900px; padding: 50px 24px; }
+.discovery-editorial--soft { max-width: none; padding-right: max(24px, calc((100vw - 900px) / 2)); padding-left: max(24px, calc((100vw - 900px) / 2)); }
+.discovery-editorial h2 { margin-bottom: 24px; font-size: clamp(30px, 3.5vw, 40px); }
+.discovery-editorial h3 { margin-top: 44px; margin-bottom: 22px; font-size: clamp(26px, 3vw, 34px); }
+.discovery-editorial > p { max-width: 840px; margin-bottom: 18px; font-size: clamp(15px, 1.35vw, 18px); line-height: 1.58; }
+.discovery-editorial > .discovery-editorial__lead { max-width: 800px; margin-bottom: 22px; font-size: clamp(17px, 1.7vw, 20px); }
+.discovery-editorial__list { max-width: 840px; }
+.discovery-editorial__list li { grid-template-columns: 22px 1fr; gap: 12px; padding: 18px 0; }
+.discovery-editorial__list strong { font-size: clamp(16px, 1.5vw, 19px); }
+.discovery-editorial__list span { font-size: 14px; }
+.discovery-proof-section,
+.discovery-faq-section,
+.discovery-final-cta { padding: 50px max(20px, calc((100vw - 900px) / 2)); }
+.discovery-proof-section .discovery-section-heading,
+.discovery-faq-section .discovery-section-heading { margin-bottom: 30px; }
+.discovery-proof-section .discovery-section-heading h2,
+.discovery-faq-section .discovery-section-heading h2 { font-size: clamp(30px, 3.5vw, 40px); }
+.discovery-final-cta h2 { font-size: clamp(32px, 4vw, 44px); }
+.discovery-faq-list { max-width: 780px; }
+.discovery-faq-list summary { padding-top: 18px; padding-bottom: 18px; font-size: 14px; }
+
+@media (max-width: 760px) {
+  .discovery-hero { padding-top: 16px; padding-bottom: 34px; }
+  .discovery-hero__topline { margin-bottom: 22px; }
+  .discovery-hero__content h1 { font-size: clamp(32px, 10vw, 44px); }
+  .discovery-hero__content > p:not(.public-kicker, .discovery-hero__audience) { font-size: 15px; }
+  .discovery-booking-section { padding-top: 32px; padding-bottom: 40px; }
+  .discovery-booking-form__panel { padding: 20px 16px 22px; }
+  .discovery-calendar { max-width: 360px; padding: 10px 8px; }
+  .discovery-calendar__cell { width: 30px; height: 30px; }
+  .discovery-editorial,
+  .discovery-editorial--soft { padding: 42px 20px; }
+}
