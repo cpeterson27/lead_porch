@@ -64,6 +64,7 @@ const { startMonitorRetentionRunner } = require("./services/monitorRetentionServ
 const { startLinkedinSequenceRunner } = require("./services/linkedinSequenceService");
 const { startCommunicationJobRunner } = require("./services/communicationJobRunner");
 const { startCampaignSendScheduler, startApprovedOutreachSweep } = require("./services/campaignSendScheduler");
+const { startCommentSyncRunner } = require("./services/socialCommentSyncRunner");
 const { startResearchScheduledSearchRunner } = require("./services/researchScheduledSearchRunner");
 const { startAutomationRunner } = require("./services/automationRunner");
 const { startSocialPublishingRunner } = require("./services/socialPublishingRunner");
@@ -305,6 +306,7 @@ connectDatabase(mongoUri)
       startCommunicationJobRunner();
       startCampaignSendScheduler();
       startApprovedOutreachSweep();
+      startCommentSyncRunner();
       startResearchScheduledSearchRunner();
       startAutomationRunner();
       startSocialPublishingRunner();

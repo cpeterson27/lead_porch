@@ -6,6 +6,7 @@ const { startAutomationRunner, runDueAutomations } = require("./services/automat
 const { startSocialPublishingRunner, runDueSocialPublishing } = require("./services/socialPublishingRunner");
 const { startLinkedinSequenceRunner, runDueEnrollments } = require("./services/linkedinSequenceService");
 const { startCampaignSendScheduler, runDueCampaignSends, startApprovedOutreachSweep, runApprovedOutreachSweep } = require("./services/campaignSendScheduler");
+const { startCommentSyncRunner, runDueCommentSync } = require("./services/socialCommentSyncRunner");
 
 const mongoUri = process.env.MONGO_URI;
 if (!mongoUri) {
@@ -30,6 +31,7 @@ connectDatabase(mongoUri)
     // unsent indefinitely, silently, with no error anywhere to notice.
     await runDueCampaignSends();
     await runApprovedOutreachSweep();
+    await runDueCommentSync();
     startResearchMonitorRunner();
     startCommunicationJobRunner({ force: true });
     startAutomationRunner({ force: true });
@@ -37,6 +39,7 @@ connectDatabase(mongoUri)
     startLinkedinSequenceRunner();
     startCampaignSendScheduler({ force: true });
     startApprovedOutreachSweep({ force: true });
+    startCommentSyncRunner({ force: true });
   })
   .catch((error) => {
     console.error("Research worker failed to start:", error.message || error);
