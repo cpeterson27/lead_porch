@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useLocation, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { FiCheck } from "react-icons/fi";
 import {
   fetchPublicApplication,
@@ -37,6 +37,7 @@ const legacyIntro = "Tell us where you are and where you want to go.";
 
 export default function PublicApplication({ embedded: embeddedOverride, search: searchOverride }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { code } = useParams();
   const search = searchOverride ?? location.search;
   const { site } = useWorkspaceTheme();
@@ -107,11 +108,16 @@ export default function PublicApplication({ embedded: embeddedOverride, search: 
         referralCode: form.referralCode || attribution.referralCode,
         idempotencyKey,
       });
-      setDone(result.data.message);
       trackSiteEvent("application_submit", {
         program_id: form.coachingProgramId,
         referral_present: Boolean(form.referralCode || attribution.referralCode),
+        qualified: Boolean(result.data.qualified),
       });
+      if (result.data.qualified && result.data.bookingUrl) {
+        navigate(result.data.bookingUrl);
+        return;
+      }
+      setDone(result.data.message);
     } catch (requestError) {
       setError(
         requestError.response?.data?.error ||
@@ -346,12 +352,19 @@ export default function PublicApplication({ embedded: embeddedOverride, search: 
                 <label>
                   {config?.questionLabels?.capitalReadiness ||
                     "How ready are you to invest capital right now?"}
-                  <input
+                  <select
                     value={form.capitalReadiness}
                     onChange={(event) =>
                       set("capitalReadiness", event.target.value)
                     }
-                  />
+                  >
+                    <option value="">Select</option>
+                    {(config?.capitalReadinessOptions || []).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label className="wide">
                   {config?.questionLabels?.biggestObstacle ||
@@ -374,12 +387,19 @@ export default function PublicApplication({ embedded: embeddedOverride, search: 
                 <label>
                   {config?.questionLabels?.willingnessToInvest ||
                     "Are you ready to invest in coaching to reach these goals?"}
-                  <input
+                  <select
                     value={form.willingnessToInvest}
                     onChange={(event) =>
                       set("willingnessToInvest", event.target.value)
                     }
-                  />
+                  >
+                    <option value="">Select</option>
+                    {(config?.willingnessToInvestOptions || []).map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label className="wide">
                   {config?.questionLabels?.message ||

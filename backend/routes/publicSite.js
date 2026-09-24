@@ -213,11 +213,16 @@ router.post("/application", limited, async (req, res, next) => {
     const config = await runWithWorkspace(ws._id, () =>
       WorkspaceConfig.findOne({ workspaceId: ws._id, key: "primary" }).lean(),
     );
+    const qualified = item.status === "qualified";
     res.status(201).json({
       success: true,
       data: {
         applicationId: item._id,
-        message: applicationService.publicConfig(config).confirmationMessage,
+        qualified,
+        bookingUrl: qualified ? "/book-a-call" : "",
+        message: qualified
+          ? "You're all set — pick a time that works for you below."
+          : applicationService.publicConfig(config).confirmationMessage,
       },
     });
   } catch (error) {

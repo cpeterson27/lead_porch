@@ -25,6 +25,25 @@ const deps = {
   referralService,
   applicationNotificationService,
 };
+// Structured (not free-text) so auto-qualification is deterministic — a
+// human reviewer can always override the resulting status from the CRM,
+// this only decides the applicant's IMMEDIATE experience: a booking link
+// right away, or a nurture sequence instead of being left to guess.
+const CAPITAL_READINESS_OPTIONS = [
+  { value: "ready_30_days", label: "I'm ready to invest within 30 days" },
+  { value: "ready_1_3_months", label: "I'm ready within 1-3 months" },
+  { value: "exploring", label: "Just exploring for now" },
+];
+const WILLINGNESS_TO_INVEST_OPTIONS = [
+  { value: "have_capital", label: "Yes, I have the capital available" },
+  { value: "can_secure", label: "I don't have it yet but can secure it (loan, partner, etc.)" },
+  { value: "not_yet", label: "Not yet" },
+];
+const QUALIFYING_CAPITAL_READINESS = new Set(["ready_30_days"]);
+const QUALIFYING_WILLINGNESS = new Set(["have_capital", "can_secure"]);
+function isAutoQualified({ capitalReadiness, willingnessToInvest }) {
+  return QUALIFYING_CAPITAL_READINESS.has(capitalReadiness) && QUALIFYING_WILLINGNESS.has(willingnessToInvest);
+}
 function clean(value, max) {
   return String(value || "")
     .trim()
@@ -129,6 +148,8 @@ function publicConfig(config) {
       .map((value) => clean(value, 160))
       .filter(Boolean)
       .slice(0, 20),
+    capitalReadinessOptions: CAPITAL_READINESS_OPTIONS,
+    willingnessToInvestOptions: WILLINGNESS_TO_INVEST_OPTIONS,
     nextStepCta: {
       label: clean(app.nextStepCta?.label, 120),
       url: clean(app.nextStepCta?.url, 1000),
@@ -318,6 +339,14 @@ async function submit(
     applicationCompletedAt: new Date(),
     applicationProgramId: String(program._id),
   };
+  const qualified = isAutoQualified({
+    capitalReadiness: clean(input.capitalReadiness, 1000),
+    willingnessToInvest: clean(input.willingnessToInvest, 1000),
+  });
+  contact.tags = [
+    ...new Set([...(contact.tags || []), qualified ? "auto-qualified" : "nurture-application"]),
+  ];
+  contact.stage = qualified ? "qualified" : "nurture";
   await contact.save();
   const configured =
     (config?.publicApplication?.programAssignments || []).find(
@@ -329,6 +358,7 @@ async function submit(
     contactId: contact._id,
     coachingProgramId: program._id,
     assignedUserId,
+    status: qualified ? "qualified" : "submitted",
     answers: {
       professionOrBusiness: clean(input.professionOrBusiness, 1000),
       investingExperience: clean(input.investingExperience, 3000),
@@ -356,17 +386,22 @@ async function submit(
     stageKey: { $nin: ["won", "lost"] },
     $or: [{ coachingProgramId: program._id }, { coachingProgramId: null }],
   });
+  // Auto-routing: a qualified applicant's opportunity starts one stage
+  // further along than a fresh unscored lead, and a lower-readiness one
+  // goes straight to Nurture instead of sitting in "New" waiting on a
+  // human to notice — staff can always move it manually from here.
+  const initialStageKey = qualified ? "qualified" : "nurture";
   if (!opportunity)
     opportunity = await models.SalesOpportunity.create({
       workspaceId,
       name: `${program.name} application — ${contact.name}`,
-      stageKey: "new",
+      stageKey: initialStageKey,
       primaryContactId: contact._id,
       campaignId: attribution.campaignId,
       ownerId: assignedUserId,
       applicationId: application._id,
       coachingProgramId: program._id,
-      nextAction: "Review student application",
+      nextAction: qualified ? "Book a call" : "Nurture — not yet ready",
       notes: application.answers.message,
       leadLifecycle: { status: "application", statusAt: new Date() },
       leadAttribution: {
@@ -378,6 +413,7 @@ async function submit(
   else {
     opportunity.applicationId = application._id;
     opportunity.coachingProgramId ||= program._id;
+    if (opportunity.stageKey === "new") opportunity.stageKey = initialStageKey;
     opportunity.campaignId ||= attribution.campaignId;
     opportunity.ownerId ||= assignedUserId;
     opportunity.nextAction = "Review student application";
