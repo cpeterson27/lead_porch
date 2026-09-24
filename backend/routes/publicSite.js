@@ -1,4 +1,5 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const Testimonial = require("../models/Testimonial");
 const PublicProfile = require("../models/PublicProfile");
 const CoachingProgram = require("../models/CoachingProgram");
@@ -102,10 +103,33 @@ router.post("/discovery-call/book", limited, async (req, res, next) => {
     const startsAt = new Date(req.body?.startsAt);
     const durationMinutes = Math.min(180, Math.max(15, Number(availability.durationMinutes || 30)));
     if (!name || !/^\S+@\S+\.\S+$/.test(email) || Number.isNaN(startsAt.getTime())) return res.status(400).json({ error: "Name, email, and a valid appointment time are required" });
+    const requestedProgramId = String(req.body?.programId || "").trim();
+    let selectedProgram = null;
+    if (requestedProgramId && requestedProgramId !== "not_sure") {
+      if (!mongoose.isValidObjectId(requestedProgramId)) return res.status(400).json({ error: "Please choose an available coaching program" });
+      selectedProgram = await runWithWorkspace(ws._id, () => CoachingProgram.findOne({
+        _id: requestedProgramId,
+        workspaceId: ws._id,
+        status: "active",
+        "publicPresentation.status": "published",
+      }).select("name publicPresentation.title publicPresentation.slug").lean());
+      if (!selectedProgram) return res.status(400).json({ error: "Please choose an available coaching program" });
+    }
+    const programSnapshot = requestedProgramId === "not_sure"
+      ? { name: "Not sure yet — help me choose", slug: "" }
+      : selectedProgram
+        ? { name: selectedProgram.publicPresentation?.title || selectedProgram.name, slug: selectedProgram.publicPresentation?.slug || "" }
+        : { name: "", slug: "" };
+    const qualification = {
+      experience: String(req.body?.qualification?.experience || "").trim().slice(0, 160),
+      primaryGoal: String(req.body?.qualification?.primaryGoal || "").trim().slice(0, 500),
+      timeline: String(req.body?.qualification?.timeline || "").trim().slice(0, 160),
+    };
+    const qualificationSummary = [qualification.experience, qualification.timeline, qualification.primaryGoal].filter(Boolean).join(" · ");
     const check = await runWithWorkspace(ws._id, () => googleCalendarService.availability({ workspaceId: ws._id, coachProfileId: availability.coachProfileId, startsAt, durationMinutes }));
     if (!check.available) return res.status(409).json({ error: "That time was just booked. Please choose another available time." });
-    const scheduled = await runWithWorkspace(ws._id, () => googleCalendarService.scheduleDiscoveryCall({ workspaceId: ws._id, coachProfileId: availability.coachProfileId, startsAt, durationMinutes, name, email, phone: String(req.body?.phone || "").slice(0, 80), notes: String(req.body?.notes || "").slice(0, 2000) }));
-    const booking = await runWithWorkspace(ws._id, () => DiscoveryCallBooking.create({ workspaceId: ws._id, coachProfileId: availability.coachProfileId, name, email, phone: String(req.body?.phone || "").slice(0, 80), notes: String(req.body?.notes || "").slice(0, 2000), startsAt, durationMinutes, timezone: scheduled.timezone, calendar: { connectionId: scheduled.connection._id, calendarId: scheduled.calendarId, eventId: scheduled.event.id, htmlLink: scheduled.event.htmlLink || "", meetUrl: scheduled.meetUrl } }));
+    const scheduled = await runWithWorkspace(ws._id, () => googleCalendarService.scheduleDiscoveryCall({ workspaceId: ws._id, coachProfileId: availability.coachProfileId, startsAt, durationMinutes, name, email, phone: String(req.body?.phone || "").slice(0, 80), notes: String(req.body?.notes || "").slice(0, 2000), programName: programSnapshot.name, qualificationSummary }));
+    const booking = await runWithWorkspace(ws._id, () => DiscoveryCallBooking.create({ workspaceId: ws._id, coachProfileId: availability.coachProfileId, name, email, phone: String(req.body?.phone || "").slice(0, 80), notes: String(req.body?.notes || "").slice(0, 2000), coachingProgramId: selectedProgram?._id || null, programSnapshot, qualification, startsAt, durationMinutes, timezone: scheduled.timezone, calendar: { connectionId: scheduled.connection._id, calendarId: scheduled.calendarId, eventId: scheduled.event.id, htmlLink: scheduled.event.htmlLink || "", meetUrl: scheduled.meetUrl } }));
     const smsAddress = normalizePhone(req.body?.phone);
     if (req.body?.smsConsent === true && smsAddress)
       await runWithWorkspace(ws._id, () => CommunicationConsent.findOneAndUpdate(

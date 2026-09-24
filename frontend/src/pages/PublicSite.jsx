@@ -1581,14 +1581,29 @@ function AvailabilityCalendar({ slotsByDay, timezone, selectedDay, onSelectDay }
 export function DiscoveryCallPage() {
   const { site } = useWorkspaceTheme(),
     p = site?.publicSite || {},
-    workspaceName = site?.branding?.publicSiteName || site?.workspace?.name || "us";
+    workspaceName = site?.branding?.publicSiteName || site?.workspace?.name || "us",
+    programs = site?.programs || [],
+    testimonials = site?.featuredTestimonials || [],
+    faqs = p.faqItems || [];
   const [availability, setAvailability] = useState(null),
     [selectedDay, setSelectedDay] = useState(""),
     [selected, setSelected] = useState(""),
-    [form, setForm] = useState({ name: "", email: "", phone: "", notes: "", smsConsent: false }),
+    [step, setStep] = useState("details"),
+    [form, setForm] = useState({
+      name: "",
+      email: "",
+      phone: "",
+      notes: "",
+      programId: "",
+      experience: "",
+      primaryGoal: "",
+      timeline: "",
+      smsConsent: false,
+    }),
     [booking, setBooking] = useState(false),
     [result, setResult] = useState(null),
     [bookingError, setBookingError] = useState("");
+  const bookingRef = useRef(null);
   const timezone = availability?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
   const slotsByDay = useMemo(() => {
     const map = new Map();
@@ -1613,10 +1628,45 @@ export function DiscoveryCallPage() {
     }).catch(() => setAvailability({ slots: [] }));
   }, [p.discoveryCallAvailability?.coachProfileId]);
   const submitBooking = async (event) => {
-    event.preventDefault(); setBooking(true); setBookingError("");
-    try { const data = await bookDiscoveryCall({ ...form, startsAt: selected }); setResult(data); trackSiteEvent("discovery_call_booked", { starts_at: selected }); }
+    event.preventDefault();
+    if (step !== "time") {
+      showTimes();
+      return;
+    }
+    setBooking(true); setBookingError("");
+    try {
+      const data = await bookDiscoveryCall({
+        name: form.name,
+        email: form.email,
+        phone: form.phone,
+        notes: form.notes,
+        programId: form.programId,
+        smsConsent: form.smsConsent,
+        qualification: {
+          experience: form.experience,
+          primaryGoal: form.primaryGoal,
+          timeline: form.timeline,
+        },
+        startsAt: selected,
+      });
+      setResult(data);
+      trackSiteEvent("discovery_call_booked", { starts_at: selected, program_id: form.programId });
+    }
     catch (error) { setBookingError(error?.response?.data?.error || "We couldn't reserve that time. Please choose another time and try again."); }
     finally { setBooking(false); }
+  };
+  const beginBooking = (programId = form.programId) => {
+    if (programId) setForm((current) => ({ ...current, programId }));
+    bookingRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  const showTimes = () => {
+    if (!form.name.trim() || !/^\S+@\S+\.\S+$/.test(form.email) || !form.programId || !form.primaryGoal.trim()) {
+      setBookingError("Choose a program and complete your name, email, and primary goal before selecting a time.");
+      return;
+    }
+    setBookingError("");
+    setStep("time");
+    window.setTimeout(() => bookingRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
   };
   const bookingEmbedUrl = (() => {
     // Google's own documented format for embedding an Appointment Schedule
@@ -1635,23 +1685,91 @@ export function DiscoveryCallPage() {
     })();
   return (
     <PublicLayout>
-      <main id="main-content" className="public-inner discovery-call-page">
-        <p className="public-kicker">Discovery call</p>
-        <h1>{p.discoveryCallHeading || "Book a Discovery Call"}</h1>
-        <p className="public-lead">{p.discoveryCallCopy || "Tell us where you are in your investing journey. Choose an available time to meet with Ellie, ask questions, and identify the right next step for your goals."}</p>
-        {p.discoveryCallVideoUrl ? (
-          <div className="discovery-call-page__video">
-            <TestimonialVideoPlayer
-              videoUrl={p.discoveryCallVideoUrl}
-              coverUrl={p.discoveryCallVideoPosterUrl}
-            />
+      <main id="main-content" className="discovery-call-page">
+        <section className="discovery-hero">
+          <div className="discovery-hero__topline">
+            <span>Private strategy conversation with {workspaceName}</span>
+            <button type="button" onClick={() => beginBooking()}>Book your discovery call <FiArrowRight /></button>
           </div>
-        ) : null}
+          <div className="discovery-hero__content">
+            <p className="public-kicker">A clear next step for your investing goals</p>
+            <h1>{p.discoveryCallHeading || "Book a Discovery Call"}</h1>
+            <p>{p.discoveryCallCopy || "Tell us where you are in your investing journey. Meet with Ellie, ask honest questions, and identify the coaching path or next step that fits your goals."}</p>
+            <div className="discovery-hero__actions">
+              <button className="public-button" type="button" onClick={() => beginBooking()}>Find your next step</button>
+              <span><FiCheck /> No-pressure fit conversation</span>
+            </div>
+          </div>
+          {p.discoveryCallVideoUrl ? (
+            <div className="discovery-call-page__video">
+              <TestimonialVideoPlayer videoUrl={p.discoveryCallVideoUrl} coverUrl={p.discoveryCallVideoPosterUrl} />
+            </div>
+          ) : null}
+        </section>
+
+        <section className="discovery-intro">
+          <p className="public-kicker">Start with your goals</p>
+          <h2>This is a strategy conversation, not a generic sales call.</h2>
+          <p>We’ll look at what you’re working toward, where you feel stuck, and the level of guidance that would make the biggest difference. You’ll leave with a clearer direction whether or not a program is the right fit.</p>
+          <div className="discovery-value-grid">
+            <article><span>01</span><h3>Clarify your direction</h3><p>Turn a broad investing goal into a focused, practical next move.</p></article>
+            <article><span>02</span><h3>Choose the right support</h3><p>Compare Ellie’s actual programs against your experience and timeline.</p></article>
+            <article><span>03</span><h3>Know what comes next</h3><p>Leave the call understanding the path forward and what it requires.</p></article>
+          </div>
+        </section>
+
+        {programs.length ? <section className="discovery-programs">
+          <div className="discovery-section-heading">
+            <p className="public-kicker">Choose what you want to discuss</p>
+            <h2>Which coaching path feels closest to what you need?</h2>
+            <p>You do not have to know for certain. Your choice simply helps Ellie prepare for a more useful conversation.</p>
+          </div>
+          <div className="discovery-program-grid">
+            {programs.map((program) => (
+              <article className={`discovery-program-card${form.programId === String(program.id) ? " is-selected" : ""}`} key={program.id}>
+                <span>{program.tierLabel || program.coachingFormat || "Coaching program"}</span>
+                <h3>{program.title}</h3>
+                <p>{program.summary || program.audience || "Explore whether this coaching path fits your goals and current stage."}</p>
+                {program.highlights?.length ? <ul>{program.highlights.slice(0, 3).map((item) => <li key={item}><FiCheck />{item}</li>)}</ul> : null}
+                <button type="button" onClick={() => beginBooking(String(program.id))}>Discuss this program <FiArrowRight /></button>
+              </article>
+            ))}
+            <article className={`discovery-program-card discovery-program-card--open${form.programId === "not_sure" ? " is-selected" : ""}`}>
+              <span>Not sure yet</span>
+              <h3>Help me choose</h3>
+              <p>Share where you are now and Ellie can help identify the most sensible next step.</p>
+              <button type="button" onClick={() => beginBooking("not_sure")}>Talk through my options <FiArrowRight /></button>
+            </article>
+          </div>
+        </section> : null}
+
+        <section className="discovery-booking-section" ref={bookingRef}>
+          <div className="discovery-section-heading">
+            <p className="public-kicker">Limited weekly appointments</p>
+            <h2>Book your discovery call</h2>
+          </div>
         {p.discoveryCallAvailability?.coachProfileId ? (
-          result ? <section className="discovery-booking-success"><h2>Your call is booked.</h2><p>A Google Calendar invitation has been sent to your email for {new Date(result.startsAt).toLocaleString()}.</p></section> :
+          result ? <section className="discovery-booking-success"><span className="discovery-booking-success__icon"><FiCheck /></span><p className="public-kicker">You’re scheduled</p><h2>Your call is booked.</h2><p>A Google Calendar invitation and meeting details have been sent to your email for {new Date(result.startsAt).toLocaleString()}.</p></section> :
           <form className="discovery-booking-form" onSubmit={submitBooking}>
-            <h2>Choose an available time</h2>
-            {availability?.slots?.length ? <><AvailabilityCalendar slotsByDay={slotsByDay} timezone={timezone} selectedDay={selectedDay} onSelectDay={(key) => { setSelectedDay(key); setSelected(slotsByDay.get(key)?.[0] || ""); }} />{selectedDay && slotsByDay.has(selectedDay) ? <div className="discovery-calendar__times"><label>Available times on {new Date(`${selectedDay}T12:00:00`).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</label><div className="discovery-calendar__time-grid">{slotsByDay.get(selectedDay).map((slot) => <button key={slot} type="button" className={`discovery-calendar__time${slot === selected ? " is-selected" : ""}`} onClick={() => setSelected(slot)}>{new Date(slot).toLocaleString([], { hour: "numeric", minute: "2-digit" })}</button>)}</div><small>{new Date(selected || slotsByDay.get(selectedDay)[0]).toLocaleString([], { timeZoneName: "short" }).split(", ").pop()}</small></div> : <p className="discovery-calendar__prompt">Pick a highlighted day above to see available times.</p>}<div className="discovery-booking-form__grid"><label>Name<input required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label><label>Email<input required type="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label><label>Phone (optional)<input type="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label></div><label>What would you like to discuss? (optional)<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>{form.phone ? <label className="discovery-booking-form__sms-consent"><input type="checkbox" checked={form.smsConsent} onChange={(event) => setForm({ ...form, smsConsent: event.target.checked })} /> I agree to receive text messages about my discovery call and future updates. Message and data rates may apply. Reply STOP to opt out.</label> : null}{bookingError ? <p className="form-error">{bookingError}</p> : null}<button className="public-button" disabled={booking || !selected}>{booking ? "Reserving…" : "Book discovery call"}</button></> : availability ? <p>No appointment times are currently available. Please check again soon or contact {workspaceName}.</p> : <p>Loading available times…</p>}
+            <div className="discovery-booking-form__steps" aria-label="Booking progress">
+              <button type="button" className={step === "details" ? "is-active" : "is-complete"} onClick={() => setStep("details")}><span>{step === "time" ? <FiCheck /> : "1"}</span>Your details</button>
+              <i />
+              <button type="button" className={step === "time" ? "is-active" : ""} disabled={step !== "time"}><span>2</span>Choose a time</button>
+            </div>
+            {step === "details" ? <div className="discovery-booking-form__panel">
+              <div className="discovery-booking-form__title"><span>1</span><div><h3>Tell us a little about you</h3><p>This helps Ellie make the conversation specific to your goals.</p></div></div>
+              <label>Program you want to discuss<select required value={form.programId} onChange={(event) => setForm({ ...form, programId: event.target.value })}><option value="">Choose one</option>{programs.map((program) => <option key={program.id} value={program.id}>{program.title}</option>)}<option value="not_sure">I’m not sure — help me choose</option></select></label>
+              <div className="discovery-booking-form__grid"><label>Full name<input required autoComplete="name" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} /></label><label>Email address<input required type="email" autoComplete="email" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} /></label><label>Phone (optional)<input type="tel" autoComplete="tel" value={form.phone} onChange={(event) => setForm({ ...form, phone: event.target.value })} /></label><label>Investing experience<select value={form.experience} onChange={(event) => setForm({ ...form, experience: event.target.value })}><option value="">Choose one</option><option>Exploring my first investment</option><option>Actively pursuing my first deal</option><option>I own one or more properties</option><option>I’m ready to scale my portfolio</option></select></label></div>
+              <label>What is the primary goal you want help with?<textarea required value={form.primaryGoal} onChange={(event) => setForm({ ...form, primaryGoal: event.target.value })} placeholder="Tell Ellie what you want to accomplish and what is getting in the way." /></label>
+              <label>When are you hoping to take action?<select value={form.timeline} onChange={(event) => setForm({ ...form, timeline: event.target.value })}><option value="">Choose one</option><option>As soon as possible</option><option>Within the next 30 days</option><option>Within the next 3 months</option><option>I’m researching for later</option></select></label>
+              <label>Anything else Ellie should know? (optional)<textarea value={form.notes} onChange={(event) => setForm({ ...form, notes: event.target.value })} /></label>
+              {form.phone ? <label className="discovery-booking-form__sms-consent"><input type="checkbox" checked={form.smsConsent} onChange={(event) => setForm({ ...form, smsConsent: event.target.checked })} /> I agree to receive text messages about my discovery call and future updates. Message and data rates may apply. Reply STOP to opt out.</label> : null}
+              {bookingError ? <p className="form-error">{bookingError}</p> : null}
+              <button className="public-button discovery-booking-form__continue" type="button" onClick={showTimes}>Continue to available times <FiArrowRight /></button>
+            </div> : <div className="discovery-booking-form__panel">
+              <div className="discovery-booking-form__title"><span>2</span><div><h3>Choose an available time</h3><p>All available times are shown in {timezone}.</p></div></div>
+              {availability?.slots?.length ? <><AvailabilityCalendar slotsByDay={slotsByDay} timezone={timezone} selectedDay={selectedDay} onSelectDay={(key) => { setSelectedDay(key); setSelected(slotsByDay.get(key)?.[0] || ""); }} />{selectedDay && slotsByDay.has(selectedDay) ? <div className="discovery-calendar__times"><label>Available times on {new Date(`${selectedDay}T12:00:00`).toLocaleDateString([], { weekday: "long", month: "long", day: "numeric" })}</label><div className="discovery-calendar__time-grid">{slotsByDay.get(selectedDay).map((slot) => <button key={slot} type="button" className={`discovery-calendar__time${slot === selected ? " is-selected" : ""}`} onClick={() => setSelected(slot)}>{new Date(slot).toLocaleString([], { hour: "numeric", minute: "2-digit" })}</button>)}</div><small>{new Date(selected || slotsByDay.get(selectedDay)[0]).toLocaleString([], { timeZoneName: "short" }).split(", ").pop()}</small></div> : <p className="discovery-calendar__prompt">Pick a highlighted day above to see available times.</p>}{bookingError ? <p className="form-error">{bookingError}</p> : null}<button className="public-button discovery-booking-form__continue" disabled={booking || !selected}>{booking ? "Reserving…" : "Confirm discovery call"}</button></> : availability ? <p>No appointment times are currently available. Please check again soon or contact {workspaceName}.</p> : <p>Loading available times…</p>}
+            </div>}
           </form>
         ) : bookingEmbedUrl ? (
           <>
@@ -1678,6 +1796,18 @@ export function DiscoveryCallPage() {
             Booking isn't set up yet. Contact {workspaceName} directly to schedule a call.
           </p>
         )}
+        </section>
+
+        <section className="discovery-fit-section">
+          <div><p className="public-kicker">A productive conversation</p><h2>Come ready to talk honestly about where you are.</h2></div>
+          <div className="discovery-fit-section__copy"><p>This call is most useful when you want a real plan, welcome direct guidance, and are prepared to follow through. You do not need to have every answer before you book.</p><ul><li><FiCheck /> Your current investing experience</li><li><FiCheck /> The outcome you want to create</li><li><FiCheck /> The obstacle slowing you down</li><li><FiCheck /> The support and accountability you need</li></ul></div>
+        </section>
+
+        {testimonials.length ? <section className="discovery-proof-section"><div className="discovery-section-heading"><p className="public-kicker">Student perspectives</p><h2>Hear from people who chose to move forward.</h2></div><Testimonials rows={testimonials} /></section> : null}
+
+        {faqs.length ? <section className="discovery-faq-section"><div className="discovery-section-heading"><p className="public-kicker">Before you book</p><h2>Questions about the discovery call</h2></div><div className="discovery-faq-list">{faqs.slice(0, 6).map((item) => <details key={item.question}><summary>{item.question}</summary><p>{item.answer}</p></details>)}</div></section> : null}
+
+        <section className="discovery-final-cta"><p className="public-kicker">Your next move can be clearer</p><h2>Let’s talk through the path that fits you.</h2><p>Choose a program or select “help me choose,” share your goals, and reserve a time that works.</p><button className="public-button" type="button" onClick={() => beginBooking()}>Book your discovery call <FiArrowRight /></button></section>
       </main>
     </PublicLayout>
   );

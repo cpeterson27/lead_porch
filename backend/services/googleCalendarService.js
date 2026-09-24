@@ -153,7 +153,14 @@ async function scheduleDiscoveryCall(input, models = dependencies, adapter = goo
   const requestId = crypto.randomUUID();
   const payload = {
     summary: `Discovery Call — ${input.name}`,
-    description: [`Prospect: ${input.name}`, `Email: ${input.email}`, input.phone ? `Phone: ${input.phone}` : "", input.notes ? `Notes: ${input.notes}` : ""].filter(Boolean).join("\n"),
+    description: [
+      `Prospect: ${input.name}`,
+      `Email: ${input.email}`,
+      input.phone ? `Phone: ${input.phone}` : "",
+      input.programName ? `Program interest: ${input.programName}` : "",
+      input.qualificationSummary ? `Qualification: ${input.qualificationSummary}` : "",
+      input.notes ? `Notes: ${input.notes}` : "",
+    ].filter(Boolean).join("\n"),
     start: { dateTime: startsAt.toISOString(), timeZone: timezone },
     end: { dateTime: end.toISOString(), timeZone: timezone },
     attendees: [{ email: input.email, displayName: input.name }],

@@ -8,6 +8,16 @@ const discoveryCallBookingSchema = new mongoose.Schema({
   email: { type: String, required: true, trim: true, lowercase: true, maxlength: 320 },
   phone: { type: String, default: "", trim: true, maxlength: 80 },
   notes: { type: String, default: "", trim: true, maxlength: 2000 },
+  coachingProgramId: { type: mongoose.Schema.Types.ObjectId, ref: "CoachingProgram", default: null, index: true },
+  programSnapshot: {
+    name: { type: String, default: "", trim: true, maxlength: 180 },
+    slug: { type: String, default: "", trim: true, maxlength: 120 },
+  },
+  qualification: {
+    experience: { type: String, default: "", trim: true, maxlength: 160 },
+    primaryGoal: { type: String, default: "", trim: true, maxlength: 500 },
+    timeline: { type: String, default: "", trim: true, maxlength: 160 },
+  },
   startsAt: { type: Date, required: true, index: true },
   durationMinutes: { type: Number, required: true, min: 15, max: 180, default: 30 },
   timezone: { type: String, default: "UTC", trim: true, maxlength: 100 },
