@@ -10,6 +10,12 @@ import {
   fetchGmailConnection,
   beginGmailConnection,
   disconnectGmail,
+  fetchGoogleBusinessProfileStatus,
+  beginGoogleBusinessProfileConnection,
+  fetchGoogleBusinessProfileLocations,
+  selectGoogleBusinessProfileLocation,
+  syncGoogleBusinessProfileReviews,
+  disconnectGoogleBusinessProfile,
   fetchSocialConnection,
   beginSocialConnection,
   disconnectSocialConnection,
@@ -70,11 +76,15 @@ export default function Integrations() {
   const [error, setError] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("meetup") === "error") return "Meetup authorization did not complete.";
+    if (params.get("googleBusinessProfile") === "error") return params.get("message") || "Google Business Profile authorization did not complete.";
     const provider = params.get("social");
     const status = params.get("status");
     return provider && status && status !== "connected" ? params.get("message") || `${provider} connection did not complete.` : "";
   });
   const [gmail, setGmail] = useState(null);
+  const [googleBusinessProfile, setGoogleBusinessProfile] = useState(null);
+  const [googleBusinessLocations, setGoogleBusinessLocations] = useState([]);
+  const [googleBusinessBusy, setGoogleBusinessBusy] = useState(false);
   const [socialConnections, setSocialConnections] = useState({ linkedin: null, meta: null, instagram: null });
   const [socialBusy, setSocialBusy] = useState("");
   const [skool, setSkool] = useState(null);
@@ -91,12 +101,13 @@ export default function Integrations() {
   const loadProviders = async () => {
     try {
       setLoading(true);
-      const [response, connection, webhook, eventData, gmailConnection, linkedin, meta, skoolStatus, meetupStatus, instagram, twilioStatus] = await Promise.all([
+      const [response, connection, webhook, eventData, gmailConnection, googleBusinessStatus, linkedin, meta, skoolStatus, meetupStatus, instagram, twilioStatus] = await Promise.all([
         fetchIntegrationHub(),
         fetchEventbriteConnection().catch(() => null),
         fetchEventbriteWebhookStatus().catch(() => null),
         fetchEvents().catch(() => []),
         fetchGmailConnection().catch(() => null),
+        fetchGoogleBusinessProfileStatus().catch(() => null),
         fetchSocialConnection("linkedin").catch(() => null),
         fetchSocialConnection("meta").catch(() => null),
         fetchSkoolStatus().catch(() => null),
@@ -109,6 +120,7 @@ export default function Integrations() {
       setEventbriteWebhook(webhook);
       setEvents(Array.isArray(eventData) ? eventData : []);
       setGmail(gmailConnection);
+      setGoogleBusinessProfile(googleBusinessStatus);
       setSocialConnections({ linkedin, meta, instagram });
       setSkool(skoolStatus);
       setMeetup(meetupStatus);
@@ -153,6 +165,52 @@ export default function Integrations() {
     await loadProviders();
   };
 
+  const connectGoogleBusinessProfile = async () => {
+    try {
+      setGoogleBusinessBusy(true);
+      const response = await beginGoogleBusinessProfileConnection();
+      window.location.assign(response.authorizationUrl);
+    } catch (err) {
+      setError(err.response?.data?.error || "Google Business Profile OAuth setup is incomplete.");
+      setGoogleBusinessBusy(false);
+    }
+  };
+  const loadGoogleBusinessLocations = async () => {
+    try {
+      setGoogleBusinessBusy(true);
+      setGoogleBusinessLocations(await fetchGoogleBusinessProfileLocations());
+      setError("");
+    } catch (err) { setError(err.response?.data?.error || "Unable to load Google Business Profile locations."); }
+    finally { setGoogleBusinessBusy(false); }
+  };
+  const chooseGoogleBusinessLocation = async (value) => {
+    if (!value) return;
+    const location = googleBusinessLocations.find((item) => `${item.accountName}|${item.locationName}` === value);
+    if (!location) return;
+    try {
+      setGoogleBusinessBusy(true);
+      const result = await selectGoogleBusinessProfileLocation(location);
+      setGoogleBusinessProfile(result.connection);
+      const sync = await syncGoogleBusinessProfileReviews();
+      setGoogleBusinessProfile((current) => ({ ...current, ...sync }));
+      setError("");
+    } catch (err) { setError(err.response?.data?.error || "Unable to select or sync that Google Business Profile."); }
+    finally { setGoogleBusinessBusy(false); }
+  };
+  const syncGoogleReviews = async () => {
+    try {
+      setGoogleBusinessBusy(true);
+      const sync = await syncGoogleBusinessProfileReviews();
+      setGoogleBusinessProfile((current) => ({ ...current, ...sync }));
+      setError("");
+    } catch (err) { setError(err.response?.data?.error || "Unable to sync Google reviews."); }
+    finally { setGoogleBusinessBusy(false); }
+  };
+  const removeGoogleBusinessProfile = async () => {
+    try { setGoogleBusinessBusy(true); setGoogleBusinessProfile(await disconnectGoogleBusinessProfile()); setGoogleBusinessLocations([]); }
+    finally { setGoogleBusinessBusy(false); }
+  };
+
   useEffect(() => {
     const initialLoad = window.setTimeout(loadProviders, 0);
     return () => window.clearTimeout(initialLoad);
@@ -160,7 +218,7 @@ export default function Integrations() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.has("meetup")) window.history.replaceState({}, "", window.location.pathname);
+    if (params.has("meetup") || params.has("googleBusinessProfile")) window.history.replaceState({}, "", window.location.pathname);
     const provider = params.get("social");
     const status = params.get("status");
     if (!provider || !status) return;
@@ -291,6 +349,22 @@ export default function Integrations() {
       <h2 className="integration-section-title">Connected apps</h2>
       {error ? <p className="form-error">{error}</p> : null}
       <section className="crm-connection-grid">
+        <article className="crm-connection-card">
+          <div><span className={`integration-status integration-status--${googleBusinessProfile?.connected ? "connected" : "configuration_required"}`}>{googleBusinessProfile?.connected ? "Connected" : googleBusinessProfile?.configured ? "Ready to connect" : "App setup required"}</span><h2>Google Business Profile Reviews</h2></div>
+          <p>{googleBusinessProfile?.connected ? `${googleBusinessProfile.email} is authorized${googleBusinessProfile.locationTitle ? ` for ${googleBusinessProfile.locationTitle}` : ""}. New reviews synchronize automatically every six hours.` : "Connect the Google account that owns or manages Ellie’s verified Business Profile. Reviews will appear in the discovery-page review marquee."}</p>
+          {googleBusinessProfile?.connected ? <>
+            {!googleBusinessProfile.locationName ? <>
+              <Button onClick={loadGoogleBusinessLocations} loading={googleBusinessBusy}>Load managed locations</Button>
+              {googleBusinessLocations.length ? <label>Business location<select defaultValue="" disabled={googleBusinessBusy} onChange={(event) => chooseGoogleBusinessLocation(event.target.value)}><option value="" disabled>Choose Ellie’s Coaching</option>{googleBusinessLocations.map((location) => <option key={`${location.accountName}:${location.locationName}`} value={`${location.accountName}|${location.locationName}`}>{location.locationTitle}{location.accountTitle ? ` — ${location.accountTitle}` : ""}</option>)}</select></label> : null}
+            </> : <>
+              <dl className="integration-sync-summary"><div><dt>Published Google reviews</dt><dd>{googleBusinessProfile.reviewCount || 0}</dd></div><div><dt>Average rating</dt><dd>{googleBusinessProfile.averageRating ? `${googleBusinessProfile.averageRating.toFixed(1)} / 5` : "—"}</dd></div><div><dt>Last synchronized</dt><dd>{googleBusinessProfile.lastSyncedAt ? new Date(googleBusinessProfile.lastSyncedAt).toLocaleString() : "Not yet"}</dd></div></dl>
+              <div className="crm-connection-actions"><Button onClick={syncGoogleReviews} loading={googleBusinessBusy}>Sync reviews now</Button><Button variant="outline" onClick={loadGoogleBusinessLocations} disabled={googleBusinessBusy}>Change location</Button><Button variant="outline" onClick={removeGoogleBusinessProfile} disabled={googleBusinessBusy}>Disconnect</Button></div>
+              {googleBusinessLocations.length ? <label>Business location<select value={`${googleBusinessProfile.accountName}|${googleBusinessProfile.locationName}`} disabled={googleBusinessBusy} onChange={(event) => chooseGoogleBusinessLocation(event.target.value)}>{googleBusinessLocations.map((location) => <option key={`${location.accountName}:${location.locationName}`} value={`${location.accountName}|${location.locationName}`}>{location.locationTitle}{location.accountTitle ? ` — ${location.accountTitle}` : ""}</option>)}</select></label> : null}
+            </>}
+            {googleBusinessProfile.lastError ? <p className="integration-limitation"><strong>Last sync:</strong> {googleBusinessProfile.lastError}</p> : null}
+          </> : <div className="crm-connection-actions"><Button onClick={connectGoogleBusinessProfile} loading={googleBusinessBusy} disabled={!googleBusinessProfile?.configured}>Connect Google Business Profile</Button></div>}
+          {!googleBusinessProfile?.configured ? <small>Add the Business Profile redirect URI to the existing Google OAuth client and backend environment. Google must also approve Business Profile API access for that Cloud project.</small> : null}
+        </article>
         <article className="crm-connection-card meetup-connection-card">
           <div><span className="integration-status integration-status--ready">Public discovery</span><h2>Public Meetup Discovery</h2></div>
           <p>Find public communities and organizers for research. These results are public evidence only; Lead Porch cannot message or manage them.</p>

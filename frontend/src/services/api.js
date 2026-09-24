@@ -1015,6 +1015,18 @@ export const beginGmailConnection = () =>
 
 export const disconnectGmail = () =>
   api.post("/gmail/disconnect").then((res) => res.data);
+export const fetchGoogleBusinessProfileStatus = () =>
+  api.get("/google-business-profile/status").then((res) => res.data.data);
+export const beginGoogleBusinessProfileConnection = () =>
+  api.get("/google-business-profile/oauth/start").then((res) => res.data);
+export const fetchGoogleBusinessProfileLocations = () =>
+  api.get("/google-business-profile/locations").then((res) => res.data.data);
+export const selectGoogleBusinessProfileLocation = (values) =>
+  api.patch("/google-business-profile/location", values).then((res) => res.data.data);
+export const syncGoogleBusinessProfileReviews = () =>
+  api.post("/google-business-profile/sync").then((res) => res.data.data);
+export const disconnectGoogleBusinessProfile = () =>
+  api.delete("/google-business-profile/connection").then((res) => res.data.data);
 
 export const fetchGmailThreads = (q = "in:inbox") =>
   api.get("/gmail/threads", { params: { q } }).then((res) => res.data);

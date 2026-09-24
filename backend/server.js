@@ -25,6 +25,7 @@ const partnersRouter = require("./routes/partners");
 const contentRouter = require("./routes/content");
 const developmentRequestsRouter = require("./routes/developmentRequests");
 const gmailRouter = require("./routes/gmail");
+const googleBusinessProfileRouter = require("./routes/googleBusinessProfile");
 const workspaceRouter = require("./routes/workspace");
 const ambassadorsRouter = require("./routes/ambassadors");
 const unsubscribeRouter = require("./routes/unsubscribe");
@@ -72,6 +73,7 @@ const { startPaymentReminderRunner } = require("./services/paymentReminderServic
 const { startAutomationRunner } = require("./services/automationRunner");
 const { startSocialPublishingRunner } = require("./services/socialPublishingRunner");
 const { startPublicWebDiscoveryRunner } = require("./services/publicWebDiscoveryEngineService");
+const { startGoogleBusinessProfileSyncRunner } = require("./services/googleBusinessProfileSyncRunner");
 
 const app = express();
 
@@ -201,7 +203,8 @@ connectDatabase(mongoUri)
         req.path === "/jarvis/memory/sync" ||
         req.path === "/eventbrite/webhook" ||
         req.path === "/eventbrite/oauth/callback" ||
-        req.path === "/gmail/oauth/callback";
+        req.path === "/gmail/oauth/callback" ||
+        req.path === "/google-business-profile/oauth/callback";
       const publicMeetupCallback = req.path === "/meetup/oauth/callback";
       const publicCoachingCalendarCallback = req.path === "/coaching/calendar/oauth/callback";
       const publicCoachingZoomRoute = req.path === "/coaching/zoom/oauth/callback" || req.path === "/coaching/zoom/webhook";
@@ -255,6 +258,7 @@ connectDatabase(mongoUri)
     app.use("/api/content", contentRouter);
     app.use("/api/development-requests", developmentRequestsRouter);
     app.use("/api/gmail", gmailRouter);
+    app.use("/api/google-business-profile", googleBusinessProfileRouter);
     app.use("/api/workspace", workspaceRouter);
     app.use("/api/platform", platformRouter);
     app.use("/api/ai", aiRouter);
@@ -327,6 +331,7 @@ connectDatabase(mongoUri)
       // own header: it only ever acts on DiscoverySchedule docs with
       // enabled:true, and every schedule defaults to enabled:false.
       startPublicWebDiscoveryRunner();
+      startGoogleBusinessProfileSyncRunner();
       if (process.env.LINKEDIN_SEQUENCE_WORKER_MODE !== "external") startLinkedinSequenceRunner();
     });
 

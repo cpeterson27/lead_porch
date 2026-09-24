@@ -310,3 +310,8 @@
 .twilio-webhook-details dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 8px 0; }
 .twilio-webhook-details dt { font-weight: 700; }
 .twilio-webhook-details code { word-break: break-all; }
+.integration-sync-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.integration-sync-summary div { padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-muted, #f7f8f7); }
+.integration-sync-summary dt { color: var(--text-muted); font-size: .7rem; font-weight: 700; }
+.integration-sync-summary dd { margin: 4px 0 0; color: var(--text); font-size: .84rem; font-weight: 800; }
+@media (max-width: 680px) { .integration-sync-summary { grid-template-columns: 1fr; } }

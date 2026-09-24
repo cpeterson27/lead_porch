@@ -26,6 +26,7 @@ const IntegrationConnectionSchema = new mongoose.Schema(
         "monday",
         "gmail",
         "google_calendar",
+        "google_business_profile",
         "zoom",
         "skool",
         "twilio",

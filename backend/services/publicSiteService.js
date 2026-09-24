@@ -660,6 +660,9 @@ function testimonialProjection(item) {
     rating: item.rating,
     videoUrl: safeUrl(item.videoUrl),
     featured: Boolean(item.featured),
+    source: item.source || "manual",
+    sourceUrl: safeUrl(item.sourceUrl),
+    sourceCreatedAt: item.sourceCreatedAt || null,
   };
 }
 function profileProjection(item) {
@@ -699,6 +702,7 @@ async function site(models = deps, request) {
       config,
       programs,
       testimonials,
+      googleReviews,
       profiles,
       event,
       activeCoaches,
@@ -722,6 +726,15 @@ async function site(models = deps, request) {
       })
         .sort({ sortOrder: 1 })
         .limit(6)
+        .lean(),
+      models.Testimonial.find({
+        workspaceId: ws._id,
+        status: "approved",
+        source: "google_business_profile",
+        lastSyncedAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+      })
+        .sort({ sourceCreatedAt: -1, createdAt: -1 })
+        .limit(50)
         .lean(),
       models.PublicProfile.find({
         workspaceId: ws._id,
@@ -758,6 +771,7 @@ async function site(models = deps, request) {
       ...sanitizedConfig(ws, config),
       programs: programs.map(programProjection),
       featuredTestimonials: testimonials.map(testimonialProjection),
+      discoveryReviews: (googleReviews.length ? googleReviews : testimonials).map(testimonialProjection),
       team: eligibleProfiles.slice(0, 12).map(profileProjection),
       upcomingEvent: event
         ? {

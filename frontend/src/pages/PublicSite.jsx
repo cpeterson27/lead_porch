@@ -14,6 +14,7 @@ import {
   FiSun,
   FiX,
 } from "react-icons/fi";
+import { FcGoogle } from "react-icons/fc";
 import useWorkspaceTheme from "../context/useWorkspaceTheme.js";
 import {
   beginPublicProgramCheckout,
@@ -805,6 +806,39 @@ function Testimonials({ rows = [] }) {
     </div>
   );
 }
+function GoogleReviewCard({ row, duplicate = false }) {
+  const content = (
+    <>
+      <div className="google-review-card__topline">
+        {row.avatarUrl ? <img src={cloudinaryImage(row.avatarUrl, 80)} alt="" loading="lazy" /> : <span className="google-review-card__initial" aria-hidden="true">{String(row.displayName || "G").charAt(0)}</span>}
+        <div><strong>{row.displayName}</strong><span>{row.source === "google_business_profile" ? "Google Review" : row.headline || "Client review"}</span></div>
+        {row.source === "google_business_profile" ? <FcGoogle className="google-review-card__google" aria-label="Google" /> : null}
+      </div>
+      <div className="google-review-card__stars" aria-label={`${row.rating || 5} out of 5 stars`}>{Array.from({ length: row.rating || 5 }, (_, index) => <FiStar key={index} />)}</div>
+      <p>{row.body}</p>
+      <footer>{row.sourceCreatedAt ? <time dateTime={row.sourceCreatedAt}>{new Date(row.sourceCreatedAt).toLocaleDateString("en-US", { month: "short", year: "numeric" })}</time> : <span>{row.resultContext || "Ellie’s Coaching"}</span>}{row.sourceUrl ? <span>View on Google <FiExternalLink /></span> : null}</footer>
+    </>
+  );
+  return row.sourceUrl ? <a className="google-review-card" href={row.sourceUrl} target="_blank" rel="noreferrer" tabIndex={duplicate ? -1 : undefined}>{content}</a> : <article className="google-review-card">{content}</article>;
+}
+function ReviewMarquee({ rows = [] }) {
+  const midpoint = Math.max(1, Math.ceil(rows.length / 2));
+  const fillLane = (items) => Array.from(
+    { length: Math.max(4, items.length) },
+    (_, index) => items[index % items.length],
+  );
+  const first = fillLane(rows.slice(0, midpoint));
+  const secondRows = rows.slice(midpoint);
+  const second = fillLane(secondRows.length ? secondRows : [...rows.slice(0, midpoint)].reverse());
+  const renderRow = (items, reverse = false) => (
+    <div className={`google-review-marquee__row${reverse ? " is-reverse" : ""}`}>
+      <div className="google-review-marquee__track">
+        {[0, 1].map((group) => <div className="google-review-marquee__group" key={group} aria-hidden={group === 1 || undefined}>{items.map((row, index) => <GoogleReviewCard row={row} duplicate={group === 1} key={`${group}-${row.id || index}-${index}`} />)}</div>)}
+      </div>
+    </div>
+  );
+  return <div className="google-review-marquee" aria-label="Customer reviews">{renderRow(first)}{renderRow(second, true)}<p className="google-review-marquee__note">Google reviews are shown newest first. Select any Google review to view its source.</p></div>;
+}
 function embedUrl(value) {
   try {
     const url = new URL(value);
@@ -1586,7 +1620,7 @@ export function DiscoveryCallPage() {
     p = site?.publicSite || {},
     workspaceName = site?.branding?.publicSiteName || site?.workspace?.name || "us",
     programs = site?.programs || [],
-    testimonials = site?.featuredTestimonials || [],
+    testimonials = site?.discoveryReviews || site?.featuredTestimonials || [],
     faqs = p.faqItems || [];
   const [availability, setAvailability] = useState(null),
     [selectedDay, setSelectedDay] = useState(""),
@@ -1798,7 +1832,7 @@ export function DiscoveryCallPage() {
           <button className="public-button" type="button" onClick={() => beginBooking()}>Choose your program and time <FiArrowRight /></button>
         </section>
 
-        {testimonials.length ? <section className="discovery-proof-section"><div className="discovery-section-heading"><p className="public-kicker">Student perspectives</p><h2>Hear from people who chose to move forward.</h2></div><Testimonials rows={testimonials} /></section> : null}
+        {testimonials.length ? <section className="discovery-proof-section"><div className="discovery-section-heading"><p className="public-kicker">Real experiences</p><h2>{testimonials.some((row) => row.source === "google_business_profile") ? "What people are saying on Google" : "Hear from people who chose to move forward."}</h2></div><ReviewMarquee rows={testimonials} /></section> : null}
 
         {faqs.length ? <section className="discovery-faq-section"><div className="discovery-section-heading"><p className="public-kicker">Before you book</p><h2>Questions about the discovery call</h2></div><div className="discovery-faq-list">{faqs.slice(0, 6).map((item) => <details key={item.question}><summary>{item.question}</summary><p>{item.answer}</p></details>)}</div></section> : null}
 
