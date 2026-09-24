@@ -202,8 +202,8 @@ export const fetchAutomationExecutions = (params = {}) =>
     .then((res) => res.data.data);
 export const retryAutomationExecution = (id) =>
   api.post(`/automations/executions/${id}/retry`).then((res) => res.data.data);
-export const fetchGrowthAnalytics = () =>
-  api.get("/analytics/growth").then((res) => res.data.data);
+export const fetchGrowthAnalytics = (filters = {}) =>
+  api.get("/analytics/growth", { params: filters }).then((res) => res.data.data);
 
 api.interceptors.request.use((config) => {
   const csrfToken = sessionStorage.getItem("ellie-csrf-token");

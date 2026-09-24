@@ -4,12 +4,46 @@ const SOCIAL_PROVIDERS=["instagram","facebook"];
 const money=(value)=>Math.round((Number(value)||0)*100)/100; const rate=(a,b)=>b?Math.round(a/b*1000)/10:0;
 function sourceFor(contact){return contact?.socialAttribution?.first?.provider||contact?.sourceProvider||contact?.sources?.[0]||"organic/direct";}
 function group(rows,keyFn,valueFn=()=>1){const map=new Map();for(const row of rows){const key=keyFn(row)||"unknown";map.set(String(key),(map.get(String(key))||0)+valueFn(row));}return[...map].map(([key,value])=>({key,value})).sort((a,b)=>b.value-a.value);}
-async function getAnalytics(workspaceId,models=deps){
+async function getAnalytics(workspaceId,models=deps,filters={}){
  const scope=workspaceId?{workspaceId}:{};
- const [contacts,opportunities,enrollments,assignments,sessions,handoffs,programs,coaches,referrals,commissions,purchases,messages,deliveryEvents,jobs,campaigns,automations,socialThreads,providerEvents,socialContentBriefs]=await Promise.all([
-  models.Contact.find(scope).lean(),models.SalesOpportunity.find(scope).lean(),models.Enrollment.find(scope).lean(),models.CoachAssignment.find(scope).lean(),models.CoachingSession.find(scope).lean(),models.CoachingHandoff.find(scope).lean(),models.CoachingProgram.find(scope).lean(),models.CoachProfile.find(scope).lean(),models.ReferralAttribution.find(scope).lean(),models.CommissionLedger.find(scope).lean(),models.SkoolPurchase.find(scope).lean(),models.ConversationMessage.find(scope).lean(),models.MessageDeliveryEvent.find(scope).lean(),models.CommunicationJob.find(scope).lean(),models.MarketingCampaign.find(scope).lean(),
+ const contactScope={...scope};
+ if(filters.startDate||filters.endDate){
+  contactScope.createdAt={};
+  if(filters.startDate)contactScope.createdAt.$gte=new Date(filters.startDate);
+  if(filters.endDate){const end=new Date(filters.endDate);end.setUTCHours(23,59,59,999);contactScope.createdAt.$lte=end;}
+ }
+ let [contacts,opportunities,enrollments,assignments,sessions,handoffs,programs,coaches,referrals,commissions,purchases,messages,deliveryEvents,jobs,campaigns,automations,socialThreads,providerEvents,socialContentBriefs]=await Promise.all([
+  models.Contact.find(contactScope).lean(),models.SalesOpportunity.find(scope).lean(),models.Enrollment.find(scope).lean(),models.CoachAssignment.find(scope).lean(),models.CoachingSession.find(scope).lean(),models.CoachingHandoff.find(scope).lean(),models.CoachingProgram.find(scope).lean(),models.CoachProfile.find(scope).lean(),models.ReferralAttribution.find(scope).lean(),models.CommissionLedger.find(scope).lean(),models.SkoolPurchase.find(scope).lean(),models.ConversationMessage.find(scope).lean(),models.MessageDeliveryEvent.find(scope).lean(),models.CommunicationJob.find(scope).lean(),models.MarketingCampaign.find(scope).lean(),
   models.SocialAutomation.find(scope).lean(),models.ConversationThread.find({...scope,channel:{$in:SOCIAL_PROVIDERS}}).lean(),models.SocialProviderEvent.find(scope).lean(),models.ContentBrief.find({...scope,type:"social"}).lean(),
  ]);
+ // Date range narrows the Contact query itself (contactScope above, the
+ // cheapest and most direct filter). "source" is a derived value (see
+ // sourceFor) with no single indexed field, and "offer" needs the
+ // just-fetched enrollments to know which contacts are on that program, so
+ // both run in memory against the contacts just fetched. Every other
+ // collection below is then cut down to this same contact cohort's ids, so
+ // every line of arithmetic further down this function — funnel, revenue,
+ // attribution, social funnel, coaching stats — runs completely unchanged;
+ // only what feeds into it narrows. Pure lookup/reference data (programs,
+ // coaches, campaigns, automations, content briefs) is deliberately left
+ // unfiltered since those are name lookups, not dated events, and
+ // commissions/assignments are left unfiltered too since they're workspace-
+ // level operational figures rather than per-lead cohort ones.
+ if(filters.source)contacts=contacts.filter(c=>sourceFor(c)===filters.source);
+ if(filters.coachingProgramId){
+  const programContactIds=new Set(enrollments.filter(e=>String(e.coachingProgramId)===String(filters.coachingProgramId)).map(e=>String(e.contactId)));
+  contacts=contacts.filter(c=>programContactIds.has(String(c._id)));
+ }
+ if(filters.startDate||filters.endDate||filters.source||filters.coachingProgramId){
+  const cohortIds=new Set(contacts.map(c=>String(c._id)));
+  opportunities=opportunities.filter(o=>cohortIds.has(String(o.primaryContactId)));
+  enrollments=enrollments.filter(e=>cohortIds.has(String(e.contactId)));
+  sessions=sessions.filter(s=>cohortIds.has(String(s.contactId)));
+  purchases=purchases.filter(p=>cohortIds.has(String(p.contactId)));
+  messages=messages.filter(m=>cohortIds.has(String(m.contactId)));
+  jobs=jobs.filter(j=>cohortIds.has(String(j.contactId)));
+  referrals=referrals.filter(r=>cohortIds.has(String(r.contactId)));
+ }
  const contactMap=new Map(contacts.map(c=>[String(c._id),c])); const programMap=new Map(programs.map(p=>[String(p._id),p])); const coachMap=new Map(coaches.map(c=>[String(c._id),c])); const campaignMap=new Map(campaigns.map(c=>[String(c._id),c]));
  const won=opportunities.filter(o=>o.wonAt||o.stageKey==="won"),lost=opportunities.filter(o=>o.lostAt||o.stageKey==="lost"); const applications=contacts.filter(c=>c.additionalFields?.applicationCompletedAt||c.tags?.includes("application-completed")); const qualified=contacts.filter(c=>c.qualifyContact||["qualified","proposal"].includes(c.stage)); const booked=sessions.filter(s=>s.status!=="cancelled"); const attended=sessions.filter(s=>s.zoom?.attendance?.state==="attended");
  const funnel=[{key:"leads",value:contacts.length},{key:"applications",value:applications.length},{key:"qualified",value:qualified.length},{key:"calls_booked",value:booked.length},{key:"calls_attended",value:attended.length},{key:"closed_won",value:won.length},{key:"closed_lost",value:lost.length},{key:"enrollments",value:enrollments.length},{key:"active_students",value:enrollments.filter(e=>e.status==="active").length},{key:"alumni",value:enrollments.filter(e=>e.status==="completed").length}];
@@ -64,6 +98,6 @@ async function getAnalytics(workspaceId,models=deps){
  const communication={email:{sent:messages.filter(m=>m.channel==="email"&&m.direction==="outbound").length,delivered:deliveryEvents.filter(e=>e.provider==="resend"&&e.status==="delivered").length,opened:deliveryEvents.filter(e=>e.provider==="resend"&&["opened","email.opened"].includes(e.status)).length,clicked:deliveryEvents.filter(e=>e.provider==="resend"&&["clicked","email.clicked"].includes(e.status)).length,bounced:deliveryEvents.filter(e=>e.provider==="resend"&&e.status.includes("bounce")).length},sms:{sent:messages.filter(m=>m.channel==="sms"&&m.direction==="outbound").length,delivered:deliveryEvents.filter(e=>e.provider==="twilio"&&e.status==="delivered").length,replies:messages.filter(m=>m.channel==="sms"&&m.direction==="inbound").length},blocked:jobs.filter(j=>j.status==="blocked").length,reminders:{sent:jobs.filter(j=>j.kind==="session_reminder"&&j.status==="sent").length,blocked:jobs.filter(j=>j.kind==="session_reminder"&&j.status==="blocked").length},campaigns:campaigns.map(c=>({id:c._id,name:c.name,status:c.status,...(c.metrics||{})}))};
  const noShowSessions=sessions.filter(s=>s.zoom?.attendance?.state==="no_show"); const coaching={activeStudents:enrollments.filter(e=>e.status==="active").length,studentsPerCoach:group(assignments.filter(a=>["active","scheduled"].includes(a.status)),a=>coachMap.get(String(a.coachProfileId))?.displayName||"unknown"),upcomingAssignments:assignments.filter(a=>a.status==="scheduled").length,completedAssignments:assignments.filter(a=>a.status==="completed").length,handoffs:handoffs.length,attendance:{attended:attended.length,noShows:noShowSessions.length,unknown:sessions.filter(s=>s.zoom?.attendance?.state==="unknown").length},noShowStudents:noShowSessions.slice(0,25).map(s=>({contactId:s.contactId,name:contactMap.get(String(s.contactId))?.name||"Unknown student",startsAt:s.startsAt})),programEnrollments:group(enrollments,e=>programMap.get(String(e.coachingProgramId))?.name||e.programSnapshot?.name||"unknown"),programCompletions:group(enrollments.filter(e=>e.status==="completed"),e=>programMap.get(String(e.coachingProgramId))?.name||e.programSnapshot?.name||"unknown")};
  communication.failures=jobs.filter(j=>["failed","blocked"].includes(j.status)).slice(0,25).map(j=>({id:j._id,status:j.status,channel:j.channel,reason:j.blockReason||"",contactId:j.contactId}));
- return{generatedAt:new Date(),funnel:{stages:funnel,conversions},socialFunnel,attribution:{bySource:attribution,byCampaign,byContent,byCoachReferral:byReferral,social:attribution.filter(r=>["instagram","facebook","tiktok","linkedin","x"].includes(r.source))},revenue:{closedWon:money(closedWonRevenue),contractedRevenue:money(closedWonRevenue),cashCollected:money(cashCollectedTotal),outstandingBalance:money(outstandingBalance),programRevenue:money(programRevenue),addonRevenue:money(addonRevenue),referralGenerated:money(referralRevenue),commissionExpense:money(commissionExpense),customerLifetimeValue:uniqueCustomers?money((closedWonRevenue+addonRevenue)/uniqueCustomers):0,total:money(closedWonRevenue+addonRevenue),monthly:monthlyRevenue,ytd:money(ytdRevenue),target:{year:REVENUE_TARGET_YEAR,amount:REVENUE_TARGET_AMOUNT,progressPercent:REVENUE_TARGET_AMOUNT?Math.round((ytdRevenue/REVENUE_TARGET_AMOUNT)*1000)/10:0}},coaching,referrals:{total:referrals.length,pendingCommission:money(commissions.filter(c=>c.status==="pending").reduce((s,c)=>s+Number(c.commissionAmountMinor||0)/100,0)),paidCommission:money(commissions.filter(c=>c.status==="paid").reduce((s,c)=>s+Number(c.commissionAmountMinor||0)/100,0)),byCoach:byReferral},communication};
+ return{generatedAt:new Date(),appliedFilters:{startDate:filters.startDate||null,endDate:filters.endDate||null,coachingProgramId:filters.coachingProgramId||null,source:filters.source||null},filterOptions:{programs:programs.map(p=>({id:String(p._id),name:p.name})),sources:attribution.map(r=>r.source)},funnel:{stages:funnel,conversions},socialFunnel,attribution:{bySource:attribution,byCampaign,byContent,byCoachReferral:byReferral,social:attribution.filter(r=>["instagram","facebook","tiktok","linkedin","x"].includes(r.source))},revenue:{closedWon:money(closedWonRevenue),contractedRevenue:money(closedWonRevenue),cashCollected:money(cashCollectedTotal),outstandingBalance:money(outstandingBalance),programRevenue:money(programRevenue),addonRevenue:money(addonRevenue),referralGenerated:money(referralRevenue),commissionExpense:money(commissionExpense),customerLifetimeValue:uniqueCustomers?money((closedWonRevenue+addonRevenue)/uniqueCustomers):0,total:money(closedWonRevenue+addonRevenue),monthly:monthlyRevenue,ytd:money(ytdRevenue),target:{year:REVENUE_TARGET_YEAR,amount:REVENUE_TARGET_AMOUNT,progressPercent:REVENUE_TARGET_AMOUNT?Math.round((ytdRevenue/REVENUE_TARGET_AMOUNT)*1000)/10:0}},coaching,referrals:{total:referrals.length,pendingCommission:money(commissions.filter(c=>c.status==="pending").reduce((s,c)=>s+Number(c.commissionAmountMinor||0)/100,0)),paidCommission:money(commissions.filter(c=>c.status==="paid").reduce((s,c)=>s+Number(c.commissionAmountMinor||0)/100,0)),byCoach:byReferral},communication};
 }
 module.exports={getAnalytics,group,sourceFor,_deps:deps};

@@ -22,12 +22,35 @@ function MetricTable({ title, rows, columns, note }) { return <DashboardCard tit
 function FunnelVisual({ rows }) { const max = Math.max(...rows.map((row) => Number(row.value || 0)), 1); return <DashboardCard title="Funnel at a glance" className="analytics-visual-card"><div className="analytics-funnel-visual">{rows.slice(0, 6).map((row) => <div key={row.key}><span>{label(row.key)}</span><div><i style={{ width: `${Math.max(3, Number(row.value || 0) / max * 100)}%` }} /></div><strong>{Number(row.value || 0).toLocaleString()}</strong></div>)}</div></DashboardCard>; }
 function SourceVisual({ rows }) { const visible = rows.slice(0, 6), max = Math.max(...visible.map((row) => Number(row.leads || 0)), 1); return <DashboardCard title="Lead-source mix" className="analytics-visual-card"><div className="analytics-source-visual">{visible.length ? visible.map((row) => <div key={row.source}><span>{PlatformLabel(row.source)}</span><div><i style={{ width: `${Math.max(3, Number(row.leads || 0) / max * 100)}%` }} /></div><strong>{row.percentOfLeads}%</strong></div>) : <p>No source attribution yet.</p>}</div></DashboardCard>; }
 
+const emptyFilters = { startDate: "", endDate: "", coachingProgramId: "", source: "" };
+function FilterBar({ filters, setFilters, options, loading }) {
+  const active = Object.values(filters).some(Boolean);
+  return <DashboardCard title="Filter this view" className="analytics-filter-bar">
+    <div className="analytics-filter-row">
+      <label>From<input type="date" value={filters.startDate} onChange={(e) => setFilters({ ...filters, startDate: e.target.value })} /></label>
+      <label>To<input type="date" value={filters.endDate} onChange={(e) => setFilters({ ...filters, endDate: e.target.value })} /></label>
+      <label>Offer<select value={filters.coachingProgramId} onChange={(e) => setFilters({ ...filters, coachingProgramId: e.target.value })}><option value="">All offers</option>{(options?.programs || []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label>
+      <label>Source<select value={filters.source} onChange={(e) => setFilters({ ...filters, source: e.target.value })}><option value="">All sources</option>{(options?.sources || []).map((s) => <option key={s} value={s}>{label(s)}</option>)}</select></label>
+      {active ? <button type="button" className="analytics-filter-clear" onClick={() => setFilters(emptyFilters)}>Clear filters</button> : null}
+    </div>
+    {loading ? <p className="analytics-table-note">Updating…</p> : null}
+  </DashboardCard>;
+}
+
 export default function Analytics() {
   const [data, setData] = useState(null); const [error, setError] = useState("");
-  useEffect(() => { let active = true; fetchGrowthAnalytics().then((value) => { if (active) setData(value); }).catch(() => { if (active) setError("Growth analytics could not be loaded."); }); return () => { active = false; }; }, []);
+  const [filters, setFilters] = useState(emptyFilters); const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    let active = true;
+    setLoading(Boolean(data));
+    fetchGrowthAnalytics(filters).then((value) => { if (active) { setData(value); setError(""); } }).catch(() => { if (active) setError("Growth analytics could not be loaded."); }).finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filters.startDate, filters.endDate, filters.coachingProgramId, filters.source]);
   if (!data) return <div className="page-dashboard analytics-page"><h1 className="page-title">Analytics</h1><p>{error || "Loading canonical Lead Porch analytics…"}</p></div>;
   const won = data.funnel.stages.find((item) => item.key === "closed_won")?.value || 0;
   return <div className="page-dashboard analytics-page"><div className="page-header"><div><p className="page-eyebrow">Growth intelligence</p><h1 className="page-title">Analytics</h1><p className="page-subtitle">Sales, marketing, coaching, revenue, communications, referrals, and social attribution from canonical records.</p></div><span className="analytics-health is-healthy">Canonical data · {new Date(data.generatedAt).toLocaleString()}</span></div>
+    <FilterBar filters={filters} setFilters={setFilters} options={data.filterOptions} loading={loading} />
     <h2>Executive overview</h2><section className="analytics-metrics"><DashboardCard title="Tracked revenue"><strong>{currency(data.revenue.total)}</strong><span>closed won + add-ons</span></DashboardCard><DashboardCard title="Active students"><strong>{data.coaching.activeStudents}</strong><span>active enrollments</span></DashboardCard><DashboardCard title="Closed won"><strong>{won}</strong><span>{currency(data.revenue.closedWon)}</span></DashboardCard><DashboardCard title="Pending commission"><strong>{currency(data.referrals.pendingCommission)}</strong><span>immutable ledger</span></DashboardCard><DashboardCard title="Communication blocks"><strong>{data.communication.blocked}</strong><span>policy-visible jobs</span></DashboardCard></section>
     <section className="analytics-visual-grid"><FunnelVisual rows={data.funnel.stages} /><SourceVisual rows={data.attribution.bySource} /></section>
     <section className="analytics-section-grid"><MetricTable title="Sales funnel" rows={data.funnel.stages} columns={[{key:"key",label:"Stage",format:label},{key:"value",label:"Count"}]} /><MetricTable title="Conversion rates" rows={data.funnel.conversions.map((row)=>({...row,key:`${row.from}-${row.to}`}))} columns={[{key:"from",label:"From",format:label},{key:"to",label:"To",format:label},{key:"rate",label:"Rate",format:(value)=>`${value}%`}]} /></section>
