@@ -47,6 +47,7 @@ const socialAutomationRouter = require("./routes/socialAutomation");
 const automationsRouter = require("./routes/automations");
 const analyticsRouter = require("./routes/analytics");
 const coachingRouter = require("./routes/coaching");
+const contractsRouter = require("./routes/contracts");
 const publicSiteRouter = require("./routes/publicSite");
 const publicManagementRouter = require("./routes/publicManagement");
 const meetupRouter = require("./routes/meetup");
@@ -222,6 +223,7 @@ connectDatabase(mongoUri)
     app.use("/api/activities", activitiesRouter);
     app.use("/api/opportunities", opportunitiesRouter);
     app.use("/api/coaching", coachingRouter);
+    app.use("/api/contracts", contractsRouter);
     app.use("/api/ambassadors", ambassadorsRouter);
     app.use("/api/conversations", conversationsRouter);
     app.use("/api/telephony", telephonyRouter);

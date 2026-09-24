@@ -70,6 +70,7 @@ const CoachingReferrals = lazyWithRetry(() => import("./pages/CoachingAdmin.jsx"
 const CoachingCommissions = lazyWithRetry(() => import("./pages/CoachingAdmin.jsx").then((module) => ({ default: module.CoachingCommissions })));
 const CoachingSessions = lazyWithRetry(() => import("./pages/CoachingAdmin.jsx").then((module) => ({ default: module.CoachingSessions })));
 const CoachingCommunications = lazyWithRetry(() => import("./pages/CoachingAdmin.jsx").then((module) => ({ default: module.CoachingCommunications })));
+const CoachingContracts = lazyWithRetry(() => import("./pages/CoachingAdmin.jsx").then((module) => ({ default: module.CoachingContracts })));
 const CoachDashboard = lazyWithRetry(() => import("./pages/CoachPortal.jsx").then((module) => ({ default: module.CoachDashboard })));
 const CoachStudents = lazyWithRetry(() => import("./pages/CoachPortal.jsx").then((module) => ({ default: module.CoachStudents })));
 const CoachStudentDetail = lazyWithRetry(() => import("./pages/CoachPortal.jsx").then((module) => ({ default: module.CoachStudentDetail })));
@@ -217,6 +218,7 @@ function ProtectedApp() {
             <Route path="/coaching/communications" element={<CoachingCommunications />} />
             <Route path="/coaching/referrals" element={<CoachingReferrals />} />
             <Route path="/coaching/commissions" element={<CoachingCommissions />} />
+            <Route path="/coaching/contracts" element={<CoachingContracts />} />
           </> : null}
           {mayUseCoachPortal ? <>
             <Route path="/coach" element={<CoachDashboard />} />

@@ -30,7 +30,8 @@ const IntegrationConnectionSchema = new mongoose.Schema(
         "skool",
         "twilio",
         "hubspot",
-        "salesforce"
+        "salesforce",
+        "docusign"
       ],
       index: true,
     },
