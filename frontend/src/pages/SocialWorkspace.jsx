@@ -576,15 +576,13 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                   <div className="social-panel">
                     <h3>Performance by post</h3>
                     <p>
-                      Every post with at least one real comment or DM —
-                      "Interactions" is CRM activity (comments/DMs that
-                      created a lead record); Likes/Comments/Shares are the
-                      real engagement numbers Meta reports for the post
-                      itself, whether or not anyone commented.
+                      Real Meta engagement for the post itself (Likes,
+                      Comments, Shares), alongside what it actually produced
+                      in your CRM (Interactions, Leads, Sales).
                     </p>
                     {growth.socialFunnel.byPost?.length ? (
-                      (() => {
-                        const enriched = growth.socialFunnel.byPost.map((post) => {
+                      <div className="social-post-card-grid">
+                        {growth.socialFunnel.byPost.map((post) => {
                           const meta = post.providers.reduce(
                             (sum, provider) => {
                               const row = postEngagement[`${post.contentBriefId}:${provider}`];
@@ -596,76 +594,50 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                             },
                             { likes: 0, comments: 0, shares: 0 },
                           );
-                          return { ...post, meta };
-                        });
-                        const maxEngagement = Math.max(1, ...enriched.map((post) => post.meta.likes + post.meta.comments + post.meta.shares));
-                        return (
-                          <>
-                            <div className="social-post-engagement-bars">
-                              {enriched.map((post) => {
-                                const total = post.meta.likes + post.meta.comments + post.meta.shares;
-                                return (
-                                  <div className="social-post-engagement-row" key={post.contentBriefId}>
-                                    <span className="social-post-engagement-row__label" title={post.title}>{post.title}</span>
-                                    <div className="social-post-engagement-row__track">
-                                      <div
-                                        className="social-post-engagement-row__fill"
-                                        style={{ width: `${Math.max(total ? (total / maxEngagement) * 100 : 1.5, 1.5)}%` }}
-                                      />
-                                    </div>
-                                    <span className="social-post-engagement-row__value">
-                                      {total} engagement{total === 1 ? "" : "s"}
-                                    </span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                            <div style={{ overflowX: "auto" }}>
-                              <table className="analytics-table">
-                                <thead>
-                                  <tr>
-                                    <th>Post</th>
-                                    <th>Platform</th>
-                                    <th>Likes</th>
-                                    <th>Comments</th>
-                                    <th>Shares</th>
-                                    <th>Interactions</th>
-                                    <th>Leads</th>
-                                    <th>Sales</th>
-                                    <th>Revenue</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {enriched.map((post) => (
-                                    <tr key={post.contentBriefId}>
-                                      <th>{post.title}</th>
-                                      <td>
-                                        {post.providers.map((provider) => {
-                                          const Icon = PLATFORM_ICONS[provider];
-                                          return Icon ? (
-                                            <Icon
-                                              key={provider}
-                                              title={human(provider)}
-                                              style={{ marginRight: 4 }}
-                                            />
-                                          ) : null;
-                                        })}
-                                      </td>
-                                      <td>{post.meta.likes || "—"}</td>
-                                      <td>{post.meta.comments || "—"}</td>
-                                      <td>{post.meta.shares || "—"}</td>
-                                      <td>{post.interactions}</td>
-                                      <td>{post.leads}</td>
-                                      <td>{post.sales}</td>
-                                      <td>{currency(post.revenue)}</td>
-                                    </tr>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </>
-                        );
-                      })()
+                          return (
+                            <article className="social-post-card" key={post.contentBriefId}>
+                              <header>
+                                <span className="social-post-card__platforms">
+                                  {post.providers.map((provider) => {
+                                    const Icon = PLATFORM_ICONS[provider];
+                                    return Icon ? <Icon key={provider} title={human(provider)} /> : null;
+                                  })}
+                                </span>
+                                <strong title={post.title}>{post.title}</strong>
+                              </header>
+                              <div className="social-post-card__stats">
+                                <div>
+                                  <dt>Likes</dt>
+                                  <dd>{meta.likes || 0}</dd>
+                                </div>
+                                <div>
+                                  <dt>Comments</dt>
+                                  <dd>{meta.comments || 0}</dd>
+                                </div>
+                                <div>
+                                  <dt>Shares</dt>
+                                  <dd>{meta.shares || 0}</dd>
+                                </div>
+                                <div>
+                                  <dt>Interactions</dt>
+                                  <dd>{post.interactions}</dd>
+                                </div>
+                                <div>
+                                  <dt>Leads</dt>
+                                  <dd>{post.leads}</dd>
+                                </div>
+                                <div>
+                                  <dt>Sales</dt>
+                                  <dd>{post.sales}</dd>
+                                </div>
+                              </div>
+                              {post.revenue > 0 ? (
+                                <span className="social-post-card__revenue">{currency(post.revenue)} revenue</span>
+                              ) : null}
+                            </article>
+                          );
+                        })}
+                      </div>
                     ) : (
                       <p>
                         No individual post has a recorded comment or DM yet.
