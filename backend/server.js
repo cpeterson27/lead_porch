@@ -72,6 +72,7 @@ const { startCampaignSendScheduler, startApprovedOutreachSweep } = require("./se
 const { startCommentSyncRunner } = require("./services/socialCommentSyncRunner");
 const { startResearchScheduledSearchRunner } = require("./services/researchScheduledSearchRunner");
 const { startPaymentReminderRunner } = require("./services/paymentReminderService");
+const { startEventReminderRunner } = require("./services/eventReminderService");
 const { startAutomationRunner } = require("./services/automationRunner");
 const { startSocialPublishingRunner } = require("./services/socialPublishingRunner");
 const { startPublicWebDiscoveryRunner } = require("./services/publicWebDiscoveryEngineService");
@@ -324,6 +325,7 @@ connectDatabase(mongoUri)
       startMonitorRetentionRunner();
       startCommunicationJobRunner();
       startPaymentReminderRunner();
+      startEventReminderRunner();
       startCampaignSendScheduler();
       startApprovedOutreachSweep();
       startCommentSyncRunner();

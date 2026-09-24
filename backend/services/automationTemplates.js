@@ -27,5 +27,6 @@ const templates = Object.freeze([
     { type: "communication.email", delayMinutes: 20160, config: { purpose: "marketing", subject: "[PLACEHOLDER] Know someone who'd love this program?", body: "[PLACEHOLDER COPY — replace with Ellie's voice] Hi {{contact.firstName}}, if you know someone who could use the same support you just got, we'd love an introduction." } },
     { type: "communication.email", delayMinutes: 43200, config: { purpose: "marketing", subject: "[PLACEHOLDER] Your next step", body: "[PLACEHOLDER COPY — replace with Ellie's voice] Hi {{contact.firstName}}, now that you've completed the program, here's a next step to keep building on what you learned." } },
   ] },
+  { key: "event_reminder", name: "Event/webinar reminder", description: "Remind a registered contact as an Eventbrite/Meetup event they registered for approaches (within 24 hours by default).", trigger: { eventType: "event.reminder_due" }, conditions: [], actions: [{ type: "communication.email", config: { purpose: "marketing", subject: "[PLACEHOLDER] See you soon!", body: "[PLACEHOLDER COPY — replace with Ellie's voice] Hi {{contact.firstName}}, just a reminder that the event you registered for is coming up soon. We're looking forward to seeing you there." } }] },
 ]);
 module.exports = { templates };
