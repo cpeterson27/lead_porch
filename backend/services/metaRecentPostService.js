@@ -219,4 +219,48 @@ async function syncPostComments({ workspaceId, provider, assetId, postId }, deps
   return { synced, ignored };
 }
 
-module.exports = { recentPosts, postContext, postEngagement, postCommentIds, commentLikeStatus, syncPostComments };
+// Same idea as syncPostComments, for DMs: confirmed live that Meta's own
+// webhook has never once delivered a message event for this workspace, but
+// asking directly for the Page's conversations (with platform=instagram for
+// a Page-linked Instagram Business Account, nothing for Facebook Messenger)
+// does return real, current data — so this pulls the same information a
+// webhook would have pushed, on a timer, via metaCommentSyncRunner's DM
+// sibling. Only inbound messages are synced (routed through the same
+// contact-resolution pipeline a live webhook uses via ingestMetaMessage) —
+// an outbound message sent through Lead Porch is already recorded when it's
+// sent, and Lead Porch does not attempt to mirror in a reply made directly
+// from the native Facebook/Instagram app.
+async function syncPageMessages({ workspaceId, provider, assetId }, deps = dependencies) {
+  if (!workspaceId || !["facebook", "instagram"].includes(provider) || !clean(assetId)) return { synced: 0, ignored: 0 };
+  const resolved = await resolveAsset({ workspaceId, provider, assetId }, deps);
+  if (!resolved) return { synced: 0, ignored: 0, error: "Reconnect this social account to sync messages" };
+  const { connection, asset, token, version } = resolved;
+  const pageId = asset.type === "instagram_business" ? asset.parentId : asset.id;
+  const params = { fields: "id,updated_time,participants,messages.limit(25){id,message,from,created_time}", access_token: token };
+  if (provider === "instagram") params.platform = "instagram";
+  let response;
+  try {
+    response = await deps.http.get(`https://graph.facebook.com/${version}/${encodeURIComponent(pageId)}/conversations`, { params, timeout: 15000 });
+  } catch (error) {
+    return { synced: 0, ignored: 0, error: "Meta could not confirm this account's conversations right now" };
+  }
+  const { ingestMetaMessage } = require("./conversations/metaMessagingAdapter");
+  let synced = 0, ignored = 0;
+  for (const conversation of response.data?.data || []) {
+    for (const message of conversation.messages?.data || []) {
+      if (String(message.from?.id || "") === String(assetId)) continue;
+      const event = {
+        sender: { id: message.from?.id },
+        recipient: { id: assetId },
+        timestamp: new Date(message.created_time).getTime(),
+        message: { mid: message.id, text: message.message },
+      };
+      const result = await ingestMetaMessage({ connection, assetId, event, entryTime: Date.now() });
+      if (result?.ignored || result?.duplicate) ignored += 1;
+      else synced += 1;
+    }
+  }
+  return { synced, ignored };
+}
+
+module.exports = { recentPosts, postContext, postEngagement, postCommentIds, commentLikeStatus, syncPostComments, syncPageMessages };

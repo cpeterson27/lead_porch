@@ -1,8 +1,10 @@
 const ContentBrief = require("../models/ContentBrief");
+const SocialConnection = require("../models/SocialConnection");
 const { runWithWorkspace } = require("../tenancy/workspaceContext");
 
 let timer = null;
 let running = false;
+let messagesRunning = false;
 
 // Meta will not deliver a live webhook for a comment on this connection type
 // (confirmed live: a Page-linked Instagram Business Account has no working
@@ -53,10 +55,62 @@ async function runDueCommentSync() {
   }
 }
 
+// Same reasoning as comments (see above), applied to DMs — Meta's webhook
+// has never once delivered a message event for this workspace either, but a
+// direct pull of the Page's own conversations does return real data, so
+// this asks for it on the same timer instead of waiting on a webhook that
+// will not arrive. Runs across every connected Meta/Instagram connection in
+// every workspace, not just ones with recent posts (a DM has no post to
+// anchor a "recently published" window to).
+async function runDueMessageSync() {
+  if (messagesRunning) return { checked: 0, synced: 0 };
+  messagesRunning = true;
+  try {
+    const connections = await SocialConnection.find({
+      provider: { $in: ["meta", "instagram"] },
+      status: "connected",
+    }).select("workspaceId provider assets selectedAssetIds");
+    let checked = 0, synced = 0;
+    for (const connection of connections) {
+      const targets = (connection.assets || []).filter(
+        (asset) =>
+          ["facebook_page", "instagram_business"].includes(asset.type) &&
+          (connection.selectedAssetIds || []).map(String).includes(String(asset.id)),
+      );
+      if (!targets.length) continue;
+      await runWithWorkspace(connection.workspaceId, async () => {
+        const metaRecentPostService = require("./metaRecentPostService");
+        for (const asset of targets) {
+          const provider = asset.type === "instagram_business" ? "instagram" : "facebook";
+          checked += 1;
+          try {
+            const result = await metaRecentPostService.syncPageMessages({
+              workspaceId: connection.workspaceId,
+              provider,
+              assetId: asset.id,
+            });
+            synced += result?.synced || 0;
+          } catch (error) {
+            console.error("Message sync poll failed for an account:", { connectionId: String(connection._id), provider, message: error.message });
+          }
+        }
+      });
+    }
+    return { checked, synced };
+  } finally {
+    messagesRunning = false;
+  }
+}
+
+async function runDueSocialSync() {
+  const [comments, messages] = await Promise.all([runDueCommentSync(), runDueMessageSync()]);
+  return { comments, messages };
+}
+
 function startCommentSyncRunner({ force = false } = {}) {
   if (timer || (!force && process.env.COMMUNICATION_WORKER_MODE === "external")) return timer;
   const interval = Math.max(60000, Number(process.env.COMMENT_SYNC_INTERVAL_MS) || 3 * 60000);
-  timer = setInterval(() => runDueCommentSync().catch((error) => console.error("Comment sync runner failed:", error.message)), interval);
+  timer = setInterval(() => runDueSocialSync().catch((error) => console.error("Comment sync runner failed:", error.message)), interval);
   timer.unref?.();
   return timer;
 }
@@ -66,4 +120,4 @@ function stopCommentSyncRunner() {
   timer = null;
 }
 
-module.exports = { runDueCommentSync, startCommentSyncRunner, stopCommentSyncRunner };
+module.exports = { runDueCommentSync, runDueMessageSync, runDueSocialSync, startCommentSyncRunner, stopCommentSyncRunner };
