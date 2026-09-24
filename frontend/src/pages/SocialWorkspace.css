@@ -822,76 +822,116 @@
   }
 }
 
-/* ── Social CTA analytics ────────────────────────────────────────────────── */
-.social-funnel-chart {
-  margin-top: 6px;
-}
-
-.social-funnel-tooltip {
-  background: var(--color-surface-raised);
-  border: 1px solid var(--color-border);
-  border-radius: 10px;
-  padding: 8px 12px;
-  box-shadow: var(--shadow-md);
+/* ── Social CTA analytics: funnel as proportional horizontal bars ───────── */
+.social-funnel-bars {
   display: grid;
-  gap: 2px;
+  gap: 12px;
+  margin-top: 10px;
 }
 
-.social-funnel-tooltip strong {
-  font-size: 0.85rem;
+.social-funnel-bar-row {
+  display: grid;
+  grid-template-columns: 120px 1fr 90px;
+  align-items: center;
+  gap: 12px;
+}
+
+.social-funnel-bar-row__label {
+  font-size: 0.8rem;
+  font-weight: 650;
   color: var(--color-text);
 }
 
-.social-funnel-tooltip span {
-  font-size: 1.1rem;
+.social-funnel-bar-row__track {
+  position: relative;
+  height: 30px;
+  background: var(--color-surface-subtle);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.social-funnel-bar-row__fill {
+  height: 100%;
+  border-radius: 8px;
+  transition: width var(--transition-base);
+}
+
+.social-funnel-bar-row__value {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 0.8rem;
   font-weight: 760;
-  color: var(--color-brand);
-}
-
-.social-funnel-tooltip small {
-  color: var(--color-text-muted);
-  font-size: 0.72rem;
-}
-
-.social-funnel-detail {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px 18px;
-  margin-top: 16px;
-  padding-top: 16px;
-  border-top: 1px solid var(--color-border);
-}
-
-.social-funnel-detail__item {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.social-funnel-detail__dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: 0 0 8px;
-  align-self: center;
-}
-
-.social-funnel-detail__label {
-  color: var(--color-text-muted);
-  font-size: 0.76rem;
-}
-
-.social-funnel-detail__item strong {
-  font-size: 0.95rem;
   color: var(--color-text);
 }
 
-.social-funnel-detail__item small {
-  color: var(--color-text-subtle);
-  font-size: 0.68rem;
-  width: 100%;
-  padding-left: 14px;
+.social-funnel-bar-row__rate {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  text-align: right;
+}
+
+@media (max-width: 640px) {
+  .social-funnel-bar-row {
+    grid-template-columns: 90px 1fr;
+  }
+  .social-funnel-bar-row__rate {
+    grid-column: 1/-1;
+    text-align: left;
+  }
+}
+
+/* ── Performance by post: engagement bars above the detail table ────────── */
+.social-post-engagement-bars {
+  display: grid;
+  gap: 10px;
+  margin: 10px 0 18px;
+}
+
+.social-post-engagement-row {
+  display: grid;
+  grid-template-columns: 180px 1fr auto;
+  align-items: center;
+  gap: 10px;
+}
+
+.social-post-engagement-row__label {
+  font-size: 0.78rem;
+  color: var(--color-text);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.social-post-engagement-row__track {
+  height: 12px;
+  background: var(--color-surface-subtle);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.social-post-engagement-row__fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #f58529, #dd2a7b);
+}
+
+.social-post-engagement-row__value {
+  font-size: 0.72rem;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .social-post-engagement-row {
+    grid-template-columns: 1fr;
+    gap: 4px;
+  }
+  .social-post-engagement-row__value {
+    text-align: right;
+  }
 }
 
 .social-cta-highlight {

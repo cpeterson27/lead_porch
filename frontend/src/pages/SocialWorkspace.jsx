@@ -13,10 +13,7 @@ import {
   FaCircleQuestion,
 } from "react-icons/fa6";
 import {
-  FunnelChart,
-  Funnel,
   Cell,
-  LabelList,
   Tooltip as RechartsTooltip,
   ResponsiveContainer,
   PieChart,
@@ -94,18 +91,6 @@ const STATUS_META = {
   authorization_required: { icon: FaCircleQuestion, label: "Reconnect needed", tone: "pending_approval" },
   unavailable: { icon: FaCircleExclamation, label: "Unavailable", tone: "failed" },
 };
-function FunnelTooltip({ active, payload }) {
-  if (!active || !payload?.length) return null;
-  const row = payload[0]?.payload;
-  if (!row) return null;
-  return (
-    <div className="social-funnel-tooltip">
-      <strong>{row.name}</strong>
-      <span>{row.value}</span>
-      {row.rateLabel ? <small>{row.rateLabel}</small> : null}
-    </div>
-  );
-}
 export default function SocialWorkspace({ connectionsOnly = false, section: sectionProp }) {
   const { section: sectionParam = "overview" } = useParams();
   const section = sectionProp || sectionParam;
@@ -122,7 +107,8 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
     [pendingDeleteId, setPendingDeleteId] = useState(null),
     [deleting, setDeleting] = useState(false),
     [growth, setGrowth] = useState(null),
-    [growthError, setGrowthError] = useState("");
+    [growthError, setGrowthError] = useState(""),
+    [postEngagement, setPostEngagement] = useState({});
   const oauthStatus = connectionsOnly ? params.get("status") : "";
   const oauthProvider = params.get("social") || "social account";
   const providerName = oauthProvider === "meta" ? "Facebook + Instagram" : oauthProvider === "linkedin" ? "LinkedIn" : oauthProvider === "instagram" ? "Instagram" : oauthProvider === "x" ? "X" : "Social account";
@@ -187,6 +173,11 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
       .catch(() => {
         if (active) setGrowthError("CTA performance data could not be loaded.");
       });
+    fetchSocialWorkspace("analytics/post-engagement")
+      .then((value) => {
+        if (active) setPostEngagement(value.engagement || {});
+      })
+      .catch(() => {});
     return () => {
       active = false;
     };
@@ -446,42 +437,30 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                       lead, an application, a booked call, and an enrollment —
                       from real CRM and comment/DM activity.
                     </p>
-                    <div className="social-funnel-chart">
-                      <ResponsiveContainer width="100%" height={280}>
-                        <FunnelChart>
-                          <RechartsTooltip content={<FunnelTooltip />} />
-                          <Funnel dataKey="value" data={funnelData} isAnimationActive>
-                            <LabelList
-                              position="right"
-                              dataKey="name"
-                              fill="var(--color-text)"
-                              stroke="none"
-                              fontSize={13}
-                              fontWeight={700}
-                            />
-                            {funnelData.map((entry, index) => (
-                              <Cell key={entry.name} fill={FUNNEL_COLORS[index % FUNNEL_COLORS.length]} />
-                            ))}
-                          </Funnel>
-                        </FunnelChart>
-                      </ResponsiveContainer>
-                    </div>
-                    <div className="social-funnel-detail">
-                      {growth.socialFunnel.stages.map((stage, index) => (
-                        <div className="social-funnel-detail__item" key={stage.key}>
-                          <span
-                            className="social-funnel-detail__dot"
-                            style={{ background: FUNNEL_COLORS[index % FUNNEL_COLORS.length] }}
-                          />
-                          <span className="social-funnel-detail__label">
-                            {STAGE_LABELS[stage.key] || human(stage.key)}
-                          </span>
-                          <strong>{stage.value}</strong>
-                          {index > 0 ? (
-                            <small>{growth.socialFunnel.conversions[index - 1].rate}% conv.</small>
-                          ) : null}
-                        </div>
-                      ))}
+                    <div className="social-funnel-bars">
+                      {(() => {
+                        const maxValue = Math.max(1, ...funnelData.map((row) => row.value));
+                        return growth.socialFunnel.stages.map((stage, index) => (
+                          <div className="social-funnel-bar-row" key={stage.key}>
+                            <span className="social-funnel-bar-row__label">
+                              {STAGE_LABELS[stage.key] || human(stage.key)}
+                            </span>
+                            <div className="social-funnel-bar-row__track">
+                              <div
+                                className="social-funnel-bar-row__fill"
+                                style={{
+                                  width: `${Math.max(stage.value ? (stage.value / maxValue) * 100 : 2, 2)}%`,
+                                  background: FUNNEL_COLORS[index % FUNNEL_COLORS.length],
+                                }}
+                              />
+                              <strong className="social-funnel-bar-row__value">{stage.value}</strong>
+                            </div>
+                            <span className="social-funnel-bar-row__rate">
+                              {index > 0 ? `${growth.socialFunnel.conversions[index - 1].rate}% conv.` : ""}
+                            </span>
+                          </div>
+                        ));
+                      })()}
                     </div>
                   </div>
 
@@ -597,52 +576,96 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                   <div className="social-panel">
                     <h3>Performance by post</h3>
                     <p>
-                      Every post with at least one real comment or DM,
-                      individually — from the same live interaction records
-                      as the funnel above.
+                      Every post with at least one real comment or DM —
+                      "Interactions" is CRM activity (comments/DMs that
+                      created a lead record); Likes/Comments/Shares are the
+                      real engagement numbers Meta reports for the post
+                      itself, whether or not anyone commented.
                     </p>
                     {growth.socialFunnel.byPost?.length ? (
-                      <div style={{ overflowX: "auto" }}>
-                        <table className="analytics-table">
-                          <thead>
-                            <tr>
-                              <th>Post</th>
-                              <th>Platform</th>
-                              <th>Interactions</th>
-                              <th>Conversations</th>
-                              <th>Leads</th>
-                              <th>Applications</th>
-                              <th>Sales</th>
-                              <th>Revenue</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {growth.socialFunnel.byPost.map((post) => (
-                              <tr key={post.contentBriefId}>
-                                <th>{post.title}</th>
-                                <td>
-                                  {post.providers.map((provider) => {
-                                    const Icon = PLATFORM_ICONS[provider];
-                                    return Icon ? (
-                                      <Icon
-                                        key={provider}
-                                        title={human(provider)}
-                                        style={{ marginRight: 4 }}
+                      (() => {
+                        const enriched = growth.socialFunnel.byPost.map((post) => {
+                          const meta = post.providers.reduce(
+                            (sum, provider) => {
+                              const row = postEngagement[`${post.contentBriefId}:${provider}`];
+                              return {
+                                likes: sum.likes + (row?.likes || 0),
+                                comments: sum.comments + (row?.comments || 0),
+                                shares: sum.shares + (row?.shares ?? 0),
+                              };
+                            },
+                            { likes: 0, comments: 0, shares: 0 },
+                          );
+                          return { ...post, meta };
+                        });
+                        const maxEngagement = Math.max(1, ...enriched.map((post) => post.meta.likes + post.meta.comments + post.meta.shares));
+                        return (
+                          <>
+                            <div className="social-post-engagement-bars">
+                              {enriched.map((post) => {
+                                const total = post.meta.likes + post.meta.comments + post.meta.shares;
+                                return (
+                                  <div className="social-post-engagement-row" key={post.contentBriefId}>
+                                    <span className="social-post-engagement-row__label" title={post.title}>{post.title}</span>
+                                    <div className="social-post-engagement-row__track">
+                                      <div
+                                        className="social-post-engagement-row__fill"
+                                        style={{ width: `${Math.max(total ? (total / maxEngagement) * 100 : 1.5, 1.5)}%` }}
                                       />
-                                    ) : null;
-                                  })}
-                                </td>
-                                <td>{post.interactions}</td>
-                                <td>{post.conversations}</td>
-                                <td>{post.leads}</td>
-                                <td>{post.applications}</td>
-                                <td>{post.sales}</td>
-                                <td>{currency(post.revenue)}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                                    </div>
+                                    <span className="social-post-engagement-row__value">
+                                      {total} engagement{total === 1 ? "" : "s"}
+                                    </span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            <div style={{ overflowX: "auto" }}>
+                              <table className="analytics-table">
+                                <thead>
+                                  <tr>
+                                    <th>Post</th>
+                                    <th>Platform</th>
+                                    <th>Likes</th>
+                                    <th>Comments</th>
+                                    <th>Shares</th>
+                                    <th>Interactions</th>
+                                    <th>Leads</th>
+                                    <th>Sales</th>
+                                    <th>Revenue</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {enriched.map((post) => (
+                                    <tr key={post.contentBriefId}>
+                                      <th>{post.title}</th>
+                                      <td>
+                                        {post.providers.map((provider) => {
+                                          const Icon = PLATFORM_ICONS[provider];
+                                          return Icon ? (
+                                            <Icon
+                                              key={provider}
+                                              title={human(provider)}
+                                              style={{ marginRight: 4 }}
+                                            />
+                                          ) : null;
+                                        })}
+                                      </td>
+                                      <td>{post.meta.likes || "—"}</td>
+                                      <td>{post.meta.comments || "—"}</td>
+                                      <td>{post.meta.shares || "—"}</td>
+                                      <td>{post.interactions}</td>
+                                      <td>{post.leads}</td>
+                                      <td>{post.sales}</td>
+                                      <td>{currency(post.revenue)}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </>
+                        );
+                      })()
                     ) : (
                       <p>
                         No individual post has a recorded comment or DM yet.
@@ -727,6 +750,14 @@ export default function SocialWorkspace({ connectionsOnly = false, section: sect
                           ["Reach", row.reach],
                           ["Engagements", row.engagements],
                           ["Profile views", row.profileViews],
+                          ["Page views", row.pageViews],
+                          ["Accounts engaged", row.accountsEngaged],
+                          ["Total interactions", row.totalInteractions],
+                          ["Likes", row.likes],
+                          ["Comments", row.comments],
+                          ["Shares", row.shares],
+                          ["Saves", row.saves],
+                          ["Website clicks", row.websiteClicks],
                         ].filter(([, value]) => value !== null && value !== undefined);
                         return (
                           <article key={`${row.provider}:${row.assetId}`} className={`social-account-insight-card social-account-insight-card--${row.provider}`}>

@@ -60,8 +60,13 @@ async function facebookInsights(connection, asset, credentials, http, version) {
         timeout: 15000,
       }),
       http.get(`https://graph.facebook.com/${version}/${asset.id}/insights`, {
+        // page_impressions and page_fans are rejected on this API version
+        // ("must be a valid insights metric") — confirmed live — so
+        // followers comes from the profile fields above instead, and
+        // page_views_total is the only additional Page-level metric this
+        // version actually accepts alongside engagements.
         params: {
-          metric: "page_post_engagements",
+          metric: "page_post_engagements,page_views_total",
           period: "day",
           access_token: token,
         },
@@ -77,6 +82,7 @@ async function facebookInsights(connection, asset, credentials, http, version) {
       followers:
         profile.data?.followers_count ?? profile.data?.fan_count ?? null,
       engagements: sum(rows, "page_post_engagements"),
+      pageViews: sum(rows, "page_views_total"),
       reach: null,
       impressions: null,
       profileViews: null,
@@ -132,8 +138,13 @@ async function instagramInsights(
         timeout: 15000,
       }),
       http.get(`https://${host}/${version}/${asset.id}/insights`, {
+        // Confirmed live against this API version: accounts_engaged,
+        // total_interactions, likes, comments, shares, saves and
+        // website_clicks are all valid alongside reach/profile_views in the
+        // same total_value-typed call — follower_count is not (it needs a
+        // different metric_type entirely), so it stays out of this call.
         params: {
-          metric: "reach,profile_views",
+          metric: "reach,profile_views,accounts_engaged,total_interactions,likes,comments,shares,saves,website_clicks",
           period: "day",
           // Meta now rejects profile_views without this — it used to return
           // a per-day "values" array like reach did, but requires opting
@@ -156,6 +167,13 @@ async function instagramInsights(
       mediaCount: profile.data?.media_count ?? null,
       reach: sum(rows, "reach"),
       profileViews: sum(rows, "profile_views"),
+      accountsEngaged: sum(rows, "accounts_engaged"),
+      totalInteractions: sum(rows, "total_interactions"),
+      likes: sum(rows, "likes"),
+      comments: sum(rows, "comments"),
+      shares: sum(rows, "shares"),
+      saves: sum(rows, "saves"),
+      websiteClicks: sum(rows, "website_clicks"),
       impressions: null,
       engagements: null,
     };

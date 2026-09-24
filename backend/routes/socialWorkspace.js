@@ -386,6 +386,47 @@ router.get(
     });
   }),
 );
+// Real engagement Meta reports for a post (likes/comments/shares), separate
+// from the CRM-derived "interactions" the funnel above counts (comments/DMs
+// that created a lead record) — the two numbers answer different questions
+// and are shown side by side rather than merged, so "Performance by post"
+// can show what actually happened on the post itself, not just what turned
+// into a tracked lead. Capped to the 20 most recently published posts so a
+// growing content library doesn't turn this into dozens of live Meta calls
+// on every analytics page load.
+router.get(
+  "/analytics/post-engagement",
+  wrap(async (req, res) => {
+    const workspaceId = req.auth.workspaceId;
+    const metaRecentPostService = require("../services/metaRecentPostService");
+    const posts = await ContentBrief.find({
+      workspaceId,
+      type: "social",
+      status: { $in: ["published", "partially_published"] },
+    })
+      .select("social.publications")
+      .sort({ updatedAt: -1 })
+      .limit(20)
+      .lean();
+    const results = {};
+    await Promise.all(
+      posts.flatMap((post) =>
+        (post.social?.publications || [])
+          .filter((row) => ["facebook", "instagram"].includes(row.provider) && row.providerPostId && row.assetId)
+          .map(async (row) => {
+            const engagement = await metaRecentPostService.postEngagement({
+              workspaceId,
+              provider: row.provider,
+              assetId: row.assetId,
+              postId: row.providerPostId,
+            });
+            if (engagement) results[`${post._id}:${row.provider}`] = engagement;
+          }),
+      ),
+    );
+    res.json({ engagement: results });
+  }),
+);
 // A conversation's metadata.contentBriefId is the raw post it was attributed to at ingest time (see
 // ingestSocialEvent) — resolving it to a title here is how "who and what post" shows up in the Inbox
 // without every caller re-doing this lookup itself.
