@@ -55,6 +55,7 @@ const PublicPaymentRequest = lazyWithRetry(() => import("./pages/PublicPaymentRe
 const PublicPaymentPlan = lazyWithRetry(() => import("./pages/PublicPaymentPlan.jsx"));
 const PrivacyPage = lazyWithRetry(() => import("./pages/PublicLegal.jsx").then((module) => ({ default: module.PrivacyPage })));
 const TermsPage = lazyWithRetry(() => import("./pages/PublicLegal.jsx").then((module) => ({ default: module.TermsPage })));
+const RefundPolicyPage = lazyWithRetry(() => import("./pages/PublicLegal.jsx").then((module) => ({ default: module.RefundPolicyPage })));
 const DataDeletionPage = lazyWithRetry(() => import("./pages/PublicLegal.jsx").then((module) => ({ default: module.DataDeletionPage })));
 const CoachPublicProfile = lazyWithRetry(() => import("./pages/ProfileEditors.jsx").then((module) => ({ default: module.CoachProfileEditor })));
 const StudentProfileEditor = lazyWithRetry(() => import("./pages/ProfileEditors.jsx").then((module) => ({ default: module.StudentProfileEditor })));
@@ -95,7 +96,7 @@ function PublicPageTracking() {
   const location = useLocation();
   const lastPath = useRef("");
   useEffect(() => {
-    const publicPath = /^(?:\/$|\/(?:about|coaching-programs|faq|resources|testimonials|contact|privacy|privacy-policy|terms|data-deletion|apply|book-a-call)(?:\/)?$|\/(?:coaching-programs|people|ref)\/)/.test(location.pathname);
+    const publicPath = /^(?:\/$|\/(?:about|coaching-programs|faq|resources|testimonials|contact|privacy|privacy-policy|terms|refund-policy|data-deletion|apply|book-a-call)(?:\/)?$|\/(?:coaching-programs|people|ref)\/)/.test(location.pathname);
     if (!publicPath) return;
     const path = `${location.pathname}${location.search}`;
     if (lastPath.current === path) return;
@@ -259,6 +260,7 @@ function App() {
             <Route path="/privacy" element={<PrivacyPage />} />
             <Route path="/privacy-policy" element={<PrivacyPage />} />
             <Route path="/terms" element={<TermsPage />} />
+            <Route path="/refund-policy" element={<RefundPolicyPage />} />
             <Route path="/data-deletion" element={<DataDeletionPage />} />
             <Route path="/apply" element={<PublicApplication />} />
             <Route path="/ref/:code" element={<PublicApplication />} />

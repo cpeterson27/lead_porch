@@ -311,6 +311,7 @@ export function PublicLayout({ children }) {
             <div className="public-footer-label">COMPANY</div>
             <Link to="/privacy">Privacy</Link>
             <Link to="/terms">Terms</Link>
+            <Link to="/refund-policy">Refund policy</Link>
             <Link to="/data-deletion">Data deletion</Link>
             <Link to="/login">Staff login</Link>
           </div>

@@ -395,6 +395,79 @@ export function TermsPage() {
   );
 }
 
+// Starter policy only — the Terms page (section 4) explicitly disclaims
+// that these website terms set any refund/cancellation commitment, so this
+// page existed as a gap rather than a placeholder. The specific terms below
+// (no refunds once coaching has begun, a 3-business-day change-of-mind
+// window before the first session, rescheduling instead of refunding a
+// missed live session) are a conservative, industry-common default for
+// coaching programs — not a real commitment yet. Update this page directly
+// once the business owner has actually decided the real policy.
+export function RefundPolicyPage() {
+  const { businessName } = useLegalIdentity();
+  return (
+    <LegalShell
+      eyebrow="Payments & enrollment"
+      title="Refund & Cancellation Policy"
+      intro={`This page explains how refunds, cancellations, and rescheduling work for ${businessName}'s coaching programs.`}
+    >
+      <section>
+        <h2>1. Before your program starts</h2>
+        <p>
+          If you change your mind before your program begins, contact us
+          within 3 business days of enrolling and before your first coaching
+          session, and we will cancel your enrollment and refund payments
+          already made toward that program.
+        </p>
+      </section>
+      <section>
+        <h2>2. Once your program has begun</h2>
+        <p>
+          Coaching time, preparation, and program materials are reserved for
+          you personally once your first session has taken place. Payments
+          made for sessions or program access already delivered are
+          non-refundable from that point forward.
+        </p>
+      </section>
+      <section>
+        <h2>3. Payment plans</h2>
+        <p>
+          If you are enrolled on an installment payment plan, each
+          installment remains due on its scheduled date regardless of session
+          attendance, and installments already paid are handled under the
+          same terms as section 2 above. Contact us if you are having
+          difficulty making a scheduled payment — we would rather work out a
+          plan with you than send it to collections.
+        </p>
+      </section>
+      <section>
+        <h2>4. Missed or rescheduled sessions</h2>
+        <p>
+          A session you cannot attend is not refunded, but we will work with
+          you to reschedule it within a reasonable window when you give
+          advance notice. Repeated no-shows without notice may be treated as
+          a completed session.
+        </p>
+      </section>
+      <section>
+        <h2>5. Cancelling an ongoing enrollment</h2>
+        <p>
+          You may cancel your ongoing enrollment at any time by contacting
+          us. Cancellation stops future billing going forward; it does not
+          refund sessions or program access already delivered.
+        </p>
+      </section>
+      <section>
+        <h2>6. Contact</h2>
+        <p>
+          Questions about a specific payment, refund, or cancellation should
+          be sent to <ContactMethod purpose="Refund/Cancellation Question" />.
+        </p>
+      </section>
+    </LegalShell>
+  );
+}
+
 export function DataDeletionPage() {
   const { businessName } = useLegalIdentity();
   return (
