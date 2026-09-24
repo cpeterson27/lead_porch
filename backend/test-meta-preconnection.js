@@ -121,9 +121,11 @@ async function subscriptionChecks() {
   // A Page-linked Instagram Business Account has no subscribed_apps edge of
   // its own — Meta only exposes it on the Page, so a Facebook Page and its
   // linked Instagram asset are provisioned together in ONE combined call
-  // (see provisionMetaSubscriptions). Its only contribution ("messages") is
-  // already part of the Page's own field set, so the combined call is
-  // identical to the Page's field list.
+  // (see provisionMetaSubscriptions). Its Instagram-specific fields
+  // ("comments", "live_comments", "mentions") are additive on top of the
+  // Page's own field set — required for Instagram comment webhooks to
+  // reach this workspace at all, since Meta delivers them through the
+  // linked Page's subscription rather than a separate Instagram one.
   const grouped = [];
   const pageLinkedConnection = document({
     credentialsEncrypted: encryptCredentials({ accessToken: "user-token", pageTokens: { "page-1": "page-token" } }),
@@ -131,13 +133,13 @@ async function subscriptionChecks() {
   });
   const groupedHttp = {
     async post(url, body, options) { grouped.push({ url, fields: options.params.subscribed_fields }); return { data: { success: true } }; },
-    async get() { return { data: { data: [{ id: "meta-app-123", subscribed_fields: oauth.subscriptionFields({ type: "facebook_page" }) }] } }; },
+    async get() { return { data: { data: [{ id: "meta-app-123", subscribed_fields: [...oauth.subscriptionFields({ type: "facebook_page" }), ...oauth.subscriptionFields({ type: "instagram_business", parentId: "page-1" })] }] } }; },
   };
   const groupedResult = await oauth.provisionMetaSubscriptions(pageLinkedConnection, ["page-1", "ig-1"], groupedHttp);
   assert.equal(groupedResult.every((row) => row.status === "subscribed"), true);
   assert.equal(grouped.length, 1, "A Page and its linked Instagram asset share one subscription call");
-  assert.equal(grouped[0].fields, oauth.subscriptionFields({ type: "facebook_page" }).join(","));
   for (const field of ["messaging_optins", "message_reactions", "message_reads", "message_edits", "message_deliveries", "mention", "messaging_customer_information", "messaging_in_thread_lead_form_submit"]) assert(grouped[0].fields.includes(field));
+  for (const field of ["comments", "live_comments", "mentions"]) assert(grouped[0].fields.includes(field), `Page-linked Instagram fields must be provisioned on the Page's call (missing ${field})`);
 
   // A standalone, direct-Instagram-Login asset (no linked Facebook Page) has
   // its own subscribed_apps edge on graph.instagram.com, authorized with its
