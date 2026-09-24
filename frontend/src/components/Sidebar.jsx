@@ -221,7 +221,7 @@ const navGroups = [
 ];
 
 const coachingGroup = {
-  label: "Coach",
+  label: "Coaching CRM",
   items: [
     {
       label: "Coaching",
@@ -232,9 +232,13 @@ const coachingGroup = {
   ],
 };
 
+// This is the personal, assigned-to-me caseload view — distinct from
+// "Coaching CRM" above, which is the full team-wide roster. Previously both
+// were labeled some variant of "Coach", so they read as duplicates when a
+// workspace owner/admin (who also personally coaches) saw both at once.
 const coachGroups = [
   {
-    label: "Coach Portal",
+    label: "My Coaching",
     items: [
       { label: "My Dashboard", path: "/coach", icon: <FiActivity /> },
       { label: "My Students", path: "/coach/students", icon: <FiUsers /> },

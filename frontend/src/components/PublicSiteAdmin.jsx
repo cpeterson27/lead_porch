@@ -1172,7 +1172,7 @@ export default function PublicSiteAdmin({ section = "website" }) {
             Show a discovery-call button even when no video is uploaded. Choose a coach whose Google Calendar is
             connected in Lead Porch, set the public hours below, and visitors will only see times that are open on
             that calendar. Confirmed calls appear in Lead Porch and create a Google Calendar event with a Meet link.
-            Ellie connects her own Google account once in Coach Portal → My Schedule; no external booking link is needed.
+            Ellie connects her own Google account once in My Coaching → My Schedule; no external booking link is needed.
           </p>
           <div className="public-admin__grid">
             <label className="website-toggle">
