@@ -69,7 +69,7 @@ async function approveAndSchedule({ workspaceId, campaignId, scheduledFor, actor
   return { campaign, jobsCreated: created };
 }
 
-async function scheduleSessionReminders({ workspaceId, sessionId, offsetsMinutes = [1440, 60], channels = ["email"], actorUserId }, models = deps) {
+async function scheduleSessionReminders({ workspaceId, sessionId, offsetsMinutes = [1440, 120], channels = ["email"], actorUserId }, models = deps) {
   const session = await models.CoachingSession.findOne({ _id: sessionId, workspaceId, status: "scheduled" });
   if (!session) throw communicationError("Scheduled coaching session not found", "SESSION_NOT_FOUND");
   const [contact, coach, program] = await Promise.all([models.Contact.findOne({ _id: session.contactId, workspaceId }), models.CoachProfile.findOne({ _id: session.coachProfileId, workspaceId }), models.CoachingProgram.findOne({ _id: session.coachingProgramId, workspaceId })]);
