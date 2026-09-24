@@ -1,46 +1,41 @@
 const PaymentInstallment = require("../models/PaymentInstallment");
 const PaymentPlan = require("../models/PaymentPlan");
 const CrmActivity = require("../models/CrmActivity");
-const { scheduleDirectCommunication } = require("./coachingCommunicationService");
 const { runWithWorkspace } = require("../tenancy/workspaceContext");
 
 // Confirmed missing entirely (checklist section 4): installments quietly
 // flip to "past_due" with nothing telling the client or staff it happened.
-// This closes that gap with the same job-based send pipeline every other
-// automated message already uses — no new sending code, just new triggers
-// for it, plus the status transition itself (previously only ever run as
-// a side effect inside syncTransaction, so a plan with no new activity
-// could sit overdue indefinitely without ever actually being marked so).
-const money = (minor) => `$${(Number(minor || 0) / 100).toFixed(2)}`;
-
+// This logs the status change as a CrmActivity carrying the same
+// metadata.eventType shape every other trigger in this codebase uses
+// (see googleCalendarService's "coaching.session.scheduled" activity), so
+// the existing automation engine picks it up and sends the actual email —
+// content stays editable from the same Automations screen as every other
+// automated message, instead of being hardcoded here.
 async function remindOne(installment, { pastDue }) {
-  const plan = await PaymentPlan.findOne({ _id: installment.paymentPlanId, workspaceId: installment.workspaceId }).select("contactId coachingProgramId installmentCount").lean();
+  const plan = await PaymentPlan.findOne({ _id: installment.paymentPlanId, workspaceId: installment.workspaceId }).select("contactId installmentCount").lean();
   if (!plan) return null;
   const idempotencyKey = `payment-reminder:${pastDue ? "pastdue" : "upcoming"}:${installment._id}`;
-  const subject = pastDue
-    ? `Payment past due — installment ${installment.installmentNumber} of ${plan.installmentCount}`
-    : `Upcoming payment — installment ${installment.installmentNumber} of ${plan.installmentCount}`;
-  const body = pastDue
-    ? `Hi {{contact.firstName}}, installment ${installment.installmentNumber} of ${plan.installmentCount} (${money(installment.amountMinor)}) was due on ${new Date(installment.dueAt).toLocaleDateString()} and hasn't gone through yet. Please update your payment to keep your program on track.`
-    : `Hi {{contact.firstName}}, a reminder that installment ${installment.installmentNumber} of ${plan.installmentCount} (${money(installment.amountMinor)}) is due on ${new Date(installment.dueAt).toLocaleDateString()}.`;
-  try {
-    await scheduleDirectCommunication({
-      workspaceId: installment.workspaceId,
-      contactId: plan.contactId,
-      channel: "email",
-      purpose: "transactional",
-      scheduledFor: new Date(),
-      subject,
-      body,
+  const existing = await CrmActivity.findOne({ workspaceId: installment.workspaceId, "metadata.idempotencyKey": idempotencyKey }).select("_id").lean();
+  if (existing) return false; // already logged/triggered for this installment/kind
+  await CrmActivity.create({
+    workspaceId: installment.workspaceId,
+    contactId: plan.contactId,
+    type: "system",
+    title: pastDue ? `Payment past due — installment ${installment.installmentNumber} of ${plan.installmentCount}` : `Upcoming payment — installment ${installment.installmentNumber} of ${plan.installmentCount}`,
+    source: "crm",
+    dueAt: pastDue ? new Date() : null,
+    metadata: {
+      eventType: pastDue ? "payment.installment.past_due" : "payment.installment.upcoming",
       idempotencyKey,
-      metadata: { kind: "payment_reminder", paymentPlanId: String(plan._id), paymentInstallmentId: String(installment._id), pastDue },
-    });
-    if (pastDue) await CrmActivity.create({ workspaceId: installment.workspaceId, contactId: plan.contactId, type: "system", title: "Payment past due — client and team alerted", source: "crm", metadata: { eventType: "payment.installment.past_due", paymentPlanId: plan._id, paymentInstallmentId: installment._id, amountMinor: installment.amountMinor }, dueAt: new Date() });
-    return true;
-  } catch (error) {
-    if (error.code === 11000) return false; // already reminded for this installment/kind
-    throw error;
-  }
+      paymentPlanId: plan._id,
+      paymentInstallmentId: installment._id,
+      amountMinor: installment.amountMinor,
+      installmentNumber: installment.installmentNumber,
+      installmentCount: plan.installmentCount,
+      dueAt: installment.dueAt,
+    },
+  });
+  return true;
 }
 
 async function runDuePaymentReminders({ upcomingWindowDays = 3 } = {}) {
