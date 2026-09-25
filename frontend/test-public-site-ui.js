@@ -13,6 +13,12 @@ const app = source("App.jsx"),
   admin = source("components/PublicSiteAdmin.jsx"),
   programManager = source("components/ProgramWebsiteSettings.jsx"),
   theme = source("context/WorkspaceThemeContext.jsx");
+for (const themedRoute of ["free-guide", "refund-policy"]) {
+  assert.ok(
+    theme.includes(`${themedRoute}(?:\\/|$)`),
+    `/${themedRoute} must load the saved public-site theme, fonts, and toggle settings`,
+  );
+}
 for (const route of [
   'path="/"',
   'path="/about"',
