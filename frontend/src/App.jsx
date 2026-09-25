@@ -49,6 +49,7 @@ const ProgramDetail = lazyWithRetry(() => import("./pages/PublicSite.jsx").then(
 const FaqPage = lazyWithRetry(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.FaqPage })));
 const ResourcesPage = lazyWithRetry(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.ResourcesPage })));
 const ContactPage = lazyWithRetry(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.ContactPage })));
+const LeadMagnet = lazyWithRetry(() => import("./pages/LeadMagnet.jsx"));
 const PublicProfilePage = lazyWithRetry(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.PublicProfilePage })));
 const PublicApplication = lazyWithRetry(() => import("./pages/PublicApplication.jsx"));
 const PublicPaymentRequest = lazyWithRetry(() => import("./pages/PublicPaymentRequest.jsx"));
@@ -96,7 +97,7 @@ function PublicPageTracking() {
   const location = useLocation();
   const lastPath = useRef("");
   useEffect(() => {
-    const publicPath = /^(?:\/$|\/(?:about|coaching-programs|faq|resources|testimonials|contact|privacy|privacy-policy|terms|refund-policy|data-deletion|apply|book-a-call)(?:\/)?$|\/(?:coaching-programs|people|ref)\/)/.test(location.pathname);
+    const publicPath = /^(?:\/$|\/(?:about|coaching-programs|faq|resources|testimonials|contact|privacy|privacy-policy|terms|refund-policy|data-deletion|apply|book-a-call|free-guide)(?:\/)?$|\/(?:coaching-programs|people|ref)\/)/.test(location.pathname);
     if (!publicPath) return;
     const path = `${location.pathname}${location.search}`;
     if (lastPath.current === path) return;
@@ -256,6 +257,7 @@ function App() {
             <Route path="/testimonials" element={<TestimonialsPage />} />
             <Route path="/book-a-call" element={<DiscoveryCallPage />} />
             <Route path="/contact" element={<ContactPage />} />
+            <Route path="/free-guide" element={<LeadMagnet />} />
             <Route path="/people/:slug" element={<PublicProfilePage />} />
             <Route path="/privacy" element={<PrivacyPage />} />
             <Route path="/privacy-policy" element={<PrivacyPage />} />

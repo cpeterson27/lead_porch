@@ -6,6 +6,7 @@ const CoachingProgram = require("../models/CoachingProgram");
 const WorkspaceConfig = require("../models/WorkspaceConfig");
 const service = require("../services/publicSiteService");
 const applicationService = require("../services/publicApplicationService");
+const leadMagnetService = require("../services/leadMagnetService");
 const paymentService = require("../services/paymentService");
 const { runWithWorkspace } = require("../tenancy/workspaceContext");
 const router = express.Router();
@@ -200,6 +201,15 @@ router.get("/application", async (req, res, next) => {
     next(error);
   }
 });
+router.post("/application/start", limited, async (req, res) => {
+  try {
+    const ws = await service.workspace(req);
+    await runWithWorkspace(ws._id, () => applicationService.start({ workspaceId: ws._id, email: req.body?.email, firstName: req.body?.firstName }));
+    res.status(201).json({ success: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
 router.post("/application", limited, async (req, res, next) => {
   try {
     const ws = await service.workspace(req);
@@ -225,6 +235,15 @@ router.post("/application", limited, async (req, res, next) => {
           : applicationService.publicConfig(config).confirmationMessage,
       },
     });
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+router.post("/lead-magnet/optin", limited, async (req, res) => {
+  try {
+    const ws = await service.workspace(req);
+    await runWithWorkspace(ws._id, () => leadMagnetService.optIn({ workspaceId: ws._id, email: req.body?.email, firstName: req.body?.firstName }));
+    res.status(201).json({ success: true, data: { message: "Check your email — it's on its way." } });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }

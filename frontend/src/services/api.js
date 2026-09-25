@@ -344,6 +344,10 @@ export const fetchPublicApplication = () =>
   api.get("/public/application").then((res) => res.data.data);
 export const submitPublicApplication = (values) =>
   api.post("/public/application", values).then((res) => res.data);
+export const startPublicApplication = (values) =>
+  api.post("/public/application/start", values).then((res) => res.data);
+export const optInLeadMagnet = (values) =>
+  api.post("/public/lead-magnet/optin", values).then((res) => res.data);
 export const fetchDiscoveryCallAvailability = () =>
   api.get("/public/discovery-call/availability").then((res) => res.data.data);
 export const bookDiscoveryCall = (values) =>

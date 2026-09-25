@@ -3,6 +3,7 @@ import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { FiCheck } from "react-icons/fi";
 import {
   fetchPublicApplication,
+  startPublicApplication,
   submitPublicApplication,
 } from "../services/api.js";
 import { PublicLayout } from "./PublicSite.jsx";
@@ -53,6 +54,7 @@ export default function PublicApplication({ embedded: embeddedOverride, search: 
   const [done, setDone] = useState("");
   const [saving, setSaving] = useState(false);
   const started = useRef(false);
+  const emailCaptured = useRef(false);
   const attribution = useMemo(() => {
     const query = new URLSearchParams(search);
     return {
@@ -226,6 +228,11 @@ export default function PublicApplication({ embedded: embeddedOverride, search: 
                     autoComplete="email"
                     value={form.email}
                     onChange={(event) => set("email", event.target.value)}
+                    onBlur={() => {
+                      if (emailCaptured.current || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) return;
+                      emailCaptured.current = true;
+                      startPublicApplication({ email: form.email, firstName: form.firstName }).catch(() => {});
+                    }}
                   />
                 </label>
                 <label>

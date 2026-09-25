@@ -242,6 +242,30 @@ async function resolveApplicationContact(
   await trackedContact.save();
   return emailContact;
 }
+// Captures the moment someone starts the application (has entered a real
+// email) but hasn't finished it yet — previously untracked entirely, so
+// there was nothing to follow up with if they abandoned the form. Upserts
+// by email using the same pattern every other lead source in this app
+// already uses; if they go on to actually submit, submit()'s own
+// resolveApplicationContact finds this same Contact by email, so no
+// duplicate is created.
+async function start({ workspaceId, email, firstName }, models = deps) {
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw Object.assign(new Error("A valid email address is required"), { code: "APPLICATION_START_EMAIL_INVALID" });
+  const cleanFirstName = String(firstName || "").trim().slice(0, 80);
+  const contact = await models.Contact.findOneAndUpdate(
+    { workspaceId, email: normalizedEmail },
+    { $setOnInsert: { workspaceId, email: normalizedEmail, name: cleanFirstName || normalizedEmail, firstName: cleanFirstName, sourceProvider: "application" }, $addToSet: { sources: "application" } },
+    { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
+  );
+  if (!contact.additionalFields?.applicationCompletedAt) {
+    const idempotencyKey = `application-started:${contact._id}`;
+    const existing = await models.CrmActivity.findOne({ workspaceId, "metadata.idempotencyKey": idempotencyKey }).select("_id").lean();
+    if (!existing) await models.CrmActivity.create({ workspaceId, contactId: contact._id, type: "system", title: "Application started", source: "crm", metadata: { eventType: "application.started", idempotencyKey } });
+  }
+  return { contactId: contact._id };
+}
+
 async function submit(
   { workspaceId, input, requestFingerprint = "" },
   models = deps,
@@ -507,6 +531,7 @@ module.exports = {
   publicConfig,
   resolveApplicationContact,
   resolveAttribution,
+  start,
   submit,
   utm,
 };
