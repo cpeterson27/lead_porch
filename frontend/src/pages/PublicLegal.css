@@ -2,12 +2,13 @@
   padding-top: 90px;
 }
 .legal-page__hero {
-  border-bottom: 1px solid var(--workspace-border);
+  border-bottom: 1px solid var(--public-border);
   max-width: 980px;
   padding-bottom: 60px;
 }
 .legal-page__hero h1 {
-  font-family: Georgia, serif;
+  color: var(--public-text);
+  font-family: var(--public-heading-font, "Instrument Serif"), Georgia, serif;
   font-size: clamp(3.2rem, 7vw, 6.5rem);
   font-weight: 500;
   letter-spacing: -0.045em;
@@ -15,14 +16,16 @@
   margin: 20px 0 28px;
 }
 .legal-page__hero > p:not(.public-kicker) {
-  color: var(--workspace-muted);
+  color: var(--public-muted);
+  font-family: var(--public-body-font, "DM Sans"), ui-sans-serif, system-ui, sans-serif;
   font-size: clamp(1.05rem, 2vw, 1.35rem);
   line-height: 1.7;
   max-width: 780px;
 }
 .legal-page__hero small {
-  color: var(--workspace-muted);
+  color: var(--public-muted);
   display: block;
+  font-family: var(--public-body-font, "DM Sans"), ui-sans-serif, system-ui, sans-serif;
   margin-top: 24px;
 }
 .legal-page__content {
@@ -32,11 +35,12 @@
   max-width: 940px;
 }
 .legal-page__content section {
-  border-bottom: 1px solid var(--workspace-border);
+  border-bottom: 1px solid var(--public-border);
   padding: 0 0 42px;
 }
 .legal-page__content h2 {
-  font-family: Georgia, serif;
+  color: var(--public-text);
+  font-family: var(--public-heading-font, "Instrument Serif"), Georgia, serif;
   font-size: clamp(1.55rem, 3vw, 2.2rem);
   font-weight: 500;
   line-height: 1.2;
@@ -44,7 +48,8 @@
 }
 .legal-page__content p,
 .legal-page__content li {
-  color: var(--workspace-muted);
+  color: var(--public-muted);
+  font-family: var(--public-body-font, "DM Sans"), ui-sans-serif, system-ui, sans-serif;
   line-height: 1.85;
 }
 .legal-page__content ul,
@@ -54,17 +59,17 @@
   padding-left: 24px;
 }
 .legal-page__content a {
-  color: var(--workspace-accent);
+  color: var(--public-accent);
   font-weight: 750;
 }
 .legal-callout {
-  background: var(--workspace-surface);
-  border: 1px solid var(--workspace-border) !important;
+  background: var(--public-surface);
+  border: 1px solid var(--public-border) !important;
   margin-bottom: 20px;
   padding: 0 34px 38px !important;
 }
 .legal-callout strong {
-  color: var(--workspace-text);
+  color: var(--public-text);
 }
 @media (max-width: 600px) {
   .legal-page {

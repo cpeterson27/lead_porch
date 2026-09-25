@@ -7,6 +7,7 @@ const root = path.dirname(fileURLToPath(import.meta.url)),
 const app = source("App.jsx"),
   site = source("pages/PublicSite.jsx"),
   legal = source("pages/PublicLegal.jsx"),
+  legalCss = source("pages/PublicLegal.css"),
   css = source("pages/PublicSite.css"),
   editors = source("pages/ProfileEditors.jsx"),
   admin = source("components/PublicSiteAdmin.jsx"),
@@ -127,6 +128,17 @@ assert(site.includes("data-public-theme={theme}"));
 assert(site.includes("allowThemeToggle") && site.includes("public-theme-toggle"));
 assert(css.includes('[data-public-theme="light"]'));
 assert(css.includes('[data-public-theme="dark"]'));
+for (const token of [
+  "--public-heading-font",
+  "--public-body-font",
+  "--public-text",
+  "--public-muted",
+  "--public-surface",
+  "--public-border",
+  "--public-accent",
+])
+  assert(legalCss.includes(token), `legal CSS missing shared website token ${token}`);
+assert(!legalCss.includes("--workspace-"), "legal pages must follow the visitor's public light/dark theme");
 assert(css.includes(".program-application-modal"));
 assert(css.includes("position: fixed"));
 assert(css.includes("public-accelerator-card.is-featured"));
