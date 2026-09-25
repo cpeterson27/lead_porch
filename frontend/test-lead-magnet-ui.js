@@ -13,5 +13,7 @@ assert.match(jsx,/role="status"/,"success state is announced accessibly");
 assert.match(css,/--public-heading-font/,"page uses the configured public heading font");
 assert.match(css,/--public-body-font/,"page uses the configured public body font");
 assert.match(css,/--public-accent/,"page uses the configured public accent color");
+assert.match(css,/\.lead-magnet-page\{[^}]*position:relative;z-index:1/,"guide content stays above the configured sticky background");
+assert.match(css,/has-sticky-background \.lead-magnet-page/,"guide receives a readable themed surface over the sticky background");
 assert.match(css,/@media\(max-width:520px\)/,"page has a mobile layout");
 console.log("Lead-magnet layout, theme tokens, form connection, and responsive UI checks passed.");
