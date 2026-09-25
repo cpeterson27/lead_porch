@@ -11,6 +11,8 @@ assert.equal(publicOrigin({ headers: { host: "www.elliescoaching.com" } }), "htt
 assert.equal(xml("A&B <C>"), "A&amp;B &lt;C&gt;");
 assert.equal(pathSettings("/", "Ellie's Coaching", "Description").indexable, true);
 assert.equal(pathSettings("/apply", "Ellie's Coaching", "Description").indexable, false);
+assert.equal(pathSettings("/sitemap", "Ellie's Coaching", "Description").indexable, true);
+assert.equal(pathSettings("/free-guide", "Ellie's Coaching", "Description").indexable, true);
 assert.equal(pathSettings("/dashboard", "Ellie's Coaching", "Description").indexable, false);
 assert.equal(pathSettings("/privacy-policy", "Ellie's Coaching", "Description").canonicalPath, "/privacy");
 assert(!safeJson({ value: "</script>" }).includes("</script>"));
@@ -21,6 +23,7 @@ const shell = read("backend/middleware/publicHtmlShell.js");
 const app = read("frontend/src/App.jsx");
 const application = read("frontend/src/pages/PublicApplication.jsx");
 for (const value of ["/robots.txt", "/sitemap.xml", "Sitemap:", "Disallow: /api/"]) assert(seo.includes(value));
+for (const value of ['"/sitemap"', '"/free-guide"', "c_fill,w_192,h_192,f_png"]) assert(seo.includes(value), `Missing sitemap/favicon update: ${value}`);
 for (const value of ['rel="canonical"', 'name="robots"', 'application/ld+json', 'property="og:url"', "GOOGLE_TAG_MANAGER_ID"]) assert(shell.includes(value));
 // Real, reported incident: the favicon was set via WorkspaceThemeContext
 // swapping a <link> tag in client-side after React hydrates, which

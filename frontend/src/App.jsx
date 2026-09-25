@@ -48,6 +48,7 @@ const ProgramsPage = lazyWithRetry(() => import("./pages/PublicSite.jsx").then((
 const ProgramDetail = lazyWithRetry(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.ProgramDetail })));
 const FaqPage = lazyWithRetry(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.FaqPage })));
 const ResourcesPage = lazyWithRetry(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.ResourcesPage })));
+const SitemapPage = lazyWithRetry(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.SitemapPage })));
 const ContactPage = lazyWithRetry(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.ContactPage })));
 const LeadMagnet = lazyWithRetry(() => import("./pages/LeadMagnet.jsx"));
 const PublicProfilePage = lazyWithRetry(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.PublicProfilePage })));
@@ -97,7 +98,7 @@ function PublicPageTracking() {
   const location = useLocation();
   const lastPath = useRef("");
   useEffect(() => {
-    const publicPath = /^(?:\/$|\/(?:about|coaching-programs|faq|resources|testimonials|contact|privacy|privacy-policy|terms|refund-policy|data-deletion|apply|book-a-call|free-guide)(?:\/)?$|\/(?:coaching-programs|people|ref)\/)/.test(location.pathname);
+    const publicPath = /^(?:\/$|\/(?:about|coaching-programs|faq|resources|sitemap|testimonials|contact|privacy|privacy-policy|terms|refund-policy|data-deletion|apply|book-a-call|free-guide)(?:\/)?$|\/(?:coaching-programs|people|ref)\/)/.test(location.pathname);
     if (!publicPath) return;
     const path = `${location.pathname}${location.search}`;
     if (lastPath.current === path) return;
@@ -254,6 +255,7 @@ function App() {
             <Route path="/coaching-programs/:slug" element={<ProgramDetail />} />
             <Route path="/faq" element={<FaqPage />} />
             <Route path="/resources" element={<ResourcesPage />} />
+            <Route path="/sitemap" element={<SitemapPage />} />
             <Route path="/testimonials" element={<TestimonialsPage />} />
             <Route path="/book-a-call" element={<DiscoveryCallPage />} />
             <Route path="/contact" element={<ContactPage />} />

@@ -57,6 +57,8 @@ router.get("/sitemap.xml", async (req, res, next) => {
       "/coaching-programs",
       "/faq",
       "/resources",
+      "/sitemap",
+      "/free-guide",
       "/testimonials",
       "/contact",
       ...(site.publicSite?.discoveryCallEnabled ? ["/book-a-call"] : []),
@@ -92,7 +94,10 @@ async function serveFavicon(req, res) {
     const branding = config?.branding || {};
     const source = String(branding.faviconUrl || branding.publicSiteLogoUrl || branding.logoUrl || "").trim();
     if (!source) return res.status(404).end();
-    const upstream = await fetch(source);
+    const faviconSource = source.includes("res.cloudinary.com/") && source.includes("/image/upload/")
+      ? source.replace("/image/upload/", "/image/upload/c_fill,w_192,h_192,f_png/")
+      : source;
+    const upstream = await fetch(faviconSource);
     if (!upstream.ok) return res.status(404).end();
     const buffer = Buffer.from(await upstream.arrayBuffer());
     res

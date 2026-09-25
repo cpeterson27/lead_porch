@@ -77,6 +77,8 @@ function pathSettings(pathname, siteName, defaultDescription) {
     "/coaching-programs": { title: `Multifamily Real Estate Coaching Programs | ${siteName}`, description: "Compare multifamily real estate coaching programs covering acquisitions, underwriting, capital raising, asset management, and investor development.", indexable: true },
     "/faq": { title: `Multifamily Coaching FAQ | ${siteName}`, description: "Answers about Ellie's online multifamily real estate coaching programs, applications, discovery calls, and educational topics.", indexable: true },
     "/resources": { title: `Multifamily Investor Resources | ${siteName}`, description: "Explore multifamily real estate coaching programs, student experiences, and practical resources from Ellie's Coaching.", indexable: true },
+    "/sitemap": { title: `Sitemap | ${siteName}`, description: `Browse the public pages and resources available from ${siteName}.`, indexable: true },
+    "/free-guide": { title: `Free Guide | ${siteName}`, description: `Request a free practical guide from ${siteName}.`, indexable: true },
     "/contact": {
       title: `Contact ${siteName}`,
       description: "Contact Ellie's Coaching to ask about multifamily real estate coaching programs, applications, and upcoming training.",

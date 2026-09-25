@@ -313,6 +313,7 @@ export function PublicLayout({ children }) {
             <Link to="/terms">Terms</Link>
             <Link to="/refund-policy">Refund policy</Link>
             <Link to="/data-deletion">Data deletion</Link>
+            <Link to="/sitemap">Sitemap</Link>
             <Link to="/login">Staff login</Link>
           </div>
         </div>
@@ -1379,6 +1380,15 @@ export function FaqPage() {
 export function ResourcesPage() {
   const { site } = useWorkspaceTheme();
   return <PublicLayout><main id="main-content" className="public-inner"><p className="public-kicker">Investor resources</p><h1>{site?.publicSite?.seoPages?.resourcesHeading || "Start with the right foundation."}</h1><div className="public-prose"><p>{site?.publicSite?.seoPages?.resourcesCopy || "Explore Ellie’s coaching programs, student experiences, and practical next steps for multifamily real estate investing."}</p><h2>Explore the programs</h2><p>Compare focused six-week coaching and Asset Acquisition Accelerator options.</p><SmartLink className="public-button" to="/coaching-programs">View coaching programs</SmartLink><h2>Hear from students</h2><p>Read published student experiences and results.</p><SmartLink className="public-button" to="/testimonials">View testimonials</SmartLink><h2>Talk through your goals</h2><p>Book a discovery call to discuss where you are and what kind of support may fit.</p><SmartLink className="public-button" to="/book-a-call">Book a discovery call</SmartLink></div></main></PublicLayout>;
+}
+export function SitemapPage() {
+  const { site } = useWorkspaceTheme();
+  const groups = [
+    ["Explore", [["Home", "/"], ["About", "/about"], ["Coaching programs", "/coaching-programs"], ["Testimonials", "/testimonials"], ["Resources", "/resources"], ["Free guide", "/free-guide"]]],
+    ["Connect", [["Contact", "/contact"], ["Book a discovery call", "/book-a-call"], ["Frequently asked questions", "/faq"], ["Apply to join", "/apply"]]],
+    ["Policies", [["Privacy policy", "/privacy"], ["Terms of service", "/terms"], ["Refund and cancellation policy", "/refund-policy"], ["Data deletion", "/data-deletion"]]],
+  ];
+  return <PublicLayout><main id="main-content" className="public-inner sitemap-page"><p className="public-kicker">Find your way</p><h1>Website sitemap</h1><p className="public-lead">Browse every public section of this website from one place.</p><div className="sitemap-grid">{groups.map(([title, links]) => <section key={title}><h2>{title}</h2>{links.map(([label, path]) => <Link key={path} to={path}>{label}<FiArrowRight aria-hidden="true" /></Link>)}</section>)}{site?.programs?.some((program) => program.slug) ? <section><h2>Programs</h2>{site.programs.filter((program) => program.slug).map((program) => <Link key={program.slug} to={`/coaching-programs/${program.slug}`}>{program.publicPresentation?.title || program.name}<FiArrowRight aria-hidden="true" /></Link>)}</section> : null}{site?.team?.some((profile) => profile.slug) ? <section><h2>People</h2>{site.team.filter((profile) => profile.slug).map((profile) => <Link key={profile.slug} to={`/people/${profile.slug}`}>{profile.displayName}<FiArrowRight aria-hidden="true" /></Link>)}</section> : null}</div></main></PublicLayout>;
 }
 export function ProgramDetail() {
   const { slug } = useParams();

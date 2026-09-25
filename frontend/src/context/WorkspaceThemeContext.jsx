@@ -11,7 +11,7 @@ export function WorkspaceThemeProvider({ children }) {
   // instead of the real saved content. /faq, /resources, and /book-a-call
   // were missing, which is why those specific pages kept showing
   // placeholder FAQs no matter what was saved in the admin dashboard.
-  const publicRoute = /^\/(?:$|about(?:\/|$)|coaching-programs(?:\/|$)|faq(?:\/|$)|resources(?:\/|$)|testimonials(?:\/|$)|book-a-call(?:\/|$)|free-guide(?:\/|$)|contact(?:\/|$)|people(?:\/|$)|privacy(?:-policy)?(?:\/|$)|terms(?:\/|$)|refund-policy(?:\/|$)|data-deletion(?:\/|$)|apply(?:\/|$)|ref(?:\/|$)|profile\/edit(?:\/|$))/.test(pathname);
+  const publicRoute = /^\/(?:$|about(?:\/|$)|coaching-programs(?:\/|$)|faq(?:\/|$)|resources(?:\/|$)|sitemap(?:\/|$)|testimonials(?:\/|$)|book-a-call(?:\/|$)|free-guide(?:\/|$)|contact(?:\/|$)|people(?:\/|$)|privacy(?:-policy)?(?:\/|$)|terms(?:\/|$)|refund-policy(?:\/|$)|data-deletion(?:\/|$)|apply(?:\/|$)|ref(?:\/|$)|profile\/edit(?:\/|$))/.test(pathname);
   const [site, setSite] = useState(null),
     [loading, setLoading] = useState(true);
   useEffect(() => {
