@@ -8,6 +8,8 @@
     "build": "vite build",
     "lint": "eslint .",
     "test:coaching-role-ui": "node test-coaching-role-ui.js",
+    "test:coaching-contracts-ui": "node test-coaching-contracts-ui.js",
+    "test:lead-magnet-ui": "node test-lead-magnet-ui.js",
     "test:coaching-programs-ui": "node test-coaching-programs-ui.js",
     "test:multi-role-access-ui": "node test-multi-role-access-ui.js",
     "test:invitation-management-ui": "node test-invitation-management-ui.js",

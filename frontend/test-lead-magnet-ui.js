@@ -1,0 +1,17 @@
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+const root=path.dirname(fileURLToPath(import.meta.url));
+const jsx=fs.readFileSync(path.join(root,"src/pages/LeadMagnet.jsx"),"utf8");
+const css=fs.readFileSync(path.join(root,"src/pages/LeadMagnet.css"),"utf8");
+assert.match(jsx,/optInLeadMagnet\(form\)/,"opt-in remains connected to the delivery API");
+assert.match(jsx,/className="lead-magnet-shell"/,"page uses the redesigned lead-magnet layout");
+assert.match(jsx,/autoComplete="given-name"/,"name field supports browser autofill");
+assert.match(jsx,/autoComplete="email"/,"email field supports browser autofill");
+assert.match(jsx,/role="status"/,"success state is announced accessibly");
+assert.match(css,/--public-heading-font/,"page uses the configured public heading font");
+assert.match(css,/--public-body-font/,"page uses the configured public body font");
+assert.match(css,/--public-accent/,"page uses the configured public accent color");
+assert.match(css,/@media\(max-width:520px\)/,"page has a mobile layout");
+console.log("Lead-magnet layout, theme tokens, form connection, and responsive UI checks passed.");
