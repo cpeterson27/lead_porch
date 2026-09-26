@@ -49,9 +49,14 @@ export default function DeliverabilityHealthPanel() {
         <p className="form-error">{deliverabilityError}</p>
       ) : deliverability ? (
         <>
+          {deliverability.truncated ? (
+            <p className="form-error">
+              Send volume in this window is high enough that this only covers back to {deliverability.coveredFrom} so far, not the full requested window — not every recent email is counted below yet.
+            </p>
+          ) : null}
           <div className="campaign-deliverability__totals">
             <div>
-              <span>Sent (7 days)</span>
+              <span>Sent {deliverability.coveredFrom ? `(since ${deliverability.coveredFrom})` : "(7 days)"}</span>
               <strong>{deliverability.totals.total}</strong>
             </div>
             <div>
