@@ -35,6 +35,7 @@ function connectDatabase(uri) {
     );
     // Required for retry deduplication and automatic analytics retention.
     await require("../models/SiteTrafficEvent").createIndexes();
+    await require("../models/SearchReport").createIndexes();
     return connection;
   });
 }

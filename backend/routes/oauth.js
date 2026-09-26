@@ -151,4 +151,18 @@ router.post("/oauth/token", async (req, res) => {
   return res.status(400).json({ error: "unsupported_grant_type" });
 });
 
+// Search reporting uses its own one-time OAuth state and read-only scopes.
+router.get("/oauth/search-reporting/callback", async (req, res) => {
+  const service = require("../services/searchReportingService");
+  const frontend = require("../utils/frontendUrl").primaryFrontendUrl();
+  try {
+    const state = await service.consumeState(req.query.state);
+    const membership = await require("../models/WorkspaceMembership").findOne({ workspaceId: state.workspaceId, userId: state.userId, status: "active", $or: [{ role: { $in: ["owner", "admin"] } }, { roles: { $in: ["owner", "admin"] } }] });
+    if (!membership || typeof req.query.code !== "string" || req.query.error) throw new Error("Connection denied");
+    await require("../tenancy/workspaceContext").runWithWorkspace(state.workspaceId, () => service.finish(state, req.query.code));
+    res.redirect(`${frontend}/analytics?searchConnection=connected#search-visibility`);
+  } catch {
+    res.redirect(`${frontend}/analytics?searchConnection=failed#search-visibility`);
+  }
+});
 module.exports = router;

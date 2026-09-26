@@ -14,4 +14,5 @@ router.get("/growth",async(req,res,next)=>{
 router.get("/ai-traffic", async (req, res, next) => {
   try { res.set("Cache-Control", "no-store").json({ success: true, data: await require("../services/siteTrafficService").report(req.auth.workspaceId, req.query.days) }); } catch (error) { next(error); }
 });
+router.use("/search", require("./searchReporting"));
 module.exports=router;
