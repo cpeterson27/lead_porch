@@ -218,6 +218,7 @@ router.post("/gpt-actions/campaigns/send", requireScope("campaigns:write"), requ
       if (!outreach) { receipts.push({ outreachId: id, success: false, message: "No longer approved." }); continue; }
       const result = await sendEmail(outreach);
       if (result.success) { outreach.status = "sent"; outreach.sentAt = new Date(); outreach.messageId = result.messageId || ""; outreach.errorMessage = ""; }
+      else if (result.code === "RATE_LIMITED") { outreach.deliveryStatus = "delayed"; outreach.errorMessage = result.message || "Delayed"; }
       else { outreach.status = "failed"; outreach.failedAt = new Date(); outreach.errorMessage = result.message || "Send failed"; }
       await outreach.save();
       receipts.push({ outreachId: id, success: Boolean(result.success), message: result.message });

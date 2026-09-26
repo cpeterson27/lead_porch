@@ -497,6 +497,16 @@ router.post("/send", async(req,res)=>{
 
         sentCount++;
 
+      } else if (result.code === "RATE_LIMITED") {
+
+        // Same safe-retry handling as the scheduled sender
+        // (scheduledCampaignSendService.js): status stays "approved" so the
+        // automatic sweep picks this back up once the window/cap clears,
+        // instead of this manual "Send selected" button permanently marking
+        // a rate-limited item "failed" and abandoning it.
+        item.deliveryStatus = "delayed";
+        item.errorMessage = result.message;
+
       } else {
 
         item.status="failed";
