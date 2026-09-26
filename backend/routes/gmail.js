@@ -4,7 +4,7 @@ const Outreach = require("../models/Outreach");
 const Campaign = require("../models/Campaign");
 const Contact = require("../models/Contact");
 const gmail = require("../services/gmailOAuthService");
-const { classifyReply, draftReply } = require("../services/replyIntelligence");
+const { processWorkspaceReplies } = require("../services/autoReplyService");
 const WorkspaceMembership = require("../models/WorkspaceMembership");
 const { runWithWorkspace } = require("../tenancy/workspaceContext");
 const ConversationThread = require("../models/ConversationThread");
@@ -126,55 +126,16 @@ router.post("/send", async (req, res) => {
   } catch (error) { res.status(400).json({ error: error.message }); }
 });
 
-router.post("/sync-outreach-replies", async (_req, res) => {
+router.post("/sync-outreach-replies", async (req, res) => {
   try {
-    const sent = await Outreach.find({ status: "sent", contactEmail: { $ne: "" } }).select("contactEmail sentAt");
-    if (!sent.length) return res.json({ success: true, repliesFound: 0 });
-    const emails = [...new Set(sent.map((item) => item.contactEmail.toLowerCase()))];
-    const search = emails.slice(0, 40).map((email) => `from:${email}`).join(" OR ");
-    const { threads } = await gmail.listThreads({ query: `in:inbox newer_than:1y (${search})`, maxResults: 50 });
-    let repliesFound = 0;
-    for (const thread of threads) {
-      const sender = String(thread.from || "").match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/)?.[0]?.toLowerCase();
-      if (!sender || !emails.includes(sender)) continue;
-      const receivedAt = thread.date ? new Date(thread.date) : new Date();
-      const matching = await Outreach.find(
-        { contactEmail: sender, status: "sent", sentAt: { $lte: receivedAt } },
-      ).populate("campaignId", "name");
-      const intelligence = classifyReply(thread.snippet || "");
-      for (const item of matching) {
-        item.status = "replied";
-        item.repliedAt = receivedAt;
-        item.replyText = thread.snippet || "";
-        item.replyCategory = intelligence.category;
-        item.replyUrgency = intelligence.urgency;
-        item.aiReplyDraft = draftReply({
-          contactName: item.contactName,
-          category: intelligence.category,
-          campaignName: item.campaignId?.name,
-        });
-        await item.save();
-        if (intelligence.category === "unsubscribe" && item.contactId) {
-          await Contact.updateOne(
-            { _id: item.contactId },
-            {
-              $set: {
-                status: "unsubscribed",
-                "emailPreferences.marketingStatus": "unsubscribed",
-                "emailPreferences.unsubscribedAt": receivedAt,
-                "emailPreferences.unsubscribeSource": "reply_request",
-                "emailPreferences.topics.eventInvitations": false,
-                "emailPreferences.topics.programOffers": false,
-                "emailPreferences.topics.educationalNewsletter": false,
-              },
-            },
-          );
-        }
-        await Campaign.updateOne({ _id: item.campaignId?._id }, { $inc: { "metrics.replied": 1 } });
-        repliesFound += 1;
-      }
-    }
-    res.json({ success: true, repliesFound });
+    // Delegates to the same workspace-scoped, AI-classifying, auto-sending
+    // path the scheduled runner uses (autoReplyService.js) — this route is
+    // now just "run it right now instead of waiting for the next tick,"
+    // not a second, drifting implementation. The previous version queried
+    // Outreach with no workspaceId filter at all, a real cross-workspace
+    // leak in a multi-tenant app; scoping to req.auth.workspaceId closes it.
+    const result = await processWorkspaceReplies(req.auth.workspaceId);
+    res.json({ success: true, repliesFound: result.drafted, autoSent: result.autoSent, errors: result.errors });
   } catch (error) { res.status(400).json({ error: error.message }); }
 });
 
@@ -182,7 +143,7 @@ router.get("/contact-history", async (req, res) => {
   try {
     const email = String(req.query.email || "").trim().toLowerCase();
     if (!email || !email.includes("@")) return res.status(400).json({ error: "A contact email is required" });
-    const outreach = await Outreach.find({ contactEmail: email })
+    const outreach = await Outreach.find({ workspaceId: req.auth.workspaceId, contactEmail: email })
       .populate("campaignId", "name")
       .sort({ createdAt: -1 })
       .lean();
@@ -200,6 +161,7 @@ router.get("/contact-history", async (req, res) => {
         replyCategory: item.replyCategory,
         replyUrgency: item.replyUrgency,
         aiReplyDraft: item.aiReplyDraft,
+        aiReplySentAt: item.aiReplySentAt,
         deliveryStatus: item.deliveryStatus,
         deliveredAt: item.deliveredAt,
         openedAt: item.openedAt,
@@ -213,7 +175,7 @@ router.get("/outreach-history", async (req, res) => {
   try {
     const page = Math.max(1, Number.parseInt(req.query?.page, 10) || 1);
     const limit = Math.min(100, Math.max(10, Number.parseInt(req.query?.limit, 10) || 50));
-    const filter = { status: { $in: ["sent", "replied"] } };
+    const filter = { workspaceId: req.auth.workspaceId, status: { $in: ["sent", "replied"] } };
     const total = await Outreach.countDocuments(filter);
     const outreach = await Outreach.find(filter)
       .populate("campaignId", "name")
@@ -237,6 +199,7 @@ router.get("/outreach-history", async (req, res) => {
         replyCategory: item.replyCategory,
         replyUrgency: item.replyUrgency,
         aiReplyDraft: item.aiReplyDraft,
+        aiReplySentAt: item.aiReplySentAt,
         deliveryStatus: item.deliveryStatus,
         deliveredAt: item.deliveredAt,
         openedAt: item.openedAt,

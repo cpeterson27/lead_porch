@@ -202,9 +202,17 @@ const outreachSchema = new mongoose.Schema(
       type: String,
       default: "",
     },
+    // Set only when autoReplyService actually sent aiReplyDraft on its own
+    // (safeToAutoSend was true) — distinct from repliedAt (when THEY
+    // replied) and from a human clicking "Approve and send" manually,
+    // which never sets this.
+    aiReplySentAt: {
+      type: Date,
+      default: null,
+    },
     replyCategory: {
       type: String,
-      enum: ["", "interested", "partnership", "not_now", "not_interested", "unsubscribe", "out_of_office", "needs_review"],
+      enum: ["", "interested", "partnership", "not_now", "not_interested", "unsubscribe", "out_of_office", "question", "complaint_or_hostile", "needs_review"],
       default: "",
       index: true,
     },

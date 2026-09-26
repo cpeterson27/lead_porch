@@ -10,6 +10,7 @@ const { startCampaignSendScheduler, runDueCampaignSends, startApprovedOutreachSw
 const { startCommentSyncRunner, runDueSocialSync } = require("./services/socialCommentSyncRunner");
 const { startPaymentReminderRunner, runDuePaymentReminders } = require("./services/paymentReminderService");
 const { startEventReminderRunner, runDueEventReminders } = require("./services/eventReminderService");
+const { startAutoReplyRunner, runDueOutreachReplyAutomation } = require("./services/autoReplyService");
 
 const mongoUri = process.env.MONGO_URI;
 if (!mongoUri) {
@@ -37,6 +38,7 @@ connectDatabase(mongoUri)
     await runDueSocialSync();
     await runDuePaymentReminders();
     await runDueEventReminders();
+    await runDueOutreachReplyAutomation();
     startResearchMonitorRunner();
     startCommunicationJobRunner({ force: true });
     startAutomationRunner({ force: true });
@@ -47,6 +49,7 @@ connectDatabase(mongoUri)
     startCommentSyncRunner({ force: true });
     startPaymentReminderRunner({ force: true });
     startEventReminderRunner({ force: true });
+    startAutoReplyRunner({ force: true });
   })
   .catch((error) => {
     console.error("Research worker failed to start:", error.message || error);
