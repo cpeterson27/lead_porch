@@ -7,7 +7,6 @@ import {
   approveCampaignEmailTemplate,
   fetchCampaign,
   fetchCampaignEmailTemplate,
-  fetchDeliverabilityHistory,
   fetchWorkspaceConfig,
   generateCampaignEmailIdeas,
   generateCampaignAudienceTemplates,
@@ -18,6 +17,7 @@ import {
 } from "../services/api.js";
 import "./CampaignWorkspace.css";
 import "./CampaignAudience.css";
+import "../components/DeliverabilityHealthPanel.css";
 
 const formatDate = (value) =>
   value
@@ -70,9 +70,6 @@ export default function CampaignWorkspace() {
   const [logoSaving, setLogoSaving] = useState(false);
   const [templateDirty, setTemplateDirty] = useState(false);
   const [templateNotice, setTemplateNotice] = useState("");
-  const [deliverability, setDeliverability] = useState(null);
-  const [deliverabilityError, setDeliverabilityError] = useState("");
-  const [deliverabilityLoading, setDeliverabilityLoading] = useState(false);
   const [copiedToken, setCopiedToken] = useState("");
   const [emailPreview, setEmailPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -105,19 +102,6 @@ export default function CampaignWorkspace() {
       )
       .finally(() => setLoading(false));
   }, [id]);
-
-  const loadDeliverability = () => {
-    setDeliverabilityLoading(true);
-    setDeliverabilityError("");
-    fetchDeliverabilityHistory(7)
-      .then((result) => setDeliverability(result))
-      .catch(() => setDeliverabilityError("Unable to load deliverability data from Resend right now."))
-      .finally(() => setDeliverabilityLoading(false));
-  };
-  useEffect(() => {
-    loadDeliverability();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   useEffect(() => {
     if (!id) return;
@@ -801,73 +785,51 @@ export default function CampaignWorkspace() {
         ))}
       </section>
 
-      <section className="campaign-deliverability" aria-label="Email deliverability health">
+      <section className="campaign-deliverability" aria-label="This campaign's deliverability health">
         <header>
           <div>
-            <h3>Deliverability health</h3>
+            <h3>This campaign's deliverability</h3>
             <p>
-              Real send data pulled directly from Resend — account-wide
-              (every campaign combined), not just this one. Bounce and
-              complaint rate are the numbers that actually predict spam
-              placement; a single test inbox is not.
+              Real counts for this campaign specifically, tracked live from
+              Resend delivery events as they happen — not an account-wide
+              average. Rates are of messages sent so far, not the full
+              recipient list.
             </p>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            loading={deliverabilityLoading}
-            onClick={loadDeliverability}
-          >
-            Refresh
-          </Button>
         </header>
-        {deliverabilityError ? (
-          <p className="form-error">{deliverabilityError}</p>
-        ) : deliverability ? (
-          <>
+        {(() => {
+          const metrics = campaign.metrics || {};
+          const sent = Number(metrics.sent || 0);
+          const rate = (count) => (sent ? Math.round((Number(count || 0) / sent) * 1000) / 10 : 0);
+          const bounceRate = rate(metrics.bounced);
+          const complaintRate = rate(metrics.complained);
+          const clickRate = rate(metrics.clicked);
+          if (!sent) return <p>No emails sent yet for this campaign.</p>;
+          return (
             <div className="campaign-deliverability__totals">
               <div>
-                <span>Sent (7 days)</span>
-                <strong>{deliverability.totals.total}</strong>
+                <span>Sent</span>
+                <strong>{sent}</strong>
+              </div>
+              <div>
+                <span>Delivered</span>
+                <strong>{Number(metrics.delivered || 0)}</strong>
               </div>
               <div>
                 <span>Bounce rate</span>
-                <strong className={deliverability.bounceRate > 2 ? "is-warning" : "is-good"}>
-                  {deliverability.bounceRate}%
-                </strong>
+                <strong className={bounceRate > 2 ? "is-warning" : "is-good"}>{bounceRate}%</strong>
               </div>
               <div>
                 <span>Complaint rate</span>
-                <strong className={deliverability.complaintRate > 0.1 ? "is-warning" : "is-good"}>
-                  {deliverability.complaintRate}%
-                </strong>
+                <strong className={complaintRate > 0.1 ? "is-warning" : "is-good"}>{complaintRate}%</strong>
               </div>
               <div>
                 <span>Click rate</span>
-                <strong>{deliverability.clickRate}%</strong>
+                <strong>{clickRate}%</strong>
               </div>
             </div>
-            {deliverability.daily.length ? (
-              <div className="campaign-deliverability__days">
-                {deliverability.daily.map((day) => (
-                  <div key={day.date} className="campaign-deliverability__day">
-                    <span>{new Date(`${day.date}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
-                    <strong>{day.total} sent</strong>
-                    <small>
-                      {day.delivered} delivered · {day.clicked} clicked
-                      {day.bounced ? ` · ${day.bounced} bounced` : ""}
-                      {day.complained ? ` · ${day.complained} complained` : ""}
-                    </small>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <p>No sends in the last 7 days.</p>
-            )}
-          </>
-        ) : (
-          <p>Loading…</p>
-        )}
+          );
+        })()}
       </section>
 
       <section className="campaign-workspace__grid">

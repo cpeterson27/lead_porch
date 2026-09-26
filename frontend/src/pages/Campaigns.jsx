@@ -4,6 +4,7 @@ import { FiArrowRight, FiCalendar, FiTarget } from "react-icons/fi";
 import Button from "../components/Button.jsx";
 import Modal from "../components/Modal.jsx";
 import CampaignModal from "../components/CampaignModal.jsx";
+import DeliverabilityHealthPanel from "../components/DeliverabilityHealthPanel.jsx";
 import { createCampaign, deleteCampaign, fetchCampaignDeletionPreview, fetchCampaigns, updateCampaignDetails } from "../services/api.js";
 import { getWorkspaceSettings } from "../utils/workspaceSettings.js";
 import useInitiative from "../context/useInitiative.js";
@@ -92,6 +93,7 @@ export default function Campaigns() {
       <div><FiTarget /><span><strong>{visibleCampaigns.length}</strong>{selectedId === "all" ? "Total campaigns" : "Selected workspace"}</span></div>
       <div><FiCalendar /><span><strong>{activeCount}</strong>Active now</span></div>
     </section>
+    <DeliverabilityHealthPanel />
     {loading ? <div className="table-state">Loading campaigns…</div> : visibleCampaigns.length ? <section className="campaign-card-grid">
       {visibleCampaigns.map((campaign) => {
         const logistics = campaign.eventId?.eventbriteLogistics || {};
