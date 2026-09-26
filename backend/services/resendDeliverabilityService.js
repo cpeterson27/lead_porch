@@ -1,5 +1,18 @@
 const axios = require("axios");
 
+// Same business-day convention as the send-window guard in email.js — a
+// day boundary at UTC midnight (the old behavior) falls at 4-5pm Pacific,
+// so a batch sent Tuesday evening was bucketed and labeled "Wednesday" for
+// anyone in a US timezone. Confirmed live: this alone made an account-wide
+// count that was actually correct look wrong next to a viewer's own sense
+// of "what went out yesterday."
+function businessDateKey(isoString) {
+  const timezone = process.env.EMAIL_SEND_WINDOW_TIMEZONE || "America/Los_Angeles";
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(new Date(isoString));
+  const get = (type) => parts.find((part) => part.type === type)?.value;
+  return `${get("year")}-${get("month")}-${get("day")}`;
+}
+
 // Real, ground-truth send health pulled directly from Resend — the same
 // data manually queried by hand throughout tonight's deliverability
 // investigation, now available on demand instead of requiring a live check
@@ -47,7 +60,7 @@ async function getDeliverabilityHistory({ days = 7, maxPages = 60 } = {}) {
   }
   const byDay = new Map();
   for (const email of emails) {
-    const date = new Date(email.created_at).toISOString().slice(0, 10);
+    const date = businessDateKey(email.created_at);
     if (!byDay.has(date)) byDay.set(date, { date, total: 0, delivered: 0, clicked: 0, bounced: 0, complained: 0, other: 0 });
     const bucket = byDay.get(date);
     bucket.total += 1;

@@ -3,6 +3,19 @@ import Button from "./Button.jsx";
 import { fetchDeliverabilityHistory } from "../services/api.js";
 import "./DeliverabilityHealthPanel.css";
 
+// day.date is a plain "YYYY-MM-DD" business-day key (see
+// resendDeliverabilityService.js's businessDateKey) — not a UTC instant.
+// Parsing it with `new Date("...T00:00:00Z")` and letting toLocaleDateString
+// convert that to the viewer's local timezone shifted the displayed label
+// back a day for anyone west of UTC (confirmed live: a batch correctly
+// bucketed "Sep 24" was showing as "Sep 23" for a Pacific-timezone viewer).
+// Building the Date from the parsed Y/M/D components directly, with no
+// timezone conversion, keeps the label matching the key exactly.
+function formatBusinessDate(dateKey) {
+  const [year, month, day] = dateKey.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
 // Account-wide (every campaign combined) — moved here from the individual
 // campaign page, where it read as "this campaign's health" even though the
 // numbers were never scoped to one campaign. Bounce/complaint rate here are
@@ -56,31 +69,35 @@ export default function DeliverabilityHealthPanel() {
           ) : null}
           <div className="campaign-deliverability__totals">
             <div>
-              <span>Sent {deliverability.coveredFrom ? `(since ${deliverability.coveredFrom})` : "(7 days)"}</span>
+              <span>Sent {deliverability.coveredFrom ? `(since ${formatBusinessDate(deliverability.coveredFrom)})` : "(7 days)"}</span>
               <strong>{deliverability.totals.total}</strong>
             </div>
             <div>
-              <span>Bounce rate</span>
+              <span>Delivered</span>
+              <strong>{deliverability.totals.delivered}</strong>
+            </div>
+            <div>
+              <span>Bounced</span>
               <strong className={deliverability.bounceRate > 2 ? "is-warning" : "is-good"}>
-                {deliverability.bounceRate}%
+                {deliverability.totals.bounced}
               </strong>
             </div>
             <div>
-              <span>Complaint rate</span>
+              <span>Complained</span>
               <strong className={deliverability.complaintRate > 0.1 ? "is-warning" : "is-good"}>
-                {deliverability.complaintRate}%
+                {deliverability.totals.complained}
               </strong>
             </div>
             <div>
-              <span>Click rate</span>
-              <strong>{deliverability.clickRate}%</strong>
+              <span>Clicked</span>
+              <strong>{deliverability.totals.clicked}</strong>
             </div>
           </div>
           {deliverability.daily.length ? (
             <div className="campaign-deliverability__days">
               {deliverability.daily.map((day) => (
                 <div key={day.date} className="campaign-deliverability__day">
-                  <span>{new Date(`${day.date}T00:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</span>
+                  <span>{formatBusinessDate(day.date)}</span>
                   <strong>{day.total} sent</strong>
                   <small>
                     {day.delivered} delivered · {day.clicked} clicked

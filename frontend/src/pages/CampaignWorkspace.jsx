@@ -792,18 +792,15 @@ export default function CampaignWorkspace() {
             <p>
               Real counts for this campaign specifically, tracked live from
               Resend delivery events as they happen — not an account-wide
-              average. Rates are of messages sent so far, not the full
-              recipient list.
+              average.
             </p>
           </div>
         </header>
         {(() => {
           const metrics = campaign.metrics || {};
           const sent = Number(metrics.sent || 0);
-          const rate = (count) => (sent ? Math.round((Number(count || 0) / sent) * 1000) / 10 : 0);
-          const bounceRate = rate(metrics.bounced);
-          const complaintRate = rate(metrics.complained);
-          const clickRate = rate(metrics.clicked);
+          const bounced = Number(metrics.bounced || 0);
+          const complained = Number(metrics.complained || 0);
           if (!sent) return <p>No emails sent yet for this campaign.</p>;
           return (
             <div className="campaign-deliverability__totals">
@@ -816,16 +813,16 @@ export default function CampaignWorkspace() {
                 <strong>{Number(metrics.delivered || 0)}</strong>
               </div>
               <div>
-                <span>Bounce rate</span>
-                <strong className={bounceRate > 2 ? "is-warning" : "is-good"}>{bounceRate}%</strong>
+                <span>Bounced</span>
+                <strong className={bounced / sent > 0.02 ? "is-warning" : "is-good"}>{bounced}</strong>
               </div>
               <div>
-                <span>Complaint rate</span>
-                <strong className={complaintRate > 0.1 ? "is-warning" : "is-good"}>{complaintRate}%</strong>
+                <span>Complained</span>
+                <strong className={complained / sent > 0.001 ? "is-warning" : "is-good"}>{complained}</strong>
               </div>
               <div>
-                <span>Click rate</span>
-                <strong>{clickRate}%</strong>
+                <span>Clicked</span>
+                <strong>{Number(metrics.clicked || 0)}</strong>
               </div>
             </div>
           );
