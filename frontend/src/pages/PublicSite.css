@@ -1140,14 +1140,18 @@
 
 .public-hero__video {
   position: relative;
-  width: min(100%, 450px);
+  width: min(100%, 380px);
   min-height: 0;
-  aspect-ratio: 1;
+  /* The source is a vertical phone-recorded video (portrait, ~9:16) — a 1:1
+     square container forced background-size:cover to crop in tight on the
+     face for an extreme, unnatural close-up. 4:5 keeps most of the actual
+     frame instead of cropping most of it away. */
+  aspect-ratio: 4 / 5;
   margin-top: 0;
   border: 0;
   border-radius: 16px;
   background-color: #dadcdc;
-  background-position: center;
+  background-position: center 25%;
   background-size: cover;
   box-shadow: 0 18px 35px #00000016;
   overflow: hidden;
@@ -1169,7 +1173,7 @@
   width: 100%;
 }
 .public-hero-video-only .public-hero__video {
-  width: min(100%, 820px);
+  width: min(100%, 460px);
 }
 .public-hero__video small {
   position: absolute;
@@ -2541,13 +2545,30 @@ button.public-text-link {
 }
 .video-modal > div {
   width: min(960px, 100%);
-  aspect-ratio: 16 / 9;
+  max-height: 88vh;
   background: #000;
 }
-.video-modal iframe,
-.video-modal video {
+/* An embedded YouTube/Vimeo iframe is always a landscape player, so it
+   keeps a fixed 16:9 box. A directly-hosted <video> — this hero's actual
+   source is a vertical phone recording — must not be forced into that same
+   box: width/height 100% with no object-fit was stretching a portrait
+   video to fill a landscape frame, distorting it horizontally. object-fit:
+   contain plus letting height come from the video's own intrinsic ratio
+   keeps any orientation correct, letterboxed rather than warped. */
+.video-modal:has(iframe) > div {
+  aspect-ratio: 16 / 9;
+}
+.video-modal iframe {
   width: 100%;
   height: 100%;
+  border: 0;
+}
+.video-modal video {
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 88vh;
+  object-fit: contain;
   border: 0;
 }
 .video-modal > button {
