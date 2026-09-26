@@ -1005,18 +1005,8 @@ export function PublicHome() {
     visibility = p.sectionVisibility || {},
     showPrograms = visibility.programs !== false,
     showHeroCopy = visibility.heroCopy !== false,
-    showHeroImage = visibility.heroImage !== false,
-    showHeroQuote = visibility.heroQuote !== false,
-    videoOnlyHero = !showHeroCopy && !showHeroImage,
-    discoveryCallCta = p.discoveryCallEnabled ? (
-      <Link className="public-button public-discovery-call-cta" to="/book-a-call">
-        {p.discoveryCallButtonLabel || "Book a Discovery Call"}
-      </Link>
-    ) : null,
-    heroImage = p.heroMediaUrl || "",
     workspaceName =
       site?.branding?.publicSiteName || site?.workspace?.name || "",
-    heroEyebrow = p.eyebrow || "Coaching · Education · Results",
     // CHANGED: the bolded word in the headline/intro title is now driven by
     // data (headlineAccent / introTitleAccent) instead of being hardcoded.
     // For Ellie, set headlineAccent: "Discipline" and
@@ -1027,9 +1017,6 @@ export function PublicHome() {
     // For Ellie, set aboutQuote to her existing quote text.
     aboutQuote =
       p.aboutQuote || "A clear point of view, thoughtfully put into practice.",
-    // CHANGED: was the unconditional literal "ELLIE BAXTER".
-    // For Ellie, set heroQuoteAttribution: "ELLIE BAXTER".
-    heroQuoteAttribution = p.heroQuoteAttribution || workspaceName,
     aboutDisplayName = p.aboutTitle?.replace(/^Meet\s+/i, "") || workspaceName,
     initials =
       aboutDisplayName
@@ -1042,76 +1029,13 @@ export function PublicHome() {
   return (
     <PublicLayout>
       <main id="main-content" className="public-home-wrap">
-        <section
-          className={`public-hero-section${videoOnlyHero ? " public-hero-section--video-only" : ""}`}
-        >
+        <section className="public-hero-section public-hero-section--minimal">
           {showHeroCopy ? (
             <div className="public-hero-left">
-              <div className="public-hero-tags">
-                <span className="public-hero-tag">{heroEyebrow}</span>
-              </div>
               <h1 className="public-hero-headline">
                 <EditorialHeading text={p.headline} accent={headlineAccent} />
               </h1>
               <div className="public-hero-subhead">{p.subheadline}</div>
-              <div className="public-hero-actions">
-                <SmartLink
-                  className="public-hero-btn-primary"
-                  to={
-                    showPrograms ? "#programs" : p.primaryCtaUrl || "#contact"
-                  }
-                >
-                  {showPrograms
-                    ? "Explore programs"
-                    : p.primaryCtaLabel || "Contact us"}
-                </SmartLink>
-                <SmartLink
-                  className="public-hero-btn-secondary"
-                  to={p.secondaryCtaUrl || "/#about"}
-                >
-                  {p.secondaryCtaLabel || "Meet the founder"}
-                </SmartLink>
-              </div>
-              {visibility.video !== false ? (
-                <>
-                  <HeroVideoTile site={site} />
-                  {discoveryCallCta}
-                </>
-              ) : null}
-            </div>
-          ) : visibility.video !== false ? (
-            <div className="public-hero-video-only">
-              <HeroVideoTile site={site} />
-              {discoveryCallCta}
-            </div>
-          ) : null}
-          {showHeroImage ? (
-            <div className="public-hero-right">
-              <div className="public-hero-img-box">
-                {heroImage ? (
-                  <img
-                    className="public-hero-img"
-                    src={cloudinaryImage(heroImage, 960)}
-                    alt={p.heroMediaAlt || ""}
-                  />
-                ) : (
-                  <div
-                    className="public-hero-image-placeholder"
-                    aria-hidden="true"
-                  />
-                )}
-                {showHeroQuote ? (
-                  <div className="public-hero-quote-box">
-                    <span className="public-hero-quote">
-                      "
-                      {p.heroTagline ||
-                        "Learn what works, build momentum, and get results."}
-                      "
-                    </span>
-                    <small>— {heroQuoteAttribution}</small>
-                  </div>
-                ) : null}
-              </div>
             </div>
           ) : null}
         </section>
@@ -1376,7 +1300,7 @@ export function FaqPage() {
     ["Does applying guarantee acceptance?", "No. An application starts a conversation and does not guarantee enrollment in a program."],
     ["What topics are covered?", "Depending on the program, topics may include acquisitions, market analysis, underwriting, capital raising, investor relationships, asset management, and business planning."],
   ];
-  return <PublicLayout><main id="main-content" className="public-inner"><p className="public-kicker">Frequently asked questions</p><h1>{site?.publicSite?.seoPages?.faqHeading || "Answers before your next step."}</h1><div className="public-prose">{questions.map(([question, answer]) => <section key={question}><h2>{question}</h2><p>{answer}</p></section>)}<SmartLink className="public-button" to="/book-a-call">Talk with {name}</SmartLink></div></main></PublicLayout>;
+  return <PublicLayout><main id="main-content" className="public-inner"><p className="public-kicker">Frequently asked questions</p><h1>{site?.publicSite?.seoPages?.faqHeading || "Answers before your next step."}</h1><div className="discovery-faq-list">{questions.map(([question, answer]) => <details key={question}><summary>{question}</summary><p>{answer}</p></details>)}</div><SmartLink className="public-button" to="/book-a-call">Talk with {name}</SmartLink></main></PublicLayout>;
 }
 export function ResourcesPage() {
   const { site } = useWorkspaceTheme();

@@ -1307,7 +1307,7 @@ export default function PublicSiteAdmin({ section = "website" }) {
             <header>
               <span>00</span>
               <div>
-                <h4>Optional site capabilities</h4>
+                <h4>What's visible on your site</h4>
                 <p>Turn on only the content this workspace actually offers.</p>
               </div>
             </header>
@@ -1332,22 +1332,20 @@ export default function PublicSiteAdmin({ section = "website" }) {
                 />
                 <span>Testimonials, results, and proof</span>
               </label>
+              {Object.entries(visibilityLabels).map(([key, label]) => (
+                <label className="website-toggle" key={key}>
+                  <input
+                    type="checkbox"
+                    checked={config.publicSite.sectionVisibility?.[key] !== false}
+                    onChange={(e) => patchVisibility(key, e.target.checked)}
+                  />
+                  <span>{label}</span>
+                </label>
+              ))}
             </div>
             <Button loading={saving} onClick={saveConfig}>
-              Save site capabilities
+              Save site visibility
             </Button>
-          </div>
-          <div className="public-admin__checks">
-            {Object.entries(visibilityLabels).map(([key, label]) => (
-              <label className="website-toggle" key={key}>
-                <input
-                  type="checkbox"
-                  checked={config.publicSite.sectionVisibility?.[key] !== false}
-                  onChange={(e) => patchVisibility(key, e.target.checked)}
-                />
-                <span>{label}</span>
-              </label>
-            ))}
           </div>
           <div className="website-editor-group">
             <header>

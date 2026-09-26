@@ -1164,6 +1164,21 @@
   overflow: hidden;
 }
 
+/* Minimal hero: title + supporting statement only — no eyebrow tag,
+   buttons, video, or side photo. Single centered column instead of the
+   two-column copy+photo grid the base rule is built for. */
+.public-hero-section--minimal {
+  grid-template-columns: 1fr;
+  justify-items: center;
+  text-align: center;
+  min-height: 0;
+  padding-block: clamp(64px, 9vw, 110px);
+}
+.public-hero-section--minimal .public-hero-headline,
+.public-hero-section--minimal .public-hero-subhead {
+  max-width: 720px;
+}
+
 /* Video-first hero: no headline/copy and no side image, so the video is
    the only thing in the hero and should read as the main event — larger,
    centered, and the first thing a visitor sees on the page. */
