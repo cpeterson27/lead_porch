@@ -59,8 +59,6 @@ const visibilityLabels = {
   event: "Upcoming event",
   community: "Skool/community",
   heroCopy: "Hero heading, text & buttons",
-  heroImage: "Hero photo",
-  heroQuote: "Hero pull-quote",
 };
 const bookingDays = [
   [0, "Sunday"], [1, "Monday"], [2, "Tuesday"], [3, "Wednesday"],
@@ -696,54 +694,6 @@ export default function PublicSiteAdmin({ section = "website" }) {
               </label>
             </div>
             <div className="homepage-media-uploads homepage-media-uploads--inline">
-              <article>
-                <div className="homepage-media-preview">
-                  {config.publicSite.heroMediaUrl ? (
-                    <img
-                      src={config.publicSite.heroMediaUrl}
-                      alt="Current homepage hero"
-                    />
-                  ) : (
-                    <span>Hero image</span>
-                  )}
-                </div>
-                <div>
-                  <h4>Homepage hero image</h4>
-                  <p>
-                    The large building or brand image beside the opening
-                    headline.
-                  </p>
-                  <label className="website-upload-button">
-                    {uploading === "heroMediaUrl"
-                      ? "Uploading…"
-                      : config.publicSite.heroMediaUrl
-                        ? "Replace image"
-                        : "Upload image"}
-                    <input
-                      disabled={Boolean(uploading)}
-                      type="file"
-                      accept="image/png,image/jpeg,image/webp"
-                      onChange={(event) =>
-                        uploadSiteImage(
-                          event.target.files?.[0],
-                          "heroMediaUrl",
-                          "Homepage hero image",
-                        )
-                      }
-                    />
-                  </label>
-                  <label className="alt-text-field">
-                    Alt text (for screen readers)
-                    <input
-                      value={config.publicSite.heroMediaAlt || ""}
-                      onChange={(e) =>
-                        patchPublic("heroMediaAlt", e.target.value)
-                      }
-                      placeholder="Describe what's in this image"
-                    />
-                  </label>
-                </div>
-              </article>
               <article>
                 <div className="homepage-media-preview">
                   {config.publicSite.stickyBackgroundUrl ? (
