@@ -1,4 +1,5 @@
 const fs = require("fs");
+const { publicPages, pageEnabled } = require("../services/publicSitemap");
 const path = require("path");
 const publicSiteService = require("../services/publicSiteService");
 const WorkspaceConfig = require("../models/WorkspaceConfig");
@@ -84,11 +85,12 @@ function pathSettings(pathname, siteName, defaultDescription) {
       description: "Contact Ellie's Coaching to ask about multifamily real estate coaching programs, applications, and upcoming training.",
       indexable: true,
     },
-    "/privacy": { title: `Privacy Policy | ${siteName}`, description: `Privacy policy for ${siteName}.`, indexable: false },
-    "/privacy-policy": { title: `Privacy Policy | ${siteName}`, description: `Privacy policy for ${siteName}.`, indexable: false, canonicalPath: "/privacy" },
-    "/terms": { title: `Terms of Service | ${siteName}`, description: `Terms of service for ${siteName}.`, indexable: false },
-    "/data-deletion": { title: `Data Deletion | ${siteName}`, description: `Data deletion instructions for ${siteName}.`, indexable: false },
-    "/apply": { title: `Apply to a Coaching Program | ${siteName}`, description: `Apply to a ${siteName} coaching program.`, indexable: false },
+    "/privacy": { title: `Privacy Policy | ${siteName}`, description: `Privacy policy for ${siteName}.`, indexable: true },
+    "/privacy-policy": { title: `Privacy Policy | ${siteName}`, description: `Privacy policy for ${siteName}.`, indexable: true, canonicalPath: "/privacy" },
+    "/terms": { title: `Terms of Service | ${siteName}`, description: `Terms of service for ${siteName}.`, indexable: true },
+    "/refund-policy": { title: `Refund and Cancellation Policy | ${siteName}`, description: `Refund and cancellation policy for ${siteName}.`, indexable: true },
+    "/data-deletion": { title: `Data Deletion | ${siteName}`, description: `Data deletion instructions for ${siteName}.`, indexable: true },
+    "/apply": { title: `Apply to a Coaching Program | ${siteName}`, description: `Apply to a ${siteName} coaching program.`, indexable: true },
     "/book-a-call": { title: `Book a Discovery Call | ${siteName}`, description: `Book a free discovery call with ${siteName}.`, indexable: true },
   };
   return { path, ...(fixed[path] || { title: siteName, description: defaultDescription, indexable: false }) };
@@ -105,7 +107,7 @@ async function workspaceMeta(req) {
     workspaceId: ws._id,
     key: "primary",
   })
-    .select("branding publicSite legalBusinessName websiteUrl addressLine1 addressLine2 addressCity addressRegion addressPostalCode addressCountry")
+    .select("branding publicSite publicApplication legalBusinessName websiteUrl addressLine1 addressLine2 addressCity addressRegion addressPostalCode addressCountry")
     .lean();
   const branding = config?.branding || {};
   const publicSite = config?.publicSite || {};
@@ -124,6 +126,8 @@ async function workspaceMeta(req) {
     if (publicSite.metaTitle) defaults.title = publicSite.metaTitle;
     if (publicSite.metaDescription) defaults.description = publicSite.metaDescription;
   }
+  const publicPage = publicPages.find((page) => page.path === defaults.path);
+  if (publicPage && !pageEnabled(publicPage, { publicSite, applicationEnabled: config?.publicApplication?.enabled !== false })) defaults.indexable = false;
   let profile = null;
   let program = null;
   const profileSlug = defaults.path.match(/^\/people\/([a-z0-9-]+)$/i)?.[1];

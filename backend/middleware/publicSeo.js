@@ -33,7 +33,6 @@ router.get("/robots.txt", (req, res) => {
     "User-agent: *",
     "Allow: /",
     "Disallow: /login",
-    "Disallow: /apply",
     "Disallow: /ref/",
     "Disallow: /payment/",
     "Disallow: /payment-plan/",
@@ -51,21 +50,7 @@ router.get("/sitemap.xml", async (req, res, next) => {
     const origin = publicOrigin(req);
     const site = await publicSiteService.site(req);
     if (!site.publicSite?.published) return res.status(404).end();
-    const paths = [
-      "/",
-      "/about",
-      "/coaching-programs",
-      "/faq",
-      "/resources",
-      "/sitemap",
-      "/free-guide",
-      "/testimonials",
-      "/contact",
-      ...(site.publicSite?.discoveryCallEnabled ? ["/book-a-call"] : []),
-      ...(site.programs || []).filter((program) => program.slug).map((program) => `/coaching-programs/${encodeURIComponent(program.slug)}`),
-      ...(site.team || []).map((profile) => `/people/${encodeURIComponent(profile.slug)}`),
-    ];
-    const uniquePaths = [...new Set(paths)];
+    const uniquePaths = site.sitemap.map((entry) => entry.path);
     const urls = uniquePaths.map((path) => `  <url><loc>${xml(`${origin}${path}`)}</loc></url>`).join("\n");
     res
       .type("application/xml")

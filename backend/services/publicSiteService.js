@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { sitemapEntries } = require("./publicSitemap");
 const Workspace = require("../models/Workspace");
 const WorkspaceConfig = require("../models/WorkspaceConfig");
 const WorkspaceMembership = require("../models/WorkspaceMembership");
@@ -738,11 +739,9 @@ async function site(models = deps, request) {
         .lean(),
       models.PublicProfile.find({
         workspaceId: ws._id,
-        ownerType: "coach",
         status: "published",
       })
         .sort({ featured: -1, sortOrder: 1, displayName: 1 })
-        .limit(50)
         .lean(),
       models.Event.findOne({
         workspaceId: ws._id,
@@ -762,17 +761,18 @@ async function site(models = deps, request) {
       memberIds = new Set(activeMembers.map((row) => String(row.userId)));
     const eligibleProfiles = profiles.filter(
       (row) =>
-        coachIds.has(String(row.coachProfileId)) &&
+        row.ownerType !== "coach" || (coachIds.has(String(row.coachProfileId)) &&
         memberIds.has(String(row.userId)) &&
         row.displayName &&
-        row.bio,
+        row.bio),
     );
-    return {
+    const result = {
       ...sanitizedConfig(ws, config),
+      applicationEnabled: config?.publicApplication?.enabled !== false,
       programs: programs.map(programProjection),
       featuredTestimonials: testimonials.map(testimonialProjection),
       discoveryReviews: (googleReviews.length ? googleReviews : testimonials).map(testimonialProjection),
-      team: eligibleProfiles.slice(0, 12).map(profileProjection),
+      team: eligibleProfiles.filter((row) => row.ownerType === "coach").slice(0, 12).map(profileProjection),
       upcomingEvent: event
         ? {
             id: event._id,
@@ -785,6 +785,8 @@ async function site(models = deps, request) {
           }
         : null,
     };
+    result.sitemap = sitemapEntries(result, eligibleProfiles.map(profileProjection));
+    return result;
   });
 }
 function profileInput(input) {

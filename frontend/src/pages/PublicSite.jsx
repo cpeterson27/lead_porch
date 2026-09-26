@@ -1383,12 +1383,30 @@ export function ResourcesPage() {
 }
 export function SitemapPage() {
   const { site } = useWorkspaceTheme();
-  const groups = [
-    ["Explore", [["Home", "/"], ["About", "/about"], ["Coaching programs", "/coaching-programs"], ["Testimonials", "/testimonials"], ["Resources", "/resources"], ["Free guide", "/free-guide"]]],
-    ["Connect", [["Contact", "/contact"], ["Book a discovery call", "/book-a-call"], ["Frequently asked questions", "/faq"], ["Apply to join", "/apply"]]],
-    ["Policies", [["Privacy policy", "/privacy"], ["Terms of service", "/terms"], ["Refund and cancellation policy", "/refund-policy"], ["Data deletion", "/data-deletion"]]],
-  ];
-  return <PublicLayout><main id="main-content" className="public-inner sitemap-page"><p className="public-kicker">Find your way</p><h1>Website sitemap</h1><p className="public-lead">Browse every public section of this website from one place.</p><div className="sitemap-grid">{groups.map(([title, links]) => <section key={title}><h2>{title}</h2>{links.map(([label, path]) => <Link key={path} to={path}>{label}<FiArrowRight aria-hidden="true" /></Link>)}</section>)}{site?.programs?.some((program) => program.slug) ? <section><h2>Programs</h2>{site.programs.filter((program) => program.slug).map((program) => <Link key={program.slug} to={`/coaching-programs/${program.slug}`}>{program.publicPresentation?.title || program.name}<FiArrowRight aria-hidden="true" /></Link>)}</section> : null}{site?.team?.some((profile) => profile.slug) ? <section><h2>People</h2>{site.team.filter((profile) => profile.slug).map((profile) => <Link key={profile.slug} to={`/people/${profile.slug}`}>{profile.displayName}<FiArrowRight aria-hidden="true" /></Link>)}</section> : null}</div></main></PublicLayout>;
+  const entries = site?.sitemap || [];
+  const groups = ["Programs", "Explore", "Connect", "People", "Policies"]
+    .map((title) => [title, entries.filter((entry) => entry.group === title)])
+    .filter(([, links]) => links.length);
+  return (
+    <PublicLayout>
+      <main id="main-content" className="public-inner sitemap-page">
+        <p className="public-kicker">Find your way</p>
+        <h1>Website sitemap</h1>
+        <p className="public-lead">Browse all public pages, coaching programs, and people from one place.</p>
+        {!site ? <p role="status">The sitemap could not be loaded. Please refresh the page to try again.</p> : null}
+        <div className="sitemap-grid">
+          {groups.map(([title, links]) => (
+            <section key={title} aria-label={title} className={title === "Programs" ? "sitemap-programs" : undefined}>
+              <h2>{title}</h2>
+              {links.map(({ label, path }) => (
+                <Link key={path} to={path}><span>{label}</span><FiArrowRight aria-hidden="true" /></Link>
+              ))}
+            </section>
+          ))}
+        </div>
+      </main>
+    </PublicLayout>
+  );
 }
 export function ProgramDetail() {
   const { slug } = useParams();

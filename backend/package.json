@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "test:public-sitemap": "node test-public-sitemap.js",
     "postinstall": "cd ../frontend && npm install --include=dev && npm run build",
     "automation:indexes:preflight": "node scripts/migrate-automation-action-indexes.js --preflight",
     "automation:indexes:migrate": "node scripts/migrate-automation-action-indexes.js --apply",
