@@ -751,15 +751,18 @@ export default function Outreach() {
           For a meaningful Gmail test, use a mailbox different from the sender address — sending team@elliescoaching.com back to itself can look like spoofed mail.
         </small>
       </section>
-      <section className="outreach-summary">
+      <section className="outreach-summary" aria-label="Filter messages by status">
         {viewStatuses.map(
           (status) => (
             <button
               key={status}
+              type="button"
+              aria-pressed={filter === status}
+              title={status === "delivered" ? "Delivered across this campaign’s lifetime" : labels[status]}
               className={filter === status ? "is-active" : ""}
               onClick={() => setFilter(status)}
             >
-              <span>{status === "delivered" ? "Delivered · campaign total" : labels[status]}</span>
+              <span>{labels[status]}</span>
               <strong>{counts[status] || 0}</strong>
             </button>
           ),

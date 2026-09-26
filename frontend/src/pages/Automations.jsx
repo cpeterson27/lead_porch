@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   createAutomation,
   createAutomationFromTemplate,
@@ -73,6 +73,8 @@ function definition(form) {
 
 export default function Automations() {
   const { session } = useAuth();
+  const editorRef = useRef(null);
+  const [pendingStatus, setPendingStatus] = useState({});
   const [catalog, setCatalog] = useState(null);
   const [automations, setAutomations] = useState([]);
   const [executions, setExecutions] = useState([]);
@@ -128,7 +130,7 @@ export default function Automations() {
       setMessage(error.response?.data?.error || error.message);
     }
   };
-  const edit = (item) =>
+  const edit = (item) => {
     setForm({
       id: item._id,
       name: item.name,
@@ -142,6 +144,24 @@ export default function Automations() {
       actionConfig: JSON.stringify(item.actions?.[0]?.config || {}, null, 2),
       actionsJson: JSON.stringify(item.actions || [], null, 2),
     });
+    requestAnimationFrame(() => {
+      editorRef.current?.scrollIntoView({ block: "start", behavior: "auto" });
+      editorRef.current?.querySelector("input")?.focus({ preventScroll: true });
+    });
+  };
+  const toggleStatus = async (item) => {
+    setPendingStatus((current) => ({ ...current, [item._id]: true }));
+    try {
+      const status = item.status === "enabled" ? "disabled" : "enabled";
+      await updateAutomationStatus(item._id, status);
+      setAutomations((current) => current.map((entry) => entry._id === item._id ? { ...entry, status } : entry));
+      setMessage(`${item.name} ${status}.`);
+    } catch (error) {
+      setMessage(error.response?.data?.error || "The status could not be saved. Please try again.");
+    } finally {
+      setPendingStatus((current) => ({ ...current, [item._id]: false }));
+    }
+  };
   if (loading)
     return (
       <main className="automations-page">
@@ -205,7 +225,7 @@ export default function Automations() {
         </div>
       </section>
       <section className="automation-layout">
-        <form className="automation-panel" onSubmit={save}>
+        <form ref={editorRef} className="automation-panel" onSubmit={save}>
           <h2>{form.id ? "Edit automation" : "Create automation"}</h2>
           <label>
             Name
@@ -393,22 +413,20 @@ export default function Automations() {
                   </span>
                   <small>{item.description}</small>
                 </div>
-                <div>
+                <div className="automation-item-actions">
                   <button type="button" onClick={() => edit(item)}>
                     Edit
                   </button>
                   <button
                     className={item.status === "enabled" ? "is-enabled" : ""}
                     type="button"
-                    onClick={async () => {
-                      await updateAutomationStatus(
-                        item._id,
-                        item.status === "enabled" ? "disabled" : "enabled",
-                      );
-                      await load();
-                    }}
+                    aria-pressed={item.status === "enabled"}
+                    aria-label={`${item.status === "enabled" ? "Disable" : "Enable"} ${item.name}`}
+                    disabled={Boolean(pendingStatus[item._id])}
+                    aria-busy={Boolean(pendingStatus[item._id])}
+                    onClick={() => toggleStatus(item)}
                   >
-                    {item.status === "enabled" ? "Enabled" : "Disabled"}
+                    {pendingStatus[item._id] ? "Saving…" : item.status === "enabled" ? "Enabled" : "Disabled"}
                   </button>
                 </div>
               </article>
