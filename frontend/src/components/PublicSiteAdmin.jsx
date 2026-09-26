@@ -649,32 +649,36 @@ export default function PublicSiteAdmin({ section = "website" }) {
                   onChange={(e) => patchPublic("eyebrow", e.target.value)}
                 />
               </label>
-              <label>
-                Logo overline
-                <input
-                  value={config.publicSite.heroOverline || ""}
-                  onChange={(e) => patchPublic("heroOverline", e.target.value)}
-                />
-              </label>
               <label className="wide">
                 Headline
                 <input
                   value={config.publicSite.headline || ""}
                   onChange={(e) => patchPublic("headline", e.target.value)}
                 />
+                <small>
+                  The full headline text, e.g. "Build the Discipline to
+                  Scale."
+                </small>
+              </label>
+              <label>
+                Accent word or phrase
+                <input
+                  value={config.publicSite.headlineAccent || ""}
+                  onChange={(e) =>
+                    patchPublic("headlineAccent", e.target.value)
+                  }
+                  placeholder="e.g. Discipline"
+                />
+                <small>
+                  Must match text in the headline above exactly — that word
+                  gets the special styled treatment.
+                </small>
               </label>
               <label className="wide">
                 Supporting statement
                 <textarea
                   value={config.publicSite.subheadline || ""}
                   onChange={(e) => patchPublic("subheadline", e.target.value)}
-                />
-              </label>
-              <label className="wide">
-                Logo supporting line
-                <input
-                  value={config.publicSite.heroTagline || ""}
-                  onChange={(e) => patchPublic("heroTagline", e.target.value)}
                 />
               </label>
               <label>
@@ -685,6 +689,10 @@ export default function PublicSiteAdmin({ section = "website" }) {
                     patchPublic("primaryCtaLabel", e.target.value)
                   }
                 />
+                <small>
+                  Only shown if "Programs" below is turned off — otherwise
+                  the button always reads "Explore programs."
+                </small>
               </label>
             </div>
             <div className="homepage-media-uploads homepage-media-uploads--inline">

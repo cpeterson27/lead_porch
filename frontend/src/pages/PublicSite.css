@@ -1098,20 +1098,27 @@
 }
 
 .public-hero-headline {
-  max-width: 520px;
+  max-width: 560px;
   margin: 0 0 24px;
   color: var(--public-text);
   font-family: var(--public-body-font, "DM Sans"), sans-serif;
-  font-size: clamp(58px, 6.7vw, 82px);
-  font-weight: 700;
-  letter-spacing: -.065em;
-  line-height: .88;
+  font-size: clamp(58px, 6.7vw, 84px);
+  font-weight: 800;
+  letter-spacing: -.06em;
+  line-height: .9;
+  text-wrap: balance;
 }
 
+/* The single accent word/phrase (see headlineAccent in the Hero admin
+   editor) gets its own established heading font, in italic, in the site's
+   brand accent color — the same "bold statement + one styled word" pattern
+   used everywhere else on this page, just applied here with real weight. */
 .public-hero-headline em {
   font-family: var(--public-heading-font, "Instrument Serif", Georgia, serif);
-  font-weight: 400;
-  letter-spacing: -.035em;
+  font-style: italic;
+  font-weight: 500;
+  letter-spacing: -.02em;
+  color: var(--public-accent);
 }
 
 .public-hero-subhead {
