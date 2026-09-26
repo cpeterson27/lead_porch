@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const root=path.dirname(fileURLToPath(import.meta.url));
 const jsx=fs.readFileSync(path.join(root,"src/pages/LeadMagnet.jsx"),"utf8");
 const css=fs.readFileSync(path.join(root,"src/pages/LeadMagnet.css"),"utf8");
-assert.match(jsx,/optInLeadMagnet\(form\)/,"opt-in remains connected to the delivery API");
+assert.match(jsx,/optInLeadMagnet\(\{ \.\.\.form, siteAttribution: getSiteAttribution\(\) \}\)/,"opt-in remains connected to the delivery API");
 assert.match(jsx,/className="lead-magnet-shell"/,"page uses the redesigned lead-magnet layout");
 assert.match(jsx,/autoComplete="given-name"/,"name field supports browser autofill");
 assert.match(jsx,/autoComplete="email"/,"email field supports browser autofill");

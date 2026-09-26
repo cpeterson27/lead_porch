@@ -13,6 +13,7 @@ const discoveryCallBookingSchema = new mongoose.Schema({
     name: { type: String, default: "", trim: true, maxlength: 180 },
     slug: { type: String, default: "", trim: true, maxlength: 120 },
   },
+  siteAttribution: require("./siteAttributionFields"),
   qualification: {
     experience: { type: String, default: "", trim: true, maxlength: 160 },
     primaryGoal: { type: String, default: "", trim: true, maxlength: 500 },

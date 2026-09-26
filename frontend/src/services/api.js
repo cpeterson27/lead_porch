@@ -202,6 +202,7 @@ export const fetchAutomationExecutions = (params = {}) =>
     .then((res) => res.data.data);
 export const retryAutomationExecution = (id) =>
   api.post(`/automations/executions/${id}/retry`).then((res) => res.data.data);
+export const fetchAiTraffic = (days = 30) => api.get("/analytics/ai-traffic", { params: { days } }).then((res) => res.data.data);
 export const fetchGrowthAnalytics = (filters = {}) =>
   api.get("/analytics/growth", { params: filters }).then((res) => res.data.data);
 

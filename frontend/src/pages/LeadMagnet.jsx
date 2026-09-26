@@ -1,3 +1,4 @@
+import { getSiteAttribution } from "../utils/siteAttribution.js";
 import { useState } from "react";
 import { FiArrowRight, FiBookOpen, FiCheck, FiMail } from "react-icons/fi";
 import useWorkspaceTheme from "../context/useWorkspaceTheme.js";
@@ -17,7 +18,7 @@ export default function LeadMagnet() {
     setStatus("submitting");
     setError("");
     try {
-      await optInLeadMagnet(form);
+      await optInLeadMagnet({ ...form, siteAttribution: getSiteAttribution() });
       setStatus("done");
     } catch (err) {
       setError(err.response?.data?.error || "Something went wrong. Please try again.");

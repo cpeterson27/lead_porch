@@ -8,6 +8,7 @@ import { InitiativeProvider } from "./context/InitiativeContext.jsx";
 import { AuthProvider } from "./context/AuthContext.jsx";
 import { WorkspaceThemeProvider } from "./context/WorkspaceThemeContext.jsx";
 import PublicHomepageAnchors from "./components/PublicHomepageAnchors.jsx";
+import { trackPublicVisit } from "./utils/siteTraffic.js";
 import { trackSiteEvent } from "./utils/siteTracking.js";
 import useAuth from "./context/useAuth.js";
 import { canManageCoaching, canUseCoachPortal, canUseSales, hasPermission, hasRole, isAmbassadorOnly, isCoachOnly, isSocialConnectionOnly } from "./utils/roleAccess.js";
@@ -103,6 +104,7 @@ function PublicPageTracking() {
     const path = `${location.pathname}${location.search}`;
     if (lastPath.current === path) return;
     lastPath.current = path;
+    trackPublicVisit(location.pathname);
     trackSiteEvent("virtual_page_view", {
       page_path: path,
       page_title: document.title,

@@ -33,6 +33,8 @@ function connectDatabase(uri) {
       { workspaceId: 1, retryOf: 1, createdAt: -1 },
       { name: "workspace_retry_created_at", background: true },
     );
+    // Required for retry deduplication and automatic analytics retention.
+    await require("../models/SiteTrafficEvent").createIndexes();
     return connection;
   });
 }

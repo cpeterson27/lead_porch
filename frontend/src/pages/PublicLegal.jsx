@@ -33,7 +33,7 @@ function useLegalIdentity() {
   return { businessName, domain };
 }
 
-function LegalShell({ eyebrow, title, intro, children }) {
+function LegalShell({ eyebrow, title, intro, children, effective = effectiveDate }) {
   return (
     <PublicLayout>
       <main id="main-content" className="public-inner legal-page">
@@ -41,7 +41,7 @@ function LegalShell({ eyebrow, title, intro, children }) {
           <p className="public-kicker">{eyebrow}</p>
           <h1>{title}</h1>
           <p>{intro}</p>
-          <small>Effective date: {effectiveDate}</small>
+          <small>Effective date: {effective}</small>
         </header>
         <article className="public-prose legal-page__content">
           {children}
@@ -55,6 +55,7 @@ export function PrivacyPage() {
   const { businessName, domain } = useLegalIdentity();
   return (
     <LegalShell
+      effective="September 25, 2026"
       eyebrow="Privacy & trust"
       title="Privacy Policy"
       intro={`This policy explains how ${businessName} uses information through this website, contact forms, communications, and authorized service connections.`}
@@ -107,10 +108,16 @@ export function PrivacyPage() {
           or device details, requested pages, timestamps, referral parameters,
           and diagnostic or security logs. {businessName} uses browser storage and
           may use essential cookies for limited interface, security, and
-          authenticated-session functions. The current public website does not
-          claim to use advertising cookies or sell browsing profiles. If
-          additional analytics or advertising technologies are introduced, this
-          policy should be updated before they are activated.
+          authenticated-session functions. We also measure visits referred by
+          identifiable AI search tools using an anonymous identifier in session
+          storage, source tags or the referring hostname, public page paths, and
+          timestamps. The visit session expires after 30 minutes of inactivity.
+          This analytics record does not contain your name, email, full referral
+          URL, query strings, or IP address, and is retained for up to 90 days.
+          When you submit an application, book a call, or request a guide, the
+          source may also be saved with that business record. This referral
+          measurement respects Global Privacy Control and Do Not Track browser
+          signals. It does not use advertising cookies or sell browsing profiles.
         </p>
       </section>
       <section>

@@ -10,6 +10,34 @@ const leadMagnetService = require("../services/leadMagnetService");
 const paymentService = require("../services/paymentService");
 const { runWithWorkspace } = require("../tenancy/workspaceContext");
 const router = express.Router();
+const siteTraffic = require("../services/siteTrafficService");
+const { normalizeAttribution, publicPath } = require("../services/siteAttribution");
+const crypto = require("crypto");
+const trafficLimits = new Map();
+const trafficSalt = crypto.randomBytes(32);
+function attributionInput(req) {
+  return req.headers.dnt === "1" || req.headers["sec-gpc"] === "1" ? null : req.body?.siteAttribution;
+}
+router.post("/traffic", async (req, res, next) => {
+  try {
+    if (req.headers.dnt === "1" || req.headers["sec-gpc"] === "1" || /bot|crawler|spider|headless/i.test(req.headers["user-agent"] || "")) return res.status(204).end();
+    const input = req.body || {};
+    const attribution = normalizeAttribution(input.attribution);
+    if (!attribution || !publicPath(input.pagePath) || !/^[a-z0-9-]{16,80}$/i.test(input.eventId || "")) return res.status(400).json({ error: "Invalid visit event" });
+    if (attribution.sourceGroup !== "ai") return res.status(204).end();
+    const now = Date.now();
+    for (const [key, row] of trafficLimits) if (row.until <= now) trafficLimits.delete(key);
+    const key = crypto.createHmac("sha256", trafficSalt).update(String(req.ip || "unknown")).digest("hex");
+    const counter = trafficLimits.get(key) || { count: 0, until: now + 60000 };
+    if (counter.count >= 300 || trafficLimits.size >= 10000) return res.status(429).end();
+    counter.count++; trafficLimits.set(key, counter);
+    const ws = await service.workspace(req);
+    const config = await runWithWorkspace(ws._id, () => WorkspaceConfig.findOne({ workspaceId: ws._id, key: "primary" }).select("publicSite").lean());
+    if (!service.sanitizedConfig(ws, config).publicSite.published) return res.status(404).end();
+    await runWithWorkspace(ws._id, () => siteTraffic.recordEvent({ workspaceId: ws._id, eventId: input.eventId, kind: "page_view", pagePath: input.pagePath, attribution: input.attribution }));
+    res.status(204).end();
+  } catch (error) { next(error); }
+});
 const attempts = new Map();
 const CoachProfile = require("../models/CoachProfile");
 const WorkspaceMembership = require("../models/WorkspaceMembership");
@@ -130,7 +158,7 @@ router.post("/discovery-call/book", limited, async (req, res, next) => {
     const check = await runWithWorkspace(ws._id, () => googleCalendarService.availability({ workspaceId: ws._id, coachProfileId: availability.coachProfileId, startsAt, durationMinutes }));
     if (!check.available) return res.status(409).json({ error: "That time was just booked. Please choose another available time." });
     const scheduled = await runWithWorkspace(ws._id, () => googleCalendarService.scheduleDiscoveryCall({ workspaceId: ws._id, coachProfileId: availability.coachProfileId, startsAt, durationMinutes, name, email, phone: String(req.body?.phone || "").slice(0, 80), notes: String(req.body?.notes || "").slice(0, 2000), programName: programSnapshot.name, qualificationSummary }));
-    const booking = await runWithWorkspace(ws._id, () => DiscoveryCallBooking.create({ workspaceId: ws._id, coachProfileId: availability.coachProfileId, name, email, phone: String(req.body?.phone || "").slice(0, 80), notes: String(req.body?.notes || "").slice(0, 2000), coachingProgramId: selectedProgram?._id || null, programSnapshot, qualification, startsAt, durationMinutes, timezone: scheduled.timezone, calendar: { connectionId: scheduled.connection._id, calendarId: scheduled.calendarId, eventId: scheduled.event.id, htmlLink: scheduled.event.htmlLink || "", meetUrl: scheduled.meetUrl } }));
+    const booking = await runWithWorkspace(ws._id, () => DiscoveryCallBooking.create({ workspaceId: ws._id, coachProfileId: availability.coachProfileId, name, email, phone: String(req.body?.phone || "").slice(0, 80), notes: String(req.body?.notes || "").slice(0, 2000), coachingProgramId: selectedProgram?._id || null, programSnapshot, qualification, siteAttribution: normalizeAttribution(attributionInput(req)), startsAt, durationMinutes, timezone: scheduled.timezone, calendar: { connectionId: scheduled.connection._id, calendarId: scheduled.calendarId, eventId: scheduled.event.id, htmlLink: scheduled.event.htmlLink || "", meetUrl: scheduled.meetUrl } }));
     const smsAddress = normalizePhone(req.body?.phone);
     if (req.body?.smsConsent === true && smsAddress)
       await runWithWorkspace(ws._id, () => CommunicationConsent.findOneAndUpdate(
@@ -138,6 +166,7 @@ router.post("/discovery-call/book", limited, async (req, res, next) => {
         { $set: { status: "opted_in", source: "web_form", proof: `${name} <${email}> checked SMS opt-in on the discovery call booking form`, consentedAt: new Date(), revokedAt: null } },
         { upsert: true, new: true, setDefaultsOnInsert: true },
       ));
+    await runWithWorkspace(ws._id, () => siteTraffic.recordConversion({ workspaceId: ws._id, eventId: `booking:${booking._id}`, kind: "discovery_call_booked", pagePath: "/book-a-call", normalizedAttribution: booking.siteAttribution, programId: selectedProgram?._id }));
     res.status(201).json({ success: true, data: { id: booking._id, startsAt: booking.startsAt, durationMinutes, timezone: booking.timezone } });
   } catch (error) { next(error); }
 });
@@ -216,13 +245,14 @@ router.post("/application", limited, async (req, res, next) => {
     const item = await runWithWorkspace(ws._id, () =>
       applicationService.submit({
         workspaceId: ws._id,
-        input: req.body || {},
+        input: { ...(req.body || {}), siteAttribution: attributionInput(req) },
         requestFingerprint: String(req.ip || ""),
       }),
     );
     const config = await runWithWorkspace(ws._id, () =>
       WorkspaceConfig.findOne({ workspaceId: ws._id, key: "primary" }).lean(),
     );
+    await runWithWorkspace(ws._id, () => siteTraffic.recordConversion({ workspaceId: ws._id, eventId: `application:${item._id}`, kind: "application_submitted", pagePath: "/apply", normalizedAttribution: item.siteAttribution, programId: item.coachingProgramId }));
     const qualified = item.status === "qualified";
     res.status(201).json({
       success: true,
@@ -242,7 +272,8 @@ router.post("/application", limited, async (req, res, next) => {
 router.post("/lead-magnet/optin", limited, async (req, res) => {
   try {
     const ws = await service.workspace(req);
-    await runWithWorkspace(ws._id, () => leadMagnetService.optIn({ workspaceId: ws._id, email: req.body?.email, firstName: req.body?.firstName }));
+    const result = await runWithWorkspace(ws._id, () => leadMagnetService.optIn({ workspaceId: ws._id, email: req.body?.email, firstName: req.body?.firstName, siteAttribution: attributionInput(req) }));
+    await runWithWorkspace(ws._id, () => siteTraffic.recordConversion({ workspaceId: ws._id, eventId: `guide:${result.activityId}`, kind: "guide_requested", pagePath: "/free-guide", normalizedAttribution: result.siteAttribution }));
     res.status(201).json({ success: true, data: { message: "Check your email — it's on its way." } });
   } catch (error) {
     res.status(400).json({ error: error.message });
@@ -264,7 +295,7 @@ router.post("/programs/:slug/checkout", limited, async (req, res) => {
       paymentService.beginPublicProgramCheckout({
         workspaceId: ws._id,
         programId: program._id,
-        input: req.body || {},
+        input: { ...(req.body || {}), siteAttribution: attributionInput(req) },
       }),
     );
     res.status(201).json({ success: true, data: result });

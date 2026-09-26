@@ -17,3 +17,7 @@
 .analytics-filter-clear{align-self:end;background:transparent;border:1px solid var(--border);color:var(--text-muted);font-size:.8rem;padding:.5rem 1rem}
 .analytics-filter-clear:hover{color:var(--color-brand);border-color:var(--color-brand)}
 @media(max-width:700px){.analytics-filter-row{flex-direction:column;align-items:stretch}.analytics-filter-row label,.analytics-filter-row input,.analytics-filter-row select{width:100%}}
+/* Keep wide tables inside their scroll containers on small screens. */
+.analytics-page{width:100%;min-width:0;grid-template-columns:minmax(0,1fr)}
+.analytics-page>*{min-width:0}
+.analytics-section-grid>*{min-width:0}

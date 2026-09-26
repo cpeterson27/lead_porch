@@ -1,3 +1,4 @@
+const { normalizeAttribution } = require("./siteAttribution");
 const Contact = require("../models/Contact");
 const CrmActivity = require("../models/CrmActivity");
 
@@ -11,7 +12,7 @@ const CrmActivity = require("../models/CrmActivity");
 // in the automation template — there's no real guide/PDF to link yet.
 function normalizeEmail(value) { return String(value || "").trim().toLowerCase(); }
 
-async function optIn({ workspaceId, email, firstName }, models = { Contact, CrmActivity }) {
+async function optIn({ workspaceId, email, firstName, siteAttribution }, models = { Contact, CrmActivity }) {
   const normalizedEmail = normalizeEmail(email);
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) throw Object.assign(new Error("A valid email address is required"), { code: "LEAD_MAGNET_EMAIL_INVALID" });
   const cleanFirstName = String(firstName || "").trim().slice(0, 80);
@@ -23,8 +24,9 @@ async function optIn({ workspaceId, email, firstName }, models = { Contact, CrmA
     },
     { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
   );
-  await models.CrmActivity.create({ workspaceId, contactId: contact._id, type: "system", title: "Lead magnet requested", source: "crm", metadata: { eventType: "lead_magnet.requested" } });
-  return { contactId: contact._id };
+  const attribution = normalizeAttribution(siteAttribution);
+  const activity = await models.CrmActivity.create({ workspaceId, contactId: contact._id, type: "system", title: "Lead magnet requested", source: "crm", metadata: { eventType: "lead_magnet.requested", siteAttribution: attribution } });
+  return { contactId: contact._id, activityId: activity?._id, siteAttribution: attribution };
 }
 
 module.exports = { optIn };

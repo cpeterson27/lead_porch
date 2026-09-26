@@ -1,4 +1,5 @@
 const fs = require("fs");
+const { renderPublicContent } = require("../services/publicPageContent");
 const { publicPages, pageEnabled } = require("../services/publicSitemap");
 const path = require("path");
 const publicSiteService = require("../services/publicSiteService");
@@ -180,7 +181,8 @@ async function workspaceMeta(req) {
     "@id": organizationId,
     name: config?.legalBusinessName || siteName,
     url: origin,
-    ...(image ? { logo: image, image } : {}),
+    ...(absoluteUrl(branding.publicSiteLogoUrl || branding.logoUrl, origin) ? { logo: absoluteUrl(branding.publicSiteLogoUrl || branding.logoUrl, origin) } : {}),
+    ...(image ? { image } : {}),
     ...(publicSite.contactEmail ? { email: publicSite.contactEmail } : {}),
     ...(publicSite.contactPhone ? { telephone: publicSite.contactPhone } : {}),
     ...(Array.isArray(publicSite.socialLinks) && publicSite.socialLinks.length
@@ -203,7 +205,7 @@ async function workspaceMeta(req) {
           worksFor: { "@id": organizationId },
         }]
       : program
-        ? [{ "@type": "Course", "@id": `${canonical}#course`, name: program.publicPresentation.title || program.name, description: truncate(program.publicPresentation.description || program.publicPresentation.summary, 500), url: canonical, provider: { "@id": organizationId }, ...(program.publicPresentation.audience ? { audience: { "@type": "Audience", audienceType: program.publicPresentation.audience } } : {}) }, { "@type": "BreadcrumbList", itemListElement: [{ "@type": "ListItem", position: 1, name: "Home", item: origin }, { "@type": "ListItem", position: 2, name: "Coaching Programs", item: `${origin}/coaching-programs` }, { "@type": "ListItem", position: 3, name: program.publicPresentation.title || program.name, item: canonical }] }]
+        ? [organization, { "@type": "Course", "@id": `${canonical}#course`, name: program.publicPresentation.title || program.name, description: truncate(program.publicPresentation.description || program.publicPresentation.summary, 500), url: canonical, provider: { "@id": organizationId }, ...(program.publicPresentation.audience ? { audience: { "@type": "Audience", audienceType: program.publicPresentation.audience } } : {}) }, { "@type": "BreadcrumbList", itemListElement: [{ "@type": "ListItem", position: 1, name: "Home", item: origin }, { "@type": "ListItem", position: 2, name: "Coaching Programs", item: `${origin}/coaching-programs` }, { "@type": "ListItem", position: 3, name: program.publicPresentation.title || program.name, item: canonical }] }]
         : defaults.path === "/faq"
           ? [{ "@type": "FAQPage", mainEntity: (publicSite.faqItems?.length ? publicSite.faqItems.map((item) => [item.question, item.answer]) : [
               ["Who are the coaching programs for?", "Aspiring and active multifamily real estate investors who want structured education, practical guidance, and accountability."],
@@ -275,6 +277,15 @@ async function renderShell(req) {
   let html = stripGenericMeta(baseHtml)
     .replace(/<title>.*?<\/title>/i, `<title>${safeTitle}</title>`)
     .replace("</head>", `    ${tags}\n  </head>`);
+  if (meta.indexable) {
+    const site = await publicSiteService.site(req).catch(() => null);
+    const content = renderPublicContent(req.path, site);
+    if (content) {
+      // Identical response for people and crawlers; React enhances it on load.
+      html = html.replace(/<div id="root">\s*<\/div>/, () => `<div id="root">${content}</div>`);
+      html = html.replace("</head>", `<style>.public-document{max-width:1100px;margin:auto;padding:32px 24px;font:17px/1.65 system-ui;background:#fff;color:#202d27}.public-document h1{font-size:2.2rem}.public-document h2{font-size:1.35rem;margin-top:32px}.public-document a{color:#246448}.public-document nav,.public-document footer{display:flex;flex-wrap:wrap;gap:24px;padding:20px 0}.public-document p{white-space:normal}.public-document section{padding:12px 0}</style></head>`);
+    }
+  }
   const tagManagerId = String(process.env.GOOGLE_TAG_MANAGER_ID || "").trim();
   if (/^GTM-[A-Z0-9]+$/i.test(tagManagerId)) {
     const headScript = `<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src='https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);})(window,document,'script','dataLayer','${tagManagerId}');</script>`;

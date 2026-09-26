@@ -25,6 +25,7 @@ import {
   fetchPublicTestimonials,
 } from "../services/api.js";
 import { cloudinaryImage } from "../utils/cloudinaryImage.js";
+import { getSiteAttribution } from "../utils/siteAttribution.js";
 import { trackSiteEvent } from "../utils/siteTracking.js";
 import TestimonialVideoPlayer from "../components/TestimonialVideoPlayer.jsx";
 import { ModalPortal } from "../components/ModalLayer.jsx";
@@ -1473,6 +1474,8 @@ export function ProgramDetail() {
               </ul>
             </>
           ) : null}
+          {row.outcomes?.length ? <section><h2>What you will learn</h2><ul>{row.outcomes.map((item) => <li key={item}>{item}</li>)}</ul></section> : null}
+          {row.curriculum?.length ? <section><h2>Curriculum</h2><ul>{row.curriculum.map((item) => <li key={item}>{item}</li>)}</ul></section> : null}
         </div>
         <SmartLink className="public-button" to={applyUrl}>
           {row.cta?.label || "Apply to join"}
@@ -1703,6 +1706,7 @@ export function DiscoveryCallPage() {
     setBooking(true); setBookingError("");
     try {
       const data = await bookDiscoveryCall({
+        siteAttribution: getSiteAttribution(),
         name: form.name,
         email: form.email,
         phone: form.phone,

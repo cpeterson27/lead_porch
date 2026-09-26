@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { normalizeAttribution } = require("./siteAttribution");
 const Contact = require("../models/Contact");
 const CoachingApplication = require("../models/CoachingApplication");
 const CoachingProgram = require("../models/CoachingProgram");
@@ -402,6 +403,7 @@ async function submit(
       capturedAt: new Date(),
     },
     attribution,
+    siteAttribution: normalizeAttribution(input.siteAttribution),
     idempotencyKey,
   });
   let opportunity = await models.SalesOpportunity.findOne({

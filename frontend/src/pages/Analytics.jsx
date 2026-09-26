@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { FaFacebookF, FaInstagram, FaLinkedinIn, FaTiktok, FaXTwitter } from "react-icons/fa6";
+import AiTrafficPanel from "../components/AiTrafficPanel.jsx";
 import DashboardCard from "../components/DashboardCard.jsx";
 import { fetchGrowthAnalytics } from "../services/api.js";
 import "./Analytics.css";
@@ -47,9 +48,10 @@ export default function Analytics() {
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.startDate, filters.endDate, filters.coachingProgramId, filters.source]);
-  if (!data) return <div className="page-dashboard analytics-page"><h1 className="page-title">Analytics</h1><p>{error || "Loading canonical Lead Porch analytics…"}</p></div>;
+  if (!data) return <div className="page-dashboard analytics-page"><h1 className="page-title">Analytics</h1><p>{error || "Loading canonical Lead Porch analytics…"}</p><AiTrafficPanel /></div>;
   const won = data.funnel.stages.find((item) => item.key === "closed_won")?.value || 0;
   return <div className="page-dashboard analytics-page"><div className="page-header"><div><p className="page-eyebrow">Growth intelligence</p><h1 className="page-title">Analytics</h1><p className="page-subtitle">Sales, marketing, coaching, revenue, communications, referrals, and social attribution from canonical records.</p></div><span className="analytics-health is-healthy">Canonical data · {new Date(data.generatedAt).toLocaleString()}</span></div>
+    <AiTrafficPanel />
     <FilterBar filters={filters} setFilters={setFilters} options={data.filterOptions} loading={loading} />
     <h2>Executive overview</h2><section className="analytics-metrics"><DashboardCard title="Tracked revenue"><strong>{currency(data.revenue.total)}</strong><span>closed won + add-ons</span></DashboardCard><DashboardCard title="Active students"><strong>{data.coaching.activeStudents}</strong><span>active enrollments</span></DashboardCard><DashboardCard title="Closed won"><strong>{won}</strong><span>{currency(data.revenue.closedWon)}</span></DashboardCard><DashboardCard title="Pending commission"><strong>{currency(data.referrals.pendingCommission)}</strong><span>immutable ledger</span></DashboardCard><DashboardCard title="Communication blocks"><strong>{data.communication.blocked}</strong><span>policy-visible jobs</span></DashboardCard></section>
     <section className="analytics-visual-grid"><FunnelVisual rows={data.funnel.stages} /><SourceVisual rows={data.attribution.bySource} /></section>
@@ -63,6 +65,6 @@ export default function Analytics() {
     <section className="analytics-section-grid"><MetricTable title="Students per coach" rows={data.coaching.studentsPerCoach} columns={[{key:"key",label:"Coach"},{key:"value",label:"Students"}]} /><MetricTable title="Program enrollments" rows={data.coaching.programEnrollments} columns={[{key:"key",label:"Program"},{key:"value",label:"Enrollments"}]} /></section>
     <section className="analytics-metrics"><DashboardCard title="Upcoming assignments"><strong>{data.coaching.upcomingAssignments}</strong></DashboardCard><DashboardCard title="Completed assignments"><strong>{data.coaching.completedAssignments}</strong></DashboardCard><DashboardCard title="Handoffs"><strong>{data.coaching.handoffs}</strong></DashboardCard><DashboardCard title="Attended sessions"><strong>{data.coaching.attendance.attended}</strong></DashboardCard><DashboardCard title="No-shows"><strong>{data.coaching.attendance.noShows}</strong></DashboardCard></section>
     <h2>Communications</h2><section className="analytics-metrics"><DashboardCard title="Emails sent"><strong>{data.communication.email.sent}</strong></DashboardCard><DashboardCard title="Email delivered"><strong>{data.communication.email.delivered}</strong></DashboardCard><DashboardCard title="Email opened"><strong>{data.communication.email.opened}</strong></DashboardCard><DashboardCard title="Email clicked"><strong>{data.communication.email.clicked}</strong></DashboardCard><DashboardCard title="Email bounced"><strong>{data.communication.email.bounced}</strong></DashboardCard><DashboardCard title="SMS sent"><strong>{data.communication.sms.sent}</strong></DashboardCard><DashboardCard title="SMS delivered"><strong>{data.communication.sms.delivered}</strong></DashboardCard><DashboardCard title="SMS replies"><strong>{data.communication.sms.replies}</strong></DashboardCard><DashboardCard title="Reminders sent"><strong>{data.communication.reminders.sent}</strong></DashboardCard></section>
-    <p className="analytics-disclaimer">Attribution includes only identifiable canonical Contacts and supported events. Anonymous views, likes, saves, and unsupported Skool course progress are excluded.</p>
+    <p className="analytics-disclaimer">Attribution includes only identifiable canonical Contacts and supported events. The AI search traffic panel separately reports anonymous AI referral visits. Other anonymous views, likes, saves, and unsupported Skool course progress are excluded.</p>
   </div>;
 }

@@ -9,6 +9,7 @@ import {
 import { PublicLayout } from "./PublicSite.jsx";
 import useWorkspaceTheme from "../context/useWorkspaceTheme.js";
 import { cloudinaryImage } from "../utils/cloudinaryImage.js";
+import { getSiteAttribution } from "../utils/siteAttribution.js";
 import { trackSiteEvent } from "../utils/siteTracking.js";
 import "./PublicApplication.css";
 
@@ -107,6 +108,7 @@ export default function PublicApplication({ embedded: embeddedOverride, search: 
       const result = await submitPublicApplication({
         ...form,
         ...attribution,
+        siteAttribution: getSiteAttribution(),
         referralCode: form.referralCode || attribution.referralCode,
         idempotencyKey,
       });

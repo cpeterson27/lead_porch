@@ -11,4 +11,7 @@ router.get("/growth",async(req,res,next)=>{
     res.json({success:true,data:await analytics.getAnalytics(req.auth.workspaceId,undefined,filters)});
   }catch(error){next(error);}
 });
+router.get("/ai-traffic", async (req, res, next) => {
+  try { res.set("Cache-Control", "no-store").json({ success: true, data: await require("../services/siteTrafficService").report(req.auth.workspaceId, req.query.days) }); } catch (error) { next(error); }
+});
 module.exports=router;
