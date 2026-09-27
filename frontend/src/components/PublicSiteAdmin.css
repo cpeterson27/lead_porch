@@ -725,6 +725,18 @@
 }
 .homepage-media-uploads--inline { grid-template-columns: minmax(0, 720px); }
 .homepage-media-uploads--inline article { grid-template-columns: 150px minmax(0, 1fr); }
+.homepage-cover-picker-inline {
+  max-width: 720px;
+  background: #f7f9f8;
+  border: 1px solid #dbe4e0;
+  border-radius: 14px;
+  padding: 16px;
+  display: grid;
+  gap: 8px;
+}
+.homepage-cover-picker-inline h4 { margin: 0; }
+.homepage-cover-picker-inline p { color: #6d7974; font-size: 0.82rem; margin: 0 0 4px; }
+.homepage-cover-picker-inline .testimonial-cover-picker__actions .btn { white-space: nowrap; }
 .add-public-profile-button { flex: 0 0 auto; min-width: 0; width: auto; }
 .website-section-heading .add-public-profile-button { padding-inline: 18px; }
 .homepage-media-uploads h4 {

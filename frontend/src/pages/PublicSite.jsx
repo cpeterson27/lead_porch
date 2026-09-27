@@ -1034,20 +1034,22 @@ export function PublicHome() {
     <PublicLayout>
       <main id="main-content" className="public-home-wrap">
         <section className="public-hero-section public-hero-section--no-photo">
-          {showHeroCopy ? (
-            <div className="public-hero-left">
-              <h1 className="public-hero-headline">
-                <EditorialHeading text={p.headline} accent={headlineAccent} />
-              </h1>
-              <div className="public-hero-subhead">{p.subheadline}</div>
-              {visibility.video !== false ? (
-                <>
-                  <HeroVideoTile site={site} />
-                  {discoveryCallCta}
-                </>
-              ) : null}
-            </div>
-          ) : null}
+          <div className="public-hero-left">
+            {showHeroCopy ? (
+              <>
+                <h1 className="public-hero-headline">
+                  <EditorialHeading text={p.headline} accent={headlineAccent} />
+                </h1>
+                <div className="public-hero-subhead">{p.subheadline}</div>
+              </>
+            ) : null}
+            {visibility.video !== false ? (
+              <>
+                <HeroVideoTile site={site} />
+                {discoveryCallCta}
+              </>
+            ) : null}
+          </div>
         </section>
 
         <section className="public-why-section" id="about">
