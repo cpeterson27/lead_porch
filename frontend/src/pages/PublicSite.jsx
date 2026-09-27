@@ -844,7 +844,7 @@ function ReviewMarquee({ rows = [] }) {
       </div>
     </div>
   );
-  return <div className="google-review-marquee" aria-label="Customer reviews">{renderRow(first)}{renderRow(second, true)}<p className="google-review-marquee__note">Google reviews are shown newest first. Select any Google review to view its source.</p></div>;
+  return <div className="google-review-marquee" aria-label="Customer reviews">{renderRow(first)}{renderRow(second, true)}<p className="google-review-marquee__note">{rows.some((review) => review.source === "google_business_profile") ? "Google reviews are shown newest first. Select any Google review to view its source." : "Client testimonials shared with Ellie’s Coaching."}</p></div>;
 }
 function embedUrl(value) {
   try {
