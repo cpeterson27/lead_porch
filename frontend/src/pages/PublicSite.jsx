@@ -861,81 +861,59 @@ function HeroVideoTile({ site }) {
   const workspaceName =
     site?.branding?.publicSiteName || site?.workspace?.name || "";
   const [playing, setPlaying] = useState(false),
-    closeRef = useRef(null),
     embed = embedUrl(p.introVideoUrl);
-  useModalLayer(playing);
-  useEffect(() => {
-    if (playing) closeRef.current?.focus();
-  }, [playing]);
   if (!p.introVideoUrl && !p.introVideoPosterUrl) return null;
+  if (playing) {
+    return (
+      <div className="public-hero__video public-hero__video--playing">
+        {embed ? (
+          <iframe
+            src={`${embed}${embed.includes("?") ? "&" : "?"}autoplay=1`}
+            title={
+              p.introVideoTitle || `${workspaceName || "Program"} introduction`
+            }
+            allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+            allowFullScreen
+          />
+        ) : (
+          <video
+            src={p.introVideoUrl}
+            poster={cloudinaryImage(p.introVideoPosterUrl, 1280)}
+            controls
+            autoPlay
+            playsInline
+          />
+        )}
+      </div>
+    );
+  }
   return (
-    <>
-      <button
-        type="button"
-        className="public-hero__video"
-        aria-label={
-          p.introVideoAlt ||
-          p.introVideoTitle ||
-          `Watch: Welcome to ${workspaceName || "the program"}`
-        }
-        style={
-          p.introVideoPosterUrl
-            ? {
-                backgroundImage: `linear-gradient(#0002,#0002),url(${cloudinaryImage(p.introVideoPosterUrl, 480)})`,
-              }
-            : undefined
-        }
-        onClick={() => p.introVideoUrl && setPlaying(true)}
-        disabled={!p.introVideoUrl}
-      >
-        <span className="public-hero__play">
-          <FiPlay />
-        </span>
-        <small>
-          {p.introVideoEyebrow || "Watch"} ·{" "}
-          {p.introVideoTitle || `Welcome to ${workspaceName || "the program"}`}
-        </small>
-      </button>
-      {playing ? <ModalPortal>
-        <div
-          className="video-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-label={
-            p.introVideoTitle || `${workspaceName || "Program"} introduction`
-          }
-          onKeyDown={(event) => event.key === "Escape" && setPlaying(false)}
-        >
-          <button
-            ref={closeRef}
-            onClick={() => setPlaying(false)}
-            aria-label="Close video"
-          >
-            <FiX />
-          </button>
-          <div>
-            {embed ? (
-              <iframe
-                src={embed}
-                title={
-                  p.introVideoTitle ||
-                  `${workspaceName || "Program"} introduction`
-                }
-                allow="autoplay; encrypted-media; picture-in-picture"
-                allowFullScreen
-              />
-            ) : (
-              <video
-                src={p.introVideoUrl}
-                poster={cloudinaryImage(p.introVideoPosterUrl, 1280)}
-                controls
-                autoPlay
-              />
-            )}
-          </div>
-        </div>
-      </ModalPortal> : null}
-    </>
+    <button
+      type="button"
+      className="public-hero__video"
+      aria-label={
+        p.introVideoAlt ||
+        p.introVideoTitle ||
+        `Watch: Welcome to ${workspaceName || "the program"}`
+      }
+      style={
+        p.introVideoPosterUrl
+          ? {
+              backgroundImage: `linear-gradient(#0002,#0002),url(${cloudinaryImage(p.introVideoPosterUrl, 480)})`,
+            }
+          : undefined
+      }
+      onClick={() => p.introVideoUrl && setPlaying(true)}
+      disabled={!p.introVideoUrl}
+    >
+      <span className="public-hero__play">
+        <FiPlay />
+      </span>
+      <small>
+        {p.introVideoEyebrow || "Watch"} ·{" "}
+        {p.introVideoTitle || `Welcome to ${workspaceName || "the program"}`}
+      </small>
+    </button>
   );
 }
 function Portrait({ person }) {
