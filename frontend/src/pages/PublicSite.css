@@ -1660,6 +1660,8 @@ button.public-text-link {
   }
   .public-header nav.is-open { display: flex; }
   .public-header nav > a:not(.public-login) { padding: 14px 0; }
+  .public-header nav > a.public-login { padding: 14px 0; border-top: 1px solid var(--public-border); margin-top: 4px; }
+  .public-header nav > .public-theme-toggle { padding: 14px 0; justify-content: flex-start; gap: 8px; }
   .public-apply-btn { width: 100%; margin-top: 10px; }
   .public-hero-section { grid-template-columns: 1fr; min-height: 0; padding: 64px 26px 90px; text-align: left; }
   .public-hero-left { align-items: flex-start; }
