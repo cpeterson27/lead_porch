@@ -5,6 +5,8 @@ const axios = require("axios");
 const Event = require("../models/Event");
 const Campaign = require("../models/Campaign");
 const Outreach = require("../models/Outreach");
+const Contact = require("../models/Contact");
+const CrmActivity = require("../models/CrmActivity");
 
 const {
   generateOutreachSuggestions,
@@ -112,6 +114,74 @@ router.post("/", async(req,res)=>{
 
   }
 
+});
+
+// REGISTER A CONTACT TO AN INTERNAL EVENT (no Eventbrite/Meetup needed —
+// this is what lets eventReminderService find someone to remind for a
+// plain internal event, including recurring group classes)
+router.post("/:id/register", async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id);
+    if (!event) return res.status(404).json({ error: "Event not found" });
+    const { contactId } = req.body || {};
+    if (!contactId) return res.status(400).json({ error: "contactId is required" });
+    const contact = await Contact.findById(contactId).select("_id").lean();
+    if (!contact) return res.status(404).json({ error: "Contact not found" });
+    const idempotencyKey = `event-registration:${event._id}:${contactId}`;
+    const existing = await CrmActivity.findOne({ "metadata.idempotencyKey": idempotencyKey }).select("_id").lean();
+    if (!existing) {
+      await CrmActivity.create({
+        contactId,
+        type: "system",
+        title: `Registered — ${event.name}`,
+        source: "crm",
+        metadata: { eventType: "event.registered", provider: "internal", eventId: String(event._id), idempotencyKey },
+      });
+    }
+    res.status(201).json({ success: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to register contact" });
+  }
+});
+
+// LIST REGISTRANTS FOR AN EVENT (internal + provider-registered alike)
+router.get("/:id/registrants", async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id).select("_id integrations").lean();
+    if (!event) return res.status(404).json({ error: "Event not found" });
+    const matchIds = [String(event._id), event.integrations?.eventbrite?.eventId, event.integrations?.meetup?.eventId].filter(Boolean);
+    const registrations = await CrmActivity.find({
+      "metadata.eventType": { $in: ["event.registered", "event.attended"] },
+      $or: [{ "metadata.eventId": { $in: matchIds } }, { "metadata.providerEventId": { $in: matchIds } }],
+    })
+      .select("contactId metadata.eventType createdAt")
+      .sort({ createdAt: -1 })
+      .lean();
+    const contactIds = [...new Set(registrations.map((row) => String(row.contactId)).filter(Boolean))];
+    const contacts = await Contact.find({ _id: { $in: contactIds } }).select("name firstName lastName email").lean();
+    res.json({ registrants: contacts });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to fetch registrants" });
+  }
+});
+
+// REMOVE A CONTACT'S REGISTRATION FROM AN EVENT
+router.delete("/:id/register/:contactId", async (req, res) => {
+  try {
+    const event = await Event.findById(req.params.id).select("_id").lean();
+    if (!event) return res.status(404).json({ error: "Event not found" });
+    await CrmActivity.deleteOne({
+      contactId: req.params.contactId,
+      "metadata.eventType": "event.registered",
+      "metadata.eventId": String(event._id),
+    });
+    res.json({ success: true });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: "Failed to remove registration" });
+  }
 });
 
 router.post("/audience-recommendations", async (req, res) => {

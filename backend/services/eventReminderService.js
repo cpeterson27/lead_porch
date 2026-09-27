@@ -38,11 +38,16 @@ async function runDueEventReminders({ windowHours = 24 } = {}) {
   let checked = 0, sent = 0;
   for (const event of events) {
     const externalIds = [event.integrations?.eventbrite?.eventId, event.integrations?.meetup?.eventId].filter(Boolean).map(String);
-    if (!externalIds.length) continue;
+    // Internal (non-Eventbrite/Meetup) events register contacts against the
+    // event's own _id instead of a provider id — matching that here is what
+    // lets a plain internally-created event (including recurring group
+    // classes from eventRecurrenceService) get reminders at all, not just
+    // Eventbrite/Meetup-synced ones.
+    const matchIds = [String(event._id), ...externalIds];
     const registrations = await CrmActivity.find({
       workspaceId: event.workspaceId,
       "metadata.eventType": { $in: ["event.registered", "event.attended"] },
-      $or: [{ "metadata.eventId": { $in: externalIds } }, { "metadata.providerEventId": { $in: externalIds } }],
+      $or: [{ "metadata.eventId": { $in: matchIds } }, { "metadata.providerEventId": { $in: externalIds } }],
     }).select("contactId").lean();
     const contactIds = [...new Set(registrations.map((row) => String(row.contactId)).filter(Boolean))];
     checked += contactIds.length;

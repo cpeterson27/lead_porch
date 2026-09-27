@@ -982,6 +982,15 @@ export const fetchEvent = (eventId) =>
 export const createEvent = (eventData) =>
   api.post("/events", eventData).then((res) => res.data);
 
+export const registerEventContact = (eventId, contactId) =>
+  api.post(`/events/${eventId}/register`, { contactId }).then((res) => res.data);
+
+export const fetchEventRegistrants = (eventId) =>
+  api.get(`/events/${eventId}/registrants`).then((res) => res.data);
+
+export const removeEventRegistration = (eventId, contactId) =>
+  api.delete(`/events/${eventId}/register/${contactId}`).then((res) => res.data);
+
 export const recommendEventAudience = (eventData) =>
   api
     .post("/events/audience-recommendations", eventData)

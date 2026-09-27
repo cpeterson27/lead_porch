@@ -236,6 +236,29 @@ const eventSchema = new mongoose.Schema(
       enum: ["draft", "active", "completed"],
       default: "draft",
     },
+
+    // Recurring internal events (e.g. a biweekly group coaching class). Set
+    // only on the first occurrence — eventRecurrenceService reads this to
+    // generate each future occurrence as its own plain Event, so nothing
+    // downstream (reminders, the events list, registration) needs to know
+    // recurrence exists at all.
+    recurrence: {
+      frequency: {
+        type: String,
+        enum: ["", "weekly", "biweekly", "monthly"],
+        default: "",
+      },
+      until: { type: Date, default: null },
+    },
+
+    // Set on every event eventRecurrenceService generates, pointing back at
+    // the first occurrence (the one holding the `recurrence` rule above).
+    // Null on a one-off event and on the first occurrence of a series.
+    seriesId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Event",
+      default: null,
+    },
   },
   {
     timestamps: true,
