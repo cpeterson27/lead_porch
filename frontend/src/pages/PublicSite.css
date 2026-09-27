@@ -1184,7 +1184,7 @@
    copy+photo grid the base rule is built for. */
 .public-hero-section--no-photo {
   grid-template-columns: 1fr;
-  justify-items: start;
+  justify-items: center;
   min-height: 0;
   max-width: 1220px;
   padding: clamp(64px, 9vw, 110px) 48px;
