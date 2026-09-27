@@ -861,7 +861,7 @@
 .public-admin__weekly-hours { display:grid; gap:8px; }
 .public-admin__weekly-row { display:grid; grid-template-columns:minmax(150px,1fr) minmax(120px,.55fr) minmax(120px,.55fr); gap:10px; align-items:end; }
 .public-admin__weekly-row .website-toggle { min-height:44px; }
-.public-admin .website-upload-button { background:var(--color-brand); border-color:var(--color-brand); color:#fff; border-radius:var(--radius-pill); }
+.public-admin .website-upload-button { display:inline-flex; align-items:center; justify-content:center; background:var(--color-brand); border-color:var(--color-brand); color:#fff; border-radius:var(--radius-pill); }
 .public-admin .website-upload-button--secondary { background:var(--color-brand-soft); border-color:transparent; color:var(--color-brand-hover); }
 @media (max-width:700px) { .public-admin__weekly-row { grid-template-columns:1fr 1fr; } .public-admin__weekly-row .website-toggle { grid-column:1/-1; } }
 .public-admin__page-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:10px; }

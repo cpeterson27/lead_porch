@@ -342,22 +342,6 @@ export default function WorkspaceBrandingEditor({
             />
           ))}
 
-          <AssetField
-            label="Brand feature / hero image"
-            help="Optional visitor-facing image used in the homepage hero."
-            value={config.publicSite?.heroMediaUrl || ""}
-            busy={uploading === "publicSite.heroMediaUrl"}
-            onChange={(value) => patchSite("heroMediaUrl", value)}
-            onUpload={(file) => upload("publicSite", "heroMediaUrl", file)}
-          />
-          <AssetField
-            label="About page photo"
-            help="Shown beside the About story on the homepage. A vertical or square portrait works best."
-            value={config.publicSite?.aboutImageUrl || ""}
-            busy={uploading === "publicSite.aboutImageUrl"}
-            onChange={(value) => patchSite("aboutImageUrl", value)}
-            onUpload={(file) => upload("publicSite", "aboutImageUrl", file)}
-          />
         </div>
         <div className="brand-color-grid">
           <label>
