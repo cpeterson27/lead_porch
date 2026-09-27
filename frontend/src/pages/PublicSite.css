@@ -1186,11 +1186,13 @@
   grid-template-columns: 1fr;
   justify-items: start;
   min-height: 0;
-  padding-block: clamp(64px, 9vw, 110px);
+  max-width: none;
+  width: 100%;
+  padding: clamp(64px, 9vw, 110px) clamp(32px, 8vw, 130px);
 }
 .public-hero-section--no-photo .public-hero-left {
   align-items: flex-start;
-  max-width: 640px;
+  max-width: 720px;
 }
 .public-hero-section--no-photo .public-hero__video {
   width: min(100%, 560px);
