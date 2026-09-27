@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import Papa from 'papaparse';
 import api from '../services/api.js';
 import useAuth from '../context/useAuth.js';
 import './SearchVisibilityPanel.css';
@@ -21,30 +20,18 @@ function SearchCard({ title, report }) {
     </>}
   </article>;
 }
-function VisibilityImport({run,canManage,items}) {
-  const [provider,setProvider]=useState('bing_ai'),[file,setFile]=useState(null),[dateColumn,setDateColumn]=useState(''),[countColumn,setCountColumn]=useState(''),[property,setProperty]=useState('https://elliescoaching.com/');
-  const [error,setError]=useState('');
-  const read=async event=>{const f=event.target.files?.[0];setFile(null);setError('');if(!f)return;if(f.size>1000000){setError('Choose a CSV smaller than 1 MB.');return;}const parsed=Papa.parse(await f.text(),{header:true,skipEmptyLines:'greedy'});if(parsed.errors.length){setError('The CSV could not be read. Export a standard CSV with a header row.');return;}setFile({name:f.name,rows:parsed.data,headers:parsed.meta.fields});setDateColumn('');setCountColumn('');};
-  return <article className="search-report"><h3>AI appearances without a click</h3><p>These reports measure visibility inside supported AI answers. They are separate from website visits and are never added to referral totals.</p>
-    <div className="search-links"><a href="https://search.google.com/search-console" target="_blank" rel="noreferrer">Open Google Search Console AI reports ↗</a><a href="https://www.bing.com/webmasters" target="_blank" rel="noreferrer">Open Bing → AI Performance ↗</a></div>
-    <p>Automatic AI-citation API sync is not connected. Import a provider’s daily total CSV when available. Imported reports are owner-supplied snapshots, not a live feed. Bing’s supported surfaces are not a count of all ChatGPT conversations.</p>
-    <div className="search-report-grid">{['google_ai','bing_ai'].map(p=>{const item=items.find(i=>i.report.provider===p);return <div className="search-import-result" key={p}><h4>{p==='google_ai'?'Google AI impressions':'Bing AI citations'}</h4>{item?<><strong>{number(item.report.total)}</strong><p>{item.report.startDate} – {item.report.endDate}</p><small>{item.report.property}<br />{item.report.source} · {item.report.filename}<br />Imported {new Date(item.fetchedAt).toLocaleString()}</small>{canManage&&<button type="button" onClick={()=>run(()=>api.delete(`${base}/visibility/${p}`),'Imported report removed.')}>Remove import</button>}</>:<p>No provider report imported. Count unavailable.</p>}</div>;})}</div>
-    {canManage&&<details><summary>Import daily AI visibility totals</summary><p>Choose the daily totals table, with one row per day including reported zero days. Do not import page/query breakdowns or percentages. A new import replaces the current snapshot for that provider. This period is independent of the search period above.</p>
-      <form onSubmit={event=>{event.preventDefault();run(()=>api.post(base+'/visibility',{provider,property,filename:file.name,rows:file.rows.map(row=>({date:row[dateColumn],value:row[countColumn]}))}),'AI visibility snapshot imported.');}}>
-        <label>Report<select value={provider} onChange={e=>setProvider(e.target.value)}><option value="bing_ai">Bing AI Performance — citations</option><option value="google_ai">Google generative AI — impressions</option></select></label>
-        <label>Property shown in the report<input required value={property} onChange={e=>setProperty(e.target.value)} /></label>
-        <label>Daily totals CSV<input type="file" accept=".csv,text/csv" onChange={read} /></label>
-        {file&&<><label>Date column (YYYY-MM-DD)<select required value={dateColumn} onChange={e=>setDateColumn(e.target.value)}><option value="">Choose column</option>{file.headers.map(h=><option key={h}>{h}</option>)}</select></label><label>{provider==='bing_ai'?'Citation':'Impression'} count column<select required value={countColumn} onChange={e=>setCountColumn(e.target.value)}><option value="">Choose column</option>{file.headers.map(h=><option key={h}>{h}</option>)}</select></label><p>{file.rows.length} rows selected from {file.name}.</p></>}
-        {error&&<p role="alert">{error}</p>}<button disabled={!file||!dateColumn||!countColumn||dateColumn===countColumn}>Import report</button>
-      </form>
-    </details>}
+function AiVisibilityAvailability() {
+  return <article className="search-report"><h3>AI mentions and citations</h3>
+    <p>Automatic AI-mention reporting is unavailable in Lead Porch. This is not a missing sign-in step. Google and Bing search connections do not provide a complete feed of mentions inside ChatGPT.</p>
+    <p>No daily uploads are required. You can view the AI-specific reports directly with their providers. These counts cover the experiences and reporting delays each provider supports; they are separate from website referrals.</p>
+    <div className="search-links"><a href="https://search.google.com/search-console" target="_blank" rel="noreferrer">Open Google Search Console ↗</a><a href="https://www.bing.com/webmasters" target="_blank" rel="noreferrer">Open Bing → AI Performance ↗</a></div>
   </article>;
 }
 export default function SearchVisibilityPanel(){
   const {session}=useAuth();const canManage=(session?.roles||[session?.role]).some(r=>['owner','admin'].includes(r));
-  const [status,setStatus]=useState(null),[reports,setReports]=useState(null),[items,setItems]=useState([]),[days,setDays]=useState(30),[revision,setRevision]=useState(0),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
+  const [status,setStatus]=useState(null),[reports,setReports]=useState(null),[days,setDays]=useState(30),[revision,setRevision]=useState(0),[busy,setBusy]=useState(false),[error,setError]=useState(''),[message,setMessage]=useState('');
   const [choices,setChoices]=useState(null),[siteUrl,setSiteUrl]=useState(''),[property,setProperty]=useState(''),[bingSite,setBingSite]=useState('https://elliescoaching.com/'),[apiKey,setApiKey]=useState('');
-  useEffect(()=>{let active=true;Promise.all([get('/status'),get(`/reports?days=${days}`),get('/visibility')]).then(([s,r,i])=>{if(active){setStatus(s);setReports(r);setItems(i);setSiteUrl(s.google.settings.siteUrl||'');setProperty(s.google.settings.property||'');}}).catch(()=>{if(active)setError('Search reporting could not be loaded. Try again.');});return()=>{active=false;};},[days,revision]);
+  useEffect(()=>{let active=true;Promise.all([get('/status'),get(`/reports?days=${days}`)]).then(([s,r])=>{if(active){setStatus(s);setReports(r);setSiteUrl(s.google.settings.siteUrl||'');setProperty(s.google.settings.property||'');}}).catch(()=>{if(active)setError('Search reporting could not be loaded. Try again.');});return()=>{active=false;};},[days,revision]);
   const run=async(fn,success)=>{if(busy)return;setBusy(true);setError('');setMessage('');try{const result=await fn();setMessage(success||result?.data?.data?.message||'Saved.');setRevision(v=>v+1);}catch(e){setError(e.response?.data?.error||'The operation could not be completed.');}finally{setBusy(false);}};
   const oauthResult=new URLSearchParams(window.location.search).get('searchConnection');
   const ga=reports?.ga4;
@@ -63,6 +50,6 @@ export default function SearchVisibilityPanel(){
     <div className="search-controls"><p>{reports?`${reports.startDate} – ${reports.endDate} · Reports refresh from providers at most hourly when viewed.`:'Loading provider reports…'}</p><button type="button" onClick={()=>{setError('');setRevision(v=>v+1);}}>Reload reports</button></div>
     <div className="search-report-grid"><SearchCard title="Google search performance" report={reports?.googleSearch}/><SearchCard title="Bing search performance" report={reports?.bingSearch}/></div>
     <article className="search-report"><h3>Google Analytics — website activity</h3>{!ga||!['ready','stale'].includes(ga.state)?<p>{ga?.message||'Loading report…'}</p>:<>{ga.state==='stale'&&<p className="search-warning">Showing saved data. {ga.error}</p>}<small>{ga.property} · Retrieved {new Date(ga.fetchedAt).toLocaleString()}</small><dl className="search-totals">{['Sessions','Active users','Page/screen views','Key events'].map((label,i)=><div key={label}><dt>{label}</dt><dd>{ga.totals.length?number(ga.totals[i]):'No data'}</dd></div>)}</dl><p>{ga.note}</p>{ga.metadata?.subjectToThresholding&&<p>Google applied privacy thresholds to this report.</p>}<div className="search-table"><table><caption>GA4 sources — top 100 by sessions</caption><thead><tr><th>Source / medium</th><th>Sessions</th><th>Active users</th><th>Views</th><th>Key events</th></tr></thead><tbody>{ga.sources.map((r,i)=><tr key={i}><th scope="row">{r.source}</th>{r.values.map((v,j)=><td key={j}>{number(v)}</td>)}</tr>)}</tbody></table></div></>}</article>
-    <fieldset disabled={busy}><legend>Provider AI reports</legend><VisibilityImport run={run} canManage={canManage} items={items}/></fieldset>
+    <fieldset disabled={busy}><legend>Provider AI reports</legend><AiVisibilityAvailability/></fieldset>
   </section>;
 }

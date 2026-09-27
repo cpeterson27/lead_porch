@@ -19,6 +19,9 @@ async function request(url, options = {}) {
   try { response = await fetch(url, { ...options, signal: AbortSignal.timeout(20000) }); }
   catch { throw fail('The provider could not be reached. Try again later.'); }
   let data; try { data = await response.json(); } catch { throw fail('The provider returned an unreadable response.'); }
+  const disabled = data?.error?.details?.find(detail => detail.reason === 'SERVICE_DISABLED');
+  const serviceNames = { 'searchconsole.googleapis.com': 'Google Search Console API', 'analyticsadmin.googleapis.com': 'Google Analytics Admin API', 'analyticsdata.googleapis.com': 'Google Analytics Data API' };
+  if (disabled && serviceNames[disabled.metadata?.service]) throw fail(`${serviceNames[disabled.metadata.service]} is disabled in your Google Cloud project. Enable that API, then reload the available properties. Your Google sign-in is already connected.`);
   // Never surface raw provider errors: request URLs may contain a Bing secret.
   if (!response.ok || data?.ErrorCode || data?.d?.ErrorCode) throw fail(`Provider request failed (${response.status}). Check account access, API enablement, and reconnect if needed.`);
   return data;
