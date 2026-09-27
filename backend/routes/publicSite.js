@@ -1,3 +1,4 @@
+const { timeOffWindows, overlapsTimeOff, zonedDate } = require("../services/discoveryTimeOff");
 const express = require("express");
 const mongoose = require("mongoose");
 const Testimonial = require("../models/Testimonial");
@@ -46,17 +47,6 @@ const googleCalendarService = require("../services/googleCalendarService");
 const CommunicationConsent = require("../models/CommunicationConsent");
 const { normalizePhone } = require("../services/communicationPolicyService");
 
-function zonedDate(year, month, day, hour, minute, timezone) {
-  const target = Date.UTC(year, month - 1, day, hour, minute);
-  let value = target;
-  const formatter = new Intl.DateTimeFormat("en-US", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    const parts = Object.fromEntries(formatter.formatToParts(new Date(value)).filter((part) => part.type !== "literal").map((part) => [part.type, Number(part.value)]));
-    const shown = Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute);
-    value += target - shown;
-  }
-  return new Date(value);
-}
 
 async function discoveryConfig(req) {
   const ws = await service.workspace(req);
@@ -102,6 +92,7 @@ router.get("/discovery-call/availability", async (req, res, next) => {
     const days = new Set((availability.days || [1, 2, 3, 4, 5]).map(Number));
     const weeklyHours = new Map((availability.weeklyHours || []).map((row) => [Number(row.day), row]));
     const busy = probe.busy.map((row) => ({ start: new Date(row.start).getTime() - bufferMinutes * 60000, end: new Date(row.end).getTime() + bufferMinutes * 60000 }));
+    busy.push(...timeOffWindows(availability.timeOff || [], probe.timezone));
     const slots = [];
     const localDate = new Intl.DateTimeFormat("en-CA", { timeZone: probe.timezone, year: "numeric", month: "2-digit", day: "2-digit" });
     for (let offset = 1; offset <= horizonDays; offset += 1) {
@@ -156,6 +147,8 @@ router.post("/discovery-call/book", limited, async (req, res, next) => {
     };
     const qualificationSummary = [qualification.experience, qualification.timeline, qualification.primaryGoal].filter(Boolean).join(" · ");
     const check = await runWithWorkspace(ws._id, () => googleCalendarService.availability({ workspaceId: ws._id, coachProfileId: availability.coachProfileId, startsAt, durationMinutes }));
+    const blocked = overlapsTimeOff(timeOffWindows(availability.timeOff || [], check.timezone), startsAt.getTime(), startsAt.getTime() + durationMinutes * 60000);
+    if (blocked) return res.status(409).json({ error: "This time is no longer available. Please choose another appointment." });
     if (!check.available) return res.status(409).json({ error: "That time was just booked. Please choose another available time." });
     const scheduled = await runWithWorkspace(ws._id, () => googleCalendarService.scheduleDiscoveryCall({ workspaceId: ws._id, coachProfileId: availability.coachProfileId, startsAt, durationMinutes, name, email, phone: String(req.body?.phone || "").slice(0, 80), notes: String(req.body?.notes || "").slice(0, 2000), programName: programSnapshot.name, qualificationSummary }));
     const booking = await runWithWorkspace(ws._id, () => DiscoveryCallBooking.create({ workspaceId: ws._id, coachProfileId: availability.coachProfileId, name, email, phone: String(req.body?.phone || "").slice(0, 80), notes: String(req.body?.notes || "").slice(0, 2000), coachingProgramId: selectedProgram?._id || null, programSnapshot, qualification, siteAttribution: normalizeAttribution(attributionInput(req)), startsAt, durationMinutes, timezone: scheduled.timezone, calendar: { connectionId: scheduled.connection._id, calendarId: scheduled.calendarId, eventId: scheduled.event.id, htmlLink: scheduled.event.htmlLink || "", meetUrl: scheduled.meetUrl } }));

@@ -1,3 +1,4 @@
+const { normalizeTimeOff } = require("./discoveryTimeOff");
 const crypto = require("crypto");
 const { sitemapEntries } = require("./publicSitemap");
 const Workspace = require("../models/Workspace");
@@ -390,6 +391,7 @@ function sanitizedConfig(workspace, config) {
         durationMinutes: Math.min(180, Math.max(15, Number(p.discoveryCallAvailability?.durationMinutes || 30))),
         bufferMinutes: Math.min(120, Math.max(0, Number(p.discoveryCallAvailability?.bufferMinutes || 15))),
         horizonDays: Math.min(90, Math.max(1, Number(p.discoveryCallAvailability?.horizonDays || 30))),
+        timeOff: normalizeTimeOff(p.discoveryCallAvailability?.timeOff || []),
         weeklyHours: (p.discoveryCallAvailability?.weeklyHours || []).slice(0, 7).map((row) => ({
           day: Math.min(6, Math.max(0, Number(row.day))),
           enabled: row.enabled === true,

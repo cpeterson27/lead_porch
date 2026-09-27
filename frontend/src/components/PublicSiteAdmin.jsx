@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import Button from "./Button.jsx";
+import DiscoveryTimeOff from "./DiscoveryTimeOff.jsx";
 import WorkspaceBrandingEditor from "./WorkspaceBrandingEditor.jsx";
 import {
   createManagedProfile,
@@ -234,7 +235,7 @@ export default function PublicSiteAdmin({ section = "website" }) {
       // everywhere else in the app) to re-fetch immediately, instead of
       // leaving it showing whatever colors were live at page load.
       window.dispatchEvent(new CustomEvent("workspace-theme-updated"));
-      setMessage("All branding changes saved successfully.");
+      setMessage(tab === "discoveryCall" ? "Discovery call settings saved. Availability is up to date." : "All branding changes saved successfully.");
       return saved;
     } catch (err) {
       setError(
@@ -1217,8 +1218,9 @@ export default function PublicSiteAdmin({ section = "website" }) {
                   return <div className="public-admin__weekly-row" key={value}><label className="website-toggle"><input type="checkbox" checked={row.enabled} onChange={(event) => updateRow({ enabled: event.target.checked })} /><span>{label}</span></label><label>Start<input type="time" disabled={!row.enabled} value={row.startTime} onChange={(event) => updateRow({ startTime: event.target.value })} /></label><label>End<input type="time" disabled={!row.enabled} value={row.endTime} onChange={(event) => updateRow({ endTime: event.target.value })} /></label></div>;
                 })}
               </div>
-              <p className="public-admin__help">To block time off, create an event marked “Busy” in your connected Google Calendar. These times are automatically excluded from booking availability.</p>
+              <p className="public-admin__schedule-note">Your regular discovery-call hours, in your connected calendar’s time zone.</p>
             </fieldset>
+            <DiscoveryTimeOff value={config.publicSite.discoveryCallAvailability?.timeOff || []} onChange={(timeOff) => patchPublic("discoveryCallAvailability", { ...(config.publicSite.discoveryCallAvailability || {}), timeOff })} />
             <label>
               Homepage button text
               <input
@@ -1247,6 +1249,8 @@ export default function PublicSiteAdmin({ section = "website" }) {
           <Button loading={saving} onClick={saveConfig}>
             Save discovery call settings
           </Button>
+          {message && <p role="status">{message}</p>}
+          {error && <p role="alert">{error}</p>}
         </section>
       ) : null}
       {tab === "sections" ? (

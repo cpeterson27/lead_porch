@@ -902,3 +902,27 @@
     flex-direction: column;
   }
 }
+
+/* Availability occupies its own row; controls must shrink inside the card. */
+.public-admin .public-admin__weekday-fieldset,
+.public-admin .public-admin__time-off { grid-column:1/-1; min-width:0; margin:0; padding:20px; border:1px solid #e1e4ea; border-radius:18px; background:#fff; }
+.public-admin__time-off legend { padding:0 8px; font-weight:700; }
+.public-admin .public-admin__weekly-row { grid-template-columns:minmax(130px,1fr) minmax(0,1fr) minmax(0,1fr); align-items:center; padding:10px 0; border-bottom:1px solid #eef0f3; }
+.public-admin .public-admin__weekly-row:last-child { border-bottom:0; }
+.public-admin .public-admin__weekly-row label { min-width:0; }
+.public-admin .public-admin__weekly-row .website-toggle { background:transparent; border:0; padding:0; min-height:44px; }
+.public-admin .public-admin__weekly-row input[type="time"],
+.public-admin .public-admin__time-off input:not([type="checkbox"]) { width:100%; min-width:0; max-width:100%; box-sizing:border-box; height:44px; padding:8px 12px; border-radius:10px; font-size:14px; }
+.public-admin .public-admin__weekly-row input:disabled { opacity:.5; }
+.public-admin__schedule-note,.public-admin__time-off > p,.public-admin__time-off > small { font-size:13px; line-height:1.5; color:#65716e; font-weight:400; }
+.public-admin__time-off-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; margin:16px 0; }
+.public-admin__time-off-fields .website-toggle { grid-column:1/-1; justify-self:start; }
+.public-admin__time-off-list { list-style:none; padding:0; margin:16px 0; }
+.public-admin__time-off-list li { display:flex; align-items:center; justify-content:space-between; gap:12px; border-top:1px solid #eef0f3; padding:12px 0; }
+.public-admin__time-off-list small { display:block; color:#65716e; margin-top:4px; }
+@media(max-width:600px) {
+ .public-admin .public-admin__weekly-row { grid-template-columns:repeat(2,minmax(0,1fr)); }
+ .public-admin .public-admin__weekly-row .website-toggle { grid-column:1/-1; }
+ .public-admin .public-admin__weekday-fieldset,.public-admin .public-admin__time-off { padding:14px; }
+ .public-admin__time-off-fields { grid-template-columns:minmax(0,1fr); }
+}

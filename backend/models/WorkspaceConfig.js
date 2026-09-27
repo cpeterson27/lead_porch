@@ -265,6 +265,7 @@ const workspaceConfigSchema = new mongoose.Schema(
         days: { type: [Number], default: [1, 2, 3, 4, 5] },
         startTime: { type: String, default: "09:00", maxlength: 5 },
         endTime: { type: String, default: "17:00", maxlength: 5 },
+        timeOff: { type: [{ _id: false, startDate: String, endDate: String, allDay: { type: Boolean, default: true }, startTime: String, endTime: String }], default: [] },
         weeklyHours: {
           type: [{
             _id: false,
