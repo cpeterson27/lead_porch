@@ -1176,23 +1176,57 @@
      thumbnail, so the full frame (not just the center) must stay visible. */
   object-fit: contain;
 }
-.public-hero__maximize {
+/* A persistent, always-visible control bar — native <video controls>
+   auto-hides during playback and only reappears on hover, which reads
+   as "there's no toolbar at all." This stays on screen the whole time. */
+.public-hero__controls {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  left: 0;
+  right: 0;
+  bottom: 0;
   z-index: 2;
+  padding: 18px 12px 10px;
+  background: linear-gradient(to top, #000000cc, #00000000);
+}
+.public-hero__scrubber {
+  position: relative;
+  height: 4px;
+  margin-bottom: 8px;
+  border-radius: 2px;
+  background: #ffffff40;
+  cursor: pointer;
+}
+.public-hero__scrubber-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--public-accent, #8bc53f);
+}
+.public-hero__controls-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.public-hero__controls-row button {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
   border: 0;
-  border-radius: 8px;
-  background: #000000a6;
+  background: transparent;
   color: #fff;
   cursor: pointer;
 }
-.public-hero__maximize:hover {
-  background: #000000d9;
+.public-hero__time {
+  color: #fff;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.public-hero__controls-maximize {
+  margin-left: auto;
 }
 
 /* Minimal hero: title + supporting statement only — no eyebrow tag,

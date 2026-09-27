@@ -10,9 +10,12 @@ import {
   FiMaximize2,
   FiMenu,
   FiMoon,
+  FiPause,
   FiPlay,
   FiStar,
   FiSun,
+  FiVolume2,
+  FiVolumeX,
   FiX,
 } from "react-icons/fi";
 import { FcGoogle } from "react-icons/fc";
@@ -857,14 +860,37 @@ function embedUrl(value) {
   }
   return "";
 }
+function formatVideoTime(seconds) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const m = Math.floor(seconds / 60),
+    s = Math.floor(seconds % 60);
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
 function HeroVideoTile({ site }) {
   const p = site?.publicSite || {};
   const workspaceName =
     site?.branding?.publicSiteName || site?.workspace?.name || "";
   const [playing, setPlaying] = useState(false),
+    [paused, setPaused] = useState(false),
+    [current, setCurrent] = useState(0),
+    [duration, setDuration] = useState(0),
+    [muted, setMuted] = useState(false),
     videoRef = useRef(null),
     embed = embedUrl(p.introVideoUrl);
   if (!p.introVideoUrl && !p.introVideoPosterUrl) return null;
+  const togglePlay = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) video.play();
+    else video.pause();
+  };
+  const seekTo = (event) => {
+    const video = videoRef.current;
+    if (!video || !duration) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const ratio = Math.min(1, Math.max(0, (event.clientX - rect.left) / rect.width));
+    video.currentTime = ratio * duration;
+  };
   if (playing) {
     return (
       <div className="public-hero__video public-hero__video--playing">
@@ -883,18 +909,58 @@ function HeroVideoTile({ site }) {
               ref={videoRef}
               src={p.introVideoUrl}
               poster={cloudinaryImage(p.introVideoPosterUrl, 1280)}
-              controls
               autoPlay
               playsInline
+              muted={muted}
+              onClick={togglePlay}
+              onPlay={() => setPaused(false)}
+              onPause={() => setPaused(true)}
+              onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)}
+              onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
             />
-            <button
-              type="button"
-              className="public-hero__maximize"
-              aria-label="Maximize video"
-              onClick={() => videoRef.current?.requestFullscreen?.()}
-            >
-              <FiMaximize2 />
-            </button>
+            <div className="public-hero__controls">
+              <div
+                className="public-hero__scrubber"
+                onClick={seekTo}
+                role="slider"
+                aria-label="Seek video"
+                aria-valuemin={0}
+                aria-valuemax={duration || 0}
+                aria-valuenow={current}
+              >
+                <div
+                  className="public-hero__scrubber-fill"
+                  style={{ width: `${duration ? (current / duration) * 100 : 0}%` }}
+                />
+              </div>
+              <div className="public-hero__controls-row">
+                <button
+                  type="button"
+                  onClick={togglePlay}
+                  aria-label={paused ? "Play" : "Pause"}
+                >
+                  {paused ? <FiPlay /> : <FiPause />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMuted((value) => !value)}
+                  aria-label={muted ? "Unmute" : "Mute"}
+                >
+                  {muted ? <FiVolumeX /> : <FiVolume2 />}
+                </button>
+                <span className="public-hero__time">
+                  {formatVideoTime(current)} / {formatVideoTime(duration)}
+                </span>
+                <button
+                  type="button"
+                  className="public-hero__controls-maximize"
+                  onClick={() => videoRef.current?.requestFullscreen?.()}
+                  aria-label="Maximize video"
+                >
+                  <FiMaximize2 />
+                </button>
+              </div>
+            </div>
           </>
         )}
       </div>
