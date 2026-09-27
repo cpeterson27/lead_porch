@@ -527,14 +527,14 @@ export default function Settings() {
             </section>
 
             {/* Campaign brands */}
-            <section className="settings-section">
-              <div className="settings-section__head">
+            <details className="settings-section">
+              <summary className="settings-section__head" style={{ cursor: "pointer" }}>
                 <div className="settings-section__icon"><FiImage /></div>
                 <div className="settings-section__head-text">
-                  <h3>Campaign brands</h3>
-                  <p>Give each event or program its own logo, website, and email color.</p>
+                  <h3>Campaign branding (optional)</h3>
+                  <p>Open a campaign to customize its promotional assets and email styling. Your main website branding is managed separately.</p>
                 </div>
-              </div>
+              </summary>
               <div className="settings-brand-list">
                 {campaigns.length ? (
                   campaigns.map((campaign) => (
@@ -556,12 +556,12 @@ export default function Settings() {
                             {campaign.campaignKind === "program" ? "Program" : "Event"}
                           </span>
                           <span className="settings-brand-item__name">
-                            {campaign.programName || campaign.name}
+                            {campaign.name || campaign.programName}
                           </span>
                         </div>
                       </div>
                       <span className="settings-brand-item__action">
-                        Manage brand <FiArrowUpRight />
+                        Open campaign <FiArrowUpRight />
                       </span>
                     </button>
                   ))
@@ -571,7 +571,7 @@ export default function Settings() {
                   </p>
                 )}
               </div>
-            </section>
+            </details>
 
             <footer className="settings-panel__footer">
               <Button
