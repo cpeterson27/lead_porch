@@ -333,14 +333,16 @@ export default function Integrations() {
             <Button type="submit" loading={twilioBusy}>Register this number</Button>
           </form> : null}
           {twilioMessage ? <p className="twilio-message">{twilioMessage}</p> : null}
-          <details className="twilio-webhook-details">
+          <details className="twilio-webhook-details" open>
             <summary>Webhook URLs to paste into Twilio</summary>
-            <p>On your phone number's configuration page in the Twilio Console, under Messaging, set:</p>
+            <p>In the Twilio Console, open <strong>Phone Numbers → Manage → Active numbers</strong>, click your number, scroll to <strong>Configure → Messaging</strong>, and set these two fields (both as <strong>Webhook</strong>, method <strong>HTTP POST</strong>):</p>
             <dl>
-              <dt>A message comes in</dt><dd><code>{getTwilioWebhookUrls().inbound}</code></dd>
-              <dt>Status callback URL</dt><dd><code>{getTwilioWebhookUrls().status}</code></dd>
+              <dt>A message comes in</dt>
+              <dd><code>{getTwilioWebhookUrls().inbound}</code><button type="button" className="twilio-webhook-copy" onClick={() => navigator.clipboard.writeText(getTwilioWebhookUrls().inbound)}>Copy</button></dd>
+              <dt>Status callback URL</dt>
+              <dd><code>{getTwilioWebhookUrls().status}</code><button type="button" className="twilio-webhook-copy" onClick={() => navigator.clipboard.writeText(getTwilioWebhookUrls().status)}>Copy</button></dd>
             </dl>
-            <small>Both should be set to HTTP POST. This is what lets Lead Porch see delivered/bounced status and inbound replies (including STOP and JOIN keywords).</small>
+            <small>This is what lets Lead Porch see delivered/bounced status and inbound replies (including STOP and JOIN keywords).</small>
           </details>
           {twilio?.readiness?.requiresA2pForUsMarketing ? <small>US marketing texts require A2P 10DLC registration in the Twilio Console before carriers will reliably deliver them — this is separate from connecting the account here.</small> : null}
         </article>
@@ -396,7 +398,7 @@ export default function Integrations() {
       </section>
       {loading ? <p>Loading integrations…</p> : (
         <section className="integration-provider-grid">
-          {providers.filter((provider) => !["resend", "meetup"].includes(provider.id)).map((provider) => {
+          {providers.filter((provider) => !["resend", "meetup", "twilio"].includes(provider.id)).map((provider) => {
             const isEventbrite = provider.id === "eventbrite";
             const socialProvider = provider.id === "facebook" ? "meta" : ["linkedin", "instagram"].includes(provider.id) ? provider.id : "";
             const socialConnection = socialProvider ? socialConnections[socialProvider] : null;

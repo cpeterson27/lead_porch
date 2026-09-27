@@ -17,6 +17,7 @@ const twoFactorChallengeSchema = new mongoose.Schema(
     requestedWorkspaceId: { type: mongoose.Schema.Types.ObjectId, ref: "Workspace", default: null },
     phone: { type: String, default: "" },
     attempts: { type: Number, default: 0 },
+    resends: { type: Number, default: 0 },
     expiresAt: { type: Date, required: true },
   },
   { timestamps: true },

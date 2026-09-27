@@ -545,6 +545,12 @@ export const acceptWorkspaceInvitation = (token, values) =>
   api
     .post(`/auth/invitations/${encodeURIComponent(token)}/accept`, values)
     .then((res) => res.data);
+export const requestPasswordReset = (email) =>
+  api.post("/auth/forgot-password", { email }).then((res) => res.data);
+export const resetPassword = (token, password) =>
+  api.post("/auth/reset-password", { token, password }).then((res) => res.data);
+export const resendTwoFactorCode = (challengeId) =>
+  api.post("/auth/login/2fa/resend", { challengeId }).then((res) => res.data);
 export const fetchMyAmbassadorProfile = () =>
   api.get("/ambassadors/me").then((res) => res.data.data);
 export const updateMyAmbassadorProfile = (values) =>

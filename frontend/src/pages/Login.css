@@ -12,3 +12,7 @@
 }
 .login-brand--logo { border-radius: 16px; height: 54px; width: auto; max-width: 160px; object-fit: contain; }
 .login-link-button { background: none; border: 0; color: inherit; cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }
+.login-link-button:disabled { cursor: default; opacity: .6; text-decoration: none; }
+.login-checkbox-row { align-items: center; display: flex; flex-direction: row !important; font-weight: 600 !important; gap: 9px; }
+.login-footer-row { display: flex; gap: 18px; justify-content: center; }
+.login-footer-row .login-link-button { margin: 0; }

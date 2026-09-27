@@ -307,9 +307,12 @@
 .twilio-empty { color: var(--color-text-muted, #78827e); font-size: 0.85rem; }
 .twilio-message { color: #17604d; font-size: 0.85rem; }
 .twilio-webhook-details { font-size: 0.85rem; }
-.twilio-webhook-details dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; margin: 8px 0; }
+.twilio-webhook-details dl { display: grid; gap: 14px; margin: 8px 0; }
 .twilio-webhook-details dt { font-weight: 700; }
-.twilio-webhook-details code { word-break: break-all; }
+.twilio-webhook-details dd { margin: 4px 0 0; display: flex; align-items: center; gap: 8px; }
+.twilio-webhook-details code { display: block; flex: 1; min-width: 0; background: var(--surface-muted, #f7f8f7); border: 1px solid var(--color-border, #d9e2de); border-radius: 8px; padding: 8px 10px; overflow-wrap: anywhere; word-break: normal; line-height: 1.5; font-size: 0.8rem; }
+.twilio-webhook-copy { flex: none; background: transparent; border: 1px solid var(--color-border, #d9e2de); border-radius: 999px; cursor: pointer; padding: 6px 12px; font-size: 0.75rem; font-weight: 700; }
+.twilio-webhook-copy:hover { background: var(--surface-muted, #f7f8f7); }
 .integration-sync-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 0; }
 .integration-sync-summary div { padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-muted, #f7f8f7); }
 .integration-sync-summary dt { color: var(--text-muted); font-size: .7rem; font-weight: 700; }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import useAuth from "../context/useAuth.js";
 import api from "../services/api.js";
+import { requestPasswordReset, resendTwoFactorCode } from "../services/api.js";
 import "./Login.css";
 
 export default function Login() {
@@ -19,6 +20,12 @@ export default function Login() {
   // then on the form shows the code field instead of email/password.
   const [twoFactor, setTwoFactor] = useState(null);
   const [code, setCode] = useState("");
+  const [rememberDevice, setRememberDevice] = useState(true);
+  const [resendState, setResendState] = useState("idle"); // idle | sending | sent
+  // "forgot" swaps the whole panel to an email-only reset request form.
+  const [forgot, setForgot] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetSent, setResetSent] = useState(false);
 
   useEffect(() => {
     // Same domain the public site already brands itself from — this just
@@ -62,7 +69,7 @@ export default function Login() {
     setError("");
     setSubmitting(true);
     try {
-      await verifyTwoFactor(twoFactor.challengeId, code);
+      await verifyTwoFactor(twoFactor.challengeId, code, rememberDevice);
       navigate(location.state?.from || "/dashboard", { replace: true });
     } catch (requestError) {
       setError(requestError.response?.data?.error || "Unable to verify that code.");
@@ -71,18 +78,87 @@ export default function Login() {
     }
   };
 
+  const resendCode = async () => {
+    if (resendState === "sending") return;
+    setError("");
+    setResendState("sending");
+    try {
+      await resendTwoFactorCode(twoFactor.challengeId);
+      setResendState("sent");
+      setTimeout(() => setResendState("idle"), 15000);
+    } catch (requestError) {
+      setError(requestError.response?.data?.error || "Unable to resend that code.");
+      setResendState("idle");
+    }
+  };
+
+  const submitForgot = async (event) => {
+    event.preventDefault();
+    setError("");
+    setSubmitting(true);
+    try {
+      await requestPasswordReset(resetEmail);
+      setResetSent(true);
+    } catch {
+      // The endpoint always answers the same way either way, so this only
+      // fires for a real network problem — never "that email doesn't exist."
+      setResetSent(true);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const brandName = branding?.workspaceName || "Lead Porch";
   const brandColor = branding?.primaryColor || "";
+  const brandMark = branding?.logoUrl ? (
+    <img className="login-brand login-brand--logo" src={branding.logoUrl} alt={`${brandName} logo`} />
+  ) : (
+    <a className="login-brand" href="/" aria-label={`${brandName} home`}>{brandName[0]}</a>
+  );
+
+  if (forgot) {
+    return (
+      <main className="login-page" style={brandColor ? { "--login-accent": brandColor } : undefined}>
+        <section className="login-panel">
+          {brandMark}
+          <p className="login-eyebrow">{brandName}</p>
+          <h1>Reset your password</h1>
+          {resetSent ? (
+            <>
+              <p className="login-intro">
+                If an account exists for {resetEmail}, we've sent a link to reset the password. It works once and expires in an hour.
+              </p>
+              <button type="button" className="login-link-button" onClick={() => { setForgot(false); setResetSent(false); setResetEmail(""); }}>
+                Back to sign in
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="login-intro">Enter your email and we'll send you a link to reset it.</p>
+              <form onSubmit={submitForgot}>
+                <label>
+                  Email address
+                  <input type="email" autoComplete="email" value={resetEmail} onChange={(event) => setResetEmail(event.target.value)} required autoFocus />
+                </label>
+                <button type="submit" disabled={submitting}>{submitting ? "Sending…" : "Send reset link"}</button>
+              </form>
+              <small>
+                <button type="button" className="login-link-button" onClick={() => { setForgot(false); setError(""); }}>
+                  Back to sign in
+                </button>
+              </small>
+            </>
+          )}
+        </section>
+      </main>
+    );
+  }
 
   if (twoFactor) {
     return (
       <main className="login-page" style={brandColor ? { "--login-accent": brandColor } : undefined}>
         <section className="login-panel">
-          {branding?.logoUrl ? (
-            <img className="login-brand login-brand--logo" src={branding.logoUrl} alt={`${brandName} logo`} />
-          ) : (
-            <a className="login-brand" href="/" aria-label={`${brandName} home`}>{brandName[0]}</a>
-          )}
+          {brandMark}
           <p className="login-eyebrow">{brandName}</p>
           <h1>Enter your code</h1>
           <p className="login-intro">
@@ -102,6 +178,10 @@ export default function Login() {
                 autoFocus
               />
             </label>
+            <label className="login-checkbox-row">
+              <input type="checkbox" checked={rememberDevice} onChange={(event) => setRememberDevice(event.target.checked)} />
+              Remember this device for 30 days
+            </label>
             {error ? (
               <p className="login-error" role="alert">{error}</p>
             ) : null}
@@ -109,7 +189,10 @@ export default function Login() {
               {submitting ? "Verifying…" : "Verify and sign in"}
             </button>
           </form>
-          <small>
+          <small className="login-footer-row">
+            <button type="button" className="login-link-button" onClick={resendCode} disabled={resendState === "sending"}>
+              {resendState === "sent" ? "Code resent" : resendState === "sending" ? "Sending…" : "Resend code"}
+            </button>
             <button type="button" className="login-link-button" onClick={() => { setTwoFactor(null); setCode(""); setError(""); }}>
               Back to sign in
             </button>
@@ -122,11 +205,7 @@ export default function Login() {
   return (
     <main className="login-page" style={brandColor ? { "--login-accent": brandColor } : undefined}>
       <section className="login-panel">
-        {branding?.logoUrl ? (
-          <img className="login-brand login-brand--logo" src={branding.logoUrl} alt={`${brandName} logo`} />
-        ) : (
-          <a className="login-brand" href="/" aria-label={`${brandName} home`}>{brandName[0]}</a>
-        )}
+        {brandMark}
         <p className="login-eyebrow">{brandName}</p>
         <h1>Welcome back</h1>
         <p className="login-intro">Sign in to your private growth workspace.</p>
@@ -176,9 +255,10 @@ export default function Login() {
             {submitting ? "Signing in…" : "Sign in"}
           </button>
         </form>
-        <small>
-          New customers start from the Lead Porch website. Team members join an
-          existing workspace by invitation.
+        <small className="login-footer-row">
+          <button type="button" className="login-link-button" onClick={() => { setForgot(true); setError(""); }}>
+            Forgot password?
+          </button>
         </small>
       </section>
     </main>

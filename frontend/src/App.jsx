@@ -40,6 +40,7 @@ const DevelopmentRequests = lazyWithRetry(() => import("./pages/DevelopmentReque
 const CrmSetup = lazyWithRetry(() => import("./pages/CrmSetup.jsx"));
 const GmailIntegration = lazyWithRetry(() => import("./pages/GmailIntegration.jsx"));
 const Login = lazyWithRetry(() => import("./pages/Login.jsx"));
+const ResetPassword = lazyWithRetry(() => import("./pages/ResetPassword.jsx"));
 const AcceptInvitation = lazyWithRetry(() => import("./pages/AcceptInvitation.jsx"));
 const PublicHome = lazyWithRetry(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.PublicHome })));
 const TestimonialsPage = lazyWithRetry(() => import("./pages/PublicSite.jsx").then((module) => ({ default: module.TestimonialsPage })));
@@ -274,6 +275,7 @@ function App() {
             <Route path="/payment-plan/:token" element={<PublicPaymentPlan />} />
             <Route path="/profile/edit/:token" element={<StudentProfileEditor />} />
             <Route path="/login" element={<Login />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/accept-invitation/:token" element={<AcceptInvitation />} />
             <Route path="/oauth/consent" element={<OAuthConsent />} />
             <Route path="*" element={<ProtectedApp />} />

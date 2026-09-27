@@ -41,8 +41,8 @@ export function AuthProvider({ children }) {
       await loadWorkspaces();
       return sessionData;
     },
-    async verifyTwoFactor(challengeId, code) {
-      const { data } = await api.post("/auth/login/verify-2fa", { challengeId, code });
+    async verifyTwoFactor(challengeId, code, rememberDevice = false) {
+      const { data } = await api.post("/auth/login/verify-2fa", { challengeId, code, rememberDevice });
       const { sessionToken, ...sessionData } = data;
       sessionStorage.setItem("ellie-csrf-token", sessionData.csrfToken);
       sessionStorage.setItem("ellie-session-token", sessionToken);

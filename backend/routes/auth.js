@@ -7,6 +7,8 @@ require("../models/Workspace");
 const WorkspaceMembership = require("../models/WorkspaceMembership");
 const WorkspaceConfig = require("../models/WorkspaceConfig");
 const TwoFactorChallenge = require("../models/TwoFactorChallenge");
+const TrustedDevice = require("../models/TrustedDevice");
+const PasswordResetToken = require("../models/PasswordResetToken");
 const { ACTIVE_ROLES } = require("../authorization/accessPolicy");
 const { normalizeRoles } = require("../authorization/capabilities");
 const { hashPassword, verifyPassword } = require("../utils/passwords");
@@ -14,9 +16,12 @@ const workspaceMemberService = require("../services/workspaceMemberService");
 const imageAssetService = require("../services/imageAssetService");
 const publicSiteService = require("../services/publicSiteService");
 const twoFactorSmsService = require("../services/twoFactorSmsService");
+const integrationHub = require("../services/integrationHub");
+const { primaryFrontendUrl } = require("../utils/frontendUrl");
 const {
   clearSessionCookie,
   createAuthContext,
+  parseCookies,
   requireAuth,
   sessionCookie,
   sessionToken,
@@ -55,24 +60,51 @@ function freshSessionValues(req, userId, workspaceId) {
 
 // Finishes a login exactly the same way whether the password alone was
 // enough or a 2FA code was also required — one place issues the session so
-// the two paths can never quietly drift apart.
-async function completeLogin(req, res, user, membership) {
+// the two paths can never quietly drift apart. extraCookies lets the 2FA
+// verify step also set the "remember this device" cookie in the same
+// response, alongside (never instead of) the session cookie.
+async function completeLogin(req, res, user, membership, extraCookies = []) {
   const values = freshSessionValues(req, user._id, membership.workspaceId._id);
   const session = await AuthSession.create(values.record);
   user.lastLoginAt = new Date();
   await user.save();
-  res.setHeader("Set-Cookie", sessionCookie(values.token, values.expiresAt));
+  res.setHeader("Set-Cookie", [sessionCookie(values.token, values.expiresAt), ...extraCookies]);
   req.auth = createAuthContext({ user, workspace: membership.workspaceId, membership, session });
   res.json({ ...publicSession(req), sessionToken: values.token });
 }
 
 const TWO_FACTOR_CODE_TTL_MINUTES = 10;
 const TWO_FACTOR_MAX_ATTEMPTS = 5;
+const TWO_FACTOR_MAX_RESENDS = 3;
 function generateSixDigitCode() {
   return String(crypto.randomInt(0, 1000000)).padStart(6, "0");
 }
 function hashSixDigitCode(code) {
   return crypto.createHash("sha256").update(String(code || "")).digest("hex");
+}
+
+// A browser that already proved it controls the phone once doesn't need to
+// prove it again on every login for a month — mirrors the "remember this
+// browser for 30 days" checkbox on Twilio's own hosted Verify page. Kept
+// entirely separate from the session cookie: this one only ever skips
+// asking for a NEW 2FA code, it can never itself sign anyone in.
+const TRUSTED_DEVICE_COOKIE = "ellie_2fa_trust";
+const TRUSTED_DEVICE_DAYS = 30;
+function trustedDeviceCookie(token, expiresAt) {
+  const secure = process.env.NODE_ENV === "production";
+  return [
+    `${TRUSTED_DEVICE_COOKIE}=${encodeURIComponent(token)}`,
+    "Path=/",
+    "HttpOnly",
+    secure ? "Secure" : "",
+    secure ? "SameSite=None" : "SameSite=Lax",
+    `Expires=${expiresAt.toUTCString()}`,
+  ].filter(Boolean).join("; ");
+}
+async function findTrustedDevice(req, userId) {
+  const token = parseCookies(req.headers.cookie || "")[TRUSTED_DEVICE_COOKIE];
+  if (!token) return null;
+  return TrustedDevice.findOne({ userId, tokenHash: tokenHash(token), expiresAt: { $gt: new Date() } }).select("_id");
 }
 
 async function rotateSession({ req, sessionId, userId, workspaceId }, SessionModel = AuthSession) {
@@ -128,7 +160,7 @@ router.post("/login", async (req, res) => {
     const memberships = await activeMemberships(user._id);
     const requestedWorkspaceId = String(req.body?.workspaceId || "");
 
-    if (user.twoFactor?.enabled) {
+    if (user.twoFactor?.enabled && !await findTrustedDevice(req, user._id)) {
       // Password is correct, but don't resolve the workspace or issue a
       // session yet — that happens in /login/verify-2fa once the code
       // checks out, using this exact same requestedWorkspaceId.
@@ -199,10 +231,58 @@ router.post("/login/verify-2fa", async (req, res) => {
     }
 
     await TwoFactorChallenge.deleteOne({ _id: challenge._id });
-    await completeLogin(req, res, user, membership);
+
+    const extraCookies = [];
+    if (req.body?.rememberDevice) {
+      const deviceToken = crypto.randomBytes(32).toString("base64url");
+      const deviceExpiresAt = new Date(Date.now() + TRUSTED_DEVICE_DAYS * 24 * 60 * 60 * 1000);
+      await TrustedDevice.create({ userId: user._id, tokenHash: tokenHash(deviceToken), userAgent: String(req.headers["user-agent"] || "").slice(0, 500), expiresAt: deviceExpiresAt });
+      extraCookies.push(trustedDeviceCookie(deviceToken, deviceExpiresAt));
+    }
+    await completeLogin(req, res, user, membership, extraCookies);
   } catch (error) {
     console.error("2FA VERIFY ERROR:", error);
     res.status(500).json({ error: "Unable to verify your code" });
+  }
+});
+
+// A wrong-number typo or a code that expired mid-entry shouldn't force
+// restarting the whole password step — this reuses the same challenge row
+// (so it still can't outlive TWO_FACTOR_CODE_TTL_MINUTES from a fresh
+// send) but caps how many times it can fire, since each one is a real SMS
+// with a real cost.
+router.post("/login/2fa/resend", async (req, res) => {
+  try {
+    const challengeId = req.body?.challengeId;
+    if (!challengeId || !mongoose.isValidObjectId(challengeId)) {
+      return res.status(400).json({ error: "That code has expired. Please sign in again." });
+    }
+    const challenge = await TwoFactorChallenge.findOne({ _id: challengeId, purpose: "login" });
+    if (!challenge || challenge.expiresAt < new Date()) {
+      return res.status(400).json({ error: "That code has expired. Please sign in again." });
+    }
+    if ((challenge.resends || 0) >= TWO_FACTOR_MAX_RESENDS) {
+      return res.status(429).json({ error: "Too many resend attempts. Please sign in again." });
+    }
+    const user = await User.findOne({ _id: challenge.userId, status: "active" });
+    if (!user) return res.status(400).json({ error: "That code has expired. Please sign in again." });
+    const memberships = await activeMemberships(user._id);
+    const code = generateSixDigitCode();
+    try {
+      await twoFactorSmsService.sendVerificationCode({ workspaceId: memberships[0]?.workspaceId?._id, phone: user.phone, code });
+    } catch (sendError) {
+      console.error("2FA RESEND ERROR:", sendError);
+      return res.status(500).json({ error: sendError.message || "Unable to resend your verification code" });
+    }
+    challenge.codeHash = hashSixDigitCode(code);
+    challenge.attempts = 0;
+    challenge.resends = (challenge.resends || 0) + 1;
+    challenge.expiresAt = new Date(Date.now() + TWO_FACTOR_CODE_TTL_MINUTES * 60000);
+    await challenge.save();
+    res.json({ success: true, phoneLastFour: String(user.phone || "").slice(-4) });
+  } catch (error) {
+    console.error("2FA RESEND ERROR:", error);
+    res.status(500).json({ error: "Unable to resend your verification code" });
   }
 });
 
@@ -226,6 +306,73 @@ router.get("/login-branding", async (req, res) => {
     });
   } catch (_error) {
     res.json({ branded: false });
+  }
+});
+
+const PASSWORD_RESET_TTL_MINUTES = 60;
+
+// Always answers the same way whether or not the email matches an account —
+// a different response here would let anyone probe which emails have Lead
+// Porch accounts. The actual reset link only ever goes out over email, and
+// only when a match exists.
+router.post("/forgot-password", async (req, res) => {
+  const confirmation = { message: "If an account exists for that email, we've sent a link to reset the password." };
+  try {
+    const email = String(req.body?.email || "").trim().toLowerCase();
+    if (!email) return res.json(confirmation);
+    const user = await User.findOne({ email, status: "active" }).select("_id name");
+    if (!user) return res.json(confirmation);
+
+    const token = crypto.randomBytes(32).toString("base64url");
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MINUTES * 60000);
+    await PasswordResetToken.create({ userId: user._id, tokenHash: tokenHash(token), expiresAt });
+
+    const origin = String(req.get("origin") || "").trim().replace(/\/+$/, "") || primaryFrontendUrl();
+    const resetUrl = `${origin}/reset-password?token=${token}`;
+    let senderName = "Lead Porch";
+    try {
+      const workspace = await publicSiteService.workspace(req);
+      const config = await WorkspaceConfig.findOne({ workspaceId: workspace._id, key: "primary" }).select("branding").lean();
+      senderName = config?.branding?.publicSiteName || workspace.name || senderName;
+    } catch { /* leadporch.co itself, or an unmatched host — generic sender name is fine */ }
+
+    try {
+      await integrationHub.execute("resend", "sendEmail", {
+        from: process.env.EMAIL_FROM || `${senderName} <onboarding@resend.dev>`,
+        to: email,
+        subject: "Reset your password",
+        text: `Hi ${user.name || ""},\n\nUse this link to reset your ${senderName} password. It expires in ${PASSWORD_RESET_TTL_MINUTES} minutes and only works once:\n\n${resetUrl}\n\nIf you didn't ask for this, you can ignore this email — your password hasn't changed.`,
+        html: `<p>Hi ${user.name || ""},</p><p>Use the link below to reset your ${senderName} password. It expires in ${PASSWORD_RESET_TTL_MINUTES} minutes and only works once.</p><p><a href="${resetUrl}">Reset your password</a></p><p>If you didn't ask for this, you can ignore this email — your password hasn't changed.</p>`,
+      });
+    } catch (sendError) {
+      console.error("PASSWORD RESET EMAIL ERROR:", sendError.message);
+    }
+    res.json(confirmation);
+  } catch (error) {
+    console.error("FORGOT PASSWORD ERROR:", error);
+    res.json(confirmation);
+  }
+});
+
+router.post("/reset-password", async (req, res) => {
+  try {
+    const token = String(req.body?.token || "");
+    if (!token) return res.status(400).json({ error: "This reset link is invalid or has expired." });
+    const record = await PasswordResetToken.findOne({ tokenHash: tokenHash(token), usedAt: null, expiresAt: { $gt: new Date() } });
+    if (!record) return res.status(400).json({ error: "This reset link is invalid or has expired." });
+    const user = await User.findOne({ _id: record.userId, status: "active" }).select("+passwordHash");
+    if (!user) return res.status(400).json({ error: "This reset link is invalid or has expired." });
+
+    user.passwordHash = await hashPassword(req.body?.password);
+    await user.save();
+    record.usedAt = new Date();
+    await record.save();
+    // A password reset is exactly the moment to sign every device out —
+    // including whoever might have been in the account without permission.
+    await AuthSession.deleteMany({ userId: user._id });
+    res.json({ success: true });
+  } catch (error) {
+    res.status(400).json({ error: error.message || "Unable to reset your password" });
   }
 });
 
@@ -288,6 +435,7 @@ router.post("/account/2fa/disable", requireAuth, async (req, res) => {
     const passwordValid = user && await verifyPassword(req.body?.password, user.passwordHash);
     if (!passwordValid) return res.status(401).json({ error: "Your password is incorrect" });
     await User.updateOne({ _id: req.auth.userId }, { $set: { "twoFactor.enabled": false } });
+    await TrustedDevice.deleteMany({ userId: req.auth.userId });
     res.json({ success: true });
   } catch (error) {
     console.error("2FA DISABLE ERROR:", error);
