@@ -1193,6 +1193,7 @@
   max-width: 640px;
 }
 .public-hero-section--no-photo .public-hero__video {
+  width: min(100%, 560px);
   margin-top: 8px;
 }
 
