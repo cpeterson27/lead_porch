@@ -1186,11 +1186,12 @@
   grid-template-columns: 1fr;
   justify-items: start;
   min-height: 0;
-  max-width: 1120px;
-  padding: clamp(64px, 9vw, 110px) 32px;
+  max-width: 1220px;
+  padding: clamp(64px, 9vw, 110px) 48px;
 }
 .public-hero-section--no-photo .public-hero-left {
   align-items: flex-start;
+  width: 100%;
   max-width: 720px;
 }
 .public-hero-section--no-photo .public-hero__video {
