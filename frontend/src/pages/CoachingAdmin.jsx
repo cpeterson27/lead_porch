@@ -352,8 +352,27 @@ export function CoachingAssignments() {
 }
 
 const recurrenceLabels = { "": "One time only", weekly: "Every week", biweekly: "Every other week", monthly: "Every month" };
+function StudentSearchPicker({ contacts, onPick }) {
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const pickerRef = useRef(null);
+  const results = useMemo(() => {
+    const term = query.trim().toLowerCase();
+    if (!term) return [];
+    return contacts.filter((contact) => [labelOfContact(contact), contact.email].filter(Boolean).some((value) => String(value).toLowerCase().includes(term))).slice(0, 10);
+  }, [contacts, query]);
+  useEffect(() => {
+    const close = (event) => { if (!pickerRef.current?.contains(event.target)) setOpen(false); };
+    document.addEventListener("pointerdown", close);
+    return () => document.removeEventListener("pointerdown", close);
+  }, []);
+  const choose = (contact) => { onPick(contact._id); setQuery(""); setOpen(false); };
+  return <div className="contract-contact-picker" ref={pickerRef}>
+    <input value={query} onChange={(event) => { setQuery(event.target.value); setOpen(true); }} onFocus={() => setOpen(true)} placeholder="Type a student's name or email…" autoComplete="off" />
+    {open && query.trim() ? <div className="contract-contact-picker__results">{results.length ? results.map((contact) => <button type="button" key={contact._id} onMouseDown={(event) => event.preventDefault()} onClick={() => choose(contact)}><strong>{labelOfContact(contact)}</strong><span>{contact.email || "No email saved"}</span></button>) : <p>No matching students found</p>}</div> : null}
+  </div>;
+}
 function GroupClassRow({ event, contacts, registrants, onAddStudent, onRemoveStudent }) {
-  const [contactId, setContactId] = useState("");
   const registered = new Set((registrants || []).map((row) => row._id));
   return <article className="coaching-row coaching-row--actions">
     <div className="coaching-avatar"><FiUsers /></div>
@@ -363,11 +382,7 @@ function GroupClassRow({ event, contacts, registrants, onAddStudent, onRemoveStu
       {registrants?.length ? <span className="coaching-row__buttons">{registrants.map((row) => <Button key={row._id} size="sm" variant="outline" onClick={() => onRemoveStudent(event._id, row._id)}>{labelOfContact(row)} ✕</Button>)}</span> : <span className="coaching-muted">No students added yet</span>}
     </div>
     <div className="coaching-row__buttons">
-      <select value={contactId} onChange={(event_) => setContactId(event_.target.value)}>
-        <option value="">Add a student…</option>
-        {contacts.filter((contact) => !registered.has(contact._id)).map((contact) => <option key={contact._id} value={contact._id}>{labelOfContact(contact)}</option>)}
-      </select>
-      <Button size="sm" variant="outline" disabled={!contactId} onClick={() => { onAddStudent(event._id, contactId); setContactId(""); }}>Add</Button>
+      <StudentSearchPicker contacts={contacts.filter((contact) => !registered.has(contact._id))} onPick={(contactId) => onAddStudent(event._id, contactId)} />
     </div>
   </article>;
 }
