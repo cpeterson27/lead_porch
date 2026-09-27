@@ -249,9 +249,10 @@ router.post("/login/verify-2fa", async (req, res) => {
 // A wrong-number typo or a code that expired mid-entry shouldn't force
 // restarting the whole password step — this reuses the same challenge row
 // (so it still can't outlive TWO_FACTOR_CODE_TTL_MINUTES from a fresh
-// send) but caps how many times it can fire, since each one is a real SMS
-// with a real cost.
-router.post("/login/2fa/resend", async (req, res) => {
+// send) but caps how many times it can fire (shared between text and
+// voice — "try another method" is still another delivery of the same
+// code, and each one is a real SMS or call with a real cost).
+async function redeliverTwoFactorCode(req, res, deliver, errorLabel) {
   try {
     const challengeId = req.body?.challengeId;
     if (!challengeId || !mongoose.isValidObjectId(challengeId)) {
@@ -269,10 +270,10 @@ router.post("/login/2fa/resend", async (req, res) => {
     const memberships = await activeMemberships(user._id);
     const code = generateSixDigitCode();
     try {
-      await twoFactorSmsService.sendVerificationCode({ workspaceId: memberships[0]?.workspaceId?._id, phone: user.phone, code });
+      await deliver({ workspaceId: memberships[0]?.workspaceId?._id, phone: user.phone, code });
     } catch (sendError) {
-      console.error("2FA RESEND ERROR:", sendError);
-      return res.status(500).json({ error: sendError.message || "Unable to resend your verification code" });
+      console.error(`${errorLabel} ERROR:`, sendError);
+      return res.status(500).json({ error: sendError.message || `Unable to ${errorLabel.toLowerCase()}` });
     }
     challenge.codeHash = hashSixDigitCode(code);
     challenge.attempts = 0;
@@ -281,10 +282,18 @@ router.post("/login/2fa/resend", async (req, res) => {
     await challenge.save();
     res.json({ success: true, phoneLastFour: String(user.phone || "").slice(-4) });
   } catch (error) {
-    console.error("2FA RESEND ERROR:", error);
-    res.status(500).json({ error: "Unable to resend your verification code" });
+    console.error(`${errorLabel} ERROR:`, error);
+    res.status(500).json({ error: `Unable to ${errorLabel.toLowerCase()}` });
   }
-});
+}
+
+router.post("/login/2fa/resend", (req, res) => redeliverTwoFactorCode(req, res, twoFactorSmsService.sendVerificationCode, "resend your verification code"));
+
+// "Try another method": places a voice call that reads the code aloud
+// instead of texting it. Requires the workspace's Twilio number to have
+// voice capability turned on (registerTwilioSender's default as of this
+// feature) — a clear NO_VOICE_SENDER error surfaces instead if not.
+router.post("/login/2fa/call", (req, res) => redeliverTwoFactorCode(req, res, twoFactorSmsService.sendVerificationCall, "place your verification call"));
 
 // Public, read-only — same information publicHtmlShell already exposes in
 // page meta tags for this workspace's own domain, just shaped for the

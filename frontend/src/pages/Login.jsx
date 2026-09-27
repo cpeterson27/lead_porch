@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 import useAuth from "../context/useAuth.js";
 import api from "../services/api.js";
-import { requestPasswordReset, resendTwoFactorCode } from "../services/api.js";
+import { callTwoFactorCode, requestPasswordReset, resendTwoFactorCode } from "../services/api.js";
 import "./Login.css";
 
 export default function Login() {
@@ -22,6 +22,8 @@ export default function Login() {
   const [code, setCode] = useState("");
   const [rememberDevice, setRememberDevice] = useState(true);
   const [resendState, setResendState] = useState("idle"); // idle | sending | sent
+  const [callState, setCallState] = useState("idle"); // idle | calling | called
+  const [showOtherMethod, setShowOtherMethod] = useState(false);
   // "forgot" swaps the whole panel to an email-only reset request form.
   const [forgot, setForgot] = useState(false);
   const [resetEmail, setResetEmail] = useState("");
@@ -89,6 +91,20 @@ export default function Login() {
     } catch (requestError) {
       setError(requestError.response?.data?.error || "Unable to resend that code.");
       setResendState("idle");
+    }
+  };
+
+  const callCode = async () => {
+    if (callState === "calling") return;
+    setError("");
+    setCallState("calling");
+    try {
+      await callTwoFactorCode(twoFactor.challengeId);
+      setCallState("called");
+      setTimeout(() => setCallState("idle"), 15000);
+    } catch (requestError) {
+      setError(requestError.response?.data?.error || "Unable to place that call.");
+      setCallState("idle");
     }
   };
 
@@ -193,10 +209,22 @@ export default function Login() {
             <button type="button" className="login-link-button" onClick={resendCode} disabled={resendState === "sending"}>
               {resendState === "sent" ? "Code resent" : resendState === "sending" ? "Sending…" : "Resend code"}
             </button>
+            {!showOtherMethod ? (
+              <button type="button" className="login-link-button" onClick={() => setShowOtherMethod(true)}>
+                Try another method
+              </button>
+            ) : null}
             <button type="button" className="login-link-button" onClick={() => { setTwoFactor(null); setCode(""); setError(""); }}>
               Back to sign in
             </button>
           </small>
+          {showOtherMethod ? (
+            <small className="login-footer-row">
+              <button type="button" className="login-link-button" onClick={callCode} disabled={callState === "calling"}>
+                {callState === "called" ? "Calling you now" : callState === "calling" ? "Calling…" : "Get a call instead"}
+              </button>
+            </small>
+          ) : null}
         </section>
       </main>
     );

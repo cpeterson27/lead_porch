@@ -551,6 +551,8 @@ export const resetPassword = (token, password) =>
   api.post("/auth/reset-password", { token, password }).then((res) => res.data);
 export const resendTwoFactorCode = (challengeId) =>
   api.post("/auth/login/2fa/resend", { challengeId }).then((res) => res.data);
+export const callTwoFactorCode = (challengeId) =>
+  api.post("/auth/login/2fa/call", { challengeId }).then((res) => res.data);
 export const fetchMyAmbassadorProfile = () =>
   api.get("/ambassadors/me").then((res) => res.data.data);
 export const updateMyAmbassadorProfile = (values) =>

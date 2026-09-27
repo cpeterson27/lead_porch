@@ -140,7 +140,7 @@ export default function Integrations() {
     setTwilioBusy(true);
     setTwilioMessage("");
     try {
-      await registerTwilioSender({ phoneNumber: twilioForm.phoneNumber, capabilities: { sms: true }, status: "active" });
+      await registerTwilioSender({ phoneNumber: twilioForm.phoneNumber, capabilities: { sms: true, voice: true }, status: "active" });
       setTwilioForm({ phoneNumber: "" });
       setTwilioMessage("Number registered. It can send as soon as Twilio finishes A2P approval.");
       await loadProviders();
@@ -171,7 +171,11 @@ export default function Integrations() {
       const response = await beginGoogleBusinessProfileConnection();
       window.location.assign(response.authorizationUrl);
     } catch (err) {
-      setError(err.response?.data?.error || "Google Business Profile OAuth setup is incomplete.");
+      // A real backend error always includes err.response with a JSON
+      // {error} body — show that verbatim so a config problem is never
+      // confused with a network failure again. No response at all means
+      // the request never reached the server (offline, CORS, timeout).
+      setError(err.response?.data?.error || (err.response ? "Google Business Profile OAuth setup is incomplete." : "Could not reach the server. Check your connection and try again."));
       setGoogleBusinessBusy(false);
     }
   };
