@@ -1136,7 +1136,7 @@
   align-items: center;
   justify-content: center;
   padding: 0 29px;
-  border-radius: 0;
+  border-radius: var(--radius-pill, 999px);
   font-size: 10px;
   font-weight: 800;
   letter-spacing: .08em;
@@ -1177,6 +1177,23 @@
 .public-hero-section--minimal .public-hero-headline,
 .public-hero-section--minimal .public-hero-subhead {
   max-width: 720px;
+}
+
+/* No-photo hero: title, description, buttons, and video, with no side
+   photo column — single left-aligned column instead of the two-column
+   copy+photo grid the base rule is built for. */
+.public-hero-section--no-photo {
+  grid-template-columns: 1fr;
+  justify-items: start;
+  min-height: 0;
+  padding-block: clamp(64px, 9vw, 110px);
+}
+.public-hero-section--no-photo .public-hero-left {
+  align-items: flex-start;
+  max-width: 640px;
+}
+.public-hero-section--no-photo .public-hero__video {
+  margin-top: 8px;
 }
 
 /* Video-first hero: no headline/copy and no side image, so the video is

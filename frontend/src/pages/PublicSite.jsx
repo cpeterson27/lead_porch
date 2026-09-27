@@ -9,6 +9,7 @@ import {
   FiMapPin,
   FiMenu,
   FiMoon,
+  FiPlay,
   FiStar,
   FiSun,
   FiX,
@@ -841,6 +842,102 @@ function ReviewMarquee({ rows = [] }) {
   );
   return <div className="google-review-marquee" aria-label="Customer reviews">{renderRow(first)}{renderRow(second, true)}<p className="google-review-marquee__note">Google reviews are shown newest first. Select any Google review to view its source.</p></div>;
 }
+function embedUrl(value) {
+  try {
+    const url = new URL(value);
+    if (url.hostname.includes("youtube.com"))
+      return `https://www.youtube.com/embed/${url.searchParams.get("v") || url.pathname.split("/").filter(Boolean).pop()}`;
+    if (url.hostname === "youtu.be")
+      return `https://www.youtube.com/embed/${url.pathname.slice(1)}`;
+    if (url.hostname.includes("vimeo.com"))
+      return `https://player.vimeo.com/video/${url.pathname.split("/").filter(Boolean).pop()}`;
+  } catch {
+    return "";
+  }
+  return "";
+}
+function HeroVideoTile({ site }) {
+  const p = site?.publicSite || {};
+  const workspaceName =
+    site?.branding?.publicSiteName || site?.workspace?.name || "";
+  const [playing, setPlaying] = useState(false),
+    closeRef = useRef(null),
+    embed = embedUrl(p.introVideoUrl);
+  useModalLayer(playing);
+  useEffect(() => {
+    if (playing) closeRef.current?.focus();
+  }, [playing]);
+  if (!p.introVideoUrl && !p.introVideoPosterUrl) return null;
+  return (
+    <>
+      <button
+        type="button"
+        className="public-hero__video"
+        aria-label={
+          p.introVideoAlt ||
+          p.introVideoTitle ||
+          `Watch: Welcome to ${workspaceName || "the program"}`
+        }
+        style={
+          p.introVideoPosterUrl
+            ? {
+                backgroundImage: `linear-gradient(#0002,#0002),url(${cloudinaryImage(p.introVideoPosterUrl, 480)})`,
+              }
+            : undefined
+        }
+        onClick={() => p.introVideoUrl && setPlaying(true)}
+        disabled={!p.introVideoUrl}
+      >
+        <span className="public-hero__play">
+          <FiPlay />
+        </span>
+        <small>
+          {p.introVideoEyebrow || "Watch"} ·{" "}
+          {p.introVideoTitle || `Welcome to ${workspaceName || "the program"}`}
+        </small>
+      </button>
+      {playing ? <ModalPortal>
+        <div
+          className="video-modal"
+          role="dialog"
+          aria-modal="true"
+          aria-label={
+            p.introVideoTitle || `${workspaceName || "Program"} introduction`
+          }
+          onKeyDown={(event) => event.key === "Escape" && setPlaying(false)}
+        >
+          <button
+            ref={closeRef}
+            onClick={() => setPlaying(false)}
+            aria-label="Close video"
+          >
+            <FiX />
+          </button>
+          <div>
+            {embed ? (
+              <iframe
+                src={embed}
+                title={
+                  p.introVideoTitle ||
+                  `${workspaceName || "Program"} introduction`
+                }
+                allow="autoplay; encrypted-media; picture-in-picture"
+                allowFullScreen
+              />
+            ) : (
+              <video
+                src={p.introVideoUrl}
+                poster={cloudinaryImage(p.introVideoPosterUrl, 1280)}
+                controls
+                autoPlay
+              />
+            )}
+          </div>
+        </div>
+      </ModalPortal> : null}
+    </>
+  );
+}
 function Portrait({ person }) {
   return person.avatarUrl ? (
     <img
@@ -908,8 +1005,14 @@ export function PublicHome() {
     visibility = p.sectionVisibility || {},
     showPrograms = visibility.programs !== false,
     showHeroCopy = visibility.heroCopy !== false,
+    discoveryCallCta = p.discoveryCallEnabled ? (
+      <Link className="public-button public-discovery-call-cta" to="/book-a-call">
+        {p.discoveryCallButtonLabel || "Book a Discovery Call"}
+      </Link>
+    ) : null,
     workspaceName =
       site?.branding?.publicSiteName || site?.workspace?.name || "",
+    heroEyebrow = p.eyebrow || "Coaching · Education · Results",
     // CHANGED: the bolded word in the headline/intro title is now driven by
     // data (headlineAccent / introTitleAccent) instead of being hardcoded.
     // For Ellie, set headlineAccent: "Discipline" and
@@ -932,13 +1035,40 @@ export function PublicHome() {
   return (
     <PublicLayout>
       <main id="main-content" className="public-home-wrap">
-        <section className="public-hero-section public-hero-section--minimal">
+        <section className="public-hero-section public-hero-section--no-photo">
           {showHeroCopy ? (
             <div className="public-hero-left">
+              <div className="public-hero-tags">
+                <span className="public-hero-tag">{heroEyebrow}</span>
+              </div>
               <h1 className="public-hero-headline">
                 <EditorialHeading text={p.headline} accent={headlineAccent} />
               </h1>
               <div className="public-hero-subhead">{p.subheadline}</div>
+              <div className="public-hero-actions">
+                <SmartLink
+                  className="public-hero-btn-primary"
+                  to={
+                    showPrograms ? "#programs" : p.primaryCtaUrl || "#contact"
+                  }
+                >
+                  {showPrograms
+                    ? "Explore programs"
+                    : p.primaryCtaLabel || "Contact us"}
+                </SmartLink>
+                <SmartLink
+                  className="public-hero-btn-secondary"
+                  to={p.secondaryCtaUrl || "/#about"}
+                >
+                  {p.secondaryCtaLabel || "Meet the founder"}
+                </SmartLink>
+              </div>
+              {visibility.video !== false ? (
+                <>
+                  <HeroVideoTile site={site} />
+                  {discoveryCallCta}
+                </>
+              ) : null}
             </div>
           ) : null}
         </section>

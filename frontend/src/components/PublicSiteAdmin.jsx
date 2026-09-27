@@ -19,6 +19,7 @@ import {
   updateProgramPublicPresentation,
   updatePublicManagementConfig,
   uploadEventImage,
+  uploadHomepageVideo as uploadHomepageVideoAsset,
   uploadDiscoveryCallVideo as uploadDiscoveryCallVideoAsset,
 } from "../services/api.js";
 import "./PublicSiteAdmin.css";
@@ -317,6 +318,55 @@ export default function PublicSiteAdmin({ section = "website" }) {
       setUploading("");
     }
   };
+  const uploadHomepageVideo = async (file) => {
+    if (!file) return;
+    const supportedType = [
+      "video/mp4",
+      "video/webm",
+      "video/quicktime",
+    ].includes(file.type);
+    const supportedExtension =
+      file.type === "" && /\.(mp4|webm|mov)$/i.test(file.name);
+    if (
+      file.size <= 0 ||
+      (!supportedType && !supportedExtension) ||
+      file.size > 75 * 1024 * 1024
+    )
+      return setError("Choose an MP4, WEBM, or MOV video up to 75 MB.");
+    try {
+      setUploading("introVideoUrl");
+      setError("");
+      const asset = await uploadHomepageVideoAsset(file);
+      patchPublic("introVideoUrl", asset.url);
+      setMessage("Homepage video uploaded. Save to publish the change.");
+    } catch (err) {
+      const uploadError = err.response?.data?.error;
+      setError(
+        (typeof uploadError === "string" ? uploadError : uploadError?.message) ||
+          err.message ||
+          "Unable to upload the homepage video.",
+      );
+    } finally {
+      setUploading("");
+    }
+  };
+  const captureHomepageCover = async (dataUrl) => {
+    try {
+      setUploading("introVideoPosterUrl");
+      setError("");
+      const asset = await uploadEventImage({
+        file: dataUrl,
+        filename: "homepage-video-cover.jpg",
+      });
+      patchPublic("introVideoPosterUrl", asset.url);
+      setMessage("Homepage cover frame selected. Save to publish the change.");
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to save the homepage cover frame.");
+      throw err;
+    } finally {
+      setUploading("");
+    }
+  };
   const uploadDiscoveryCallVideo = async (file) => {
     if (!file) return;
     const supportedType = [
@@ -510,7 +560,7 @@ export default function PublicSiteAdmin({ section = "website" }) {
       {message ? <p className="discovery-notice">{message}</p> : null}
       {section === "website" ? (
         <nav aria-label="Website settings sections">
-          {["brand", "homepage", "discoveryCall", "sections"].map((item) => (
+          {["brand", "homepage", "video", "discoveryCall", "sections"].map((item) => (
             <button
               type="button"
               className={tab === item ? "is-active" : ""}
@@ -519,11 +569,13 @@ export default function PublicSiteAdmin({ section = "website" }) {
             >
               {item === "brand"
                 ? "Branding"
-                : item === "discoveryCall"
-                  ? "Discovery call"
-                  : item === "sections"
-                    ? "Visible sections"
-                    : "Homepage"}
+                : item === "video"
+                  ? "Homepage video"
+                  : item === "discoveryCall"
+                    ? "Discovery call"
+                    : item === "sections"
+                      ? "Visible sections"
+                      : "Homepage"}
             </button>
           ))}
         </nav>
@@ -963,6 +1015,113 @@ export default function PublicSiteAdmin({ section = "website" }) {
               Save homepage
             </Button>
           </footer>
+        </section>
+      ) : null}
+      {tab === "video" ? (
+        <section className="homepage-media-editor">
+          <p className="public-admin__help">
+            Upload your video, then scrub through it to choose the cover frame. Audio never autoplays.
+          </p>
+          <div className="homepage-media-uploads">
+            <article>
+              <div className="homepage-media-preview is-video">
+                {config.publicSite.introVideoPosterUrl ? (
+                  <img
+                    src={config.publicSite.introVideoPosterUrl}
+                    alt="Homepage video poster"
+                  />
+                ) : (
+                  <span>Video</span>
+                )}
+              </div>
+              <div>
+                <h4>Homepage video</h4>
+                <p>MP4, WEBM, or MOV up to 75 MB.</p>
+                <label className="website-upload-button">
+                  {uploading === "introVideoUrl"
+                    ? "Uploading…"
+                    : config.publicSite.introVideoUrl
+                      ? "Replace video"
+                      : "Upload video"}
+                  <input
+                    disabled={Boolean(uploading)}
+                    type="file"
+                    accept="video/mp4,video/webm,video/quicktime"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      uploadHomepageVideo(file);
+                    }}
+                  />
+                </label>
+              </div>
+            </article>
+            {config.publicSite.introVideoUrl ? (
+              <article className="homepage-cover-picker-card">
+                <div>
+                  <h4>Choose a cover frame</h4>
+                  <p>
+                    Scrub through the uploaded video and select the exact frame
+                    visitors see before pressing play, or upload a separate cover photo instead.
+                  </p>
+                  <HomepageVideoCoverPicker
+                    videoUrl={config.publicSite.introVideoUrl}
+                    coverUrl={config.publicSite.introVideoPosterUrl}
+                    onCapture={captureHomepageCover}
+                  />
+                  <label className="website-upload-button website-upload-button--secondary">
+                    {uploading === "introVideoPosterUrl" ? "Uploading…" : "Or upload a cover photo directly"}
+                    <input
+                      disabled={Boolean(uploading)}
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      onChange={async (event) => {
+                        const file = event.target.files?.[0];
+                        event.target.value = "";
+                        if (file) captureHomepageCover(await fileData(file));
+                      }}
+                    />
+                  </label>
+                </div>
+              </article>
+            ) : null}
+          </div>
+          <div className="public-admin__grid">
+            <label>
+              Video eyebrow
+              <input
+                value={config.publicSite.introVideoEyebrow || ""}
+                onChange={(e) =>
+                  patchPublic("introVideoEyebrow", e.target.value)
+                }
+              />
+            </label>
+            <label className="wide">
+              Video title
+              <input
+                value={config.publicSite.introVideoTitle || ""}
+                onChange={(e) => patchPublic("introVideoTitle", e.target.value)}
+              />
+            </label>
+            <label className="wide">
+              Video supporting copy
+              <textarea
+                value={config.publicSite.introVideoCopy || ""}
+                onChange={(e) => patchPublic("introVideoCopy", e.target.value)}
+              />
+            </label>
+            <label className="wide">
+              Alt text (for screen readers)
+              <input
+                value={config.publicSite.introVideoAlt || ""}
+                onChange={(e) => patchPublic("introVideoAlt", e.target.value)}
+                placeholder="Describe what this video shows"
+              />
+            </label>
+          </div>
+          <Button loading={saving} onClick={saveConfig}>
+            Save video settings
+          </Button>
         </section>
       ) : null}
       {tab === "discoveryCall" ? (
