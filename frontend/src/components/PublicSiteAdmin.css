@@ -65,11 +65,11 @@
   font-weight: 800;
   cursor: pointer;
 }
-.social-profile-editor__columns { display: grid; grid-template-columns: minmax(140px, .42fr) minmax(260px, 1fr) auto; gap: 10px; padding: 0 17px; }
+.social-profile-editor__columns { display: grid; grid-template-columns: minmax(0, .42fr) minmax(0, 1fr) auto; gap: 10px; padding: 0 17px; }
 .social-profile-editor__columns span { color: var(--color-text-muted); font-size: .68rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .social-profile-editor__rows { display: grid; gap: 10px; }
-.social-profile-row { display: grid; grid-template-columns: minmax(140px, .42fr) minmax(260px, 1fr) auto; align-items: center; gap: 10px; }
-.public-admin .social-profile-row input:not([type="checkbox"]) { min-height: 44px; padding: 0 17px; border-color: var(--color-border); border-radius: 999px; background: var(--color-surface-subtle); }
+.social-profile-row { display: grid; grid-template-columns: minmax(0, .42fr) minmax(0, 1fr) auto; align-items: center; gap: 10px; }
+.public-admin .social-profile-row input:not([type="checkbox"]) { min-height: 44px; width: 100%; min-width: 0; padding: 0 17px; border-color: var(--color-border); border-radius: 999px; background: var(--color-surface-subtle); box-sizing: border-box; }
 .social-profile-row > button:hover,
 .social-profile-editor__heading > button:hover { border-color: var(--color-brand); background: var(--color-brand); color: #fff; }
 @media (max-width: 700px) {
