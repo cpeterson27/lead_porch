@@ -1175,6 +1175,15 @@
   /* contain, not cover — this is actual playback, not a cropped preview
      thumbnail, so the full frame (not just the center) must stay visible. */
   object-fit: contain;
+  /* The box is display:grid with place-items:center (set for the poster
+     button state). Without forcing this item to stretch, a grid child
+     with align-items:center sizes itself from the video's own auto/
+     intrinsic ratio instead of filling the box — before real metadata
+     loads that falls back to the poster image's aspect ratio, which
+     rendered the video far taller than its box and got clipped by
+     overflow:hidden, cutting off the bottom of the frame. */
+  align-self: stretch;
+  justify-self: stretch;
 }
 /* A persistent, always-visible control bar — native <video controls>
    auto-hides during playback and only reappears on hover, which reads
