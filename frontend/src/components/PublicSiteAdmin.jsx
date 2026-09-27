@@ -1217,7 +1217,7 @@ export default function PublicSiteAdmin({ section = "website" }) {
                   return <div className="public-admin__weekly-row" key={value}><label className="website-toggle"><input type="checkbox" checked={row.enabled} onChange={(event) => updateRow({ enabled: event.target.checked })} /><span>{label}</span></label><label>Start<input type="time" disabled={!row.enabled} value={row.startTime} onChange={(event) => updateRow({ startTime: event.target.value })} /></label><label>End<input type="time" disabled={!row.enabled} value={row.endTime} onChange={(event) => updateRow({ endTime: event.target.value })} /></label></div>;
                 })}
               </div>
-              <p className="public-admin__help">For vacations or one-off unavailable times, Ellie adds an all-day or timed “Busy” event to the connected Google Calendar. Lead Porch automatically removes those times from public availability.</p>
+              <p className="public-admin__help">To block time off, create an event marked “Busy” in your connected Google Calendar. These times are automatically excluded from booking availability.</p>
             </fieldset>
             <label>
               Homepage button text
