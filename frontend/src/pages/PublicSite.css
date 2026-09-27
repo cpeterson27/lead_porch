@@ -1163,13 +1163,36 @@
   box-shadow: 0 18px 35px #00000016;
   overflow: hidden;
 }
+.public-hero__video--playing {
+  background: #000;
+}
 .public-hero__video--playing video,
 .public-hero__video--playing iframe {
   display: block;
   width: 100%;
   height: 100%;
   border: 0;
-  object-fit: cover;
+  /* contain, not cover — this is actual playback, not a cropped preview
+     thumbnail, so the full frame (not just the center) must stay visible. */
+  object-fit: contain;
+}
+.public-hero__maximize {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 8px;
+  background: #000000a6;
+  color: #fff;
+  cursor: pointer;
+}
+.public-hero__maximize:hover {
+  background: #000000d9;
 }
 
 /* Minimal hero: title + supporting statement only — no eyebrow tag,

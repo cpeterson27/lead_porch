@@ -7,6 +7,7 @@ import {
   FiChevronRight,
   FiExternalLink,
   FiMapPin,
+  FiMaximize2,
   FiMenu,
   FiMoon,
   FiPlay,
@@ -861,6 +862,7 @@ function HeroVideoTile({ site }) {
   const workspaceName =
     site?.branding?.publicSiteName || site?.workspace?.name || "";
   const [playing, setPlaying] = useState(false),
+    videoRef = useRef(null),
     embed = embedUrl(p.introVideoUrl);
   if (!p.introVideoUrl && !p.introVideoPosterUrl) return null;
   if (playing) {
@@ -876,13 +878,24 @@ function HeroVideoTile({ site }) {
             allowFullScreen
           />
         ) : (
-          <video
-            src={p.introVideoUrl}
-            poster={cloudinaryImage(p.introVideoPosterUrl, 1280)}
-            controls
-            autoPlay
-            playsInline
-          />
+          <>
+            <video
+              ref={videoRef}
+              src={p.introVideoUrl}
+              poster={cloudinaryImage(p.introVideoPosterUrl, 1280)}
+              controls
+              autoPlay
+              playsInline
+            />
+            <button
+              type="button"
+              className="public-hero__maximize"
+              aria-label="Maximize video"
+              onClick={() => videoRef.current?.requestFullscreen?.()}
+            >
+              <FiMaximize2 />
+            </button>
+          </>
         )}
       </div>
     );
