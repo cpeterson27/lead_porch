@@ -37,6 +37,7 @@
 const PublicWebDiscoveryRun = require("../models/PublicWebDiscoveryRun");
 const DiscoverySchedule = require("../models/DiscoverySchedule");
 const { autoGradeApproveAndEnroll } = require("./discoveryAutoEnrollmentService");
+const discoveryPartnershipService = require("./discoveryPartnershipService");
 const { buildWorkspaceSystemAuth } = require("./systemAuthService");
 const { nextScheduledRun } = require("./discoveryScheduleTimeService");
 const { runWithWorkspace } = require("../tenancy/workspaceContext");
@@ -1451,6 +1452,15 @@ async function runDueDiscoverySchedules(dependencies = {}) {
             }
           } catch (error) {
             console.error("Discovery auto-enrollment failed:", { scheduleId: String(claimed._id), message: error.message });
+          }
+          try {
+            // eslint-disable-next-line no-await-in-loop
+            const partnership = await discoveryPartnershipService.triageNonPersonResults({ workspaceId: claimed.workspaceId, discoveryRunId: run._id });
+            if (partnership.saved) {
+              claimed.lastRunMessage += ` · ${partnership.saved} partnership lead(s) qualified.`;
+            }
+          } catch (error) {
+            console.error("Discovery partnership triage failed:", { scheduleId: String(claimed._id), message: error.message });
           }
         }
         });
