@@ -2589,6 +2589,9 @@ button.public-text-link {
   width: min(960px, 100%);
   max-height: 88vh;
   background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 /* An embedded YouTube/Vimeo iframe is always a landscape player, so it
    keeps a fixed 16:9 box. A directly-hosted <video> — this hero's actual
