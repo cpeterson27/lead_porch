@@ -1190,9 +1190,10 @@
   padding: clamp(64px, 9vw, 110px) 48px;
 }
 .public-hero-section--no-photo .public-hero-left {
-  align-items: flex-start;
+  align-items: center;
   width: 100%;
   max-width: 720px;
+  text-align: center;
 }
 .public-hero-section--no-photo .public-hero__video {
   width: min(100%, 560px);
