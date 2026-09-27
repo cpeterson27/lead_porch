@@ -1003,7 +1003,6 @@ export function PublicHome() {
   const { site } = useWorkspaceTheme();
   const p = site?.publicSite || {},
     visibility = p.sectionVisibility || {},
-    showPrograms = visibility.programs !== false,
     showHeroCopy = visibility.heroCopy !== false,
     discoveryCallCta = p.discoveryCallEnabled ? (
       <Link className="public-button public-discovery-call-cta" to="/book-a-call">
@@ -1012,7 +1011,6 @@ export function PublicHome() {
     ) : null,
     workspaceName =
       site?.branding?.publicSiteName || site?.workspace?.name || "",
-    heroEyebrow = p.eyebrow || "Coaching · Education · Results",
     // CHANGED: the bolded word in the headline/intro title is now driven by
     // data (headlineAccent / introTitleAccent) instead of being hardcoded.
     // For Ellie, set headlineAccent: "Discipline" and
@@ -1038,31 +1036,10 @@ export function PublicHome() {
         <section className="public-hero-section public-hero-section--no-photo">
           {showHeroCopy ? (
             <div className="public-hero-left">
-              <div className="public-hero-tags">
-                <span className="public-hero-tag">{heroEyebrow}</span>
-              </div>
               <h1 className="public-hero-headline">
                 <EditorialHeading text={p.headline} accent={headlineAccent} />
               </h1>
               <div className="public-hero-subhead">{p.subheadline}</div>
-              <div className="public-hero-actions">
-                <SmartLink
-                  className="public-hero-btn-primary"
-                  to={
-                    showPrograms ? "#programs" : p.primaryCtaUrl || "#contact"
-                  }
-                >
-                  {showPrograms
-                    ? "Explore programs"
-                    : p.primaryCtaLabel || "Contact us"}
-                </SmartLink>
-                <SmartLink
-                  className="public-hero-btn-secondary"
-                  to={p.secondaryCtaUrl || "/#about"}
-                >
-                  {p.secondaryCtaLabel || "Meet the founder"}
-                </SmartLink>
-              </div>
               {visibility.video !== false ? (
                 <>
                   <HeroVideoTile site={site} />
