@@ -30,6 +30,19 @@ export function AuthProvider({ children }) {
     loading,
     async login(email, password, workspaceId = "") {
       const { data } = await api.post("/auth/login", { email, password, ...(workspaceId ? { workspaceId } : {}) });
+      // Password was right, but this account has 2FA on — no session yet,
+      // the caller needs to show a code-entry step and call
+      // verifyTwoFactor() next. Nothing here treats this as being signed in.
+      if (data.requiresTwoFactor) return data;
+      const { sessionToken, ...sessionData } = data;
+      sessionStorage.setItem("ellie-csrf-token", sessionData.csrfToken);
+      sessionStorage.setItem("ellie-session-token", sessionToken);
+      setSession(sessionData);
+      await loadWorkspaces();
+      return sessionData;
+    },
+    async verifyTwoFactor(challengeId, code) {
+      const { data } = await api.post("/auth/login/verify-2fa", { challengeId, code });
       const { sessionToken, ...sessionData } = data;
       sessionStorage.setItem("ellie-csrf-token", sessionData.csrfToken);
       sessionStorage.setItem("ellie-session-token", sessionToken);

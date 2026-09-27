@@ -275,6 +275,13 @@ export const saveMyProfile = (profile) =>
 export const removeMyAvatar = () =>
   api.delete("/auth/profile/avatar").then((res) => res.data);
 
+export const startTwoFactorSetup = (phone) =>
+  api.post("/auth/account/2fa/start", { phone }).then((res) => res.data);
+export const confirmTwoFactorSetup = (code) =>
+  api.post("/auth/account/2fa/confirm", { code }).then((res) => res.data);
+export const disableTwoFactor = (password) =>
+  api.post("/auth/account/2fa/disable", { password }).then((res) => res.data);
+
 export const fetchWorkspaceMembers = () =>
   api.get("/workspace/members").then((res) => res.data);
 

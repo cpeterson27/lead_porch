@@ -20,6 +20,13 @@ const userSchema = new mongoose.Schema(
     lastLoginAt: { type: Date, default: null },
     avatarUrl: { type: String, default: "", maxlength: 2000 },
     avatarPublicId: { type: String, default: "", maxlength: 500, select: false },
+    // Opt-in per account, off by default. Enabling it requires proving
+    // ownership of `phone` via a text code first (see /auth/account/2fa/*),
+    // so this can never flip on without a verified number behind it.
+    twoFactor: {
+      enabled: { type: Boolean, default: false },
+      phoneVerifiedAt: { type: Date, default: null },
+    },
   },
   { timestamps: true },
 );

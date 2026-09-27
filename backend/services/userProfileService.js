@@ -2,7 +2,7 @@ const User = require("../models/User");
 const AmbassadorProfile = require("../models/AmbassadorProfile");
 const limits = { firstName: 80, lastName: 80, name: 120, phone: 50, jobTitle: 120, company: 160, bio: 3000, location: 160, timezone: 100, website: 2000 };
 const networks = ["linkedin", "facebook", "instagram", "x"];
-const selection = `${Object.keys(limits).join(" ")} email avatarUrl socialProfiles profileUpdatedAt createdAt lastLoginAt`;
+const selection = `${Object.keys(limits).join(" ")} email avatarUrl socialProfiles profileUpdatedAt createdAt lastLoginAt twoFactor`;
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 
 // Legacy ambassador identity is read-only fallback until the user saves their canonical profile.
@@ -17,6 +17,7 @@ function resolveProfile(user = {}, legacy = {}) {
     if (/^@[A-Za-z0-9._-]+$/.test(link)) result.socialProfiles[key] = `https://${{ instagram: "instagram.com", facebook: "facebook.com", linkedin: "linkedin.com/in", x: "x.com" }[key]}/${link.slice(1)}`;
   }
   for (const key of ["email", "avatarUrl", "createdAt", "lastLoginAt"]) result[key] = user[key] || "";
+  result.twoFactor = { enabled: Boolean(user.twoFactor?.enabled) };
   return result;
 }
 function validate(changes) {

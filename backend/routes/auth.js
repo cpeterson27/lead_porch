@@ -1,14 +1,19 @@
 const crypto = require("crypto");
+const mongoose = require("mongoose");
 const express = require("express");
 const AuthSession = require("../models/AuthSession");
 const User = require("../models/User");
 require("../models/Workspace");
 const WorkspaceMembership = require("../models/WorkspaceMembership");
+const WorkspaceConfig = require("../models/WorkspaceConfig");
+const TwoFactorChallenge = require("../models/TwoFactorChallenge");
 const { ACTIVE_ROLES } = require("../authorization/accessPolicy");
 const { normalizeRoles } = require("../authorization/capabilities");
 const { hashPassword, verifyPassword } = require("../utils/passwords");
 const workspaceMemberService = require("../services/workspaceMemberService");
 const imageAssetService = require("../services/imageAssetService");
+const publicSiteService = require("../services/publicSiteService");
+const twoFactorSmsService = require("../services/twoFactorSmsService");
 const {
   clearSessionCookie,
   createAuthContext,
@@ -46,6 +51,28 @@ function freshSessionValues(req, userId, workspaceId) {
   const csrfToken = crypto.randomBytes(32).toString("base64url");
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
   return { token, csrfToken, expiresAt, record: { tokenHash: tokenHash(token), csrfToken, userId, workspaceId, expiresAt, userAgent: String(req.headers["user-agent"] || "").slice(0, 500), lastSeenAt: new Date() } };
+}
+
+// Finishes a login exactly the same way whether the password alone was
+// enough or a 2FA code was also required — one place issues the session so
+// the two paths can never quietly drift apart.
+async function completeLogin(req, res, user, membership) {
+  const values = freshSessionValues(req, user._id, membership.workspaceId._id);
+  const session = await AuthSession.create(values.record);
+  user.lastLoginAt = new Date();
+  await user.save();
+  res.setHeader("Set-Cookie", sessionCookie(values.token, values.expiresAt));
+  req.auth = createAuthContext({ user, workspace: membership.workspaceId, membership, session });
+  res.json({ ...publicSession(req), sessionToken: values.token });
+}
+
+const TWO_FACTOR_CODE_TTL_MINUTES = 10;
+const TWO_FACTOR_MAX_ATTEMPTS = 5;
+function generateSixDigitCode() {
+  return String(crypto.randomInt(0, 1000000)).padStart(6, "0");
+}
+function hashSixDigitCode(code) {
+  return crypto.createHash("sha256").update(String(code || "")).digest("hex");
 }
 
 async function rotateSession({ req, sessionId, userId, workspaceId }, SessionModel = AuthSession) {
@@ -100,6 +127,29 @@ router.post("/login", async (req, res) => {
 
     const memberships = await activeMemberships(user._id);
     const requestedWorkspaceId = String(req.body?.workspaceId || "");
+
+    if (user.twoFactor?.enabled) {
+      // Password is correct, but don't resolve the workspace or issue a
+      // session yet — that happens in /login/verify-2fa once the code
+      // checks out, using this exact same requestedWorkspaceId.
+      const code = generateSixDigitCode();
+      const challenge = await TwoFactorChallenge.create({
+        userId: user._id,
+        purpose: "login",
+        codeHash: hashSixDigitCode(code),
+        requestedWorkspaceId: requestedWorkspaceId || null,
+        expiresAt: new Date(Date.now() + TWO_FACTOR_CODE_TTL_MINUTES * 60000),
+      });
+      try {
+        await twoFactorSmsService.sendVerificationCode({ workspaceId: memberships[0]?.workspaceId?._id, phone: user.phone, code });
+      } catch (sendError) {
+        await TwoFactorChallenge.deleteOne({ _id: challenge._id });
+        console.error("2FA SEND ERROR:", sendError);
+        return res.status(500).json({ error: sendError.message || "Unable to send your verification code" });
+      }
+      return res.json({ requiresTwoFactor: true, challengeId: challenge._id, phoneLastFour: String(user.phone || "").slice(-4) });
+    }
+
     let membership;
     try { membership = selectLoginMembership(memberships, requestedWorkspaceId); }
     catch (selectionError) {
@@ -107,17 +157,141 @@ router.post("/login", async (req, res) => {
       return res.status(status).json({ error: selectionError.message, code: selectionError.code, ...(selectionError.workspaces ? { workspaces: selectionError.workspaces } : {}) });
     }
 
-    const values = freshSessionValues(req, user._id, membership.workspaceId._id);
-    const session = await AuthSession.create(values.record);
-
-    user.lastLoginAt = new Date();
-    await user.save();
-    res.setHeader("Set-Cookie", sessionCookie(values.token, values.expiresAt));
-    req.auth = createAuthContext({ user, workspace: membership.workspaceId, membership, session });
-    res.json({ ...publicSession(req), sessionToken: values.token });
+    await completeLogin(req, res, user, membership);
   } catch (error) {
     console.error("LOGIN ERROR:", error);
     res.status(500).json({ error: "Unable to sign in" });
+  }
+});
+
+router.post("/login/verify-2fa", async (req, res) => {
+  try {
+    const challengeId = req.body?.challengeId;
+    // A missing/malformed id must never fall through to an unfiltered
+    // lookup — Mongoose drops an undefined _id from the query entirely,
+    // which would match *some* other user's pending login challenge
+    // instead of failing closed.
+    if (!challengeId || !mongoose.isValidObjectId(challengeId)) {
+      return res.status(400).json({ error: "That code has expired. Please sign in again." });
+    }
+    const challenge = await TwoFactorChallenge.findOne({ _id: challengeId, purpose: "login" });
+    if (!challenge || challenge.expiresAt < new Date()) {
+      return res.status(400).json({ error: "That code has expired. Please sign in again." });
+    }
+    if (challenge.attempts >= TWO_FACTOR_MAX_ATTEMPTS) {
+      await TwoFactorChallenge.deleteOne({ _id: challenge._id });
+      return res.status(429).json({ error: "Too many incorrect attempts. Please sign in again." });
+    }
+    if (hashSixDigitCode(req.body?.code) !== challenge.codeHash) {
+      challenge.attempts += 1;
+      await challenge.save();
+      return res.status(401).json({ error: "That code is incorrect." });
+    }
+
+    const user = await User.findOne({ _id: challenge.userId, status: "active" });
+    if (!user) return res.status(401).json({ error: "Unable to sign in" });
+    const memberships = await activeMemberships(user._id);
+    let membership;
+    try { membership = selectLoginMembership(memberships, String(challenge.requestedWorkspaceId || "")); }
+    catch (selectionError) {
+      const status = selectionError.code === "WORKSPACE_SELECTION_REQUIRED" ? 409 : 403;
+      return res.status(status).json({ error: selectionError.message, code: selectionError.code, ...(selectionError.workspaces ? { workspaces: selectionError.workspaces } : {}) });
+    }
+
+    await TwoFactorChallenge.deleteOne({ _id: challenge._id });
+    await completeLogin(req, res, user, membership);
+  } catch (error) {
+    console.error("2FA VERIFY ERROR:", error);
+    res.status(500).json({ error: "Unable to verify your code" });
+  }
+});
+
+// Public, read-only — same information publicHtmlShell already exposes in
+// page meta tags for this workspace's own domain, just shaped for the
+// login page to skin itself with instead of always showing generic Lead
+// Porch branding. Falls back to { branded: false } for leadporch.co itself
+// or any host with no matching workspace, rather than erroring.
+router.get("/login-branding", async (req, res) => {
+  try {
+    const workspace = await publicSiteService.workspace(req);
+    const config = await WorkspaceConfig.findOne({ workspaceId: workspace._id, key: "primary" }).select("branding").lean();
+    const branding = config?.branding || {};
+    res.json({
+      branded: true,
+      workspaceName: branding.publicSiteName || workspace.name,
+      logoUrl: branding.publicSiteLogoUrl || branding.logoUrl || "",
+      primaryColor: branding.primaryColor || "",
+      accentColor: branding.accentColor || "",
+      surfaceMode: branding.surfaceMode || "light",
+    });
+  } catch (_error) {
+    res.json({ branded: false });
+  }
+});
+
+// Turning 2FA ON: prove ownership of the phone first (a code sent, then
+// confirmed) — it can never be enabled against an unverified number.
+router.post("/account/2fa/start", requireAuth, async (req, res) => {
+  try {
+    const phone = String(req.body?.phone || "").trim();
+    if (!phone) return res.status(400).json({ error: "Enter a phone number first" });
+    await TwoFactorChallenge.deleteMany({ userId: req.auth.userId, purpose: "setup" });
+    const code = generateSixDigitCode();
+    const challenge = await TwoFactorChallenge.create({
+      userId: req.auth.userId,
+      purpose: "setup",
+      phone,
+      codeHash: hashSixDigitCode(code),
+      expiresAt: new Date(Date.now() + TWO_FACTOR_CODE_TTL_MINUTES * 60000),
+    });
+    try {
+      await twoFactorSmsService.sendVerificationCode({ workspaceId: req.auth.workspaceId, phone, code });
+    } catch (sendError) {
+      await TwoFactorChallenge.deleteOne({ _id: challenge._id });
+      return res.status(500).json({ error: sendError.message || "Unable to send a verification code" });
+    }
+    res.json({ success: true });
+  } catch (error) {
+    console.error("2FA SETUP START ERROR:", error);
+    res.status(500).json({ error: "Unable to start verification" });
+  }
+});
+
+router.post("/account/2fa/confirm", requireAuth, async (req, res) => {
+  try {
+    const challenge = await TwoFactorChallenge.findOne({ userId: req.auth.userId, purpose: "setup" }).sort({ createdAt: -1 });
+    if (!challenge || challenge.expiresAt < new Date()) return res.status(400).json({ error: "That code has expired — request a new one." });
+    if (challenge.attempts >= TWO_FACTOR_MAX_ATTEMPTS) {
+      await TwoFactorChallenge.deleteOne({ _id: challenge._id });
+      return res.status(429).json({ error: "Too many incorrect attempts — request a new code." });
+    }
+    if (hashSixDigitCode(req.body?.code) !== challenge.codeHash) {
+      challenge.attempts += 1;
+      await challenge.save();
+      return res.status(401).json({ error: "That code is incorrect." });
+    }
+    await User.updateOne(
+      { _id: req.auth.userId },
+      { $set: { phone: challenge.phone, "twoFactor.enabled": true, "twoFactor.phoneVerifiedAt": new Date() } },
+    );
+    await TwoFactorChallenge.deleteOne({ _id: challenge._id });
+    res.json({ success: true });
+  } catch (error) {
+    console.error("2FA SETUP CONFIRM ERROR:", error);
+    res.status(500).json({ error: "Unable to confirm verification" });
+  }
+});
+
+router.post("/account/2fa/disable", requireAuth, async (req, res) => {
+  try {
+    const user = await User.findById(req.auth.userId).select("+passwordHash");
+    const passwordValid = user && await verifyPassword(req.body?.password, user.passwordHash);
+    if (!passwordValid) return res.status(401).json({ error: "Your password is incorrect" });
+    await User.updateOne({ _id: req.auth.userId }, { $set: { "twoFactor.enabled": false } });
+    res.json({ success: true });
+  } catch (error) {
+    console.error("2FA DISABLE ERROR:", error);
+    res.status(500).json({ error: "Unable to turn off two-factor authentication" });
   }
 });
 
