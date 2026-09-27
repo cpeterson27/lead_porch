@@ -155,7 +155,12 @@ async function workspaceMeta(req) {
   }
   const canonicalPath = defaults.canonicalPath || defaults.path;
   const canonical = `${origin}${canonicalPath}`;
-  const image = absoluteUrl(profile?.avatarUrl || publicSite.heroMediaUrl || branding.publicSiteLogoUrl || branding.logoUrl, origin);
+  // publicSite.heroMediaUrl was the old "Homepage hero image" field — its
+  // admin UI was removed, but the field itself was never cleared, so a
+  // stale photo from before could keep winning here forever with no way
+  // to change it. The logo is the only source left that's actually
+  // editable (Website & Brand > Branding).
+  const image = absoluteUrl(profile?.avatarUrl || branding.publicSiteLogoUrl || branding.logoUrl, origin);
   // Deliberately never the profile avatar or hero media used for `image`
   // above — a favicon is a persistent per-tab/search-result identity, so it
   // should always be the workspace's actual logo, the same on every page.
