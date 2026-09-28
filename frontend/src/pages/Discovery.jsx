@@ -47,6 +47,7 @@ import {
   saveVertexGroundingResult,
   dismissVertexGroundingResult,
   dismissAllVertexGroundingResults,
+  regradeDiscoveryBacklog,
   enrichVertexGroundingResultWithPdl,
   searchPublicWebForVertexGroundingResult,
   fetchLeadGenerationProviderAvailability,
@@ -431,6 +432,7 @@ export default function Discovery() {
   const [pdlEnrichBusyId, setPdlEnrichBusyId] = useState("");
   const [webSearchBusyId, setWebSearchBusyId] = useState("");
   const [dismissAllBusy, setDismissAllBusy] = useState(false);
+  const [regradeBusy, setRegradeBusy] = useState(false);
   const [selectedGroundingIds, setSelectedGroundingIds] = useState([]);
   const [reviewFilters, setReviewFilters] = useState({ run: "all", newOnly: false, provider: "all", qualification: "all", contactStatus: "all", location: "", freshness: "all", identityConfidence: "all" });
   // Spreadsheet-style inline row expansion — replaces the old slide-over
@@ -733,6 +735,33 @@ export default function Discovery() {
       setNotice(err.response?.data?.error || "Unable to clear the pending review queue.");
     } finally {
       setDismissAllBusy(false);
+    }
+  };
+
+  const regradeBacklog = async () => {
+    if (regradeBusy) return;
+    if (!window.confirm("Grade and triage every pending lead that was never auto-graded (mostly older backlog)? This spends a small amount of AI credit, and any newly-qualified people may be added to your CRM (and the currently open campaign, if one is). This can take several minutes and processes in bounded passes.")) return;
+    setRegradeBusy(true);
+    const totals = { graded: 0, saved: 0, partnershipSaved: 0, partnershipDismissed: 0, passes: 0 };
+    try {
+      let hasMore = true;
+      while (hasMore) {
+        const res = await regradeDiscoveryBacklog();
+        const { people, partnership, remainingInQueue, hasMore: more } = res.data || {};
+        totals.graded += people?.graded ?? 0;
+        totals.saved += people?.saved ?? 0;
+        totals.partnershipSaved += partnership?.saved ?? 0;
+        totals.partnershipDismissed += partnership?.dismissed ?? 0;
+        totals.passes += 1;
+        hasMore = Boolean(more);
+        setNotice(`Regrading backlog… ${totals.graded} people graded so far, ${remainingInQueue ?? 0} left in the review queue.${hasMore ? "" : " Done."}`);
+      }
+      setNotice(`Backlog regraded: ${totals.graded} people graded (${totals.saved} added to CRM), ${totals.partnershipSaved} partnership contact(s) saved, ${totals.partnershipDismissed} not-a-fit dismissed, over ${totals.passes} pass(es).`);
+      await loadGroundingResults();
+    } catch (err) {
+      setNotice(err.response?.data?.error || "Unable to regrade the backlog.");
+    } finally {
+      setRegradeBusy(false);
     }
   };
 
@@ -1718,6 +1747,9 @@ export default function Discovery() {
           <Button size="sm" variant="outline" loading={groundingResultsLoading} onClick={() => loadGroundingResults()}>Refresh</Button>
           {groundingResultsStatus === "pending_review" && groundingResults.length ? (
             <Button size="sm" variant="outline" loading={dismissAllBusy} onClick={dismissAllPendingReview}>Trash all pending leads</Button>
+          ) : null}
+          {groundingResultsStatus === "pending_review" ? (
+            <Button size="sm" variant="outline" loading={regradeBusy} onClick={regradeBacklog}>Regrade ungraded backlog</Button>
           ) : null}
         </div>
 

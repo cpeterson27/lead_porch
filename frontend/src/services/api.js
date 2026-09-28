@@ -1519,6 +1519,10 @@ export const runDiscoveryScheduleNow = (scheduleId) =>
   api.post(`/public-web-discovery/schedules/${scheduleId}/run-now`).then((res) => res.data);
 export const deleteDiscoverySchedule = (scheduleId) =>
   api.delete(`/public-web-discovery/schedules/${scheduleId}`).then((res) => res.data);
+// Bounded per call, same "call again while hasMore" shape as
+// processPublicWebDiscoveryRunBatch above — the caller loops.
+export const regradeDiscoveryBacklog = () =>
+  api.post("/public-web-discovery/regrade-backlog", {}, { timeout: 90000 }).then((res) => res.data);
 
 export const startExternalMarketResearch = (payload) =>
   api.post("/audience/research/run", payload).then((res) => res.data);

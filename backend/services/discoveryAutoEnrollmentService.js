@@ -101,4 +101,49 @@ async function autoGradeApproveAndEnroll({ workspaceId, auth, discoveryRunId, sc
   return summary;
 }
 
-module.exports = { autoGradeApproveAndEnroll, findActiveCampaign };
+/**
+ * One-time catch-up for backlog that predates this file (2026-09-21) or
+ * came from a run whose own per-run auto-enrollment step never fired
+ * (a manual/ad-hoc "Find leads" run, which never calls
+ * autoGradeApproveAndEnroll at all — only a scheduled run's completion
+ * does). Never runs automatically; only ever triggered by an explicit
+ * admin action in the Discovery UI, since it spends real AI credit and can
+ * add people to whatever campaign is currently open.
+ *
+ * Bounded per call (a handful of runs, a couple hundred non-person rows) —
+ * NOT the whole backlog in one shot — because a single request processing
+ * a huge backlog risks the platform's own reverse-proxy request timeout
+ * cutting the HTTP response off long before the work (which keeps running
+ * server-side regardless) actually finishes, exactly the "looked like a
+ * silent failure but was really still working" trap process-next-batch's
+ * own comment already documents. The caller loops, calling again while
+ * hasMore is true, same shape as that existing pattern.
+ */
+async function regradeBacklog({ workspaceId, auth, personRunLimit = 3, partnershipRowLimit = 100 }) {
+  const discoveryPartnershipService = require("./discoveryPartnershipService");
+  const personRunIds = (await GroundingResearchResult.distinct("discoveryRunId", {
+    workspaceId, type: "person", status: "pending_review", qualificationLabel: "",
+  })).filter(Boolean);
+
+  const personTotals = { runsProcessed: 0, graded: 0, qualified: 0, saved: 0, errors: [] };
+  for (const discoveryRunId of personRunIds.slice(0, personRunLimit)) {
+    try {
+      const result = await autoGradeApproveAndEnroll({ workspaceId, auth, discoveryRunId, scheduleName: "backlog-cleanup" });
+      personTotals.runsProcessed += 1;
+      personTotals.graded += result.graded;
+      personTotals.qualified += result.qualified;
+      personTotals.saved += result.saved;
+      if (result.errors.length) personTotals.errors.push(...result.errors);
+    } catch (error) {
+      personTotals.errors.push(`${discoveryRunId}: ${error.message || error}`);
+    }
+  }
+
+  const partnership = await discoveryPartnershipService.triageNonPersonResults({ workspaceId, limit: partnershipRowLimit });
+  const remainingPersonRuns = personRunIds.length - Math.min(personRunLimit, personRunIds.length);
+  const remaining = await GroundingResearchResult.countDocuments({ workspaceId, status: "pending_review" });
+  const hasMore = remainingPersonRuns > 0 || partnership.checked >= partnershipRowLimit;
+  return { people: personTotals, partnership, remainingInQueue: remaining, hasMore };
+}
+
+module.exports = { autoGradeApproveAndEnroll, findActiveCampaign, regradeBacklog };

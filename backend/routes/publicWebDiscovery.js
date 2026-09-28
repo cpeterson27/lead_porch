@@ -267,4 +267,23 @@ router.delete("/schedules/:id", async (req, res) => {
   }
 });
 
+/**
+ * Explicit, admin-triggered catch-up for review-queue backlog that never
+ * went through auto-grading — either it predates that feature or came
+ * from a manual "Find leads" run (auto-enrollment only ever fires after a
+ * *scheduled* run finishes). Spends real AI credit and can enroll people
+ * into whatever campaign is currently open, so this only ever runs from a
+ * real click here, never on a timer.
+ */
+router.post("/regrade-backlog", async (req, res) => {
+  try {
+    const { regradeBacklog } = require("../services/discoveryAutoEnrollmentService");
+    const data = await regradeBacklog({ workspaceId: req.auth.workspaceId, auth: req.auth });
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("[PublicWebDiscovery] POST /regrade-backlog failed:", error);
+    return res.status(error.code ? 400 : 502).json({ success: false, error: error.message || "Unable to regrade the backlog", code: error.code || "DISCOVERY_REGRADE_FAILED" });
+  }
+});
+
 module.exports = router;
