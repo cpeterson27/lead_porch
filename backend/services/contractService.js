@@ -4,20 +4,19 @@ const IntegrationConnection = require("../models/IntegrationConnection");
 const { encryptCredentials, decryptCredentials } = require("../utils/credentialEncryption");
 const { publicBackendUrl } = require("../utils/unsubscribe");
 
-// DocuSign requires its OWN OAuth access token for every eSignature API
-// call — Integration Key + Secret + Account ID alone were never enough to
-// actually send anything (see the connect()/connectionStatus() comment
-// below for how those three get collected first). This uses JWT Grant
-// rather than the interactive Authorization Code Grant: sending a contract
-// is triggered from a backend route with no human at a browser at that
-// moment, so the flow can't depend on someone being present to click
-// through a Google/Gmail-style login each time. JWT Grant instead signs a
-// short-lived assertion with an RSA keypair WE generate (setupJwt()) — the
-// human only has to do two one-time things: paste the public half into
-// DocuSign's app settings, and visit a consent URL once to allow this app
-// to act as their DocuSign user. After that, sending never needs them
-// again unless that consent is revoked.
-const DOCUSIGN_JWT_TTL_SECONDS = 3600;
+// Standard OAuth (Authorization Code Grant) — the same pattern every other
+// per-workspace integration in this app already uses (Gmail, Google
+// Business Profile, Meetup): the business owner clicks "Connect," logs
+// into THEIR OWN DocuSign with their own password, and this app never
+// touches their credentials or needs to be added as a developer on their
+// account. One Integration Key (DOCUSIGN_CLIENT_ID/SECRET, Lead Porch's
+// own, set once as platform env vars) serves every workspace — exactly
+// how GOOGLE_CLIENT_ID already works. An earlier version of this file
+// used JWT Grant instead, which needed a manually-generated RSA keypair
+// and a DocuSign "developer" login per workspace — wrong shape for a
+// product other business owners will self-serve into.
+const PROVIDER = "docusign";
+const SCOPES = ["signature"];
 
 function docusignError(message, code = "DOCUSIGN_ERROR") {
   return Object.assign(new Error(message), { code });
@@ -25,95 +24,108 @@ function docusignError(message, code = "DOCUSIGN_ERROR") {
 
 function authBase() {
   // Sandbox during development/testing; becomes "https://account.docusign.com"
-  // the moment DocuSign's own Go-Live process promotes this Integration Key
-  // to Ellie's real paid account — one env var, no code change needed then.
+  // once DocuSign's own Go-Live process approves this Integration Key for
+  // production — one env var, no code change needed then.
   return process.env.DOCUSIGN_ENVIRONMENT === "production" ? "https://account.docusign.com" : "https://account-d.docusign.com";
+}
+function clientId() { return String(process.env.DOCUSIGN_CLIENT_ID || "").trim(); }
+function clientSecret() { return String(process.env.DOCUSIGN_CLIENT_SECRET || "").trim(); }
+function stateSecret() { return String(process.env.INTEGRATION_CREDENTIAL_ENCRYPTION_KEY || "").trim(); }
+function configured() { return Boolean(clientId() && clientSecret() && stateSecret()); }
+function requireConfigured() {
+  if (!configured()) throw docusignError("DocuSign app credentials are not configured yet", "DOCUSIGN_APP_NOT_CONFIGURED");
+}
+function redirectUri() { return `${publicBackendUrl()}/api/contracts/oauth/callback`; }
+
+function createState(workspaceId, userId, returnOrigin = "") {
+  requireConfigured();
+  const payload = Buffer.from(JSON.stringify({ workspaceId: String(workspaceId), userId: String(userId), returnOrigin: String(returnOrigin || ""), createdAt: Date.now(), nonce: crypto.randomBytes(16).toString("hex") })).toString("base64url");
+  const signature = crypto.createHmac("sha256", stateSecret()).update(payload).digest("base64url");
+  return `${payload}.${signature}`;
+}
+function verifyState(value) {
+  try {
+    const [payload, signature] = String(value || "").split(".");
+    if (!payload || !signature) return null;
+    const expected = crypto.createHmac("sha256", stateSecret()).update(payload).digest("base64url");
+    if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+    const parsed = JSON.parse(Buffer.from(payload, "base64url").toString("utf8"));
+    return Date.now() - Number(parsed.createdAt) < 10 * 60 * 1000 && parsed.workspaceId && parsed.userId ? parsed : null;
+  } catch { return null; }
+}
+
+function authorizationUrl(workspaceId, userId, returnOrigin = "") {
+  requireConfigured();
+  const params = new URLSearchParams({ response_type: "code", scope: SCOPES.join(" "), client_id: clientId(), redirect_uri: redirectUri(), state: createState(workspaceId, userId, returnOrigin) });
+  return `${authBase()}/oauth/auth?${params}`;
+}
+
+async function jsonRequest(url, options = {}, fallback = "DocuSign request failed") {
+  const response = await fetch(url, options);
+  const data = response.status === 204 ? {} : await response.json();
+  if (!response.ok) throw docusignError(data.error_description || data.message || data.error || fallback, "DOCUSIGN_REQUEST_FAILED");
+  return data;
+}
+function basicAuthHeader() { return `Basic ${Buffer.from(`${clientId()}:${clientSecret()}`).toString("base64")}`; }
+
+const docusignAdapter = {
+  exchangeCode(code) {
+    return jsonRequest(`${authBase()}/oauth/token`, { method: "POST", headers: { Authorization: basicAuthHeader(), "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "authorization_code", code }) }, "DocuSign token exchange failed");
+  },
+  refresh(refreshToken) {
+    return jsonRequest(`${authBase()}/oauth/token`, { method: "POST", headers: { Authorization: basicAuthHeader(), "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refreshToken }) }, "DocuSign access refresh failed");
+  },
+  userInfo(accessToken) {
+    return jsonRequest(`${authBase()}/oauth/userinfo`, { headers: { Authorization: `Bearer ${accessToken}` } }, "Unable to read the connected DocuSign account");
+  },
+};
+
+function connectionFilter(workspaceId) { return { workspaceId, provider: PROVIDER, accountScope: "workspace" }; }
+
+async function saveConnection({ workspaceId }, tokens, userInfo) {
+  const account = (userInfo.accounts || []).find((row) => row.is_default) || userInfo.accounts?.[0];
+  if (!account) throw docusignError("That DocuSign login has no accounts available", "DOCUSIGN_NO_ACCOUNT");
+  const filter = connectionFilter(workspaceId);
+  const existing = await IntegrationConnection.findOne(filter).select("+credentialsEncrypted");
+  const previous = existing?.credentialsEncrypted ? decryptCredentials(existing.credentialsEncrypted) : {};
+  return IntegrationConnection.findOneAndUpdate(filter, { $set: {
+    ...filter,
+    status: "connected",
+    credentialsEncrypted: encryptCredentials({ accessToken: tokens.access_token, refreshToken: tokens.refresh_token || previous.refreshToken }),
+    settings: { email: userInfo.email || "", name: userInfo.name || "", accountId: account.account_id, accountName: account.account_name || "", baseUri: account.base_uri },
+    oauth: { expiresAt: new Date(Date.now() + Number(tokens.expires_in || 3600) * 1000) },
+    connectedAt: new Date(), lastError: null,
+  } }, { upsert: true, new: true, setDefaultsOnInsert: true });
+}
+
+function publicConnection(connection) {
+  return { configured: configured(), connected: connection?.status === "connected", email: connection?.settings?.email || "", accountName: connection?.settings?.accountName || "", connectedAt: connection?.connectedAt || null, lastError: connection?.lastError || "" };
 }
 
 async function connectionStatus(workspaceId) {
-  const connection = await IntegrationConnection.findOne({ workspaceId, provider: "docusign" }).select("+credentialsEncrypted").lean();
-  if (!connection) return { connected: false, status: "not_configured", jwtConfigured: false };
-  let jwtConfigured = false;
-  try { jwtConfigured = Boolean(decryptCredentials(connection.credentialsEncrypted)?.docusignUserId); } catch { /* leave false */ }
-  return { connected: connection.status === "connected" || connection.status === "configured", status: connection.status, accountId: connection.config?.accountId || "", connectedAt: connection.connectedAt || connection.createdAt, jwtConfigured };
+  return publicConnection(await IntegrationConnection.findOne(connectionFilter(workspaceId)).lean());
 }
 
-async function connect({ workspaceId, integrationKey, clientSecret, accountId, actorUserId }) {
-  if (!integrationKey || !clientSecret || !accountId) throw docusignError("Integration Key, Client Secret, and Account ID are required", "DOCUSIGN_CREDENTIALS_INVALID");
-  const credentialsEncrypted = encryptCredentials({ integrationKey, clientSecret, accountId });
-  const connection = await IntegrationConnection.findOneAndUpdate(
-    { workspaceId, provider: "docusign" },
-    { $set: { credentialsEncrypted, config: { accountId }, status: "configured", connectedAt: new Date(), lastError: null, metadata: { connectedBy: actorUserId } } },
-    { upsert: true, returnDocument: "after", setDefaultsOnInsert: true }
-  );
-  return { connected: true, status: connection.status };
+async function connectedConnection(workspaceId) {
+  const connection = await IntegrationConnection.findOne({ ...connectionFilter(workspaceId), status: "connected" }).select("+credentialsEncrypted");
+  if (!connection?.credentialsEncrypted) throw docusignError("DocuSign isn't connected yet — connect it under Contracts first.", "DOCUSIGN_NOT_CONNECTED");
+  return connection;
 }
 
-// Second connect step: generates the RSA keypair (private half stored
-// encrypted, public half handed back once — DocuSign only needs the
-// public key, so the private key never leaves this server) and the
-// one-time consent link. docusignUserId is DocuSign's own "User ID" GUID,
-// shown on the same Apps and Keys / My Account Information page as the
-// Account ID.
-async function setupJwt({ workspaceId, docusignUserId }) {
-  if (!docusignUserId) throw docusignError("Your DocuSign User ID is required", "DOCUSIGN_USERID_REQUIRED");
-  const connection = await IntegrationConnection.findOne({ workspaceId, provider: "docusign" }).select("+credentialsEncrypted");
-  if (!connection?.credentialsEncrypted) throw docusignError("Connect your Integration Key, Secret, and Account ID first", "DOCUSIGN_NOT_CONNECTED");
-  const current = decryptCredentials(connection.credentialsEncrypted);
-  const { publicKey, privateKey } = crypto.generateKeyPairSync("rsa", {
-    modulusLength: 2048,
-    publicKeyEncoding: { type: "spki", format: "pem" },
-    privateKeyEncoding: { type: "pkcs8", format: "pem" },
-  });
-  connection.credentialsEncrypted = encryptCredentials({ ...current, docusignUserId: String(docusignUserId).trim(), rsaPrivateKeyPem: privateKey });
+async function accessToken(connection) {
+  const credentials = decryptCredentials(connection.credentialsEncrypted);
+  if (credentials.accessToken && new Date(connection.oauth?.expiresAt || 0).getTime() > Date.now() + 60000) return credentials.accessToken;
+  if (!credentials.refreshToken) throw docusignError("Reconnect DocuSign — this connection can no longer refresh itself.", "DOCUSIGN_RECONNECT_REQUIRED");
+  const refreshed = await docusignAdapter.refresh(credentials.refreshToken);
+  connection.credentialsEncrypted = encryptCredentials({ accessToken: refreshed.access_token, refreshToken: refreshed.refresh_token || credentials.refreshToken });
+  connection.oauth = { expiresAt: new Date(Date.now() + Number(refreshed.expires_in || 3600) * 1000) };
   await connection.save();
-  const consentUrl = `${authBase()}/oauth/auth?${new URLSearchParams({
-    response_type: "code",
-    scope: "signature impersonation",
-    client_id: current.integrationKey,
-    redirect_uri: `${publicBackendUrl()}/api/contracts/docusign-consent-complete`,
-  })}`;
-  return { publicKeyPem: publicKey, consentUrl };
+  return refreshed.access_token;
 }
 
-function base64url(buffer) {
-  return Buffer.from(buffer).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function signJwtAssertion({ integrationKey, docusignUserId, rsaPrivateKeyPem }) {
-  const now = Math.floor(Date.now() / 1000);
-  const header = { alg: "RS256", typ: "JWT" };
-  const payload = { iss: integrationKey, sub: docusignUserId, aud: authBase().replace(/^https?:\/\//, ""), iat: now, exp: now + DOCUSIGN_JWT_TTL_SECONDS, scope: "signature impersonation" };
-  const signingInput = `${base64url(JSON.stringify(header))}.${base64url(JSON.stringify(payload))}`;
-  const signature = crypto.sign("RSA-SHA256", Buffer.from(signingInput), rsaPrivateKeyPem);
-  return `${signingInput}.${base64url(signature)}`;
-}
-
-async function getAccessToken(workspaceId) {
-  const connection = await IntegrationConnection.findOne({ workspaceId, provider: "docusign" }).select("+credentialsEncrypted");
-  if (!connection?.credentialsEncrypted) throw docusignError("DocuSign isn't connected yet. Add your Integration Key, Client Secret, and Account ID first.", "DOCUSIGN_NOT_CONNECTED");
-  const creds = decryptCredentials(connection.credentialsEncrypted);
-  if (!creds.docusignUserId || !creds.rsaPrivateKeyPem) throw docusignError("Finish the RSA keypair setup step before sending", "DOCUSIGN_JWT_NOT_CONFIGURED");
-  const assertion = signJwtAssertion(creds);
-  const response = await fetch(`${authBase()}/oauth/token`, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: new URLSearchParams({ grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer", assertion }),
-  });
-  const data = await response.json();
-  if (!response.ok) {
-    if (data.error === "consent_required") throw docusignError("DocuSign needs one-time consent before it can send on your behalf — open the consent link from the setup step and approve it, then try again.", "DOCUSIGN_CONSENT_REQUIRED");
-    throw docusignError(data.error_description || data.error || "DocuSign authentication failed", "DOCUSIGN_AUTH_FAILED");
-  }
-  return { accessToken: data.access_token, accountId: creds.accountId };
-}
-
-async function accountBaseUri(accessToken, accountId) {
-  const response = await fetch(`${authBase()}/oauth/userinfo`, { headers: { Authorization: `Bearer ${accessToken}` } });
-  const data = await response.json();
-  const account = (data.accounts || []).find((row) => row.account_id === accountId) || data.accounts?.[0];
-  if (!account) throw docusignError("Could not find that DocuSign account for this connected user", "DOCUSIGN_ACCOUNT_NOT_FOUND");
-  return account.base_uri;
+async function disconnect(workspaceId) {
+  const connection = await IntegrationConnection.findOneAndUpdate(connectionFilter(workspaceId), { $set: { status: "disconnected", credentialsEncrypted: null, connectedAt: null, oauth: {}, lastError: null } }, { new: true });
+  return publicConnection(connection);
 }
 
 async function createDraftContract({ workspaceId, contactId, salesOpportunityId, enrollmentId, documentName, signerName, signerEmail, createdBy }) {
@@ -150,8 +162,9 @@ async function sendForSignature({ workspaceId, contractId, fileBuffer, fileName 
   // the contract itself so it's visible on the row, not just in a notice
   // banner that's easy to miss or scroll past.
   try {
-    const { accessToken, accountId } = await getAccessToken(workspaceId);
-    const baseUri = await accountBaseUri(accessToken, accountId);
+    const connection = await connectedConnection(workspaceId);
+    const token = await accessToken(connection);
+    const { accountId, baseUri } = connection.settings;
     const extension = (String(fileName || "document.pdf").split(".").pop() || "pdf").toLowerCase();
     const envelope = {
       emailSubject: `Please sign: ${contract.documentName}`,
@@ -172,13 +185,11 @@ async function sendForSignature({ workspaceId, contractId, fileBuffer, fileName 
       status: "sent",
     };
 
-    const response = await fetch(`${baseUri}/restapi/v2.1/accounts/${accountId}/envelopes`, {
+    const data = await jsonRequest(`${baseUri}/restapi/v2.1/accounts/${accountId}/envelopes`, {
       method: "POST",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify(envelope),
-    });
-    const data = await response.json();
-    if (!response.ok) throw docusignError(data.message || (data.errorDetails ? JSON.stringify(data.errorDetails) : "DocuSign rejected the envelope"), "DOCUSIGN_SEND_FAILED");
+    }, "DocuSign rejected the envelope");
 
     contract.status = "sent";
     contract.envelopeId = data.envelopeId;
@@ -203,15 +214,14 @@ async function resendEnvelope({ workspaceId, contractId }) {
   if (!["sent", "delivered"].includes(contract.status)) throw Object.assign(new Error("Only a contract still awaiting signature can be resent"), { code: "CONTRACT_NOT_PENDING" });
 
   try {
-    const { accessToken, accountId } = await getAccessToken(workspaceId);
-    const baseUri = await accountBaseUri(accessToken, accountId);
-    const response = await fetch(`${baseUri}/restapi/v2.1/accounts/${accountId}/envelopes/${contract.envelopeId}?resend_envelope=true`, {
+    const connection = await connectedConnection(workspaceId);
+    const token = await accessToken(connection);
+    const { accountId, baseUri } = connection.settings;
+    await jsonRequest(`${baseUri}/restapi/v2.1/accounts/${accountId}/envelopes/${contract.envelopeId}?resend_envelope=true`, {
       method: "PUT",
-      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ envelopeId: contract.envelopeId }),
-    });
-    const data = await response.json();
-    if (!response.ok) throw docusignError(data.message || "DocuSign could not resend that envelope", "DOCUSIGN_RESEND_FAILED");
+    }, "DocuSign could not resend that envelope");
     contract.lastError = "";
     await contract.save();
     return contract;
@@ -234,4 +244,7 @@ async function deleteDraftContract({ workspaceId, contractId }) {
   return { deleted: true };
 }
 
-module.exports = { connectionStatus, connect, setupJwt, createDraftContract, listContracts, sendForSignature, resendEnvelope, deleteDraftContract };
+module.exports = {
+  PROVIDER, configured, docusignAdapter, verifyState, authorizationUrl, saveConnection, publicConnection,
+  connectionStatus, disconnect, createDraftContract, listContracts, sendForSignature, resendEnvelope, deleteDraftContract,
+};

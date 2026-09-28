@@ -53,8 +53,8 @@ import {
   fetchKnowledgeNotes,
   uploadKnowledgePdfs,
   fetchDocusignStatus,
-  connectDocusign,
-  setupDocusignJwt,
+  beginDocusignConnection,
+  disconnectDocusign,
   fetchContracts,
   createContract,
   sendContractForSignature,
@@ -471,11 +471,14 @@ function ContractContactPicker({ contacts, selectedId, onSelect }) {
 }
 
 export function CoachingContracts() {
-  const [docusign, setDocusign] = useState({ connected: false, status: "not_configured", jwtConfigured: false }); const [contracts, setContracts] = useState([]); const [contacts, setContacts] = useState([]); const [notice, setNotice] = useState(null);
-  const [connectForm, setConnectForm] = useState({ integrationKey: "", clientSecret: "", accountId: "" });
-  const [docusignUserId, setDocusignUserId] = useState("");
-  const [jwtSetup, setJwtSetup] = useState(null); // { publicKeyPem, consentUrl } once generated
-  const [jwtBusy, setJwtBusy] = useState(false);
+  const [docusign, setDocusign] = useState({ connected: false, configured: true, accountName: "", email: "" }); const [contracts, setContracts] = useState([]); const [contacts, setContacts] = useState([]);
+  const [notice, setNotice] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("docusign") === "error") return { type: "error", message: params.get("message") || "DocuSign authorization did not complete." };
+    if (params.get("docusign") === "connected") return { type: "success", message: "DocuSign connected." };
+    return null;
+  });
+  const [connectBusy, setConnectBusy] = useState(false);
   const [form, setForm] = useState({ contactId: "", documentName: "", signerName: "", signerEmail: "" });
   const [pendingFiles, setPendingFiles] = useState({}); // contractId -> File chosen to send
   const [sendingId, setSendingId] = useState("");
@@ -484,13 +487,15 @@ export function CoachingContracts() {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const load = useCallback(() => Promise.all([fetchDocusignStatus(), fetchContracts(), fetchContacts({ limit: 500 })]).then(([status, rows, contactRows]) => { setDocusign(status); setContracts(rows); setContacts(Array.isArray(contactRows) ? contactRows : contactRows.data || []); }).catch((e) => setNotice({ type: "error", message: errorMessage(e) })), []);
   useEffect(() => { load(); }, [load]);
-  const connect = async (event) => { event.preventDefault(); try { await connectDocusign(connectForm); setConnectForm({ integrationKey: "", clientSecret: "", accountId: "" }); setNotice({ type: "success", message: "DocuSign credentials saved. Next, set up signing below." }); await load(); } catch (error) { setNotice({ type: "error", message: errorMessage(error) }); } };
-  const setUpSigning = async (event) => {
-    event.preventDefault();
-    setJwtBusy(true);
-    try { setJwtSetup(await setupDocusignJwt(docusignUserId)); setNotice({ type: "success", message: "Keypair generated. Finish the two steps below." }); await load(); }
+  const connect = async () => {
+    setConnectBusy(true);
+    try { const { authorizationUrl } = await beginDocusignConnection(); window.location.assign(authorizationUrl); }
+    catch (error) { setNotice({ type: "error", message: errorMessage(error) }); setConnectBusy(false); }
+  };
+  const disconnect = async () => {
+    if (!window.confirm("Disconnect DocuSign? You'll need to reconnect (log in again) before sending any more contracts.")) return;
+    try { await disconnectDocusign(); setNotice({ type: "success", message: "DocuSign disconnected." }); await load(); }
     catch (error) { setNotice({ type: "error", message: errorMessage(error) }); }
-    finally { setJwtBusy(false); }
   };
   const selectContact = (contact) => setForm((current) => contact ? { ...current, contactId: contact._id, signerName: labelOfContact(contact), signerEmail: contact.email || "" } : { ...current, contactId: "", signerName: "", signerEmail: "" });
   const save = async (event) => { event.preventDefault(); if (!form.contactId) { setNotice({ type: "error", message: "Choose a contact from the search results before creating the contract." }); return; } try { await createContract(form); setForm({ contactId: "", documentName: "", signerName: "", signerEmail: "" }); setNotice({ type: "success", message: "Draft contract created." }); await load(); } catch (error) { setNotice({ type: "error", message: errorMessage(error) }); } };
@@ -517,15 +522,9 @@ export function CoachingContracts() {
   };
   return <div className="coaching-page"><PageHeader eyebrow="Coaching CRM" title="Contracts" description="Draft and track e-signature contracts. Sending through DocuSign activates once your account is connected below." /><CoachingNav active="contracts" /><Notice value={notice} />
     <section className="coaching-panel"><h2>DocuSign connection</h2>
-      {!docusign.connected ? <form className="coaching-form" onSubmit={connect}><div className="coaching-form__grid"><label>Integration Key<input required value={connectForm.integrationKey} onChange={(e) => setConnectForm({ ...connectForm, integrationKey: e.target.value })} /></label><label>Client Secret<input required type="password" value={connectForm.clientSecret} onChange={(e) => setConnectForm({ ...connectForm, clientSecret: e.target.value })} /></label><label>Account ID<input required value={connectForm.accountId} onChange={(e) => setConnectForm({ ...connectForm, accountId: e.target.value })} /></label></div><Button type="submit">Connect DocuSign</Button></form>
-      : <p>Connected · account {docusign.accountId || "on file"}</p>}
-      {docusign.connected ? <form className="coaching-form" onSubmit={setUpSigning}><h3>{docusign.jwtConfigured ? "Signing is set up — regenerate if needed" : "Step 2: set up signing"}</h3><p className="coaching-muted">Find your DocuSign User ID on the same Apps and Keys page as your Account ID. Regenerating creates a new keypair — DocuSign supports having more than one, so you don't need to remove the old one first.</p><label>DocuSign User ID<input required value={docusignUserId} onChange={(e) => setDocusignUserId(e.target.value)} /></label><Button type="submit" loading={jwtBusy}>{docusign.jwtConfigured ? "Regenerate keypair" : "Generate keypair"}</Button></form> : null}
-      {jwtSetup ? <div className="coaching-form"><h3>Finish these two steps in DocuSign</h3>
-        <label>1. Paste this public key into DocuSign → your app → Authentication → Add RSA Keypair<textarea readOnly rows={6} value={jwtSetup.publicKeyPem} onFocus={(e) => e.target.select()} /></label>
-        <p className="coaching-muted">Save it in DocuSign, then wait a few seconds before continuing — DocuSign needs a moment to register a brand-new keypair.</p>
-        <a href={jwtSetup.consentUrl} target="_blank" rel="noreferrer"><Button type="button">2. Open consent link and approve</Button></a>
-      </div> : null}
-      {docusign.connected && docusign.jwtConfigured && !jwtSetup ? <p className="coaching-muted">If sending ever fails with "no_valid_keys_or_signatures" or a consent error, regenerate the keypair above and redo both steps in DocuSign.</p> : null}
+      {docusign.connected
+        ? <><p>Connected as {docusign.email || docusign.accountName || "your DocuSign account"}.</p><Button variant="outline" onClick={disconnect}>Disconnect</Button></>
+        : <><p className="coaching-muted">Log into your own DocuSign account to connect it — Lead Porch never sees or stores your DocuSign password.</p><Button onClick={connect} loading={connectBusy} disabled={!docusign.configured}>Connect DocuSign</Button>{!docusign.configured ? <small>DocuSign app credentials aren't set up on the server yet.</small> : null}</>}
     </section>
     <section className="coaching-panel"><h2>New contract</h2><form className="coaching-form" onSubmit={save}><div className="coaching-form__grid"><ContractContactPicker contacts={contacts} selectedId={form.contactId} onSelect={selectContact} /><label>Document name<input required value={form.documentName} onChange={(e) => setForm({ ...form, documentName: e.target.value })} placeholder="Coaching Agreement" /></label><label>Signer name<input required value={form.signerName} onChange={(e) => setForm({ ...form, signerName: e.target.value })} /></label><label>Signer email<input required type="email" value={form.signerEmail} onChange={(e) => setForm({ ...form, signerEmail: e.target.value })} /></label></div><Button type="submit">Create draft</Button></form></section>
     <section className="coaching-panel"><h2>Contracts</h2>{contracts.length ? <div className="coaching-list">{contracts.map((c) => <article className="coaching-row coaching-row--actions" key={c._id}><div className="coaching-avatar">{labelOfContact(c.contactId)[0]}</div><div className="coaching-row__main"><strong>{c.documentName}</strong><span>{labelOfContact(c.contactId)} · {dateLabel(c.createdAt)}</span>{c.lastError ? <span className="coaching-error-text">{c.lastError}</span> : null}</div><StatusBadge tone={c.status === "signed" ? "success" : c.status === "declined" || c.status === "voided" ? "danger" : "info"}>{human(c.status)}</StatusBadge>

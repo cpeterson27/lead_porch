@@ -809,10 +809,10 @@ export const createCoachingReferral = (values) =>
   api.post("/coaching/referrals", values).then((res) => res.data.data);
 export const fetchDocusignStatus = () =>
   api.get("/contracts/connection-status").then((res) => res.data.data);
-export const connectDocusign = (values) =>
-  api.post("/contracts/connect", values).then((res) => res.data.data);
-export const setupDocusignJwt = (docusignUserId) =>
-  api.post("/contracts/setup-jwt", { docusignUserId }).then((res) => res.data.data);
+export const beginDocusignConnection = () =>
+  api.get("/contracts/oauth/start").then((res) => res.data);
+export const disconnectDocusign = () =>
+  api.delete("/contracts/connection").then((res) => res.data.data);
 export const fetchContracts = (params = {}) =>
   api.get("/contracts", { params }).then((res) => res.data.data);
 export const createContract = (values) =>

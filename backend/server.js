@@ -210,7 +210,7 @@ connectDatabase(mongoUri)
         req.path === "/eventbrite/oauth/callback" ||
         req.path === "/gmail/oauth/callback" ||
         req.path === "/google-business-profile/oauth/callback" ||
-        req.path === "/contracts/docusign-consent-complete";
+        req.path === "/contracts/oauth/callback";
       const publicMeetupCallback = req.path === "/meetup/oauth/callback";
       const publicCoachingCalendarCallback = req.path === "/coaching/calendar/oauth/callback";
       const publicCoachingZoomRoute = req.path === "/coaching/zoom/oauth/callback" || req.path === "/coaching/zoom/webhook";
