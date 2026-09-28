@@ -1,7 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
-  FiArrowUpRight,
   FiBriefcase,
   FiCheck,
   FiCopy,
@@ -29,7 +28,6 @@ import useAuth from "../context/useAuth.js";
 import {
   changePassword,
   createMcpAccessToken,
-  fetchCampaigns,
   fetchGmailConnection,
   fetchMcpAccessTokens,
   fetchOAuthConnections,
@@ -101,7 +99,6 @@ export default function Settings() {
     senderEmail: "",
     replyToEmail: "",
   });
-  const [campaigns, setCampaigns] = useState([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
@@ -169,9 +166,6 @@ export default function Settings() {
       .catch(() => {});
     fetchGmailConnection()
       .then((connection) => setAccountEmail(connection.email || ""))
-      .catch(() => {});
-    fetchCampaigns()
-      .then((items) => setCampaigns(items || []))
       .catch(() => {});
     fetchMcpAccessTokens()
       .then((data) => setMcpTokens(data.data || []))
@@ -525,53 +519,6 @@ export default function Settings() {
                 </Button>
               </div>
             </section>
-
-            {/* Campaign brands */}
-            <details className="settings-section">
-              <summary className="settings-section__head" style={{ cursor: "pointer" }}>
-                <div className="settings-section__icon"><FiImage /></div>
-                <div className="settings-section__head-text">
-                  <h3>Campaign branding (optional)</h3>
-                  <p>Open a campaign to customize its promotional assets and email styling. Your main website branding is managed separately.</p>
-                </div>
-              </summary>
-              <div className="settings-brand-list">
-                {campaigns.length ? (
-                  campaigns.map((campaign) => (
-                    <button
-                      key={campaign._id}
-                      className="settings-brand-item"
-                      onClick={() => navigate(`/campaigns/${campaign._id}`)}
-                    >
-                      <div className="settings-brand-item__left">
-                        <div className="settings-brand-item__logo">
-                          {campaign.brand?.logoUrl ? (
-                            <img src={campaign.brand.logoUrl} alt="" />
-                          ) : (
-                            <FiImage />
-                          )}
-                        </div>
-                        <div className="settings-brand-item__label">
-                          <span className="settings-brand-item__kind">
-                            {campaign.campaignKind === "program" ? "Program" : "Event"}
-                          </span>
-                          <span className="settings-brand-item__name">
-                            {campaign.name || campaign.programName}
-                          </span>
-                        </div>
-                      </div>
-                      <span className="settings-brand-item__action">
-                        Open campaign <FiArrowUpRight />
-                      </span>
-                    </button>
-                  ))
-                ) : (
-                  <p style={{ color: "var(--color-text-muted)", fontSize: "0.875rem", margin: 0 }}>
-                    No campaigns yet. Create an event or program campaign first.
-                  </p>
-                )}
-              </div>
-            </details>
 
             <footer className="settings-panel__footer">
               <Button

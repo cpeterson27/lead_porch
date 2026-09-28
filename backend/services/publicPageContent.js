@@ -20,7 +20,7 @@ function renderPublicContent(pathname, site) {
   let title, body;
   if (path === "/") {
     title = name;
-    body = (p.sectionVisibility?.heroCopy !== false ? paragraph(p.headline) + paragraph(p.subheadline) : "") + paragraph(p.introBody) + (p.sectionVisibility?.programs !== false ? programList() : "");
+    body = (p.sectionVisibility?.heroCopy !== false ? paragraph(p.headline) + paragraph(p.subheadline) : "") + paragraph(p.introBody) + (p.aboutBody ? `<section><h2>${escape(p.aboutTitle || `About ${name}`)}</h2>${paragraph(p.aboutBody)}${link("/about", "Learn more")}</section>` : "") + (p.sectionVisibility?.programs !== false ? programList() : "");
   } else if (path === "/about") {
     title = p.seoPages?.aboutHeading || `About ${name}`;
     body = paragraph(p.aboutBody) + list("Why clients work with us", p.aboutHighlights);
@@ -49,6 +49,6 @@ function renderPublicContent(pathname, site) {
   } else if (path === "/testimonials" && p.sectionVisibility?.testimonials !== false) {
     title = p.seoPages?.testimonialsHeading || "Student perspectives"; body = (site.featuredTestimonials || []).map((row) => `<section><h2>${escape(row.headline || row.displayName)}</h2>${paragraph(row.body)}${paragraph(row.displayName)}</section>`).join("");
   } else { return ""; }
-  return `<div class="public-document"><header>${link("/", name)}<nav aria-label="Main navigation">${link("/about", "About")}${link("/coaching-programs", "Coaching programs")}${link("/faq", "FAQ")}${link("/contact", "Contact")}</nav></header><main id="main-content"><h1>${escape(title)}</h1>${body}</main><footer>${link("/sitemap", "Website sitemap")}${link("/privacy", "Privacy policy")}</footer></div>`;
+  return `<div class="public-document"><header>${link("/", name)}<nav aria-label="Main navigation">${link("/about", "About")}${link("/coaching-programs", "Coaching programs")}${link("/faq", "FAQ")}${link("/contact", "Contact")}</nav></header><main id="main-content"><h1>${escape(title)}</h1>${body}</main><footer>${link("/sitemap", "Website sitemap")}${link("/privacy", "Privacy policy")}${(p.socialLinks || []).map((item) => link(item.url, item.label || item.platform || "Social profile")).join("")}</footer></div>`;
 }
 module.exports = { renderPublicContent, escape, programDetails };

@@ -33,6 +33,11 @@ assert(!html.includes("PRIVATE INTERNAL NOTES"));
 assert.equal(renderPublicContent("/coaching-programs/draft", publicSite), "");
 assert.equal(renderPublicContent("/", { ...publicSite, publicSite: { published: false } }), "");
 assert.equal(renderPublicContent("/dashboard", publicSite), "");
+const identitySite = { ...publicSite, publicSite: { ...publicSite.publicSite, aboutBody: "Example Founder founded Example Coaching.", socialLinks: [{ platform: "LinkedIn", url: "https://www.linkedin.com/company/example" }, { label: "Unsafe", url: "javascript:alert(1)" }] } };
+const identityHtml = renderPublicContent("/", identitySite);
+assert(identityHtml.includes("Example Founder founded Example Coaching."));
+assert(identityHtml.includes('href="https://www.linkedin.com/company/example"'));
+assert(!identityHtml.includes("javascript:"));
 console.log("AI attribution classification, private URL exclusions, source precedence, and crawler HTML safety passed.");
 
 async function databaseTests() {
