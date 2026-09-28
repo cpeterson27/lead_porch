@@ -54,6 +54,7 @@ import {
   uploadKnowledgePdfs,
   fetchDocusignStatus,
   connectDocusign,
+  setupDocusignJwt,
   fetchContracts,
   createContract,
   sendContractForSignature,
@@ -468,19 +469,47 @@ function ContractContactPicker({ contacts, selectedId, onSelect }) {
 }
 
 export function CoachingContracts() {
-  const [docusign, setDocusign] = useState({ connected: false, status: "not_configured" }); const [contracts, setContracts] = useState([]); const [contacts, setContacts] = useState([]); const [notice, setNotice] = useState(null);
+  const [docusign, setDocusign] = useState({ connected: false, status: "not_configured", jwtConfigured: false }); const [contracts, setContracts] = useState([]); const [contacts, setContacts] = useState([]); const [notice, setNotice] = useState(null);
   const [connectForm, setConnectForm] = useState({ integrationKey: "", clientSecret: "", accountId: "" });
+  const [docusignUserId, setDocusignUserId] = useState("");
+  const [jwtSetup, setJwtSetup] = useState(null); // { publicKeyPem, consentUrl } once generated
+  const [jwtBusy, setJwtBusy] = useState(false);
   const [form, setForm] = useState({ contactId: "", documentName: "", signerName: "", signerEmail: "" });
+  const [pendingFiles, setPendingFiles] = useState({}); // contractId -> File chosen to send
+  const [sendingId, setSendingId] = useState("");
   const load = useCallback(() => Promise.all([fetchDocusignStatus(), fetchContracts(), fetchContacts({ limit: 500 })]).then(([status, rows, contactRows]) => { setDocusign(status); setContracts(rows); setContacts(Array.isArray(contactRows) ? contactRows : contactRows.data || []); }).catch((e) => setNotice({ type: "error", message: errorMessage(e) })), []);
   useEffect(() => { load(); }, [load]);
-  const connect = async (event) => { event.preventDefault(); try { await connectDocusign(connectForm); setConnectForm({ integrationKey: "", clientSecret: "", accountId: "" }); setNotice({ type: "success", message: "DocuSign credentials saved." }); await load(); } catch (error) { setNotice({ type: "error", message: errorMessage(error) }); } };
+  const connect = async (event) => { event.preventDefault(); try { await connectDocusign(connectForm); setConnectForm({ integrationKey: "", clientSecret: "", accountId: "" }); setNotice({ type: "success", message: "DocuSign credentials saved. Next, set up signing below." }); await load(); } catch (error) { setNotice({ type: "error", message: errorMessage(error) }); } };
+  const setUpSigning = async (event) => {
+    event.preventDefault();
+    setJwtBusy(true);
+    try { setJwtSetup(await setupDocusignJwt(docusignUserId)); setNotice({ type: "success", message: "Keypair generated. Finish the two steps below." }); await load(); }
+    catch (error) { setNotice({ type: "error", message: errorMessage(error) }); }
+    finally { setJwtBusy(false); }
+  };
   const selectContact = (contact) => setForm((current) => contact ? { ...current, contactId: contact._id, signerName: labelOfContact(contact), signerEmail: contact.email || "" } : { ...current, contactId: "", signerName: "", signerEmail: "" });
   const save = async (event) => { event.preventDefault(); if (!form.contactId) { setNotice({ type: "error", message: "Choose a contact from the search results before creating the contract." }); return; } try { await createContract(form); setForm({ contactId: "", documentName: "", signerName: "", signerEmail: "" }); setNotice({ type: "success", message: "Draft contract created." }); await load(); } catch (error) { setNotice({ type: "error", message: errorMessage(error) }); } };
-  const send = async (contract) => { try { await sendContractForSignature(contract._id); setNotice({ type: "success", message: "Sent for signature." }); await load(); } catch (error) { setNotice({ type: error.response?.data?.code === "DOCUSIGN_SEND_NOT_IMPLEMENTED" ? "info" : "error", message: errorMessage(error) }); } };
+  const send = async (contract) => {
+    const file = pendingFiles[contract._id];
+    if (!file) { setNotice({ type: "error", message: "Attach the document to sign first." }); return; }
+    setSendingId(contract._id);
+    try { await sendContractForSignature(contract._id, file); setNotice({ type: "success", message: "Sent for signature." }); await load(); }
+    catch (error) { setNotice({ type: "error", message: errorMessage(error) }); }
+    finally { setSendingId(""); }
+  };
   return <div className="coaching-page"><PageHeader eyebrow="Coaching CRM" title="Contracts" description="Draft and track e-signature contracts. Sending through DocuSign activates once your account is connected below." /><CoachingNav active="contracts" /><Notice value={notice} />
-    <section className="coaching-panel"><h2>DocuSign connection</h2>{docusign.connected ? <p>Connected · account {docusign.accountId || "on file"}</p> : <form className="coaching-form" onSubmit={connect}><div className="coaching-form__grid"><label>Integration Key<input required value={connectForm.integrationKey} onChange={(e) => setConnectForm({ ...connectForm, integrationKey: e.target.value })} /></label><label>Client Secret<input required type="password" value={connectForm.clientSecret} onChange={(e) => setConnectForm({ ...connectForm, clientSecret: e.target.value })} /></label><label>Account ID<input required value={connectForm.accountId} onChange={(e) => setConnectForm({ ...connectForm, accountId: e.target.value })} /></label></div><Button type="submit">Connect DocuSign</Button></form>}</section>
+    <section className="coaching-panel"><h2>DocuSign connection</h2>
+      {!docusign.connected ? <form className="coaching-form" onSubmit={connect}><div className="coaching-form__grid"><label>Integration Key<input required value={connectForm.integrationKey} onChange={(e) => setConnectForm({ ...connectForm, integrationKey: e.target.value })} /></label><label>Client Secret<input required type="password" value={connectForm.clientSecret} onChange={(e) => setConnectForm({ ...connectForm, clientSecret: e.target.value })} /></label><label>Account ID<input required value={connectForm.accountId} onChange={(e) => setConnectForm({ ...connectForm, accountId: e.target.value })} /></label></div><Button type="submit">Connect DocuSign</Button></form>
+      : <p>Connected · account {docusign.accountId || "on file"}</p>}
+      {docusign.connected && !docusign.jwtConfigured ? <form className="coaching-form" onSubmit={setUpSigning}><h3>Step 2: set up signing</h3><p className="coaching-muted">Find your DocuSign User ID on the same Apps and Keys page as your Account ID.</p><label>DocuSign User ID<input required value={docusignUserId} onChange={(e) => setDocusignUserId(e.target.value)} /></label><Button type="submit" loading={jwtBusy}>Generate keypair</Button></form> : null}
+      {jwtSetup ? <div className="coaching-form"><h3>Finish these two steps in DocuSign</h3>
+        <label>1. Paste this public key into DocuSign → your app → Authentication → Add RSA Keypair<textarea readOnly rows={6} value={jwtSetup.publicKeyPem} onFocus={(e) => e.target.select()} /></label>
+        <a href={jwtSetup.consentUrl} target="_blank" rel="noreferrer"><Button type="button">2. Open consent link and approve</Button></a>
+      </div> : null}
+      {docusign.connected && docusign.jwtConfigured ? <p className="coaching-muted">Signing is set up. If sending ever fails with a consent error, redo step 2 above.</p> : null}
+    </section>
     <section className="coaching-panel"><h2>New contract</h2><form className="coaching-form" onSubmit={save}><div className="coaching-form__grid"><ContractContactPicker contacts={contacts} selectedId={form.contactId} onSelect={selectContact} /><label>Document name<input required value={form.documentName} onChange={(e) => setForm({ ...form, documentName: e.target.value })} placeholder="Coaching Agreement" /></label><label>Signer name<input required value={form.signerName} onChange={(e) => setForm({ ...form, signerName: e.target.value })} /></label><label>Signer email<input required type="email" value={form.signerEmail} onChange={(e) => setForm({ ...form, signerEmail: e.target.value })} /></label></div><Button type="submit">Create draft</Button></form></section>
-    <section className="coaching-panel"><h2>Contracts</h2>{contracts.length ? <div className="coaching-list">{contracts.map((c) => <article className="coaching-row coaching-row--actions" key={c._id}><div className="coaching-avatar">{labelOfContact(c.contactId)[0]}</div><div className="coaching-row__main"><strong>{c.documentName}</strong><span>{labelOfContact(c.contactId)} · {dateLabel(c.createdAt)}</span></div><StatusBadge tone={c.status === "signed" ? "success" : c.status === "declined" || c.status === "voided" ? "danger" : "info"}>{human(c.status)}</StatusBadge>{c.status === "draft" ? <div className="coaching-row__buttons"><Button size="sm" onClick={() => send(c)}>Send for signature</Button></div> : null}</article>)}</div> : <EmptyState icon={<FiClipboard />} title="No contracts yet" description="Create a draft above to get started." />}</section>
+    <section className="coaching-panel"><h2>Contracts</h2>{contracts.length ? <div className="coaching-list">{contracts.map((c) => <article className="coaching-row coaching-row--actions" key={c._id}><div className="coaching-avatar">{labelOfContact(c.contactId)[0]}</div><div className="coaching-row__main"><strong>{c.documentName}</strong><span>{labelOfContact(c.contactId)} · {dateLabel(c.createdAt)}</span>{c.lastError ? <span className="coaching-error-text">{c.lastError}</span> : null}</div><StatusBadge tone={c.status === "signed" ? "success" : c.status === "declined" || c.status === "voided" ? "danger" : "info"}>{human(c.status)}</StatusBadge>{c.status === "draft" ? <div className="coaching-row__buttons"><label className="contract-file-label">Attach<input type="file" accept="application/pdf" onChange={(e) => setPendingFiles({ ...pendingFiles, [c._id]: e.target.files?.[0] || null })} /></label><Button size="sm" disabled={!pendingFiles[c._id] || sendingId === c._id} onClick={() => send(c)}>{sendingId === c._id ? "Sending…" : "Send for signature"}</Button></div> : null}</article>)}</div> : <EmptyState icon={<FiClipboard />} title="No contracts yet" description="Create a draft above to get started." />}</section>
   </div>;
 }
 const communicationSegments = [

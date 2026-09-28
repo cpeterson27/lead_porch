@@ -811,12 +811,17 @@ export const fetchDocusignStatus = () =>
   api.get("/contracts/connection-status").then((res) => res.data.data);
 export const connectDocusign = (values) =>
   api.post("/contracts/connect", values).then((res) => res.data.data);
+export const setupDocusignJwt = (docusignUserId) =>
+  api.post("/contracts/setup-jwt", { docusignUserId }).then((res) => res.data.data);
 export const fetchContracts = (params = {}) =>
   api.get("/contracts", { params }).then((res) => res.data.data);
 export const createContract = (values) =>
   api.post("/contracts", values).then((res) => res.data.data);
-export const sendContractForSignature = (contractId) =>
-  api.post(`/contracts/${contractId}/send`).then((res) => res.data.data);
+export const sendContractForSignature = (contractId, file) => {
+  const body = new FormData();
+  body.append("document", file);
+  return api.post(`/contracts/${contractId}/send`, body).then((res) => res.data.data);
+};
 export const fetchCommissionRules = () =>
   api.get("/coaching/commission-rules").then((res) => res.data.data);
 export const saveCommissionRule = (values) =>
