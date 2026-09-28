@@ -181,4 +181,16 @@ async function sendForSignature({ workspaceId, contractId, fileBuffer, fileName 
   return contract;
 }
 
-module.exports = { connectionStatus, connect, setupJwt, createDraftContract, listContracts, sendForSignature };
+// Only ever a draft — once something is actually sent, the envelope (and
+// its record here) is the audit trail for a real signature request, so
+// deleting it silently would be the wrong behavior even if DocuSign itself
+// still allowed voiding it.
+async function deleteDraftContract({ workspaceId, contractId }) {
+  const contract = await Contract.findOne({ _id: contractId, workspaceId });
+  if (!contract) throw Object.assign(new Error("Contract not found"), { code: "CONTRACT_NOT_FOUND" });
+  if (contract.status !== "draft") throw Object.assign(new Error("Only a draft contract can be deleted"), { code: "CONTRACT_NOT_DRAFT" });
+  await contract.deleteOne();
+  return { deleted: true };
+}
+
+module.exports = { connectionStatus, connect, setupJwt, createDraftContract, listContracts, sendForSignature, deleteDraftContract };

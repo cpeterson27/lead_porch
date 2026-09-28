@@ -26,7 +26,7 @@ function asyncRoute(handler) {
 }
 
 function errorResponse(error, res) {
-  const status = ["DOCUSIGN_NOT_CONNECTED", "DOCUSIGN_JWT_NOT_CONFIGURED", "DOCUSIGN_CONSENT_REQUIRED", "DOCUSIGN_SEND_NOT_IMPLEMENTED", "CONTRACT_ALREADY_SENT"].includes(error?.code) ? 409
+  const status = ["DOCUSIGN_NOT_CONNECTED", "DOCUSIGN_JWT_NOT_CONFIGURED", "DOCUSIGN_CONSENT_REQUIRED", "DOCUSIGN_SEND_NOT_IMPLEMENTED", "CONTRACT_ALREADY_SENT", "CONTRACT_NOT_DRAFT"].includes(error?.code) ? 409
     : error?.code === "CONTRACT_NOT_FOUND" ? 404
     : error?.code?.includes("INVALID") ? 400
     : 400;
@@ -59,6 +59,10 @@ router.post("/", asyncRoute(async (req, res) => {
 router.post("/:id/send", documentUpload.single("document"), asyncRoute(async (req, res) => {
   const contract = await contractService.sendForSignature({ workspaceId: req.auth.workspaceId, contractId: req.params.id, fileBuffer: req.file?.buffer, fileName: req.file?.originalname });
   res.json({ success: true, data: contract });
+}));
+
+router.delete("/:id", asyncRoute(async (req, res) => {
+  res.json({ success: true, data: await contractService.deleteDraftContract({ workspaceId: req.auth.workspaceId, contractId: req.params.id }) });
 }));
 
 router.use((error, req, res, _next) => errorResponse(error, res));
