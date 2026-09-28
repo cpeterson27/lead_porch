@@ -26,7 +26,7 @@ function asyncRoute(handler) {
 }
 
 function errorResponse(error, res) {
-  const status = ["DOCUSIGN_NOT_CONNECTED", "DOCUSIGN_JWT_NOT_CONFIGURED", "DOCUSIGN_CONSENT_REQUIRED", "DOCUSIGN_SEND_NOT_IMPLEMENTED", "CONTRACT_ALREADY_SENT", "CONTRACT_NOT_DRAFT"].includes(error?.code) ? 409
+  const status = ["DOCUSIGN_NOT_CONNECTED", "DOCUSIGN_JWT_NOT_CONFIGURED", "DOCUSIGN_CONSENT_REQUIRED", "DOCUSIGN_SEND_NOT_IMPLEMENTED", "CONTRACT_ALREADY_SENT", "CONTRACT_NOT_DRAFT", "CONTRACT_DUPLICATE", "CONTRACT_NOT_SENT", "CONTRACT_NOT_PENDING"].includes(error?.code) ? 409
     : error?.code === "CONTRACT_NOT_FOUND" ? 404
     : error?.code?.includes("INVALID") ? 400
     : 400;
@@ -58,6 +58,11 @@ router.post("/", asyncRoute(async (req, res) => {
 
 router.post("/:id/send", documentUpload.single("document"), asyncRoute(async (req, res) => {
   const contract = await contractService.sendForSignature({ workspaceId: req.auth.workspaceId, contractId: req.params.id, fileBuffer: req.file?.buffer, fileName: req.file?.originalname });
+  res.json({ success: true, data: contract });
+}));
+
+router.post("/:id/resend", asyncRoute(async (req, res) => {
+  const contract = await contractService.resendEnvelope({ workspaceId: req.auth.workspaceId, contractId: req.params.id });
   res.json({ success: true, data: contract });
 }));
 

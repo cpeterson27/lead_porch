@@ -58,6 +58,7 @@ import {
   fetchContracts,
   createContract,
   sendContractForSignature,
+  resendContract,
   deleteDraftContract,
   fetchEvents,
   createEvent,
@@ -478,6 +479,9 @@ export function CoachingContracts() {
   const [form, setForm] = useState({ contactId: "", documentName: "", signerName: "", signerEmail: "" });
   const [pendingFiles, setPendingFiles] = useState({}); // contractId -> File chosen to send
   const [sendingId, setSendingId] = useState("");
+  const [resendingId, setResendingId] = useState("");
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const load = useCallback(() => Promise.all([fetchDocusignStatus(), fetchContracts(), fetchContacts({ limit: 500 })]).then(([status, rows, contactRows]) => { setDocusign(status); setContracts(rows); setContacts(Array.isArray(contactRows) ? contactRows : contactRows.data || []); }).catch((e) => setNotice({ type: "error", message: errorMessage(e) })), []);
   useEffect(() => { load(); }, [load]);
   const connect = async (event) => { event.preventDefault(); try { await connectDocusign(connectForm); setConnectForm({ integrationKey: "", clientSecret: "", accountId: "" }); setNotice({ type: "success", message: "DocuSign credentials saved. Next, set up signing below." }); await load(); } catch (error) { setNotice({ type: "error", message: errorMessage(error) }); } };
@@ -498,10 +502,18 @@ export function CoachingContracts() {
     catch (error) { setNotice({ type: "error", message: errorMessage(error) }); }
     finally { setSendingId(""); }
   };
-  const remove = async (contract) => {
-    if (!window.confirm(`Delete the draft "${contract.documentName}"? This can't be undone.`)) return;
-    try { await deleteDraftContract(contract._id); setNotice({ type: "success", message: "Draft deleted." }); await load(); }
+  const resend = async (contract) => {
+    setResendingId(contract._id);
+    try { await resendContract(contract._id); setNotice({ type: "success", message: "Resent — the signer gets a fresh notification for the same signing link, not a new one." }); await load(); }
     catch (error) { setNotice({ type: "error", message: errorMessage(error) }); }
+    finally { setResendingId(""); }
+  };
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteBusy(true);
+    try { await deleteDraftContract(deleteTarget._id); setNotice({ type: "success", message: "Draft deleted." }); setDeleteTarget(null); await load(); }
+    catch (error) { setNotice({ type: "error", message: errorMessage(error) }); }
+    finally { setDeleteBusy(false); }
   };
   return <div className="coaching-page"><PageHeader eyebrow="Coaching CRM" title="Contracts" description="Draft and track e-signature contracts. Sending through DocuSign activates once your account is connected below." /><CoachingNav active="contracts" /><Notice value={notice} />
     <section className="coaching-panel"><h2>DocuSign connection</h2>
@@ -516,7 +528,13 @@ export function CoachingContracts() {
       {docusign.connected && docusign.jwtConfigured && !jwtSetup ? <p className="coaching-muted">If sending ever fails with "no_valid_keys_or_signatures" or a consent error, regenerate the keypair above and redo both steps in DocuSign.</p> : null}
     </section>
     <section className="coaching-panel"><h2>New contract</h2><form className="coaching-form" onSubmit={save}><div className="coaching-form__grid"><ContractContactPicker contacts={contacts} selectedId={form.contactId} onSelect={selectContact} /><label>Document name<input required value={form.documentName} onChange={(e) => setForm({ ...form, documentName: e.target.value })} placeholder="Coaching Agreement" /></label><label>Signer name<input required value={form.signerName} onChange={(e) => setForm({ ...form, signerName: e.target.value })} /></label><label>Signer email<input required type="email" value={form.signerEmail} onChange={(e) => setForm({ ...form, signerEmail: e.target.value })} /></label></div><Button type="submit">Create draft</Button></form></section>
-    <section className="coaching-panel"><h2>Contracts</h2>{contracts.length ? <div className="coaching-list">{contracts.map((c) => <article className="coaching-row coaching-row--actions" key={c._id}><div className="coaching-avatar">{labelOfContact(c.contactId)[0]}</div><div className="coaching-row__main"><strong>{c.documentName}</strong><span>{labelOfContact(c.contactId)} · {dateLabel(c.createdAt)}</span>{c.lastError ? <span className="coaching-error-text">{c.lastError}</span> : null}</div><StatusBadge tone={c.status === "signed" ? "success" : c.status === "declined" || c.status === "voided" ? "danger" : "info"}>{human(c.status)}</StatusBadge>{c.status === "draft" ? <div className="coaching-row__buttons"><label className={`contract-file-label${pendingFiles[c._id] ? " contract-file-label--chosen" : ""}`}>{pendingFiles[c._id] ? pendingFiles[c._id].name : "Attach"}<input type="file" accept="application/pdf" onChange={(e) => setPendingFiles({ ...pendingFiles, [c._id]: e.target.files?.[0] || null })} /></label><Button size="sm" disabled={sendingId === c._id} onClick={() => send(c)}>{sendingId === c._id ? "Sending…" : "Send for signature"}</Button><Button size="sm" variant="outline" onClick={() => remove(c)}>Delete</Button></div> : null}</article>)}</div> : <EmptyState icon={<FiClipboard />} title="No contracts yet" description="Create a draft above to get started." />}</section>
+    <section className="coaching-panel"><h2>Contracts</h2>{contracts.length ? <div className="coaching-list">{contracts.map((c) => <article className="coaching-row coaching-row--actions" key={c._id}><div className="coaching-avatar">{labelOfContact(c.contactId)[0]}</div><div className="coaching-row__main"><strong>{c.documentName}</strong><span>{labelOfContact(c.contactId)} · {dateLabel(c.createdAt)}</span>{c.lastError ? <span className="coaching-error-text">{c.lastError}</span> : null}</div><StatusBadge tone={c.status === "signed" ? "success" : c.status === "declined" || c.status === "voided" ? "danger" : "info"}>{human(c.status)}</StatusBadge>
+      {c.status === "draft" ? <div className="coaching-row__buttons"><label className={`contract-file-label${pendingFiles[c._id] ? " contract-file-label--chosen" : ""}`}>{pendingFiles[c._id] ? pendingFiles[c._id].name : "Attach"}<input type="file" accept="application/pdf" onChange={(e) => setPendingFiles({ ...pendingFiles, [c._id]: e.target.files?.[0] || null })} /></label><Button size="sm" disabled={sendingId === c._id} onClick={() => send(c)}>{sendingId === c._id ? "Sending…" : "Send for signature"}</Button><Button size="sm" variant="outline" onClick={() => setDeleteTarget(c)}>Delete</Button></div> : null}
+      {["sent", "delivered"].includes(c.status) ? <div className="coaching-row__buttons"><Button size="sm" variant="outline" loading={resendingId === c._id} onClick={() => resend(c)}>Resend</Button></div> : null}
+    </article>)}</div> : <EmptyState icon={<FiClipboard />} title="No contracts yet" description="Create a draft above to get started." />}</section>
+    <Modal isOpen={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)} title="Delete draft?" footer={<><Button variant="outline" onClick={() => setDeleteTarget(null)}>Cancel</Button><Button variant="danger" loading={deleteBusy} onClick={confirmDelete}>Delete</Button></>}>
+      <p>Delete the draft "{deleteTarget?.documentName}"? This can't be undone.</p>
+    </Modal>
   </div>;
 }
 const communicationSegments = [

@@ -118,6 +118,12 @@ async function accountBaseUri(accessToken, accountId) {
 
 async function createDraftContract({ workspaceId, contactId, salesOpportunityId, enrollmentId, documentName, signerName, signerEmail, createdBy }) {
   if (!contactId || !documentName) throw Object.assign(new Error("Contact and document name are required"), { code: "CONTRACT_INVALID" });
+  // Not a hard "one contract ever" rule — a signed/declined/voided contract
+  // is done, and a new one (a renewal, say) is legitimate after that. This
+  // only blocks creating a second copy of the same still-live request,
+  // which is what actually produces the "did I get two of these?" mix-up.
+  const existing = await Contract.findOne({ workspaceId, contactId, documentName, status: { $in: ["draft", "sent", "delivered"] } }).select("_id status").lean();
+  if (existing) throw Object.assign(new Error(`This contact already has "${documentName}" ${existing.status === "draft" ? "as an unsent draft" : "out for signature"} — resend or delete that one instead of creating another.`), { code: "CONTRACT_DUPLICATE" });
   return Contract.create({ workspaceId, contactId, salesOpportunityId: salesOpportunityId || null, enrollmentId: enrollmentId || null, documentName, signerName: signerName || "", signerEmail: signerEmail || "", createdBy });
 }
 
@@ -139,46 +145,81 @@ async function sendForSignature({ workspaceId, contractId, fileBuffer, fileName 
   if (!fileBuffer?.length) throw Object.assign(new Error("Attach the document to send for signature"), { code: "CONTRACT_FILE_REQUIRED" });
   if (!contract.signerEmail) throw Object.assign(new Error("This contract has no signer email on file"), { code: "CONTRACT_SIGNER_MISSING" });
 
-  const { accessToken, accountId } = await getAccessToken(workspaceId);
-  const baseUri = await accountBaseUri(accessToken, accountId);
-  const extension = (String(fileName || "document.pdf").split(".").pop() || "pdf").toLowerCase();
-  const envelope = {
-    emailSubject: `Please sign: ${contract.documentName}`,
-    documents: [{ documentId: "1", name: contract.documentName, fileExtension: extension, documentBase64: fileBuffer.toString("base64") }],
-    recipients: {
-      signers: [{
-        email: contract.signerEmail,
-        name: contract.signerName || contract.signerEmail,
-        recipientId: "1",
-        routingOrder: "1",
-        // A fixed default position near the bottom of page 1 — not aware of
-        // this document's actual layout, so this is a starting point to
-        // confirm looks right on a real send, not a guarantee it lands on
-        // a blank area of every document.
-        tabs: { signHereTabs: [{ documentId: "1", pageNumber: "1", xPosition: "100", yPosition: "700" }] },
-      }],
-    },
-    status: "sent",
-  };
+  // Everything from here on talks to DocuSign — any failure, including an
+  // auth failure before an envelope is ever attempted, gets recorded onto
+  // the contract itself so it's visible on the row, not just in a notice
+  // banner that's easy to miss or scroll past.
+  try {
+    const { accessToken, accountId } = await getAccessToken(workspaceId);
+    const baseUri = await accountBaseUri(accessToken, accountId);
+    const extension = (String(fileName || "document.pdf").split(".").pop() || "pdf").toLowerCase();
+    const envelope = {
+      emailSubject: `Please sign: ${contract.documentName}`,
+      documents: [{ documentId: "1", name: contract.documentName, fileExtension: extension, documentBase64: fileBuffer.toString("base64") }],
+      recipients: {
+        signers: [{
+          email: contract.signerEmail,
+          name: contract.signerName || contract.signerEmail,
+          recipientId: "1",
+          routingOrder: "1",
+          // A fixed default position near the bottom of page 1 — not aware
+          // of this document's actual layout, so this is a starting point
+          // to confirm looks right on a real send, not a guarantee it
+          // lands on a blank area of every document.
+          tabs: { signHereTabs: [{ documentId: "1", pageNumber: "1", xPosition: "100", yPosition: "700" }] },
+        }],
+      },
+      status: "sent",
+    };
 
-  const response = await fetch(`${baseUri}/restapi/v2.1/accounts/${accountId}/envelopes`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-    body: JSON.stringify(envelope),
-  });
-  const data = await response.json();
-  if (!response.ok) {
-    contract.lastError = data.message || (data.errorDetails ? JSON.stringify(data.errorDetails) : "DocuSign rejected the envelope");
+    const response = await fetch(`${baseUri}/restapi/v2.1/accounts/${accountId}/envelopes`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify(envelope),
+    });
+    const data = await response.json();
+    if (!response.ok) throw docusignError(data.message || (data.errorDetails ? JSON.stringify(data.errorDetails) : "DocuSign rejected the envelope"), "DOCUSIGN_SEND_FAILED");
+
+    contract.status = "sent";
+    contract.envelopeId = data.envelopeId;
+    contract.sentAt = new Date();
+    contract.lastError = "";
     await contract.save();
-    throw docusignError(contract.lastError, "DOCUSIGN_SEND_FAILED");
+    return contract;
+  } catch (error) {
+    contract.lastError = error.message || "DocuSign send failed";
+    await contract.save();
+    throw error;
   }
+}
 
-  contract.status = "sent";
-  contract.envelopeId = data.envelopeId;
-  contract.sentAt = new Date();
-  contract.lastError = "";
-  await contract.save();
-  return contract;
+// Re-notifies whichever recipients haven't yet signed — the same envelope,
+// not a new one, so "did you get it?" never means a student ends up with
+// two separate signing links for the same agreement.
+async function resendEnvelope({ workspaceId, contractId }) {
+  const contract = await Contract.findOne({ _id: contractId, workspaceId });
+  if (!contract) throw Object.assign(new Error("Contract not found"), { code: "CONTRACT_NOT_FOUND" });
+  if (!contract.envelopeId) throw Object.assign(new Error("This contract hasn't been sent yet"), { code: "CONTRACT_NOT_SENT" });
+  if (!["sent", "delivered"].includes(contract.status)) throw Object.assign(new Error("Only a contract still awaiting signature can be resent"), { code: "CONTRACT_NOT_PENDING" });
+
+  try {
+    const { accessToken, accountId } = await getAccessToken(workspaceId);
+    const baseUri = await accountBaseUri(accessToken, accountId);
+    const response = await fetch(`${baseUri}/restapi/v2.1/accounts/${accountId}/envelopes/${contract.envelopeId}?resend_envelope=true`, {
+      method: "PUT",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ envelopeId: contract.envelopeId }),
+    });
+    const data = await response.json();
+    if (!response.ok) throw docusignError(data.message || "DocuSign could not resend that envelope", "DOCUSIGN_RESEND_FAILED");
+    contract.lastError = "";
+    await contract.save();
+    return contract;
+  } catch (error) {
+    contract.lastError = error.message || "DocuSign resend failed";
+    await contract.save();
+    throw error;
+  }
 }
 
 // Only ever a draft — once something is actually sent, the envelope (and
@@ -193,4 +234,4 @@ async function deleteDraftContract({ workspaceId, contractId }) {
   return { deleted: true };
 }
 
-module.exports = { connectionStatus, connect, setupJwt, createDraftContract, listContracts, sendForSignature, deleteDraftContract };
+module.exports = { connectionStatus, connect, setupJwt, createDraftContract, listContracts, sendForSignature, resendEnvelope, deleteDraftContract };

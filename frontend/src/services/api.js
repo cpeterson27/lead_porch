@@ -824,6 +824,8 @@ export const sendContractForSignature = (contractId, file) => {
 };
 export const deleteDraftContract = (contractId) =>
   api.delete(`/contracts/${contractId}`).then((res) => res.data.data);
+export const resendContract = (contractId) =>
+  api.post(`/contracts/${contractId}/resend`).then((res) => res.data.data);
 export const fetchCommissionRules = () =>
   api.get("/coaching/commission-rules").then((res) => res.data.data);
 export const saveCommissionRule = (values) =>
