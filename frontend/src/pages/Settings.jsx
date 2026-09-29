@@ -9,6 +9,7 @@ import {
   FiImage,
   FiLock,
   FiMail,
+  FiMessageCircle,
   FiShield,
   FiTrash2,
   FiUser,
@@ -117,6 +118,8 @@ export default function Settings() {
 
   const [newMcpToken, setNewMcpToken] = useState(null);
   const [mcpName, setMcpName] = useState("Lead Porch");
+  const [chatGptSetup, setChatGptSetup] = useState(null); // { token, schemaUrl } once created
+  const [chatGptBusy, setChatGptBusy] = useState(false);
   const [oauthConnections, setOauthConnections] = useState([]);
   const [copiedValue, setCopiedValue] = useState("");
 
@@ -189,6 +192,24 @@ export default function Settings() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const connectChatGpt = async () => {
+    try {
+      setChatGptBusy(true);
+      const response = await createMcpAccessToken("ChatGPT");
+      setChatGptSetup({ token: response.data.token, schemaUrl: getGptActionsSchemaEndpoint() });
+      setMcpTokens((items) => [response.data, ...items]);
+      setError("");
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to set up the ChatGPT connection.");
+    } finally {
+      setChatGptBusy(false);
+    }
+  };
+  const copyForChatGpt = async () => {
+    if (!chatGptSetup) return;
+    await copyValue("chatgpt-both", `Lead Porch Action URL: ${chatGptSetup.schemaUrl}\nLead Porch API Key: ${chatGptSetup.token}`);
   };
 
   const revokeAi = async (id) => {
@@ -664,6 +685,39 @@ export default function Settings() {
                 lead lists. Email sending is not available through this connection.
               </p>
             </header>
+
+            {/* Simple ChatGPT setup, built for a non-technical business owner */}
+            <section className="settings-section">
+              <div className="settings-section__head">
+                <div className="settings-section__icon"><FiMessageCircle /></div>
+                <div className="settings-section__head-text">
+                  <h3>Connect ChatGPT (easiest option)</h3>
+                  <p>One click here, then three copy-paste steps inside ChatGPT. Requires a paid ChatGPT plan (Plus, Team, or Enterprise) — the free plan can't create Custom GPTs.</p>
+                </div>
+              </div>
+              {!chatGptSetup ? (
+                <Button loading={chatGptBusy} onClick={connectChatGpt}>Set up ChatGPT</Button>
+              ) : (
+                <div style={{ display: "grid", gap: "14px" }}>
+                  <Button variant="outline" onClick={copyForChatGpt}>
+                    {copiedValue === "chatgpt-both" ? <><FiCheck /> Copied both — go paste them into ChatGPT</> : <><FiCopy /> Copy both values for ChatGPT</>}
+                  </Button>
+                  <ol className="settings-steps">
+                    <li>In ChatGPT, go to <strong>Explore GPTs → Create a GPT → Configure → Actions → Create new action</strong>.</li>
+                    <li>Where it asks for a schema/URL, paste the <strong>Action URL</strong> you just copied.</li>
+                    <li>Set Authentication to <strong>API Key</strong> (type: Bearer), and paste the <strong>API Key</strong> you just copied.</li>
+                    <li>Save. That GPT can now answer questions using live Lead Porch data.</li>
+                  </ol>
+                  <div className="settings-oauth-note">
+                    <FiShield />
+                    <span>
+                      <strong>Safe by design</strong>
+                      <small>Read-only research and lead data only — it can never send emails or texts on your behalf, and you can revoke it any time below.</small>
+                    </span>
+                  </div>
+                </div>
+              )}
+            </section>
 
             {/* Codex OAuth */}
             <section className="settings-section">

@@ -50,6 +50,7 @@ const socialAutomationRouter = require("./routes/socialAutomation");
 const automationsRouter = require("./routes/automations");
 const analyticsRouter = require("./routes/analytics");
 const coachingRouter = require("./routes/coaching");
+const studentPortalRouter = require("./routes/studentPortal");
 const contractsRouter = require("./routes/contracts");
 const publicSiteRouter = require("./routes/publicSite");
 const publicManagementRouter = require("./routes/publicManagement");
@@ -210,7 +211,8 @@ connectDatabase(mongoUri)
         req.path === "/eventbrite/oauth/callback" ||
         req.path === "/gmail/oauth/callback" ||
         req.path === "/google-business-profile/oauth/callback" ||
-        req.path === "/contracts/oauth/callback";
+        req.path === "/contracts/oauth/callback" ||
+        req.path.startsWith("/student-portal/");
       const publicMeetupCallback = req.path === "/meetup/oauth/callback";
       const publicCoachingCalendarCallback = req.path === "/coaching/calendar/oauth/callback";
       const publicCoachingZoomRoute = req.path === "/coaching/zoom/oauth/callback" || req.path === "/coaching/zoom/webhook";
@@ -232,6 +234,7 @@ connectDatabase(mongoUri)
     app.use("/api/activities", activitiesRouter);
     app.use("/api/opportunities", opportunitiesRouter);
     app.use("/api/coaching", coachingRouter);
+    app.use("/api/student-portal", studentPortalRouter);
     app.use("/api/contracts", contractsRouter);
     app.use("/api/ambassadors", ambassadorsRouter);
     app.use("/api/conversations", conversationsRouter);

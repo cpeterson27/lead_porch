@@ -822,6 +822,20 @@ export const sendContractForSignature = (contractId, file) => {
   body.append("document", file);
   return api.post(`/contracts/${contractId}/send`, body).then((res) => res.data.data);
 };
+export const fetchCourseModules = (coachingProgramId) =>
+  api.get("/coaching/modules", { params: { coachingProgramId } }).then((res) => res.data.data);
+export const createCourseModule = (values) =>
+  api.post("/coaching/modules", values).then((res) => res.data.data);
+export const updateCourseModule = (id, values) =>
+  api.patch(`/coaching/modules/${id}`, values).then((res) => res.data.data);
+export const deleteCourseModule = (id) =>
+  api.delete(`/coaching/modules/${id}`).then((res) => res.data.data);
+export const createPortalLink = (enrollmentId) =>
+  api.post(`/coaching/enrollments/${enrollmentId}/portal-link`).then((res) => res.data.data);
+export const fetchStudentPortal = (token) =>
+  api.get(`/student-portal/${token}`).then((res) => res.data.data);
+export const completeStudentModule = (token, moduleId) =>
+  api.post(`/student-portal/${token}/modules/${moduleId}/complete`).then((res) => res.data.data);
 export const deleteDraftContract = (contractId) =>
   api.delete(`/contracts/${contractId}`).then((res) => res.data.data);
 export const resendContract = (contractId) =>

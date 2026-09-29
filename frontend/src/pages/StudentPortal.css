@@ -1,0 +1,34 @@
+.student-portal{min-height:100vh;display:grid;place-items:start center;padding:clamp(1rem,4vw,3rem);background:#f5f4ef;color:#14201d}
+.student-portal__panel{width:min(48rem,100%);background:#fff;border:1px solid #d9ddd8;border-radius:1.5rem;padding:clamp(1.5rem,5vw,3rem);box-shadow:0 1.5rem 4rem rgba(14,35,29,.08);margin:2rem 0}
+.student-portal__eyebrow{text-transform:uppercase;letter-spacing:.14em;color:#1d6858;font-weight:800;font-size:.85rem}
+.student-portal__panel h1{font-size:clamp(1.7rem,5vw,2.6rem);line-height:1.1;margin:.5rem 0 1rem}
+.student-portal__intro{color:#4a5750;line-height:1.6;margin:0 0 1.5rem}
+.student-portal__progress{margin:1.5rem 0}
+.student-portal__progress-bar{background:#eceae2;border-radius:999px;height:10px;overflow:hidden}
+.student-portal__progress-bar>div{background:#1d6858;height:100%;border-radius:999px;transition:width .3s ease}
+.student-portal__progress span{display:block;margin-top:.5rem;color:#65716d;font-size:.85rem;font-weight:700}
+.student-portal__sessions{border:1px solid #d9ddd8;border-radius:1rem;padding:1rem 1.25rem;margin:1.5rem 0;background:#f9faf8}
+.student-portal__sessions h2{font-size:1rem;margin:0 0 .6rem}
+.student-portal__session{display:flex;justify-content:space-between;align-items:center;gap:1rem;padding:.4rem 0;font-size:.9rem}
+.student-portal__session a{background:#1d6858;color:#fff;border-radius:999px;padding:.4rem 1rem;text-decoration:none;font-weight:700;font-size:.82rem;white-space:nowrap}
+.student-portal__error{color:#a12828;background:#fdf0ef;border-radius:.75rem;padding:.75rem 1rem}
+.student-portal__weeks{display:grid;gap:1rem;margin-top:1.5rem}
+.student-portal__week{border:1px solid #d9ddd8;border-radius:1.1rem;padding:1.25rem 1.5rem}
+.student-portal__week.is-locked{opacity:.6;background:#f9faf8}
+.student-portal__week.is-complete{border-color:#8fcbb0;background:#f3faf6}
+.student-portal__week header{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap}
+.student-portal__week-number{background:#eceae2;border-radius:999px;padding:.25rem .8rem;font-size:.75rem;font-weight:800;color:#4a5750}
+.student-portal__week h3{margin:0;font-size:1.1rem;flex:1}
+.student-portal__badge{border-radius:999px;padding:.25rem .8rem;font-size:.75rem;font-weight:800;background:#dcf2e6;color:#16714d}
+.student-portal__badge--locked{background:#eceae2;color:#65716d}
+.student-portal__week p{color:#4a5750;line-height:1.6;margin:.75rem 0}
+.student-portal__resources{list-style:none;margin:.75rem 0;padding:0;display:grid;gap:.4rem}
+.student-portal__resources a{color:#14201d;text-decoration:none;font-weight:700;font-size:.92rem}
+.student-portal__resources a:hover{text-decoration:underline}
+.student-portal__homework{background:#f9faf8;border-radius:.8rem;padding:.9rem 1.1rem;margin:.75rem 0}
+.student-portal__homework strong{display:block;margin-bottom:.3rem;font-size:.85rem}
+.student-portal__homework p{margin:0;color:#4a5750}
+.student-portal__week button{border:0;border-radius:999px;padding:.7rem 1.4rem;background:#174f43;color:#fff;font:inherit;font-weight:800;cursor:pointer;margin-top:.5rem}
+.student-portal__week button:disabled{opacity:.65;cursor:wait}
+.student-portal__locked-note{color:#65716d;font-style:italic;margin:.5rem 0 0}
+@media(max-width:34rem){.student-portal__panel{border-radius:1rem}.student-portal__week{padding:1rem}}

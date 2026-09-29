@@ -60,6 +60,11 @@ import {
   sendContractForSignature,
   resendContract,
   deleteDraftContract,
+  fetchCourseModules,
+  createCourseModule,
+  updateCourseModule,
+  deleteCourseModule,
+  createPortalLink,
   fetchEvents,
   createEvent,
   registerEventContact,
@@ -73,6 +78,7 @@ const adminTabs = [
   ["students", "Students", "/coaching/students"],
   ["coaches", "Coaches", "/coaching/coaches"],
   ["programs", "Programs", "/coaching/programs"],
+  ["curriculum", "Curriculum", "/coaching/curriculum"],
   ["enrollments", "Enrollments", "/coaching/enrollments"],
   ["assignments", "Assignments", "/coaching/assignments"],
   ["sessions", "Sessions", "/coaching/sessions"],
@@ -328,10 +334,56 @@ export function CoachingEnrollments() {
   useEffect(() => { const timer = setTimeout(load, 200); return () => clearTimeout(timer); }, [load]);
   const save = async (event) => { event.preventDefault(); try { await createCoachingEnrollment({ ...form, expectedEndAt: form.expectedEndAt || null }); setOpen(false); setNotice({ type: "success", message: "Student enrolled." }); await load(); } catch (error) { setNotice({ type: "error", message: errorMessage(error) }); } };
   const transition = async (item, status) => { try { await transitionCoachingEnrollment(item._id, { status, currentStageKey: item.currentStageKey }); await load(); } catch (error) { setNotice({ type: "error", message: errorMessage(error) }); } };
+  const copyPortalLink = async (item) => {
+    try { const { portalPath } = await createPortalLink(item._id); await navigator.clipboard.writeText(`${window.location.origin}${portalPath}`); setNotice({ type: "success", message: `Portal link copied — send it to ${labelOfContact(item.contactId)} directly.` }); }
+    catch (error) { setNotice({ type: "error", message: errorMessage(error) }); }
+  };
   return <div className="coaching-page"><PageHeader eyebrow="Coaching CRM" title="Program enrollments" description="Choose a program for a student, then track their progress and coach assignments." actions={<Button onClick={() => setOpen(true)}><FiPlus /> Enroll in program</Button>} /><CoachingNav active="enrollments" /><Notice value={notice} />
     <Toolbar search={<input value={filters.search} onChange={(event) => setFilters({ ...filters, search: event.target.value })} placeholder="Search contact" />} filters={<><select value={filters.programId} onChange={(event) => setFilters({ ...filters, programId: event.target.value })}><option value="">All programs</option>{programs.map((item) => <option value={item._id} key={item._id}>{item.name}</option>)}</select><select value={filters.status} onChange={(event) => setFilters({ ...filters, status: event.target.value })}><option value="">All statuses</option>{Object.keys(enrollmentTransitions).map((item) => <option key={item}>{item}</option>)}</select></>} results={`${enrollments.length} records`} />
-    {enrollments.length ? <div className="coaching-list">{enrollments.map((item) => <article className="coaching-row coaching-row--actions" key={item._id}><div className="coaching-avatar">{labelOfContact(item.contactId).slice(0, 1)}</div><div className="coaching-row__main"><Link to={`/coaching/students/${idOf(item.contactId)}`}>{labelOfContact(item.contactId)}</Link><span>{item.coachingProgramId?.name} · {dateLabel(item.startsAt)}</span></div><span>{human(item.currentStageKey)}</span><StatusBadge tone={tone(item.status)}>{human(item.status)}</StatusBadge>{enrollmentTransitions[item.status]?.length ? <select aria-label={`Transition ${labelOfContact(item.contactId)}`} value="" onChange={(event) => transition(item, event.target.value)}><option value="">Change status…</option>{enrollmentTransitions[item.status].map((next) => <option key={next}>{next}</option>)}</select> : <span className="coaching-muted">Closed</span>}</article>)}</div> : <EmptyState icon={<FiUsers />} title="No enrollments" description="Choose an existing contact and the program they are joining." action={<Button onClick={() => setOpen(true)}>Enroll in program</Button>} />}
+    {enrollments.length ? <div className="coaching-list">{enrollments.map((item) => <article className="coaching-row coaching-row--actions" key={item._id}><div className="coaching-avatar">{labelOfContact(item.contactId).slice(0, 1)}</div><div className="coaching-row__main"><Link to={`/coaching/students/${idOf(item.contactId)}`}>{labelOfContact(item.contactId)}</Link><span>{item.coachingProgramId?.name} · {dateLabel(item.startsAt)}</span></div><span>{human(item.currentStageKey)}</span><StatusBadge tone={tone(item.status)}>{human(item.status)}</StatusBadge><div className="coaching-row__buttons">{enrollmentTransitions[item.status]?.length ? <select aria-label={`Transition ${labelOfContact(item.contactId)}`} value="" onChange={(event) => transition(item, event.target.value)}><option value="">Change status…</option>{enrollmentTransitions[item.status].map((next) => <option key={next}>{next}</option>)}</select> : <span className="coaching-muted">Closed</span>}<Button size="sm" variant="outline" onClick={() => copyPortalLink(item)}>Copy portal link</Button></div></article>)}</div> : <EmptyState icon={<FiUsers />} title="No enrollments" description="Choose an existing contact and the program they are joining." action={<Button onClick={() => setOpen(true)}>Enroll in program</Button>} />}
     <Modal isOpen={open} onClose={() => setOpen(false)} title="Enroll in program"><form className="coaching-form" onSubmit={save}><label>Student / contact<select required value={form.contactId} onChange={(event) => setForm({ ...form, contactId: event.target.value })}><option value="">Select contact</option>{contacts.map((contact) => <option value={contact._id} key={contact._id}>{labelOfContact(contact)} · {contact.email || "No email"}</option>)}</select></label><label>Program<select required value={form.coachingProgramId} onChange={(event) => setForm({ ...form, coachingProgramId: event.target.value })}><option value="">Select program</option>{programs.filter((item) => item.status !== "archived").map((item) => <option value={item._id} key={item._id}>{item.name}</option>)}</select></label><div className="coaching-form__grid"><label>Status<select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value })}><option value="pending">Pending</option><option value="active">Active</option></select></label><label>Starts<input required type="date" value={form.startsAt} onChange={(event) => setForm({ ...form, startsAt: event.target.value })} /></label><label>Expected end<input type="date" value={form.expectedEndAt} onChange={(event) => setForm({ ...form, expectedEndAt: event.target.value })} /></label></div><Button type="submit" block>Enroll in program</Button></form></Modal>
+  </div>;
+}
+
+const resourceTypeLabels = { video: "Video", pdf: "PDF", worksheet: "Worksheet", script: "Script", template: "Template", link: "Link" };
+const emptyModuleForm = { weekNumber: 1, title: "", description: "", homeworkPrompt: "", resources: [] };
+export function CoachingCurriculum() {
+  const [programs, setPrograms] = useState([]); const [programId, setProgramId] = useState(""); const [modules, setModules] = useState([]); const [notice, setNotice] = useState(null);
+  const [open, setOpen] = useState(false); const [editing, setEditing] = useState(null); const [form, setForm] = useState(emptyModuleForm);
+  const [resourceDraft, setResourceDraft] = useState({ type: "video", title: "", url: "" });
+  useEffect(() => { fetchCoachingPrograms().then((items) => { setPrograms(items); if (!programId && items.length) setProgramId(items[0]._id); }).catch((error) => setNotice({ type: "error", message: errorMessage(error) })); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const load = useCallback(() => { if (!programId) return; fetchCourseModules(programId).then(setModules).catch((error) => setNotice({ type: "error", message: errorMessage(error) })); }, [programId]);
+  useEffect(() => { load(); }, [load]);
+  const startNew = () => { setEditing(null); setForm({ ...emptyModuleForm, weekNumber: (modules[modules.length - 1]?.weekNumber || 0) + 1 }); setOpen(true); };
+  const startEdit = (module) => { setEditing(module); setForm({ weekNumber: module.weekNumber, title: module.title, description: module.description, homeworkPrompt: module.homeworkPrompt, resources: module.resources || [] }); setOpen(true); };
+  const addResource = () => { if (!resourceDraft.title.trim() || !resourceDraft.url.trim()) return; setForm({ ...form, resources: [...form.resources, resourceDraft] }); setResourceDraft({ type: "video", title: "", url: "" }); };
+  const removeResource = (index) => setForm({ ...form, resources: form.resources.filter((_, itemIndex) => itemIndex !== index) });
+  const save = async (event) => {
+    event.preventDefault();
+    try {
+      if (editing) await updateCourseModule(editing._id, form); else await createCourseModule({ ...form, coachingProgramId: programId });
+      setOpen(false); setNotice({ type: "success", message: `Week ${form.weekNumber} saved.` }); await load();
+    } catch (error) { setNotice({ type: "error", message: errorMessage(error) }); }
+  };
+  const remove = async (module) => {
+    if (!window.confirm(`Delete Week ${module.weekNumber}: "${module.title}"? This can't be undone.`)) return;
+    try { await deleteCourseModule(module._id); setNotice({ type: "success", message: "Week deleted." }); await load(); }
+    catch (error) { setNotice({ type: "error", message: errorMessage(error) }); }
+  };
+  return <div className="coaching-page"><PageHeader eyebrow="Coaching CRM" title="Curriculum" description="Build the weekly modules students see in their portal. Each student's weeks unlock based on their own enrollment start date." actions={<Button onClick={startNew} disabled={!programId}><FiPlus /> Add week</Button>} /><CoachingNav active="curriculum" /><Notice value={notice} />
+    <section className="coaching-panel"><label>Program<select value={programId} onChange={(event) => setProgramId(event.target.value)}>{programs.map((program) => <option value={program._id} key={program._id}>{program.name}</option>)}</select></label></section>
+    <section className="coaching-panel"><h2>Weeks</h2>{modules.length ? <div className="coaching-list">{modules.map((module) => <article className="coaching-row coaching-row--actions" key={module._id}><div className="coaching-avatar">W{module.weekNumber}</div><div className="coaching-row__main"><strong>{module.title}</strong><span>{module.resources?.length || 0} resource{module.resources?.length === 1 ? "" : "s"}{module.homeworkPrompt ? " · Has homework" : ""}</span></div><div className="coaching-row__buttons"><Button size="sm" variant="outline" onClick={() => startEdit(module)}>Edit</Button><Button size="sm" variant="outline" onClick={() => remove(module)}>Delete</Button></div></article>)}</div> : <EmptyState icon={<FiBookOpen />} title="No weeks yet" description="Add Week 1 to start building this program's curriculum." action={<Button onClick={startNew}>Add week</Button>} />}</section>
+    <Modal isOpen={open} onClose={() => setOpen(false)} title={editing ? `Edit Week ${editing.weekNumber}` : "Add a week"}><form className="coaching-form" onSubmit={save}>
+      <div className="coaching-form__grid"><label>Week number<input required type="number" min="1" value={form.weekNumber} onChange={(event) => setForm({ ...form, weekNumber: Number(event.target.value) })} /></label><label>Title<input required value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="Finding your first deal" /></label></div>
+      <label>Description<textarea rows={3} value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} /></label>
+      <label>Homework (optional)<textarea rows={2} value={form.homeworkPrompt} onChange={(event) => setForm({ ...form, homeworkPrompt: event.target.value })} /></label>
+      <div><h3>Resources</h3>{form.resources.length ? <ul className="coaching-linked-notes">{form.resources.map((resource, index) => <li key={`${resource.url}-${index}`}><span>{resourceTypeLabels[resource.type]}: {resource.title}</span><Button type="button" size="sm" variant="outline" onClick={() => removeResource(index)}>Remove</Button></li>)}</ul> : <p className="coaching-muted">No resources added yet.</p>}
+        <div className="coaching-form__grid"><label>Type<select value={resourceDraft.type} onChange={(event) => setResourceDraft({ ...resourceDraft, type: event.target.value })}>{Object.entries(resourceTypeLabels).map(([value, label]) => <option value={value} key={value}>{label}</option>)}</select></label><label>Title<input value={resourceDraft.title} onChange={(event) => setResourceDraft({ ...resourceDraft, title: event.target.value })} placeholder="Week 1 worksheet" /></label></div>
+        <label>URL<input value={resourceDraft.url} onChange={(event) => setResourceDraft({ ...resourceDraft, url: event.target.value })} placeholder="https://…" /></label>
+        <Button type="button" variant="outline" onClick={addResource}>Add resource</Button>
+      </div>
+      <Button type="submit" block>{editing ? "Save week" : "Add week"}</Button>
+    </form></Modal>
   </div>;
 }
 

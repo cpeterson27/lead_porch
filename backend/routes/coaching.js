@@ -35,6 +35,8 @@ const coachingSchedulingService = require("../services/coachingSchedulingService
 const workspaceMemberService = require("../services/workspaceMemberService");
 const agentExecutionService = require("../services/agentExecutionService");
 const coachingSuccessPatternsService = require("../services/coachingSuccessPatternsService");
+const studentPortalService = require("../services/studentPortalService");
+const CourseModule = require("../models/CourseModule");
 const { authenticatedUserId, isAdminRole } = require("../authorization/accessPolicy");
 const { hasRole } = require("../authorization/capabilities");
 const { requireCapability } = require("../middleware/auth");
@@ -903,6 +905,47 @@ function createCoachingRouter(overrides = {}) {
       return res.status(status).json({ success: false, error: isBillingLimit ? "OpenAI credits are empty. Add API credits to use the AI summary." : err.message, code: err.code || "COACHING_AGENT_SUCCESS_PATTERNS_FAILED" });
     }
   }));
+
+  // Curriculum (weekly modules) — admin/coach managed, per Coaching Program.
+  router.get("/modules", requireAdmin, async (req, res) => {
+    try {
+      if (!req.query.coachingProgramId) return res.status(400).json({ success: false, error: "coachingProgramId is required", code: "PROGRAM_ID_REQUIRED" });
+      const modules = await CourseModule.find({ workspaceId: req.auth.workspaceId, coachingProgramId: req.query.coachingProgramId }).sort({ weekNumber: 1 }).lean();
+      res.json({ success: true, data: modules });
+    } catch (error) { errorResponse(error, res); }
+  });
+  router.post("/modules", requireAdmin, async (req, res) => {
+    try {
+      const { coachingProgramId, weekNumber, title, description, resources, homeworkPrompt } = req.body || {};
+      const module = await CourseModule.create({ workspaceId: req.auth.workspaceId, coachingProgramId, weekNumber, title, description, resources, homeworkPrompt });
+      res.status(201).json({ success: true, data: module });
+    } catch (error) { errorResponse(error, res); }
+  });
+  router.patch("/modules/:id", requireAdmin, async (req, res) => {
+    try {
+      const { weekNumber, title, description, resources, homeworkPrompt } = req.body || {};
+      const module = await CourseModule.findOneAndUpdate({ _id: req.params.id, workspaceId: req.auth.workspaceId }, { $set: { weekNumber, title, description, resources, homeworkPrompt } }, { new: true, runValidators: true });
+      if (!module) return res.status(404).json({ success: false, error: "Module not found", code: "MODULE_NOT_FOUND" });
+      res.json({ success: true, data: module });
+    } catch (error) { errorResponse(error, res); }
+  });
+  router.delete("/modules/:id", requireAdmin, async (req, res) => {
+    try {
+      const module = await CourseModule.findOneAndDelete({ _id: req.params.id, workspaceId: req.auth.workspaceId });
+      if (!module) return res.status(404).json({ success: false, error: "Module not found", code: "MODULE_NOT_FOUND" });
+      res.json({ success: true, data: { _id: module._id } });
+    } catch (error) { errorResponse(error, res); }
+  });
+
+  // Student portal link — admin/coach generates and shares this with the
+  // student directly (email, text); the student never has a Lead Porch
+  // login of their own.
+  router.post("/enrollments/:id/portal-link", requireAdmin, async (req, res) => {
+    try {
+      const token = await studentPortalService.issuePortalLink({ workspaceId: req.auth.workspaceId, enrollmentId: req.params.id, userId: authenticatedUserId(req) });
+      res.status(201).json({ success: true, data: { portalPath: `/portal/${token}` } });
+    } catch (error) { errorResponse(error, res); }
+  });
 
   return router;
 }

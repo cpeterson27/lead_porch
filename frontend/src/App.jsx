@@ -70,6 +70,8 @@ const CoachingStudentDetail = lazyWithRetry(() => import("./pages/CoachingAdmin.
 const CoachingCoaches = lazyWithRetry(() => import("./pages/CoachingAdmin.jsx").then((module) => ({ default: module.CoachingCoaches })));
 const CoachingPrograms = lazyWithRetry(() => import("./pages/CoachingAdmin.jsx").then((module) => ({ default: module.CoachingPrograms })));
 const CoachingEnrollments = lazyWithRetry(() => import("./pages/CoachingAdmin.jsx").then((module) => ({ default: module.CoachingEnrollments })));
+const CoachingCurriculum = lazyWithRetry(() => import("./pages/CoachingAdmin.jsx").then((module) => ({ default: module.CoachingCurriculum })));
+const StudentPortal = lazyWithRetry(() => import("./pages/StudentPortal.jsx"));
 const CoachingAssignments = lazyWithRetry(() => import("./pages/CoachingAdmin.jsx").then((module) => ({ default: module.CoachingAssignments })));
 const CoachingReferrals = lazyWithRetry(() => import("./pages/CoachingAdmin.jsx").then((module) => ({ default: module.CoachingReferrals })));
 const CoachingCommissions = lazyWithRetry(() => import("./pages/CoachingAdmin.jsx").then((module) => ({ default: module.CoachingCommissions })));
@@ -219,6 +221,7 @@ function ProtectedApp() {
             <Route path="/coaching/coaches" element={<CoachingCoaches />} />
             <Route path="/coaching/programs" element={<CoachingPrograms />} />
             <Route path="/coaching/enrollments" element={<CoachingEnrollments />} />
+            <Route path="/coaching/curriculum" element={<CoachingCurriculum />} />
             <Route path="/coaching/assignments" element={<CoachingAssignments />} />
             <Route path="/coaching/sessions" element={<CoachingSessions />} />
             <Route path="/coaching/communications" element={<CoachingCommunications />} />
@@ -274,6 +277,7 @@ function App() {
             <Route path="/payment/:token" element={<PublicPaymentRequest />} />
             <Route path="/payment-plan/:token" element={<PublicPaymentPlan />} />
             <Route path="/profile/edit/:token" element={<StudentProfileEditor />} />
+            <Route path="/portal/:token" element={<StudentPortal />} />
             <Route path="/login" element={<Login />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/accept-invitation/:token" element={<AcceptInvitation />} />
