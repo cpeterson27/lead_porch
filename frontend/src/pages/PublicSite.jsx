@@ -1369,11 +1369,11 @@ export function FaqPage() {
     ["Does applying guarantee acceptance?", "No. An application starts a conversation and does not guarantee enrollment in a program."],
     ["What topics are covered?", "Depending on the program, topics may include acquisitions, market analysis, underwriting, capital raising, investor relationships, asset management, and business planning."],
   ];
-  return <PublicLayout><main id="main-content" className="public-inner"><p className="public-kicker">Frequently asked questions</p><h1>{site?.publicSite?.seoPages?.faqHeading || "Answers before your next step."}</h1><div className="discovery-faq-list">{questions.map(([question, answer]) => <details key={question}><summary>{question}</summary><p>{answer}</p></details>)}</div><SmartLink className="public-button" to="/book-a-call">Talk with {name}</SmartLink></main></PublicLayout>;
+  return <PublicLayout><main id="main-content" className="public-inner"><p className="public-kicker">Frequently asked questions</p><h1>{site?.publicSite?.seoPages?.faqHeading || "Answers before your next step."}</h1><div className="discovery-faq-list">{questions.map(([question, answer]) => <details key={question}><summary>{question}</summary><p>{answer}</p></details>)}</div>{site?.publicSite?.discoveryCallEnabled ? <SmartLink className="public-button" to="/book-a-call">Talk with {name}</SmartLink> : null}</main></PublicLayout>;
 }
 export function ResourcesPage() {
   const { site } = useWorkspaceTheme();
-  return <PublicLayout><main id="main-content" className="public-inner"><p className="public-kicker">Investor resources</p><h1>{site?.publicSite?.seoPages?.resourcesHeading || "Start with the right foundation."}</h1><div className="public-prose"><p>{site?.publicSite?.seoPages?.resourcesCopy || "Explore Ellie’s coaching programs, student experiences, and practical next steps for multifamily real estate investing."}</p><h2>Explore the programs</h2><p>Compare focused six-week coaching and Asset Acquisition Accelerator options.</p><SmartLink className="public-button" to="/coaching-programs">View coaching programs</SmartLink><h2>Hear from students</h2><p>Read published student experiences and results.</p><SmartLink className="public-button" to="/testimonials">View testimonials</SmartLink><h2>Talk through your goals</h2><p>Book a discovery call to discuss where you are and what kind of support may fit.</p><SmartLink className="public-button" to="/book-a-call">Book a discovery call</SmartLink></div></main></PublicLayout>;
+  return <PublicLayout><main id="main-content" className="public-inner"><p className="public-kicker">Investor resources</p><h1>{site?.publicSite?.seoPages?.resourcesHeading || "Start with the right foundation."}</h1><div className="public-prose"><p>{site?.publicSite?.seoPages?.resourcesCopy || "Explore Ellie’s coaching programs, student experiences, and practical next steps for multifamily real estate investing."}</p><h2>Explore the programs</h2><p>Compare focused six-week coaching and Asset Acquisition Accelerator options.</p><SmartLink className="public-button" to="/coaching-programs">View coaching programs</SmartLink><h2>Hear from students</h2><p>Read published student experiences and results.</p><SmartLink className="public-button" to="/testimonials">View testimonials</SmartLink>{site?.publicSite?.discoveryCallEnabled ? <><h2>Talk through your goals</h2><p>Book a discovery call to discuss where you are and what kind of support may fit.</p><SmartLink className="public-button" to="/book-a-call">Book a discovery call</SmartLink></> : null}</div></main></PublicLayout>;
 }
 export function SitemapPage() {
   const { site } = useWorkspaceTheme();
@@ -1747,6 +1747,17 @@ export function DiscoveryCallPage() {
         return "";
       }
     })();
+  if (site && !p.discoveryCallEnabled) {
+    return (
+      <PublicLayout>
+        <main id="main-content" className="public-inner">
+          <p className="public-kicker">Discovery call</p>
+          <h1>Booking isn't open right now</h1>
+          <p>{workspaceName} isn't accepting discovery call bookings at the moment. Please check back soon.</p>
+        </main>
+      </PublicLayout>
+    );
+  }
   return (
     <PublicLayout>
       <main id="main-content" className="discovery-call-page">
