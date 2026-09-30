@@ -286,4 +286,22 @@ router.post("/regrade-backlog", async (req, res) => {
   }
 });
 
+/**
+ * Explicit override, requested and confirmed by the workspace owner: adds
+ * every "needs_review" person straight to the CRM, bypassing the AI's own
+ * "not confident enough to call this qualified" judgment. Bounded per
+ * call, same reasoning as regrade-backlog above; the caller loops while
+ * hasMore is true.
+ */
+router.post("/approve-needs-review", async (req, res) => {
+  try {
+    const { approveNeedsReviewPeople } = require("../services/discoveryAutoEnrollmentService");
+    const data = await approveNeedsReviewPeople({ workspaceId: req.auth.workspaceId });
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error("[PublicWebDiscovery] POST /approve-needs-review failed:", error);
+    return res.status(error.code ? 400 : 502).json({ success: false, error: error.message || "Unable to approve these leads", code: error.code || "DISCOVERY_APPROVE_FAILED" });
+  }
+});
+
 module.exports = router;

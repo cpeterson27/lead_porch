@@ -48,6 +48,7 @@ import {
   dismissVertexGroundingResult,
   dismissAllVertexGroundingResults,
   regradeDiscoveryBacklog,
+  approveNeedsReviewLeads,
   enrichVertexGroundingResultWithPdl,
   searchPublicWebForVertexGroundingResult,
   fetchLeadGenerationProviderAvailability,
@@ -433,6 +434,7 @@ export default function Discovery() {
   const [webSearchBusyId, setWebSearchBusyId] = useState("");
   const [dismissAllBusy, setDismissAllBusy] = useState(false);
   const [regradeBusy, setRegradeBusy] = useState(false);
+  const [approveBusy, setApproveBusy] = useState(false);
   const [selectedGroundingIds, setSelectedGroundingIds] = useState([]);
   const [reviewFilters, setReviewFilters] = useState({ run: "all", newOnly: false, provider: "all", qualification: "all", contactStatus: "all", location: "", freshness: "all", identityConfidence: "all" });
   // Spreadsheet-style inline row expansion — replaces the old slide-over
@@ -762,6 +764,30 @@ export default function Discovery() {
       setNotice(err.response?.data?.error || "Unable to regrade the backlog.");
     } finally {
       setRegradeBusy(false);
+    }
+  };
+
+  const approveNeedsReview = async () => {
+    if (approveBusy) return;
+    if (!window.confirm("Add every \"needs review\" person straight to the CRM, overriding the AI's own uncertainty about whether they're a real fit? This can add lower-quality leads along with good ones. This can take a few minutes and processes in bounded passes.")) return;
+    setApproveBusy(true);
+    let totalSaved = 0, passes = 0;
+    try {
+      let hasMore = true;
+      while (hasMore) {
+        const res = await approveNeedsReviewLeads();
+        const { saved, hasMore: more, campaignName } = res.data || {};
+        totalSaved += saved ?? 0;
+        passes += 1;
+        hasMore = Boolean(more);
+        setNotice(`Approving needs-review leads… ${totalSaved} added to CRM so far${campaignName ? ` (into ${campaignName})` : ""}.${hasMore ? "" : " Done."}`);
+      }
+      setNotice(`Approved ${totalSaved} "needs review" people straight to the CRM over ${passes} pass(es).`);
+      await loadGroundingResults();
+    } catch (err) {
+      setNotice(err.response?.data?.error || "Unable to approve these leads.");
+    } finally {
+      setApproveBusy(false);
     }
   };
 
@@ -1750,6 +1776,9 @@ export default function Discovery() {
           ) : null}
           {groundingResultsStatus === "pending_review" ? (
             <Button size="sm" variant="outline" loading={regradeBusy} onClick={regradeBacklog}>Regrade ungraded backlog</Button>
+          ) : null}
+          {groundingResultsStatus === "pending_review" ? (
+            <Button size="sm" variant="outline" loading={approveBusy} onClick={approveNeedsReview}>Approve all "needs review" people to CRM</Button>
           ) : null}
         </div>
 

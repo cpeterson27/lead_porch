@@ -146,4 +146,50 @@ async function regradeBacklog({ workspaceId, auth, personRunLimit = 3, partnersh
   return { people: personTotals, partnership, remainingInQueue: remaining, hasMore };
 }
 
-module.exports = { autoGradeApproveAndEnroll, findActiveCampaign, regradeBacklog };
+/**
+ * Explicit override for the "needs_review" pile: the AI already looked at
+ * these and specifically wasn't confident enough to call them "qualified"
+ * on its own — this bypasses that judgment call entirely on the owner's
+ * direct instruction, saving every one of them into the CRM (and whatever
+ * campaign is currently open) the same way an AI-confirmed "qualified"
+ * lead already would. Only ever runs from an explicit, confirmed admin
+ * click — never automatically — since it knowingly lowers lead quality
+ * in exchange for volume, a real tradeoff the owner chose eyes-open.
+ * Bounded per call for the same reverse-proxy-timeout reason
+ * regradeBacklog() documents; the caller loops while hasMore is true.
+ */
+async function approveNeedsReviewPeople({ workspaceId, limit = 50 }) {
+  const rows = await GroundingResearchResult.find({
+    workspaceId, type: "person", status: "pending_review", qualificationLabel: "needs_review",
+  }).select("_id").limit(limit);
+
+  const summary = { saved: 0, errors: [], campaignId: null, campaignName: "" };
+  if (!rows.length) return { ...summary, hasMore: false };
+
+  const activeCampaign = await findActiveCampaign(workspaceId);
+  summary.campaignId = activeCampaign?._id || null;
+  summary.campaignName = activeCampaign?.name || "";
+
+  for (const row of rows) {
+    try {
+      await saveResult({ workspaceId, userId: null, resultId: row._id, campaignId: activeCampaign?._id || null });
+      summary.saved += 1;
+    } catch (error) {
+      summary.errors.push(`${row._id}: ${error.message || error}`);
+    }
+  }
+
+  if (activeCampaign && summary.saved) {
+    try {
+      const fullCampaign = await Campaign.findById(activeCampaign._id);
+      if (fullCampaign) await regenerateCampaignOutreach(fullCampaign, { onlyMissing: true });
+    } catch (error) {
+      summary.errors.push(`Draft generation failed: ${error.message || error}`);
+    }
+  }
+
+  const remaining = await GroundingResearchResult.countDocuments({ workspaceId, type: "person", status: "pending_review", qualificationLabel: "needs_review" });
+  return { ...summary, hasMore: remaining > 0 };
+}
+
+module.exports = { autoGradeApproveAndEnroll, findActiveCampaign, regradeBacklog, approveNeedsReviewPeople };

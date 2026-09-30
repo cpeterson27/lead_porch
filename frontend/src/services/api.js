@@ -1541,6 +1541,8 @@ export const deleteDiscoverySchedule = (scheduleId) =>
 // processPublicWebDiscoveryRunBatch above — the caller loops.
 export const regradeDiscoveryBacklog = () =>
   api.post("/public-web-discovery/regrade-backlog", {}, { timeout: 90000 }).then((res) => res.data);
+export const approveNeedsReviewLeads = () =>
+  api.post("/public-web-discovery/approve-needs-review", {}, { timeout: 90000 }).then((res) => res.data);
 
 export const startExternalMarketResearch = (payload) =>
   api.post("/audience/research/run", payload).then((res) => res.data);
