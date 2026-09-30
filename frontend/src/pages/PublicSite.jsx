@@ -875,6 +875,11 @@ function HeroVideoTile({ site }) {
     [current, setCurrent] = useState(0),
     [duration, setDuration] = useState(0),
     [muted, setMuted] = useState(false),
+    // Unset until the video's own metadata loads, so the box uses the CSS
+    // default (tuned for the very first, portrait-recorded video) until
+    // then, then snaps to whatever shape THIS video actually is — no more
+    // hardcoding one guessed ratio that only fits one specific upload.
+    [videoAspect, setVideoAspect] = useState(null),
     videoRef = useRef(null),
     embed = embedUrl(p.introVideoUrl);
   if (!p.introVideoUrl && !p.introVideoPosterUrl) return null;
@@ -893,7 +898,7 @@ function HeroVideoTile({ site }) {
   };
   if (playing) {
     return (
-      <div className="public-hero__video public-hero__video--playing">
+      <div className="public-hero__video public-hero__video--playing" style={videoAspect ? { aspectRatio: videoAspect } : undefined}>
         {embed ? (
           <iframe
             src={`${embed}${embed.includes("?") ? "&" : "?"}autoplay=1`}
@@ -916,7 +921,11 @@ function HeroVideoTile({ site }) {
               onPlay={() => setPaused(false)}
               onPause={() => setPaused(true)}
               onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)}
-              onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+              onLoadedMetadata={(event) => {
+                const el = event.currentTarget;
+                setDuration(el.duration);
+                if (el.videoWidth && el.videoHeight) setVideoAspect(el.videoWidth / el.videoHeight);
+              }}
             />
             <div className="public-hero__controls">
               <div
