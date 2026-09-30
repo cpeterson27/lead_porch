@@ -1147,7 +1147,7 @@
 
 .public-hero__video {
   position: relative;
-  width: min(100%, 380px);
+  width: min(100%, 520px);
   min-height: 0;
   /* The source is a vertical phone-recorded video (portrait, ~9:16) — a 1:1
      square container forced background-size:cover to crop in tight on the
@@ -1293,7 +1293,7 @@
   width: 100%;
 }
 .public-hero-video-only .public-hero__video {
-  width: min(100%, 460px);
+  width: min(100%, 620px);
 }
 .public-hero__video small {
   position: absolute;

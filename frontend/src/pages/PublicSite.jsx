@@ -875,13 +875,23 @@ function HeroVideoTile({ site }) {
     [current, setCurrent] = useState(0),
     [duration, setDuration] = useState(0),
     [muted, setMuted] = useState(false),
-    // Unset until the video's own metadata loads, so the box uses the CSS
-    // default (tuned for the very first, portrait-recorded video) until
-    // then, then snaps to whatever shape THIS video actually is — no more
-    // hardcoding one guessed ratio that only fits one specific upload.
+    // Probed up front (see effect below) so the poster button and the
+    // playing video always agree on one shape — no more snapping from a
+    // tall guessed box to the video's real, often wider shape the instant
+    // playback starts.
     [videoAspect, setVideoAspect] = useState(null),
     videoRef = useRef(null),
     embed = embedUrl(p.introVideoUrl);
+  useEffect(() => {
+    if (!p.introVideoUrl || embed) return undefined;
+    const probe = document.createElement("video");
+    probe.preload = "metadata";
+    probe.muted = true;
+    probe.src = p.introVideoUrl;
+    const onMeta = () => { if (probe.videoWidth && probe.videoHeight) setVideoAspect(probe.videoWidth / probe.videoHeight); };
+    probe.addEventListener("loadedmetadata", onMeta);
+    return () => probe.removeEventListener("loadedmetadata", onMeta);
+  }, [p.introVideoUrl, embed]);
   if (!p.introVideoUrl && !p.introVideoPosterUrl) return null;
   const togglePlay = () => {
     const video = videoRef.current;
@@ -985,11 +995,10 @@ function HeroVideoTile({ site }) {
         `Watch: Welcome to ${workspaceName || "the program"}`
       }
       style={
-        p.introVideoPosterUrl
-          ? {
-              backgroundImage: `linear-gradient(#0002,#0002),url(${cloudinaryImage(p.introVideoPosterUrl, 480)})`,
-            }
-          : undefined
+        {
+          ...(p.introVideoPosterUrl ? { backgroundImage: `linear-gradient(#0002,#0002),url(${cloudinaryImage(p.introVideoPosterUrl, 480)})` } : {}),
+          ...(videoAspect ? { aspectRatio: videoAspect } : {}),
+        }
       }
       onClick={() => p.introVideoUrl && setPlaying(true)}
       disabled={!p.introVideoUrl}
