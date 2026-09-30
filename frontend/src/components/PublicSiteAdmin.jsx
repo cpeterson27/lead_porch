@@ -1320,6 +1320,14 @@ export default function PublicSiteAdmin({ section = "website" }) {
                 />
                 <span>Testimonials, results, and proof</span>
               </label>
+              <label className="website-toggle">
+                <input
+                  type="checkbox"
+                  checked={config.publicSite.discoveryCallEnabled === true}
+                  onChange={(e) => patchPublic("discoveryCallEnabled", e.target.checked)}
+                />
+                <span>Book a Discovery Call (homepage button, FAQ/Resources links, and the booking page itself)</span>
+              </label>
               {Object.entries(visibilityLabels).map(([key, label]) => (
                 <label className="website-toggle" key={key}>
                   <input
