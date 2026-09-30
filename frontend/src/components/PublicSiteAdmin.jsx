@@ -337,8 +337,23 @@ export default function PublicSiteAdmin({ section = "website" }) {
     try {
       setUploading("introVideoUrl");
       setError("");
+      // Read the real file's dimensions from the local blob before
+      // uploading — instant, since no network/moov-atom-seeking is
+      // involved, unlike trying to re-probe the hosted file afterward
+      // (confirmed live: that hangs indefinitely for at least this .mov
+      // export). Stored once here so the public site never needs to guess.
+      const localUrl = URL.createObjectURL(file);
+      const aspect = await new Promise((resolve) => {
+        const probe = document.createElement("video");
+        probe.preload = "metadata";
+        probe.onloadedmetadata = () => resolve(probe.videoWidth && probe.videoHeight ? probe.videoWidth / probe.videoHeight : null);
+        probe.onerror = () => resolve(null);
+        probe.src = localUrl;
+      });
+      URL.revokeObjectURL(localUrl);
       const asset = await uploadHomepageVideoAsset(file);
       patchPublic("introVideoUrl", asset.url);
+      if (aspect) patchPublic("introVideoAspect", aspect);
       setMessage("Homepage video uploaded. Save to publish the change.");
     } catch (err) {
       const uploadError = err.response?.data?.error;

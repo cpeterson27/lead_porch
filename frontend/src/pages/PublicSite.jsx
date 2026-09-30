@@ -875,23 +875,30 @@ function HeroVideoTile({ site }) {
     [current, setCurrent] = useState(0),
     [duration, setDuration] = useState(0),
     [muted, setMuted] = useState(false),
-    // Probed up front (see effect below) so the poster button and the
-    // playing video always agree on one shape — no more snapping from a
-    // tall guessed box to the video's real, often wider shape the instant
-    // playback starts.
-    [videoAspect, setVideoAspect] = useState(null),
+    // Confirmed live: re-probing the ALREADY-HOSTED file's dimensions in
+    // the browser is not reliable — this specific .mov export never fires
+    // loadedmetadata even after 15+ seconds (likely the file's metadata
+    // atom sits at the end, so the browser can't find it without reading
+    // most of the file first). The real fix is introVideoAspect, captured
+    // once from the local file at upload time (see PublicSiteAdmin.jsx —
+    // instant, since no network is involved for a local blob) and stored
+    // permanently. This only stays as a fallback for videos uploaded
+    // before that existed.
+    [videoAspect, setVideoAspect] = useState(Number(p.introVideoAspect) || null),
     videoRef = useRef(null),
     embed = embedUrl(p.introVideoUrl);
   useEffect(() => {
-    if (!p.introVideoUrl || embed) return undefined;
+    if (Number(p.introVideoAspect) || !p.introVideoUrl || embed) return undefined;
     const probe = document.createElement("video");
     probe.preload = "metadata";
     probe.muted = true;
-    probe.src = p.introVideoUrl;
+    probe.style.cssText = "position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;left:-9999px;";
     const onMeta = () => { if (probe.videoWidth && probe.videoHeight) setVideoAspect(probe.videoWidth / probe.videoHeight); };
     probe.addEventListener("loadedmetadata", onMeta);
-    return () => probe.removeEventListener("loadedmetadata", onMeta);
-  }, [p.introVideoUrl, embed]);
+    document.body.appendChild(probe);
+    probe.src = p.introVideoUrl;
+    return () => { probe.removeEventListener("loadedmetadata", onMeta); probe.remove(); };
+  }, [p.introVideoUrl, p.introVideoAspect, embed]);
   if (!p.introVideoUrl && !p.introVideoPosterUrl) return null;
   const togglePlay = () => {
     const video = videoRef.current;
@@ -996,7 +1003,12 @@ function HeroVideoTile({ site }) {
       }
       style={
         {
-          ...(p.introVideoPosterUrl ? { backgroundImage: `linear-gradient(#0002,#0002),url(${cloudinaryImage(p.introVideoPosterUrl, 480)})` } : {}),
+          // contain, not cover — the chosen cover frame is a square-ish
+          // logo card, not a wide action shot, so cropping it to fill a
+          // wide box (once the box matches the real video's landscape
+          // shape) was cutting off its own text. A solid dark fill behind
+          // it reads as intentional letterboxing instead of empty space.
+          ...(p.introVideoPosterUrl ? { backgroundImage: `linear-gradient(#0002,#0002),url(${cloudinaryImage(p.introVideoPosterUrl, 480)})`, backgroundSize: "contain, contain", backgroundColor: "#0b0b0b" } : {}),
           ...(videoAspect ? { aspectRatio: videoAspect } : {}),
         }
       }
