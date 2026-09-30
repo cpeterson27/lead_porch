@@ -1006,9 +1006,13 @@ function HeroVideoTile({ site }) {
           // contain, not cover — the chosen cover frame is a square-ish
           // logo card, not a wide action shot, so cropping it to fill a
           // wide box (once the box matches the real video's landscape
-          // shape) was cutting off its own text. A solid dark fill behind
-          // it reads as intentional letterboxing instead of empty space.
-          ...(p.introVideoPosterUrl ? { backgroundImage: `linear-gradient(#0002,#0002),url(${cloudinaryImage(p.introVideoPosterUrl, 480)})`, backgroundSize: "contain, contain", backgroundColor: "#0b0b0b" } : {}),
+          // shape) was cutting off its own text. Sized down to 80% height
+          // (not full contain) so the logo doesn't touch the box edges and
+          // crowd its own bottom text, and no-repeat so it doesn't tile
+          // across the leftover width the way "contain" alone does in a
+          // wide box. A solid dark fill behind it reads as intentional
+          // letterboxing instead of empty space.
+          ...(p.introVideoPosterUrl ? { backgroundImage: `linear-gradient(#0002,#0002),url(${cloudinaryImage(p.introVideoPosterUrl, 480)})`, backgroundSize: "cover, auto 78%", backgroundRepeat: "no-repeat", backgroundPosition: "center", backgroundColor: "#0b0b0b" } : {}),
           ...(videoAspect ? { aspectRatio: videoAspect } : {}),
         }
       }
