@@ -233,7 +233,7 @@ function buildQualifyResponseSchema(programIds, candidateCount = null, candidate
     properties: {
       qualifications: {
         type: "array",
-        ...(Number.isInteger(candidateCount) && candidateCount > 0 ? { minItems: candidateCount, maxItems: candidateCount, uniqueItems: true } : {}),
+        ...(Number.isInteger(candidateCount) && candidateCount > 0 ? { minItems: candidateCount, maxItems: candidateCount } : {}),
         items: {
           type: "object",
           properties: {
@@ -1258,7 +1258,28 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
   const ids = (Array.isArray(resultIds) ? resultIds : []).slice(0, 20);
   if (!ids.length) { const error = new Error("Select at least one pending result to qualify"); error.code = "DISCOVERY_QUALIFY_SELECTION_REQUIRED"; throw error; }
   const rows = await Model.find({ _id: { $in: ids }, workspaceId, status: "pending_review" }).lean();
-  if (!rows.length) return { qualified: 0, requested: ids.length, summary: { processed: 0, qualified: 0, needsReview: 0, notAFit: 0, failed: ids.length } };
+  const matchedIds = new Set(rows.map((row) => String(row._id)));
+  const missingIds = ids.map(String).filter((id) => !matchedIds.has(id));
+  // Diagnostic-only, cheap (<=20 ids): classify exactly why each selected id
+  // didn't come back as a live pending_review candidate. Real, reported
+  // incident (2026-10-04): the owner selected 50 genuinely pending-review
+  // leads still visible in her own review queue and got
+  // "0 processed ... 50 failed" with absolutely no way to tell whether that
+  // meant "already handled," "wrong workspace," or "doesn't exist" — a bare
+  // failed count with no reason is never acceptable, so this answers that
+  // question directly in the response every time, not just when asked.
+  const missingReasons = [];
+  if (missingIds.length) {
+    const unfiltered = await Model.find({ _id: { $in: missingIds } }).select("status workspaceId").lean();
+    const byId = new Map(unfiltered.map((row) => [String(row._id), row]));
+    for (const id of missingIds) {
+      const row = byId.get(id);
+      if (!row) missingReasons.push({ resultId: id, reason: "not_found" });
+      else if (String(row.workspaceId) !== String(workspaceId)) missingReasons.push({ resultId: id, reason: "wrong_workspace" });
+      else missingReasons.push({ resultId: id, reason: `already_${row.status}` });
+    }
+  }
+  if (!rows.length) return { qualified: 0, requested: ids.length, summary: { processed: 0, qualified: 0, needsReview: 0, notAFit: 0, failed: ids.length, failureReasons: missingReasons } };
 
   const programs = await listPrograms({ workspaceId }, dependencies);
   const searchIds = [...new Set(rows.map((row) => row.discoverySearchId).filter(Boolean).map(String))];
