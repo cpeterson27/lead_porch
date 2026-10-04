@@ -217,17 +217,27 @@ function detectExclusionFlags(candidate) {
 // summary with no error to investigate. Real, reported incident: 50
 // selected, only 19 scored, with the 3 underlying LLM calls all reporting
 // success — this is what was actually happening.
-function buildQualifyResponseSchema(programIds, candidateCount = null) {
+// `candidateIds`, when given, constrains resultId the same way programIds
+// constrains recommendedProgramId below. Without this, resultId was a
+// free-form string the model had to retype a full 24-char Mongo ObjectId
+// into correctly — minItems/maxItems guaranteed the right COUNT of
+// qualifications came back, but not that each one's resultId actually
+// matched a real candidate; the slightest echo-back drift (model typos
+// the ID, or returns it from the prompt text with incidental formatting)
+// made qualifyAndRecommend()'s strict string match treat a real, costed
+// qualification as "not found" and silently mark it failed — most visible
+// on a single-candidate batch, where one bad echo means 100% "failed".
+function buildQualifyResponseSchema(programIds, candidateCount = null, candidateIds = null) {
   return {
     type: "object",
     properties: {
       qualifications: {
         type: "array",
-        ...(Number.isInteger(candidateCount) && candidateCount > 0 ? { minItems: candidateCount, maxItems: candidateCount } : {}),
+        ...(Number.isInteger(candidateCount) && candidateCount > 0 ? { minItems: candidateCount, maxItems: candidateCount, uniqueItems: true } : {}),
         items: {
           type: "object",
           properties: {
-            resultId: { type: "string" },
+            resultId: Array.isArray(candidateIds) && candidateIds.length ? { type: "string", enum: candidateIds } : { type: "string" },
             identityNotes: { type: "string", description: "Brief note on whether the public evidence you were given consistently matches this person's name/company — identity confidence itself is computed separately from real provider signals, not from your guess." },
             programFitScore: { type: "number", description: "Integer 0-100, never a 0-10 scale. 100 = this person closely resembles the recommended program's intended buyer. A job title or real-estate role alone does not by itself justify a high score without other matching evidence." },
             programFitReasons: { type: "array", items: { type: "string" } },
@@ -1336,7 +1346,7 @@ async function qualifyAndRecommend({ workspaceId, userId, auth, resultIds, corre
     // the model correctly had no data to qualify them from, silently
     // showing up as "failed" with no real error. 80000 chars comfortably
     // covers a full 20-candidate batch with room to spare.
-    options: { responseSchema: buildQualifyResponseSchema(programIds, candidates.length), schemaName: "lead_qualification", operationalContextLimit: 80000 },
+    options: { responseSchema: buildQualifyResponseSchema(programIds, candidates.length, candidates.map((c) => c.resultId)), schemaName: "lead_qualification", operationalContextLimit: 80000 },
   });
 
   const validIds = new Set(candidates.map((row) => row.resultId));
