@@ -212,7 +212,8 @@ connectDatabase(mongoUri)
         req.path === "/gmail/oauth/callback" ||
         req.path === "/google-business-profile/oauth/callback" ||
         req.path === "/contracts/oauth/callback" ||
-        req.path.startsWith("/student-portal/");
+        req.path.startsWith("/student-portal/") ||
+        req.path === "/version";
       const publicMeetupCallback = req.path === "/meetup/oauth/callback";
       const publicCoachingCalendarCallback = req.path === "/coaching/calendar/oauth/callback";
       const publicCoachingZoomRoute = req.path === "/coaching/zoom/oauth/callback" || req.path === "/coaching/zoom/webhook";
