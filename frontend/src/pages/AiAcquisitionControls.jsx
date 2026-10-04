@@ -407,6 +407,28 @@ export default function AiAcquisitionControls() {
             <b>{money(agent.estimatedTotalCostUsd)}</b>
           </div>) : <p>No AI usage has been recorded this month.</p>}
         </div>
+        <div className="ai-agent-ledger" aria-label="Usage by the specific action/button that triggered it">
+          <header><strong>Usage by action</strong><span>Which button or automation — requests · tokens · estimated cost</span></header>
+          {usage.byFeature?.length ? [...usage.byFeature].sort((a, b) => b.estimatedTotalCostUsd - a.estimatedTotalCostUsd).map((feature) => <div key={feature.key}>
+            <strong>{feature.key.replaceAll("_", " ")}</strong>
+            <span>{feature.requestCount} request{feature.requestCount === 1 ? "" : "s"}</span>
+            <span>{feature.totalTokens.toLocaleString()} tokens</span>
+            <b>{money(feature.estimatedTotalCostUsd)}</b>
+          </div>) : <p>No AI usage has been recorded this month.</p>}
+        </div>
+        {usage.projection ? (
+          <div className="ai-usage-command__summary ai-usage-projection">
+            <span>At this month's pace so far</span>
+            <strong>{money(usage.projection.projectedMonthEndCostUsd)}</strong>
+            <p>
+              {money(usage.estimatedTotalCostUsd)} tracked over the first {usage.projection.daysElapsed} of {usage.projection.daysInMonth} days this month,
+              projected forward at the same daily rate. Suggested top-up to add to your OpenAI balance this
+              month, with room for normal swings in volume: <strong>{money(usage.projection.suggestedMonthlyTopUpUsd)}</strong>.
+              This is a same-pace estimate from your own recent usage, not a guarantee — a big backlog push
+              (like a large qualify-and-approve run) can spend well above a normal day.
+            </p>
+          </div>
+        ) : null}
         <p className="ai-usage-command__note"><strong>This is not your provider billing total.</strong> It includes only AI requests recorded by Lead Porch during the current month. Requests made before usage tracking existed, direct provider-dashboard usage, image charges without returned pricing, and Gemini's external credit balance may be absent. Apollo, PDL, and OpenAI's real account balances are shown separately below. {usage.unpricedRequestCount || 0} tracked request{usage.unpricedRequestCount === 1 ? " has" : "s have"} no price available.</p>
       </section> : null}
 
@@ -439,11 +461,12 @@ export default function AiAcquisitionControls() {
       </DashboardCard>
 
       <DashboardCard title="Provider credits" action={<Button variant="outline" size="sm" loading={checkingConnections} onClick={checkConnections}>{checkingConnections ? "Checking…" : "Check again"}</Button>}>
-        <p className="provider-health-explainer">Real remaining balances read from each provider's own account — not a Lead Porch estimate. A provider auto-pauses the moment it reads zero and resumes automatically once credits are added, so nothing runs away on cost. Vertex AI isn't shown here: standard Google Cloud billing has no prepaid-credit concept to run out of — its own self-imposed monthly spend cap is set in the Vertex AI section below instead.</p>
+        <p className="provider-health-explainer">Real remaining balances read from each provider's own account — not a Lead Porch estimate. Apollo and PDL auto-pause the moment they read zero and resume automatically once credits are added. Vertex AI isn't shown here: standard Google Cloud billing has no prepaid-credit concept to run out of — its own self-imposed monthly spend cap is set in the Vertex AI section below instead.</p>
+        <p className="provider-health-explainer"><strong>OpenAI is different and needs one-time setup on OpenAI's own site to be reliable.</strong> OpenAI doesn't expose your actual prepaid "API credit balance" (the number on platform.openai.com's own Billing page) through any API — only real month-to-date spend against an optional org-wide spend limit, which most pay-as-you-go accounts never set. Without that spend limit configured, the tile below can't see your real balance at all, and — just as important — Lead Porch's own auto-pause only watches the lead-sourcing search calls, never Jarvis chat or lead qualification, so those can still hit a hard error the moment your real OpenAI balance goes negative, exactly like today. The actual fix lives on OpenAI's side: turn on <strong>Auto-reload</strong> on your <a href="https://platform.openai.com/settings/organization/billing/overview" target="_blank" rel="noreferrer">OpenAI Billing page</a> so it tops itself up before hitting $0, or set an org spend limit so this tile can show a real number.</p>
         <div className="provider-credit-grid">
           <ProviderCreditTile label="Apollo" data={credits?.apollo} unit="credits" setupHint="Set APOLLO_ENABLED and APOLLO_API_KEY to see Apollo's real remaining credits here." />
           <ProviderCreditTile label="People Data Labs" data={credits?.pdl} unit="credits" setupHint="Set PDL_ENABLED and PDL_API_KEY, then run one real search — PDL only reports credits remaining on its search responses, so this fills in after your first search." />
-          <ProviderCreditTile label="OpenAI (account)" data={credits?.openai} unit="usd" setupHint="Add an OpenAI Admin API key (OPENAI_ADMIN_API_KEY, created under your OpenAI org's Settings → Admin keys — separate from the regular API key used for requests) to see your real account spend vs. spend limit here." />
+          <ProviderCreditTile label="OpenAI (spend vs. org spend limit)" data={credits?.openai} unit="usd" setupHint="Add an OpenAI Admin API key (OPENAI_ADMIN_API_KEY, created under your OpenAI org's Settings → Admin keys — separate from the regular API key used for requests) to see spend vs. spend limit here. This still won't show your real prepaid balance unless a spend limit is also set on OpenAI's side — see the note above." />
         </div>
       </DashboardCard>
 
