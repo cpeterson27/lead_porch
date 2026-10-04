@@ -145,9 +145,13 @@ select {
 }
 
 /*
- * Project-wide control shape: every button, text-like input, select, and
- * textarea is pill-shaped (fully rounded ends), and every checkbox is a
- * small filled circle with a checkmark, iOS/macOS-style. Uses !important
+ * Project-wide control shape: every button, text-like input, and select
+ * is pill-shaped (fully rounded ends); every checkbox is a small filled
+ * circle with a checkmark, iOS/macOS-style. Textareas are the one
+ * exception — a pill radius reads fine on a short single-line control but
+ * looks like a stretched oval on a taller, multi-line box, so textareas
+ * get a smaller, modest corner radius instead (see the textarea rule
+ * below). Uses !important
  * deliberately — dozens of page-specific stylesheets each set their own
  * border-radius on these same elements (e.g. "border-radius: 8px" on a
  * filter input), and the intent here is a single, unconditional
@@ -175,9 +179,12 @@ select {
  */
 button:not(.modal-backdrop):not(.drawer-backdrop):not(.public-hero__video):not(.testimonial-video-cover):not(.contact-overview button):not(.campaign-kind-picker button):not(.website-status-grid button):not(.website-management-cards button):not(.outreach-conversation-history button),
 input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
-select,
-textarea:not(.linkedin-outreach-card__draft textarea) {
+select {
   border-radius: var(--radius-pill) !important;
+}
+
+textarea {
+  border-radius: var(--radius-lg) !important;
 }
 
 .modal-backdrop,
