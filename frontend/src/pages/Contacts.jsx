@@ -37,6 +37,8 @@ import {
   extractBusinessCard,
   resolveDigitalBusinessCard,
   bulkAssignContactsToCampaign,
+  fetchEmailSequences,
+  enrollContactsInEmailSequence,
   bulkConfirmAndAssignContacts,
   createEmailVerificationBatch,
   fetchEmailVerificationBatch,
@@ -615,6 +617,9 @@ export default function Contacts() {
   const [selectedContactIds, setSelectedContactIds] = useState([]);
   const [bulkCampaignId, setBulkCampaignId] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [bulkSequenceId, setBulkSequenceId] = useState("");
+  const [sequences, setSequences] = useState([]);
+  const [bulkEnrolling, setBulkEnrolling] = useState(false);
   const [bulkNotice, setBulkNotice] = useState("");
   const [fieldUpdateOpen, setFieldUpdateOpen] = useState(false);
   const [fieldUpdateFields, setFieldUpdateFields] = useState([]);
@@ -1229,6 +1234,9 @@ export default function Contacts() {
         setCampaigns(items);
       })
       .catch(() => setError("Unable to load campaigns"));
+    fetchEmailSequences()
+      .then((res) => setSequences((res.data || []).filter((sequence) => sequence.status === "active")))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -1296,6 +1304,26 @@ export default function Contacts() {
       );
     } finally {
       setBulkSaving(false);
+    }
+  }
+
+  async function enrollSelectedContactsInSequence() {
+    if (!selectedContactIds.length) return setError("Select at least one contact.");
+    if (!bulkSequenceId) return setError("Choose a sequence first.");
+    try {
+      setBulkEnrolling(true);
+      setError("");
+      setBulkNotice("");
+      const response = await enrollContactsInEmailSequence(bulkSequenceId, selectedContactIds);
+      const skipped = response.data?.skipped || [];
+      const skipReasons = { no_email: "no email on file", already_enrolled: "already enrolled", suppressed: "unsubscribed/bounced", not_found: "not found" };
+      const skipSummary = [...new Set(skipped.map((row) => skipReasons[row.reason] || row.reason))].join(", ");
+      setBulkNotice(`${response.data?.enrolledCount || 0} contact${response.data?.enrolledCount === 1 ? "" : "s"} enrolled.${skipped.length ? ` ${skipped.length} skipped (${skipSummary}).` : ""}`);
+      setSelectedContactIds([]);
+    } catch (err) {
+      setError(err.response?.data?.error || "Unable to enroll selected contacts");
+    } finally {
+      setBulkEnrolling(false);
     }
   }
 
@@ -2412,6 +2440,30 @@ export default function Contacts() {
                 >
                   Confirm emails + fit for all
                 </Button>
+                {sequences.length ? (
+                  <>
+                    <select
+                      className="select-input"
+                      value={bulkSequenceId}
+                      onChange={(event) => setBulkSequenceId(event.target.value)}
+                    >
+                      <option value="">Add to a sequence…</option>
+                      {sequences.map((sequence) => (
+                        <option key={sequence._id} value={sequence._id}>
+                          {sequence.name}
+                        </option>
+                      ))}
+                    </select>
+                    <Button
+                      variant="outline"
+                      loading={bulkEnrolling}
+                      disabled={!bulkSequenceId}
+                      onClick={enrollSelectedContactsInSequence}
+                    >
+                      Add to sequence
+                    </Button>
+                  </>
+                ) : null}
                 <Button
                   variant="outline"
                   size="sm"

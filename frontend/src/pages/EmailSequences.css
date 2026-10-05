@@ -1,0 +1,128 @@
+.email-sequences-page {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 24px;
+  max-width: 980px;
+  margin: 0 auto;
+}
+.email-sequences-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.email-sequences-header p { color: var(--color-text-muted); max-width: 640px; }
+
+.email-sequence-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.email-sequence-description { color: var(--color-text-muted); margin: 0 0 10px; }
+.email-sequence-counts {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+  margin-bottom: 12px;
+}
+.email-sequence-counts strong { color: var(--color-text); }
+.email-sequence-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.email-sequence-status {
+  display: inline-flex;
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.email-sequence-status--draft { background: var(--color-surface-muted); color: var(--color-text-subtle); }
+.email-sequence-status--active { background: color-mix(in srgb, var(--color-success, #2fae6c) 16%, transparent); color: var(--color-success, #1e8a53); }
+.email-sequence-status--paused { background: color-mix(in srgb, #e3a008 16%, transparent); color: #a66e04; }
+.email-sequence-status--archived,
+.email-sequence-status--stopped { background: var(--color-surface-muted); color: var(--color-text-subtle); }
+.email-sequence-status--completed { background: color-mix(in srgb, var(--color-brand) 14%, transparent); color: var(--color-brand); }
+.email-sequence-status--failed { background: color-mix(in srgb, #e5484d 14%, transparent); color: #c22b30; }
+
+.email-sequence-enrollment-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+.email-sequence-enrollment-table th {
+  text-align: left;
+  padding: 8px 10px;
+  color: var(--color-text-subtle);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--color-border);
+}
+.email-sequence-enrollment-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--color-border);
+  vertical-align: top;
+}
+.email-sequence-enrollment-table td small {
+  display: block;
+  color: var(--color-text-subtle);
+  font-size: 0.74rem;
+}
+.email-sequence-enrollment-table__actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.email-sequence-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.email-sequence-form h3 { margin: 6px 0 0; }
+.email-sequence-form__checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.86rem;
+}
+
+.email-sequence-step-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-subtle);
+}
+.email-sequence-step-editor header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.email-sequence-step-editor header label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--color-text-muted);
+}
+.email-sequence-step-editor header input[type="number"] {
+  width: 56px;
+  text-align: center;
+}
+
+@media (max-width: 760px) {
+  .email-sequences-page { padding: 16px; }
+  .email-sequences-header { flex-direction: column; }
+}

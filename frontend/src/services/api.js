@@ -919,6 +919,22 @@ export const fetchCampaigns = (eventId) =>
 export const fetchCampaign = (campaignId) =>
   api.get(`/campaigns/${campaignId}`).then((res) => res.data);
 
+// Email drip/nurture sequences — timed, multi-step campaigns.
+export const fetchEmailSequences = () =>
+  api.get("/email-sequences").then((res) => res.data);
+export const fetchEmailSequence = (sequenceId) =>
+  api.get(`/email-sequences/${sequenceId}`).then((res) => res.data);
+export const fetchEmailSequenceEnrollments = (sequenceId) =>
+  api.get(`/email-sequences/${sequenceId}/enrollments`).then((res) => res.data);
+export const createEmailSequence = (payload) =>
+  api.post("/email-sequences", payload).then((res) => res.data);
+export const updateEmailSequence = (sequenceId, payload) =>
+  api.patch(`/email-sequences/${sequenceId}`, payload).then((res) => res.data);
+export const enrollContactsInEmailSequence = (sequenceId, contactIds) =>
+  api.post(`/email-sequences/${sequenceId}/enroll`, { contactIds }).then((res) => res.data);
+export const setEmailSequenceEnrollmentStatus = (enrollmentId, action, reason) =>
+  api.post(`/email-sequences/enrollments/${enrollmentId}/${action}`, { reason }).then((res) => res.data);
+
 export const previewCampaignAudience = (campaignId) =>
   api.get(`/campaigns/${campaignId}/audience-match`).then((res) => res.data);
 

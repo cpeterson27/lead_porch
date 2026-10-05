@@ -225,6 +225,7 @@ connectDatabase(mongoUri)
     app.use("/api", restrictNewRoleSurface);
 
     app.use("/api/campaigns", campaignsRouter);
+    app.use("/api/email-sequences", require("./routes/emailSequences"));
     app.use("/api/public", publicSiteRouter);
     app.use("/api/public-management", publicManagementRouter);
     app.use("/api/outreach", outreachRouter);
@@ -341,6 +342,7 @@ connectDatabase(mongoUri)
       startResearchScheduledSearchRunner();
       startAutomationRunner();
       startSocialPublishingRunner();
+      require("./services/emailSequenceService").startEmailSequenceRunner();
       // Safe to start unconditionally — see startPublicWebDiscoveryRunner()'s
       // own header: it only ever acts on DiscoverySchedule docs with
       // enabled:true, and every schedule defaults to enabled:false.

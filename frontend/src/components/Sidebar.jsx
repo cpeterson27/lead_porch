@@ -24,6 +24,7 @@ import {
   FiUser,
   FiChevronLeft,
   FiChevronRight,
+  FiRepeat,
 } from "react-icons/fi";
 import useAuth from "../context/useAuth.js";
 import useWorkspaceTheme from "../context/useWorkspaceTheme.js";
@@ -86,6 +87,12 @@ const navGroups = [
         label: "Outreach",
         path: "/outreach",
         icon: <FiZap />,
+        permissions: ["outreach.manage"],
+      },
+      {
+        label: "Email Sequences",
+        path: "/email-sequences",
+        icon: <FiRepeat />,
         permissions: ["outreach.manage"],
       },
       {
