@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Papa from "papaparse";
 import { FiColumns, FiList, FiMoreHorizontal } from "react-icons/fi";
+import { FaLinkedin, FaXTwitter, FaFacebook, FaGlobe, FaEnvelope } from "react-icons/fa6";
 import "./Contacts.css";
 import "./ContactVerification.css";
 import "./ContactDashboard.css";
@@ -207,6 +208,8 @@ const contactDetailGroups = [
       ["title", "Job title"],
       ["seniority", "Seniority"],
       ["linkedin", "LinkedIn"],
+      ["twitterUrl", "X / Twitter"],
+      ["facebookUrl", "Facebook"],
     ],
   ],
   [
@@ -263,6 +266,8 @@ const contactEditorSections = [
       ["mobilePhone", "Mobile phone"],
       ["workDirectPhone", "Work direct phone"],
       ["linkedin", "LinkedIn URL"],
+      ["twitterUrl", "X / Twitter URL"],
+      ["facebookUrl", "Facebook URL"],
     ],
   ],
   [
@@ -315,6 +320,8 @@ const manualContactDefaults = {
   website: "",
   employeeCount: "",
   linkedin: "",
+  twitterUrl: "",
+  facebookUrl: "",
   companyLinkedinUrl: "",
   companyPhone: "",
   companyAddress: "",
@@ -4018,6 +4025,15 @@ export default function Contacts() {
               <div><span>Relationship</span><strong>{crmStage(detailContact)}</strong><p>{detailContact.company ? `${detailContact.title || "Contact"} at ${detailContact.company}` : "Company relationship needs review"}</p></div>
               <div><span>Communication safety</span><strong>{isUnsubscribed(detailContact) ? "Do not email" : detailContact.emailStatus === "verified" ? "Verified email" : "Needs review"}</strong><p>{detailContact.emailPreferences?.marketingStatus === "subscribed" ? "Marketing permission recorded" : "Marketing permission not recorded"}</p></div>
             </section> : null}
+            {detailTab === "overview" && (detailContact.email || detailContact.linkedin || detailContact.twitterUrl || detailContact.facebookUrl || detailContact.website) ? (
+              <div className="contact-social-links" aria-label="Clickable contact and social links">
+                {detailContact.email ? <a href={`mailto:${detailContact.email}`} title={detailContact.email}><FaEnvelope /><span>Email</span></a> : null}
+                {detailContact.linkedin ? <a href={detailContact.linkedin} target="_blank" rel="noreferrer" title="LinkedIn"><FaLinkedin /><span>LinkedIn</span></a> : null}
+                {detailContact.twitterUrl ? <a href={detailContact.twitterUrl} target="_blank" rel="noreferrer" title="X / Twitter"><FaXTwitter /><span>X</span></a> : null}
+                {detailContact.facebookUrl ? <a href={detailContact.facebookUrl} target="_blank" rel="noreferrer" title="Facebook"><FaFacebook /><span>Facebook</span></a> : null}
+                {detailContact.website ? <a href={detailContact.website} target="_blank" rel="noreferrer" title={detailContact.website}><FaGlobe /><span>Website</span></a> : null}
+              </div>
+            ) : null}
             {detailTab === "overview" && isIntentContact(detailContact) ? (
               <section className="intent-contact-action-center">
                 <header>
@@ -4195,7 +4211,7 @@ export default function Contacts() {
                     {rows.map(([field, label, value]) => {
                       const isLink =
                         value &&
-                        ["linkedin", "website", "companyLinkedinUrl"].includes(
+                        ["linkedin", "website", "companyLinkedinUrl", "twitterUrl", "facebookUrl"].includes(
                           field,
                         );
                       return (
