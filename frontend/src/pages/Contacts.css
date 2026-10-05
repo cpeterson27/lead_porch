@@ -1119,6 +1119,10 @@
   width: 14px;
   height: 14px;
 }
+.contact-social-links__empty {
+  color: var(--color-text-subtle);
+  font-size: 0.82rem;
+}
 
 /* Campaigns list inside drawer */
 .contact-campaign-workspace { display: grid; gap: 10px; }
