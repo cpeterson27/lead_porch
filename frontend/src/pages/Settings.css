@@ -1504,3 +1504,22 @@
     grid-column: auto;
   }
 }
+
+.sender-domain-status {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: -6px 0 2px;
+}
+.sender-domain-status p {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+.sender-domain-status__ok {
+  color: var(--color-success, #1e8a53);
+}
+.sender-domain-status__warning {
+  color: #a66e04;
+}

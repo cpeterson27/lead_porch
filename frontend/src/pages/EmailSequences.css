@@ -87,6 +87,25 @@
   flex-direction: column;
   gap: 14px;
 }
+.email-sequence-form .form-field {
+  display: grid;
+  gap: 6px;
+}
+.email-sequence-form .form-field > span {
+  font-size: 0.82rem;
+  font-weight: 650;
+  color: var(--color-text-muted);
+}
+.email-sequence-form .form-field > small {
+  color: var(--color-text-subtle);
+  font-size: 0.76rem;
+}
+.email-sequence-form .form-field input,
+.email-sequence-form .form-field textarea,
+.email-sequence-form .form-field select {
+  width: 100%;
+  box-sizing: border-box;
+}
 .email-sequence-form h3 { margin: 6px 0 0; }
 .email-sequence-form__checkbox {
   display: flex;

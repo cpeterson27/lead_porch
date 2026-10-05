@@ -143,6 +143,34 @@ class ResendAdapter extends BaseIntegration {
       throw error;
     }
   }
+
+  /**
+   * Real domain verification status from Resend's own API
+   * (GET /domains) — the actual SPF/DKIM/DMARC record check that was
+   * never wired up before. Sending a real campaign with no verified
+   * sending domain (or from Resend's own shared onboarding@resend.dev
+   * sandbox address) is a primary cause of landing in spam; this is
+   * what finally makes that checkable instead of assumed.
+   */
+  async getDomains() {
+    const apiKey = this.config.apiKey || process.env.RESEND_API_KEY;
+    if (!apiKey) throw new Error("Resend API key missing.");
+    const response = await fetch(`${this.baseUrl}/domains`, {
+      headers: { Authorization: `Bearer ${apiKey}` },
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.message || `Resend API error: ${response.status}`);
+    }
+    const result = await response.json();
+    return (result.data || []).map((domain) => ({
+      name: domain.name,
+      status: domain.status,
+      region: domain.region,
+      records: (domain.records || []).map((record) => ({ type: record.record, name: record.name, status: record.status, priority: record.priority })),
+    }));
+  }
 }
 
 module.exports = ResendAdapter;

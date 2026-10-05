@@ -33,6 +33,7 @@ import {
   fetchMcpAccessTokens,
   fetchOAuthConnections,
   fetchWorkspaceConfig,
+  fetchSenderDomainStatus,
   getGptActionsSchemaEndpoint,
   getMcpEndpoint,
   revokeMcpAccessToken,
@@ -103,6 +104,18 @@ export default function Settings() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
+  const [domainStatus, setDomainStatus] = useState(null);
+  const [domainStatusLoading, setDomainStatusLoading] = useState(false);
+  const [domainStatusError, setDomainStatusError] = useState("");
+
+  const checkDomainStatus = () => {
+    setDomainStatusLoading(true);
+    setDomainStatusError("");
+    fetchSenderDomainStatus()
+      .then((res) => setDomainStatus(res.data))
+      .catch((err) => setDomainStatusError(err.response?.data?.error || "Unable to check domain status with Resend right now."))
+      .finally(() => setDomainStatusLoading(false));
+  };
   const [passwords, setPasswords] = useState({
     currentPassword: "",
     newPassword: "",
@@ -448,8 +461,32 @@ export default function Settings() {
                     }}
                     placeholder="team@yourdomain.com"
                   />
-                  <small>Required before sending. Use an address on a verified sending domain.</small>
+                  <small>Required before sending. Use an address on a verified sending domain — this same address is also what campaign emails and sequences send from, not just invitations. An unverified domain (or no address here at all, which falls back to Resend's own shared test address) is one of the most common reasons real emails land in spam.</small>
                 </label>
+                <div className="sender-domain-status">
+                  <Button variant="outline" size="sm" loading={domainStatusLoading} onClick={checkDomainStatus}>Check sending domain status</Button>
+                  {domainStatusError ? <p className="form-error">{domainStatusError}</p> : null}
+                  {domainStatus ? (
+                    domainStatus.usingSandboxSender ? (
+                      <p className="sender-domain-status__warning">
+                        No sender email is set above, so email is sending from Resend's own shared <code>onboarding@resend.dev</code> test
+                        address — this will land in spam almost every time. Add a real address on your own domain above and save.
+                      </p>
+                    ) : domainStatus.matchedDomain ? (
+                      <p className={domainStatus.matchedDomain.status === "verified" ? "sender-domain-status__ok" : "sender-domain-status__warning"}>
+                        {domainStatus.senderEmail.split("@")[1]} is {domainStatus.matchedDomain.status === "verified" ? "verified with Resend." : `not fully verified yet (status: ${domainStatus.matchedDomain.status}).`}
+                        {domainStatus.matchedDomain.status !== "verified" && domainStatus.matchedDomain.records?.length ? (
+                          <> Missing/pending records: {domainStatus.matchedDomain.records.filter((record) => record.status !== "verified").map((record) => record.type).join(", ") || "none listed"} — add these in your domain's DNS settings, then check again.</>
+                        ) : null}
+                      </p>
+                    ) : (
+                      <p className="sender-domain-status__warning">
+                        {domainStatus.senderEmail.split("@")[1] || "This domain"} isn't set up in Resend at all yet — add and verify it at{" "}
+                        <a href="https://resend.com/domains" target="_blank" rel="noreferrer">resend.com/domains</a> before sending real campaigns from it.
+                      </p>
+                    )
+                  ) : null}
+                </div>
                 <label className="form-field">
                   <span>Invitation reply-to email</span>
                   <input

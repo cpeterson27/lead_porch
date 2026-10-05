@@ -147,6 +147,38 @@ router.get("/deliverability", async (req, res) => {
     res.status(500).json({ error: "Unable to load deliverability data from Resend right now." });
   }
 });
+
+/**
+ * Real domain verification status straight from Resend — the actual
+ * SPF/DKIM/DMARC check that was never surfaced anywhere before. A
+ * campaign sent from an unverified domain (or Resend's own shared
+ * onboarding@resend.dev sandbox address, which this app falls back to
+ * whenever no sender email is configured in Settings) is one of the
+ * most common causes of landing in spam regardless of how good the
+ * email content itself is.
+ */
+router.get("/sender-domain-status", async (req, res) => {
+  try {
+    const integrationHub = require("../services/integrationHub");
+    const WorkspaceConfig = require("../models/WorkspaceConfig");
+    const config = await WorkspaceConfig.findOne({ workspaceId: req.auth.workspaceId, key: "primary" }).select("invitationIdentity").lean();
+    const senderEmail = String(config?.invitationIdentity?.senderEmail || "").trim();
+    const usingSandboxSender = !senderEmail;
+    const domains = await integrationHub.execute("resend", "getDomains").catch((error) => { throw Object.assign(new Error(error.message), { code: "RESEND_DOMAINS_UNAVAILABLE" }); });
+    const senderDomain = senderEmail.includes("@") ? senderEmail.split("@")[1] : "";
+    const matchedDomain = senderDomain ? domains.find((domain) => domain.name === senderDomain) : null;
+    return res.json({
+      success: true,
+      data: {
+        senderEmail, usingSandboxSender,
+        matchedDomain: matchedDomain || null,
+        allDomains: domains,
+      },
+    });
+  } catch (error) {
+    return res.status(502).json({ success: false, error: error.message || "Unable to check Resend domain status", code: error.code || "RESEND_DOMAIN_STATUS_FAILED" });
+  }
+});
 router.get("/", async (req, res) => {
   try {
     const campaigns = await Campaign.find()

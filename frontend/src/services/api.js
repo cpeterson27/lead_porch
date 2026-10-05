@@ -909,6 +909,8 @@ export const saveDiscoveryTemplates = (templates) =>
 
 export const fetchDeliverabilityHistory = (days = 7) =>
   api.get("/campaigns/deliverability", { params: { days } }).then((res) => res.data);
+export const fetchSenderDomainStatus = () =>
+  api.get("/campaigns/sender-domain-status").then((res) => res.data);
 export const fetchCampaigns = (eventId) =>
   api
     .get("/campaigns", {
