@@ -50,9 +50,64 @@ const ENDPOINT_LABELS = {
 };
 function endpointLabel(endpoint) { return ENDPOINT_LABELS[endpoint] || endpoint; }
 
+// Plain-English name for every real feature string currently passed to an
+// AI call anywhere in the app (grep services/*.js routes/*.js for `feature:`
+// / `task:` to regenerate this list). Falls back to a de-slugged version of
+// the raw string for anything not yet mapped here, so a new feature added
+// later never shows up blank — just less polished until it's added above.
+const FEATURE_LABELS = {
+  health_check: "Connectivity check (tiny automatic test — not a real feature use)",
+  "jarvis.chat": "Jarvis conversation",
+  "jarvis.chat.image": "Jarvis — understanding an uploaded image",
+  "jarvis.campaign_studio.flyer": "Campaign Studio — flyer design",
+  "jarvis.campaign_studio.prepare": "Campaign Studio — preparing a campaign",
+  qualify_and_recommend_leads: "Qualifying leads (\"Have Jarvis qualify\")",
+  qualify_generated_lead: "Qualifying a single generated lead",
+  rank_discovery_candidates_for_program_fit: "Ranking discovery leads for program fit",
+  generate_public_web_discovery_search_families: "Discovery — generating search terms",
+  derive_pdl_icp_for_public_web_discovery: "Discovery — building an ideal-customer profile",
+  parse_lead_search_request: "Discovery — reading your search request",
+  recommend_discovery_strategy: "Discovery — suggesting a search strategy",
+  summarize_weekly_discovery_findings: "Discovery — weekly findings summary",
+  discovery_partnership_triage: "Discovery — partnership triage",
+  discovery: "Discovery (general)",
+  agent_search_query: "Knowledge Center search",
+  research_contact: "Researching a contact",
+  recommend_campaign_automation: "Recommending a campaign automation",
+  "campaign.email_audience_templates": "Campaign — email templates by audience",
+  "campaign.email_ideas": "Campaign — email ideas",
+  outreach_reply_autoresponse: "Auto-replying to an outreach message",
+  linkedin_sequence_reply: "LinkedIn sequence reply",
+  analyze_program_pdf: "Analyzing an uploaded program PDF",
+  summarize_student: "Summarizing a student",
+  summarize_success_patterns: "Summarizing success patterns",
+  testimonials: "Generating testimonials",
+  explain_pipeline_health: "Explaining pipeline health",
+  application: "General application request",
+};
+function featureLabel(feature) { return FEATURE_LABELS[feature] || feature.replace(/[._]/g, " "); }
+
+const ERROR_CATEGORY_LABELS = {
+  request: "Rejected by the provider — almost always means the account was out of credit or over its spend limit",
+  rate_limit: "Rate-limited — too many requests sent in a short window; these automatically retry",
+  authentication: "The API key was rejected — it may be missing, wrong, or revoked",
+  provider: "The provider itself had an outage or server error",
+  timeout: "Took too long and timed out",
+  unknown: "Failed for an unrecognized reason",
+};
+function errorCategoryLabel(category) { return ERROR_CATEGORY_LABELS[category] || category; }
+
+// A genuinely tiny real cost (a fraction of a cent — common for a short
+// Jarvis reply or a one-word health check) rounds to the same "$0.00" as a
+// failed request that cost nothing at all, making a real charge look
+// indistinguishable from "nothing happened." Showing more decimal places
+// only when the value actually falls in that sub-cent range keeps every
+// other number at the normal, readable $X.XX.
 function money(value) {
   if (value == null) return "—";
-  return `$${Number(value).toFixed(2)}`;
+  const n = Number(value);
+  if (n > 0 && n < 0.01) return `$${n.toFixed(4)}`;
+  return `$${n.toFixed(2)}`;
 }
 
 function ProviderStatus({ label, status }) {
@@ -382,18 +437,27 @@ export default function AiAcquisitionControls() {
         <div className="ai-usage-command__summary">
           <span>This month</span>
           <strong>{money(usage.estimatedTotalCostUsd)}</strong>
-          <p>Tracked in Lead Porch this month across {usage.requestCount} request{usage.requestCount === 1 ? "" : "s"}.</p>
+          <p>Tracked in Lead Porch this month across {usage.requestCount} request{usage.requestCount === 1 ? "" : "s"}. This resets to $0 on the 1st of every month — it is not your lifetime OpenAI spend.</p>
         </div>
         <div className="ai-usage-command__metrics">
           <article><span>Total tokens</span><strong>{usage.tokens?.total?.toLocaleString?.() || 0}</strong><small>{usage.tokens?.input?.toLocaleString?.() || 0} input · {usage.tokens?.output?.toLocaleString?.() || 0} output{usage.tokens?.reasoning ? ` · ${usage.tokens.reasoning.toLocaleString()} reasoning` : ""}</small></article>
           <article><span>Successful requests</span><strong>{usage.successCount || 0}</strong><small>{usage.failureCount || 0} failed</small></article>
           <article><span>Tracked agents</span><strong>{usage.byAgent?.length || 0}</strong><small>Usage is attributed below</small></article>
         </div>
+        <p className="ai-usage-command__note">
+          <strong>What these words mean:</strong> a <strong>request</strong> is one single time Lead Porch asked
+          an AI provider to do something — one Jarvis reply, one lead qualified, one search term generated. A{" "}
+          <strong>token</strong> is the small chunk of text (roughly ¾ of a word) that providers actually charge
+          by — you never need to track tokens yourself, the dollar amount next to each row is the number that
+          matters. A <strong>failed</strong> request did not complete (most often because the provider account
+          was out of credit, as happened today) — it shows as $0.00 and 0 tokens because nothing was actually
+          delivered to bill for, not because tracking is broken.
+        </p>
         <div className="ai-usage-provider-grid" aria-label="Usage by provider and capability, grouped like OpenAI's own usage dashboard">
           {usage.byProviderEndpoint?.length ? [...usage.byProviderEndpoint].sort((a, b) => b.estimatedTotalCostUsd - a.estimatedTotalCostUsd).map((row) => <article key={row.key}>
             <span className="ai-usage-provider-grid__provider">{PROVIDER_LABELS[row.provider] || row.provider}</span>
             <strong>{endpointLabel(row.endpoint)}</strong>
-            <span>{row.requestCount} request{row.requestCount === 1 ? "" : "s"}</span>
+            <span>{row.requestCount} request{row.requestCount === 1 ? "" : "s"}{row.failureCount ? ` (${row.failureCount} failed)` : ""}</span>
             <span>{row.totalTokens.toLocaleString()} tokens</span>
             <b>{money(row.estimatedTotalCostUsd)}</b>
           </article>) : <p>No AI usage has been recorded this month.</p>}
@@ -402,7 +466,7 @@ export default function AiAcquisitionControls() {
           <header><strong>Usage by agent</strong><span>Requests · tokens · estimated cost</span></header>
           {usage.byAgent?.length ? [...usage.byAgent].sort((a, b) => b.estimatedTotalCostUsd - a.estimatedTotalCostUsd).map((agent) => <div key={agent.key}>
             <strong>{AGENT_LABELS[agent.key] || agent.key}</strong>
-            <span>{agent.requestCount} request{agent.requestCount === 1 ? "" : "s"}</span>
+            <span>{agent.requestCount} request{agent.requestCount === 1 ? "" : "s"}{agent.failureCount ? ` (${agent.failureCount} failed)` : ""}</span>
             <span>{agent.totalTokens.toLocaleString()} tokens</span>
             <b>{money(agent.estimatedTotalCostUsd)}</b>
           </div>) : <p>No AI usage has been recorded this month.</p>}
@@ -410,12 +474,26 @@ export default function AiAcquisitionControls() {
         <div className="ai-agent-ledger" aria-label="Usage by the specific action/button that triggered it">
           <header><strong>Usage by action</strong><span>Which button or automation — requests · tokens · estimated cost</span></header>
           {usage.byFeature?.length ? [...usage.byFeature].sort((a, b) => b.estimatedTotalCostUsd - a.estimatedTotalCostUsd).map((feature) => <div key={feature.key}>
-            <strong>{feature.key.replaceAll("_", " ")}</strong>
-            <span>{feature.requestCount} request{feature.requestCount === 1 ? "" : "s"}</span>
+            <strong>{featureLabel(feature.key)}</strong>
+            <span>
+              {feature.requestCount} request{feature.requestCount === 1 ? "" : "s"}{feature.failureCount ? ` (${feature.failureCount} failed)` : ""}
+              {feature.pricedRequestCount ? ` · ~${money(feature.estimatedTotalCostUsd / feature.pricedRequestCount)} each` : ""}
+            </span>
             <span>{feature.totalTokens.toLocaleString()} tokens</span>
             <b>{money(feature.estimatedTotalCostUsd)}</b>
           </div>) : <p>No AI usage has been recorded this month.</p>}
         </div>
+        {usage.byErrorCategory?.length ? (
+          <div className="ai-agent-ledger" aria-label="Breakdown of why requests failed this month">
+            <header><strong>Errors this month</strong><span>Why {usage.failureCount} request{usage.failureCount === 1 ? "" : "s"} failed</span></header>
+            {[...usage.byErrorCategory].sort((a, b) => b.count - a.count).map((row) => <div key={row.key}>
+              <strong>{errorCategoryLabel(row.key)}</strong>
+              <span>{row.count} request{row.count === 1 ? "" : "s"}</span>
+              <span />
+              <b />
+            </div>)}
+          </div>
+        ) : null}
         {usage.projection ? (
           <div className="ai-usage-command__summary ai-usage-projection">
             <span>At this month's pace so far</span>

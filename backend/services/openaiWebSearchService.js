@@ -50,7 +50,7 @@ function masterEnabled() {
   return process.env.OPENAI_WEB_SEARCH_ENABLED === "true" && Boolean(process.env.OPENAI_API_KEY?.trim());
 }
 function model() {
-  return clean(process.env.JARVIS_RESEARCH_OPENAI_MODEL, 160) || "gpt-5.6-sol";
+  return clean(process.env.JARVIS_RESEARCH_OPENAI_MODEL, 160) || "gpt-5.6-terra";
 }
 function disabledError(code, message) { return Object.assign(new Error(message), { code }); }
 

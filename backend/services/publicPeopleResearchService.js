@@ -102,7 +102,7 @@ function isJarvisWebResearchEnabled() {
 }
 
 function researchModel() {
-  return process.env.JARVIS_RESEARCH_OPENAI_MODEL || "gpt-5.6-sol";
+  return process.env.JARVIS_RESEARCH_OPENAI_MODEL || "gpt-5.6-terra";
 }
 
 const personSchema = {
