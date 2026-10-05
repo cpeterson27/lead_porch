@@ -40,6 +40,7 @@ import {
   fetchEmailSequences,
   enrollContactsInEmailSequence,
   sendContactEmail,
+  fetchContactEmailCoverageReport,
   bulkConfirmAndAssignContacts,
   createEmailVerificationBatch,
   fetchEmailVerificationBatch,
@@ -621,6 +622,10 @@ export default function Contacts() {
   const [bulkSequenceId, setBulkSequenceId] = useState("");
   const [sequences, setSequences] = useState([]);
   const [bulkEnrolling, setBulkEnrolling] = useState(false);
+  const [emailCoverage, setEmailCoverage] = useState(null);
+  const [emailCoverageDismissed, setEmailCoverageDismissed] = useState(() => {
+    try { return localStorage.getItem("crmEmailCoverageDismissedAt") === new Date().toDateString(); } catch { return false; }
+  });
   const [composeContact, setComposeContact] = useState(null);
   const [composeCampaignId, setComposeCampaignId] = useState("");
   const [composeSubject, setComposeSubject] = useState("");
@@ -1141,7 +1146,8 @@ export default function Contacts() {
             (contactMethodFilter === "email" && Boolean(contact.email)) ||
             (contactMethodFilter === "linkedin" && Boolean(contact.linkedin)) ||
             (contactMethodFilter === "both" && Boolean(contact.email) && Boolean(contact.linkedin)) ||
-            (contactMethodFilter === "none" && !contact.email && !contact.linkedin)) &&
+            (contactMethodFilter === "none" && !contact.email && !contact.linkedin) ||
+            (contactMethodFilter === "missing_email" && !contact.email)) &&
           (!requestedResearchStatus ||
             contact.researchStatus === requestedResearchStatus) &&
           (!campaignId ||
@@ -1243,6 +1249,9 @@ export default function Contacts() {
       .catch(() => setError("Unable to load campaigns"));
     fetchEmailSequences()
       .then((res) => setSequences((res.data || []).filter((sequence) => sequence.status === "active")))
+      .catch(() => {});
+    fetchContactEmailCoverageReport()
+      .then((res) => setEmailCoverage(res.data))
       .catch(() => {});
   }, []);
 
@@ -2066,6 +2075,29 @@ export default function Contacts() {
         </div>}
       />
 
+      {emailCoverage && emailCoverage.withoutEmail > 0 && !emailCoverageDismissed ? (
+        <section className="crm-mode-banner crm-email-coverage-banner" aria-label="Email coverage report">
+          <div>
+            <span className="crm-mode-banner__eyebrow">Email coverage</span>
+            <strong>{emailCoverage.withoutEmail.toLocaleString()} of {emailCoverage.total.toLocaleString()} contacts have no email on file.</strong>
+            <p>
+              Mostly from: {emailCoverage.withoutEmailBySource.slice(0, 3).map((row) => `${contactSourceLabels[row.source] || row.source.replaceAll("_", " ")} (${row.count.toLocaleString()})`).join(", ") || "unknown sources"}.
+              {" "}These were saved to the CRM without an email because that was never required to save — they can't receive campaigns, sequences, or direct emails until one is added.
+            </p>
+          </div>
+          <div className="crm-email-coverage-banner__actions">
+            <Button variant="secondary" onClick={() => setContactMethodFilter("missing_email")}>View these contacts</Button>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setEmailCoverageDismissed(true);
+                try { localStorage.setItem("crmEmailCoverageDismissedAt", new Date().toDateString()); } catch { /* best effort only */ }
+              }}
+            >Dismiss for today</Button>
+          </div>
+        </section>
+      ) : null}
+
       <section className="crm-mode-banner" aria-label="CRM connection options">
         <div>
           <span className="crm-mode-banner__eyebrow">Your contact system</span>
@@ -2293,6 +2325,7 @@ export default function Contacts() {
               <option value="linkedin">Has LinkedIn profile</option>
               <option value="both">Has email and LinkedIn</option>
               <option value="none">No direct contact method</option>
+              <option value="missing_email">Missing email</option>
             </select>
           </label>
           </>} actions={<>

@@ -169,6 +169,7 @@ router.get("/", async (req, res) => {
     if (contactMethod === "linkedin") query.linkedin = { $exists: true, $nin: [null, ""] };
     if (contactMethod === "both") query.$and = [...(query.$and || []), { email: { $exists: true, $nin: [null, ""] } }, { linkedin: { $exists: true, $nin: [null, ""] } }];
     if (contactMethod === "none") query.$and = [...(query.$and || []), { $or: [{ email: { $in: [null, ""] } }, { email: { $exists: false } }] }, { $or: [{ linkedin: { $in: [null, ""] } }, { linkedin: { $exists: false } }] }];
+    if (contactMethod === "missing_email") query.$and = [...(query.$and || []), { $or: [{ email: { $in: [null, ""] } }, { email: { $exists: false } }] }];
 
     const allowedSorts = new Set(["createdAt", "updatedAt", "name", "company", "lastContacted"]);
     const resolvedSort = allowedSorts.has(sortBy) ? sortBy : "createdAt";
@@ -712,6 +713,30 @@ router.get("/stats", async (req, res) => {
     res.json({ success: true, data: stats });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * Real, reported question: "a lot of people in the CRM don't have an
+ * email, idk how that happened." Answers it with real counts instead of
+ * a guess — total contacts, how many have no email, and (for those
+ * without one) a breakdown by where they actually came from, so it's
+ * clear whether a specific import/discovery source is the real cause
+ * rather than assuming.
+ */
+router.get("/email-coverage-report", async (req, res) => {
+  try {
+    const total = await Contact.countDocuments({ status: { $ne: "archived" } });
+    const withEmail = await Contact.countDocuments({ status: { $ne: "archived" }, email: { $nin: ["", null] } });
+    const withoutEmailBySourceRows = await Contact.aggregate([
+      { $match: { status: { $ne: "archived" }, $or: [{ email: "" }, { email: null }] } },
+      { $unwind: { path: "$sources", preserveNullAndEmptyArrays: true } },
+      { $group: { _id: { $ifNull: ["$sources", "unknown"] }, count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+    ]);
+    return res.json({ success: true, data: { total, withEmail, withoutEmail: total - withEmail, withoutEmailBySource: withoutEmailBySourceRows.map((row) => ({ source: row._id, count: row.count })) } });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
 

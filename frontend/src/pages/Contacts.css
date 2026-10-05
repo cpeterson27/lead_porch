@@ -2718,3 +2718,15 @@
   font-size: 0.84rem;
   color: var(--color-text-muted);
 }
+
+.crm-email-coverage-banner {
+  background: color-mix(in srgb, #e3a008 10%, var(--color-surface));
+  border-color: color-mix(in srgb, #e3a008 30%, transparent);
+}
+.crm-email-coverage-banner .crm-mode-banner__eyebrow { color: #a66e04; }
+.crm-email-coverage-banner__actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+}
