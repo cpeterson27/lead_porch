@@ -450,15 +450,13 @@ export default function AiAcquisitionControls() {
       {notice ? <p className="discovery-notice">{notice}</p> : null}
 
       {usage ? <section className="ai-usage-command" aria-label="Monthly AI usage overview">
-        <div className="ai-usage-command__summary">
-          <span>This month</span>
-          <strong>{money(usage.estimatedTotalCostUsd)}</strong>
-          <p>Tracked in Lead Porch this month across {usage.requestCount} request{usage.requestCount === 1 ? "" : "s"}. This resets to $0 on the 1st of every month — it is not your lifetime OpenAI spend.</p>
-        </div>
-        <div className="ai-usage-command__metrics">
-          <article><span>Total tokens</span><strong>{usage.tokens?.total?.toLocaleString?.() || 0}</strong><small>{usage.tokens?.input?.toLocaleString?.() || 0} input · {usage.tokens?.output?.toLocaleString?.() || 0} output{usage.tokens?.reasoning ? ` · ${usage.tokens.reasoning.toLocaleString()} reasoning` : ""}</small></article>
-          <article><span>Successful requests</span><strong>{usage.successCount || 0}</strong><small>{usage.failureCount || 0} failed</small></article>
-          <article><span>Tracked agents</span><strong>{usage.byAgent?.length || 0}</strong><small>Usage is attributed below</small></article>
+        <div className="ai-usage-stat-grid">
+          <StatCard title="This month's AI spend" value={money(usage.estimatedTotalCostUsd)} subtitle={`${usage.requestCount} request${usage.requestCount === 1 ? "" : "s"} · resets to $0 each month`} />
+          {usage.projection ? <StatCard title="Projected month-end" value={money(usage.projection.projectedMonthEndCostUsd)} subtitle={`At the pace of your first ${usage.projection.daysElapsed} of ${usage.projection.daysInMonth} days`} /> : null}
+          {usage.projection ? <StatCard title="Suggested top-up" value={money(usage.projection.suggestedMonthlyTopUpUsd)} subtitle="Projected spend plus a 20% buffer" /> : null}
+          <StatCard title="Total tokens" value={usage.tokens?.total?.toLocaleString?.() || 0} subtitle={`${usage.tokens?.input?.toLocaleString?.() || 0} in · ${usage.tokens?.output?.toLocaleString?.() || 0} out`} />
+          <StatCard title="Successful requests" value={usage.successCount || 0} subtitle={`${usage.failureCount || 0} failed`} />
+          <StatCard title="Agents active this month" value={`${usage.byAgent?.length || 0} of ${Object.keys(AGENT_LABELS).length}`} subtitle="The rest simply haven't run anything yet this month" />
         </div>
         <p className="ai-usage-command__note">
           <strong>What these words mean:</strong> a <strong>request</strong> is one single time Lead Porch asked
@@ -510,19 +508,11 @@ export default function AiAcquisitionControls() {
             </div>)}
           </div>
         ) : null}
-        {usage.projection ? (
-          <div className="ai-usage-command__summary ai-usage-projection">
-            <span>At this month's pace so far</span>
-            <strong>{money(usage.projection.projectedMonthEndCostUsd)}</strong>
-            <p>
-              {money(usage.estimatedTotalCostUsd)} tracked over the first {usage.projection.daysElapsed} of {usage.projection.daysInMonth} days this month,
-              projected forward at the same daily rate. Suggested top-up to add to your OpenAI balance this
-              month, with room for normal swings in volume: <strong>{money(usage.projection.suggestedMonthlyTopUpUsd)}</strong>.
-              This is a same-pace estimate from your own recent usage, not a guarantee — a big backlog push
-              (like a large qualify-and-approve run) can spend well above a normal day.
-            </p>
-          </div>
-        ) : null}
+        <p className="ai-usage-command__note">
+          <strong>Projections are estimates, not guarantees.</strong> The projected month-end and suggested
+          top-up above assume the rest of the month spends at the same daily pace as it has so far — a big
+          backlog push (like a large qualify-and-approve run) can spend well above a normal day.
+        </p>
         <p className="ai-usage-command__note"><strong>This is not your provider billing total.</strong> It includes only AI requests recorded by Lead Porch during the current month. Requests made before usage tracking existed, direct provider-dashboard usage, image charges without returned pricing, and Gemini's external credit balance may be absent. Apollo, PDL, and OpenAI's real account balances are shown separately below. {usage.unpricedRequestCount || 0} tracked request{usage.unpricedRequestCount === 1 ? " has" : "s have"} no price available.</p>
       </section> : null}
 
