@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import Button from "../components/Button.jsx";
 import DashboardCard from "../components/DashboardCard.jsx";
 import UnlayerEmailEditor from "../components/UnlayerEmailEditor.jsx";
+import CostConfirmModal from "../components/CostConfirmModal.jsx";
 import {
   approveCampaignEmailTemplate,
   fetchCampaign,
@@ -63,6 +64,8 @@ export default function CampaignWorkspace() {
   const [templateSaving, setTemplateSaving] = useState(false);
   const [ideaGenerating, setIdeaGenerating] = useState(false);
   const [audienceIdeasGenerating, setAudienceIdeasGenerating] = useState(false);
+  const [ideaConfirmOpen, setIdeaConfirmOpen] = useState(false);
+  const [audienceConfirmOpen, setAudienceConfirmOpen] = useState(false);
   const [ideaPrompt, setIdeaPrompt] = useState("");
   const [ideaImages, setIdeaImages] = useState([]);
   const [workspaceDefaultLogoUrl, setWorkspaceDefaultLogoUrl] = useState("");
@@ -852,7 +855,7 @@ export default function CampaignWorkspace() {
                       variant="outline"
                       size="sm"
                       loading={ideaGenerating}
-                      onClick={generateIdeas}
+                      onClick={() => setIdeaConfirmOpen(true)}
                     >
                       Generate
                     </Button>
@@ -963,7 +966,7 @@ export default function CampaignWorkspace() {
                       type="button"
                       loading={audienceIdeasGenerating}
                       disabled={templateSaving || ideaGenerating}
-                      onClick={generateAllAudienceTemplates}
+                      onClick={() => setAudienceConfirmOpen(true)}
                     >
                       Create all audience drafts with AI
                     </Button>
@@ -1161,6 +1164,28 @@ export default function CampaignWorkspace() {
           )}
         </DashboardCard>
       </section>
+
+      <CostConfirmModal
+        open={ideaConfirmOpen}
+        feature="campaign.email_ideas"
+        calls={1}
+        title="Generate email ideas with AI?"
+        actionLabel="Generate"
+        busy={ideaGenerating}
+        onCancel={() => setIdeaConfirmOpen(false)}
+        onConfirm={() => { setIdeaConfirmOpen(false); generateIdeas(); }}
+      />
+      <CostConfirmModal
+        open={audienceConfirmOpen}
+        feature="campaign.email_audience_templates"
+        calls={Math.max(1, audienceDefinitions().length)}
+        itemNoun="audience"
+        title="Create all audience drafts with AI?"
+        actionLabel="Create drafts"
+        busy={audienceIdeasGenerating}
+        onCancel={() => setAudienceConfirmOpen(false)}
+        onConfirm={() => { setAudienceConfirmOpen(false); generateAllAudienceTemplates(); }}
+      />
     </div>
   );
 }

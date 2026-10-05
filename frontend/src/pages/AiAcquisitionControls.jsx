@@ -60,7 +60,7 @@ function endpointLabel(endpoint) { return ENDPOINT_LABELS[endpoint] || endpoint;
 const FEATURE_LABELS = {
   health_check: "Connectivity check (tiny automatic test — not a real feature use)",
   "jarvis.chat": "Jarvis conversation",
-  "jarvis.chat.image": "Jarvis — understanding an uploaded image",
+  "jarvis.chat.image": "Jarvis — generating an image from chat",
   "jarvis.campaign_studio.flyer": "Campaign Studio — flyer design",
   "jarvis.campaign_studio.prepare": "Campaign Studio — preparing a campaign",
   qualify_and_recommend_leads: "Qualifying leads (\"Have Jarvis qualify\")",

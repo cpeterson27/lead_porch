@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { FiMaximize2, FiMinimize2, FiChevronUp, FiChevronDown, FiVolume2, FiPlus, FiImage, FiMail, FiSearch, FiLayers, FiArrowUpRight } from "react-icons/fi";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useJarvis } from "../hooks/useJarvis";
+import CostConfirmModal from "./CostConfirmModal.jsx";
 import {
   buildJarvisCampaignPackage,
   confirmJarvisResearchImport,
@@ -186,6 +187,7 @@ export default function JarvisChat() {
   const [visualWidth, setVisualWidth] = useState(() => Number(localStorage.getItem("jarvisVisualWidth")) || 44);
   const [generatingImage, setGeneratingImage] = useState(false);
   const [buildingPackageId, setBuildingPackageId] = useState("");
+  const [buildConfirmMessage, setBuildConfirmMessage] = useState(null);
   // Collapses the voice-settings block (source/OpenAI voice/browser
   // voice/test button) at the bottom of the conversation input — not the
   // big orb header — since that's the part that's genuinely just
@@ -324,9 +326,28 @@ export default function JarvisChat() {
     }
   };
 
+  // The owner's own request: a plain conversational message should send
+  // immediately (it's cheap and she doesn't want a popup on every message),
+  // but a request that's about to trigger a known-costly path — generating
+  // an actual image, or building a full campaign package (flyer + copy +
+  // social drafts in one shot) — should show an estimated cost and require
+  // confirmation first, same as the qualify-leads and monitor-run
+  // confirmations elsewhere in the app.
+  const [costConfirmPrompt, setCostConfirmPrompt] = useState(null);
   const submitPrompt = async (prompt) => {
     if (!prompt.trim() || loading || generatingImage) return;
+    if (IMAGE_REQUEST_PATTERN.test(prompt) && !isCampaignPackageRequest(prompt)) {
+      setCostConfirmPrompt({ prompt, feature: "jarvis.chat.image", title: "Generate this image with AI?", actionLabel: "Generate image" });
+      return;
+    }
+    if (isCampaignPackageRequest(prompt)) {
+      setCostConfirmPrompt({ prompt, feature: "jarvis.campaign_studio.prepare", title: "Build this campaign package with AI?", actionLabel: "Build it" });
+      return;
+    }
+    await proceedWithPrompt(prompt);
+  };
 
+  const proceedWithPrompt = async (prompt) => {
     // Add user message
     const userMessage = {
       id: nextId,
@@ -812,7 +833,7 @@ export default function JarvisChat() {
 
               <JarvisResearchPreview message={msg} approval={researchApprovals[String(msg.data?.previewId || "")]} busy={researchActionId === String(msg.data?.previewId || "")} onPrepare={prepareResearchImport} onConfirm={confirmResearchImport} />
               <JarvisPublicMentionPreview message={msg} />
-              <JarvisCampaignPackagePreview message={msg} busy={buildingPackageId === String(msg.data?.campaignPackage?._id || "")} onBuild={() => handleAction("build_campaign_package", msg)} onOpen={() => navigate("/content")} />
+              <JarvisCampaignPackagePreview message={msg} busy={buildingPackageId === String(msg.data?.campaignPackage?._id || "")} onBuild={() => setBuildConfirmMessage(msg)} onOpen={() => navigate("/content")} />
 
               {msg.activity?.length ? <div className="jarvis-activity"><p>Jarvis completed</p>{msg.activity.map((step, index) => <div key={`${msg.id}-${index}`}><span>{step.status === "warning" ? "!" : "✓"}</span>{step.label}</div>)}</div> : null}
               {msg.memorySources?.length ? <div className="jarvis-memory-sources"><strong>Vault notes consulted</strong>{msg.memorySources.map((source) => <span key={source}>{source}</span>)}</div> : null}
@@ -907,6 +928,28 @@ export default function JarvisChat() {
         {speechError ? <div className={speechError.startsWith("Using this device") ? "jarvis-voice-notice" : "jarvis-error"}>{speechError}</div> : null}
         {error && <div className="jarvis-error">{intentResearchTask ? `${friendlyJarvisError} No identity was added unless supported evidence appears above.` : friendlyJarvisError}</div>}
       </form>
+
+      <CostConfirmModal
+        open={Boolean(costConfirmPrompt)}
+        feature={costConfirmPrompt?.feature}
+        calls={1}
+        title={costConfirmPrompt?.title}
+        actionLabel={costConfirmPrompt?.actionLabel}
+        busy={loading || generatingImage}
+        onCancel={() => setCostConfirmPrompt(null)}
+        onConfirm={() => { const prompt = costConfirmPrompt?.prompt; setCostConfirmPrompt(null); if (prompt) proceedWithPrompt(prompt); }}
+      />
+      <CostConfirmModal
+        open={Boolean(buildConfirmMessage)}
+        feature="jarvis.campaign_studio.flyer"
+        calls={1}
+        title="Build this campaign package?"
+        actionLabel="Build it"
+        note="This also generates the flyer image and platform-specific copy drafts, which cost more than the initial package proposal you already saw."
+        busy={Boolean(buildingPackageId)}
+        onCancel={() => setBuildConfirmMessage(null)}
+        onConfirm={() => { const msg = buildConfirmMessage; setBuildConfirmMessage(null); handleAction("build_campaign_package", msg); }}
+      />
     </div>
   );
 }

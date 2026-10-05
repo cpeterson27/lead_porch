@@ -746,6 +746,14 @@ export default function PublicWebDiscoveryPanel({ onResultsChanged }) {
         {!schedules.length ? <p className="leadgen-run-disclosure">No scheduled searches have been saved yet.</p> : schedules.map((schedule) => (
           <div className="leadgen-monitor-suggestion" key={schedule._id}>
             <p><strong>{schedule.name}</strong> · {schedule.enabled ? "On" : "Paused"} · {schedule.cadence === "daily" ? "Every day" : `Every ${WEEKDAYS.find(([value]) => value === schedule.dayOfWeek)?.[1] || schedule.dayOfWeek}`} at {schedule.timeOfDay} ({schedule.timezone}). {schedule.nextRunAt ? `Next run: ${new Date(schedule.nextRunAt).toLocaleString()}.` : "No automatic run is queued."}</p>
+            <p className="leadgen-run-disclosure">
+              Spending ceiling per run — the most this schedule can ever spend, not its typical actual cost:{" "}
+              {schedule.sources?.length ? <>up to <strong>${Number(schedule.providerCreditCapUsd || 0).toFixed(2)}</strong> on web search (Vertex + OpenAI)</> : "web search is off for this schedule"}
+              {schedule.includeApolloPersonSearch ? <>, up to <strong>{schedule.maxApolloPersonSearchCredits}</strong> Apollo credits</> : ""}
+              {schedule.includePdlPersonSearch ? <>, up to <strong>{schedule.maxPdlPersonSearchCredits}</strong> PDL credits</> : ""}
+              {schedule.includePdlCrossReference ? <>, up to <strong>{schedule.maxPdlCrossReferenceCredits}</strong> PDL cross-reference credits</> : ""}
+              . Each run also makes several Jarvis AI calls (generating search terms, qualifying candidates) billed separately — see "Typical cost per action" on the Usage &amp; Agents page for those.
+            </p>
             <div className="leadgen-review-actions">
               {!schedule.enabled ? <Button size="sm" loading={scheduleBusy[schedule._id] === "enabling"} onClick={() => enableSchedule(schedule)}>Turn schedule on</Button> : <Button size="sm" variant="outline" loading={scheduleBusy[schedule._id] === "disabling"} onClick={() => disableSchedule(schedule)}>Pause schedule</Button>}
               <Button size="sm" variant="outline" loading={scheduleBusy[schedule._id] === "running"} onClick={() => runScheduleNow(schedule)}>Run once now</Button>
