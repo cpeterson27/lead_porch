@@ -630,7 +630,6 @@ export default function Contacts() {
     try { return localStorage.getItem("crmEmailCoverageDismissedAt") === new Date().toDateString(); } catch { return false; }
   });
   const [composeContact, setComposeContact] = useState(null);
-  const [composeCampaignId, setComposeCampaignId] = useState("");
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
   const [composeSending, setComposeSending] = useState(false);
@@ -1348,19 +1347,17 @@ export default function Contacts() {
 
   function openCompose(contact) {
     setComposeContact(contact);
-    setComposeCampaignId(campaigns[0]?._id || "");
     setComposeSubject("");
     setComposeBody("");
     setComposeError("");
   }
 
   async function sendComposedEmail() {
-    if (!composeCampaignId) return setComposeError("Choose which campaign this sends under.");
     if (!composeSubject.trim() || !composeBody.trim()) return setComposeError("Write a subject and message first.");
     try {
       setComposeSending(true);
       setComposeError("");
-      await sendContactEmail(composeContact._id, { campaignId: composeCampaignId, subject: composeSubject, body: composeBody });
+      await sendContactEmail(composeContact._id, { subject: composeSubject, body: composeBody });
       setComposeContact(null);
       setBulkNotice(`Email sent to ${contactDisplayName(composeContact)}.`);
     } catch (err) {
@@ -4778,14 +4775,6 @@ export default function Contacts() {
         {composeContact ? (
           <div className="contact-compose-form">
             <p className="contact-compose-form__to">To: {composeContact.email}</p>
-            <label className="form-field">
-              <span>Sends under campaign</span>
-              <select className="select-input" value={composeCampaignId} onChange={(event) => setComposeCampaignId(event.target.value)}>
-                <option value="">Choose a campaign…</option>
-                {campaigns.map((campaign) => <option key={campaign._id} value={campaign._id}>{campaign.name}</option>)}
-              </select>
-              <small>Sender identity, compliance footer, and unsubscribe handling come from this campaign.</small>
-            </label>
             <label className="form-field">
               <span>Subject</span>
               <input value={composeSubject} onChange={(event) => setComposeSubject(event.target.value)} />

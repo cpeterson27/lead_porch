@@ -33,7 +33,7 @@ router.post("/", async (req, res) => {
   try {
     const sequence = await emailSequenceService.createSequence({
       workspaceId: req.auth.workspaceId, userId: req.auth.user?._id,
-      name: req.body?.name, description: req.body?.description, campaignId: req.body?.campaignId,
+      name: req.body?.name, description: req.body?.description,
       steps: req.body?.steps, stopOnReply: req.body?.stopOnReply,
     });
     return res.status(201).json({ success: true, data: sequence });

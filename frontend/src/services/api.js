@@ -911,6 +911,12 @@ export const fetchDeliverabilityHistory = (days = 7) =>
   api.get("/campaigns/deliverability", { params: { days } }).then((res) => res.data);
 export const fetchSenderDomainStatus = () =>
   api.get("/campaigns/sender-domain-status").then((res) => res.data);
+export const fetchNewsletterPreview = () =>
+  api.get("/campaigns/newsletter/preview").then((res) => res.data);
+export const fetchNewsletterHistory = () =>
+  api.get("/campaigns/newsletter/history").then((res) => res.data);
+export const sendNewsletter = (payload) =>
+  api.post("/campaigns/newsletter/send", payload).then((res) => res.data);
 export const fetchCampaigns = (eventId) =>
   api
     .get("/campaigns", {
@@ -1639,8 +1645,8 @@ export const updateLinkedinContactOutreach = (contactId, data) =>
     .then((res) => res.data);
 export const researchContactWithAi = (contactId) =>
   api.post(`/contacts/${contactId}/ai-research`).then((res) => res.data.data);
-export const sendContactEmail = (contactId, { campaignId, subject, body }) =>
-  api.post(`/contacts/${contactId}/send-email`, { campaignId, subject, body }).then((res) => res.data);
+export const sendContactEmail = (contactId, { subject, body }) =>
+  api.post(`/contacts/${contactId}/send-email`, { subject, body }).then((res) => res.data);
 export const fetchContactEmailCoverageReport = () =>
   api.get("/contacts/email-coverage-report").then((res) => res.data);
 export const fetchPipelineHealth = () =>

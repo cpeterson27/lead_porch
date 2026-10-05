@@ -20,6 +20,7 @@ const CampaignLaunch = lazyWithRetry(() => import("./pages/CampaignLaunch.jsx"))
 const CampaignWorkspace = lazyWithRetry(() => import("./pages/CampaignWorkspace.jsx"));
 const Outreach = lazyWithRetry(() => import("./pages/Outreach.jsx"));
 const EmailSequences = lazyWithRetry(() => import("./pages/EmailSequences.jsx"));
+const Newsletter = lazyWithRetry(() => import("./pages/Newsletter.jsx"));
 const Partners = lazyWithRetry(() => import("./pages/Partners.jsx"));
 const Marketing = lazyWithRetry(() => import("./pages/Marketing.jsx"));
 const Content = lazyWithRetry(() => import("./pages/Content.jsx"));
@@ -174,6 +175,7 @@ function ProtectedApp() {
           <Route path="/outreach" element={<Outreach />} />
           <Route path="/email-sequences" element={<EmailSequences />} />
           <Route path="/email-sequences/:id" element={<EmailSequences />} />
+          <Route path="/newsletter" element={<Newsletter />} />
           <Route path="/crm/contacts" element={<Contacts />} />
           <Route path="/crm/contacts/:id" element={<Contacts />} />
           <Route path="/crm/companies" element={<Companies />} />

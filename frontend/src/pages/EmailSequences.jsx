@@ -10,7 +10,6 @@ import {
   createEmailSequence,
   updateEmailSequence,
   setEmailSequenceEnrollmentStatus,
-  fetchCampaigns,
 } from "../services/api.js";
 import "./EmailSequences.css";
 
@@ -28,7 +27,6 @@ export default function EmailSequences() {
   const navigate = useNavigate();
   const { id: routeId } = useParams();
   const [sequences, setSequences] = useState([]);
-  const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -40,12 +38,8 @@ export default function EmailSequences() {
   const [enrollmentBusyId, setEnrollmentBusyId] = useState("");
 
   const load = useCallback(() => {
-    Promise.all([fetchEmailSequences(), fetchCampaigns()])
-      .then(([sequenceRes, campaignRes]) => {
-        setSequences(sequenceRes.data || []);
-        setCampaigns(Array.isArray(campaignRes) ? campaignRes : campaignRes.campaigns || campaignRes.data || []);
-        setError("");
-      })
+    fetchEmailSequences()
+      .then((res) => { setSequences(res.data || []); setError(""); })
       .catch((err) => setError(err.response?.data?.error || "Unable to load email sequences."))
       .finally(() => setLoading(false));
   }, []);
@@ -80,7 +74,7 @@ export default function EmailSequences() {
   }, [routeId]);
 
   const openNewSequence = () => {
-    setEditingSequence({ name: "", description: "", campaignId: campaigns[0]?._id || campaigns[0]?.id || "", stopOnReply: true, steps: [emptyStep()] });
+    setEditingSequence({ name: "", description: "", stopOnReply: true, steps: [emptyStep()] });
   };
 
   const openEditSequence = async (sequence) => {
@@ -155,12 +149,9 @@ export default function EmailSequences() {
             sends each step on schedule, stopping automatically if the contact replies.
           </p>
         </div>
-        <Button onClick={openNewSequence} disabled={!campaigns.length}>New sequence</Button>
+        <Button onClick={openNewSequence}>New sequence</Button>
       </header>
 
-      {!campaigns.length && !loading ? (
-        <p className="form-error">Create a campaign first (Campaigns page) — every sequence sends under an existing campaign's sender identity and compliance settings.</p>
-      ) : null}
       {error ? <p className="form-error">{error}</p> : null}
       {notice ? <p className="discovery-notice">{notice}</p> : null}
 
@@ -238,13 +229,6 @@ export default function EmailSequences() {
             <label className="form-field">
               <span>Description (optional)</span>
               <input value={editingSequence.description || ""} onChange={(event) => setEditingSequence({ ...editingSequence, description: event.target.value })} />
-            </label>
-            <label className="form-field">
-              <span>Sends under campaign</span>
-              <select className="select-input" value={editingSequence.campaignId} onChange={(event) => setEditingSequence({ ...editingSequence, campaignId: event.target.value })}>
-                {campaigns.map((campaign) => <option key={campaign._id || campaign.id} value={campaign._id || campaign.id}>{campaign.name}</option>)}
-              </select>
-              <small>Sender identity, compliance footer, and unsubscribe handling all come from this campaign.</small>
             </label>
             <label className="email-sequence-form__checkbox">
               <input type="checkbox" checked={editingSequence.stopOnReply} onChange={(event) => setEditingSequence({ ...editingSequence, stopOnReply: event.target.checked })} />

@@ -3,10 +3,12 @@
  * services/linkedinSequenceService.js's LinkedIn sequences, and built to the
  * same lease-based polling pattern services/researchMonitorService.js
  * already uses for its own due-item runner. Each step sends as a real
- * Outreach record under the sequence's own campaignId, so it inherits that
- * campaign's sender identity, compliance footer, and suppression/
- * unsubscribe handling from services/email.js exactly as a one-shot
- * campaign send does — no email logic is reimplemented here.
+ * Outreach record under an auto-managed utility campaign (see
+ * utilityCampaignService.js) purely because Outreach.campaignId is a
+ * required bookkeeping field — sender identity, compliance footer, and
+ * suppression/unsubscribe handling all come from WorkspaceConfig (see
+ * services/email.js), never from a campaign, so the owner is never asked
+ * to pick one.
  */
 const EmailSequence = require("../models/EmailSequence");
 const EmailSequenceEnrollment = require("../models/EmailSequenceEnrollment");
@@ -15,22 +17,14 @@ const Contact = require("../models/Contact");
 const Outreach = require("../models/Outreach");
 const { sendEmail } = require("./email");
 const { runWithWorkspace } = require("../tenancy/workspaceContext");
+const { findOrCreateUtilityCampaign } = require("./utilityCampaignService");
+const { applyEmailTokens: applyTokens } = require("../utils/emailTokens");
 
 const RUNNER_INTERVAL_MS = Math.max(15000, Number(process.env.EMAIL_SEQUENCE_WORKER_POLL_MS) || 60000);
 const LEASE_MS = 5 * 60000;
 const WORKER_ID = `${process.pid}-${Math.random().toString(36).slice(2, 8)}`;
 let timer = null;
 let polling = false;
-
-function applyTokens(text, contact) {
-  const firstName = String(contact?.firstName || contact?.name || "").trim().split(/\s+/)[0] || "there";
-  const lastName = String(contact?.lastName || "").trim();
-  const company = String(contact?.company || "").trim();
-  return String(text || "")
-    .replaceAll("{{firstName}}", firstName)
-    .replaceAll("{{lastName}}", lastName)
-    .replaceAll("{{company}}", company);
-}
 
 async function listSequences(workspaceId) {
   const sequences = await EmailSequence.find({ workspaceId }).sort({ createdAt: -1 }).lean();
@@ -54,12 +48,13 @@ async function getSequence(workspaceId, sequenceId) {
   return sequence;
 }
 
-async function createSequence({ workspaceId, userId, name, description, campaignId, steps, stopOnReply }) {
-  const campaign = await Campaign.findOne({ _id: campaignId, workspaceId }).select("_id").lean();
-  if (!campaign) { const error = new Error("Choose a real campaign for this sequence to send under"); error.code = "EMAIL_SEQUENCE_CAMPAIGN_REQUIRED"; throw error; }
+async function createSequence({ workspaceId, userId, name, description, steps, stopOnReply }) {
   if (!Array.isArray(steps) || !steps.length) { const error = new Error("A sequence needs at least one step"); error.code = "EMAIL_SEQUENCE_STEP_REQUIRED"; throw error; }
+  const cleanName = String(name || "").trim().slice(0, 180);
+  if (!cleanName) { const error = new Error("Name this sequence first"); error.code = "EMAIL_SEQUENCE_NAME_REQUIRED"; throw error; }
+  const campaignId = await findOrCreateUtilityCampaign({ workspaceId, name: `Sequence: ${cleanName}`, purpose: "sequence" });
   return EmailSequence.create({
-    workspaceId, name: String(name || "").trim().slice(0, 180), description: String(description || "").slice(0, 2000),
+    workspaceId, name: cleanName, description: String(description || "").slice(0, 2000),
     campaignId, stopOnReply: stopOnReply !== false,
     steps: steps.map((step) => ({ subject: String(step.subject || "").trim().slice(0, 300), body: String(step.body || "").slice(0, 20000), delayDays: Math.max(0, Math.min(365, Number(step.delayDays) || 0)) })),
     createdBy: userId, updatedBy: userId,

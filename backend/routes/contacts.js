@@ -19,6 +19,7 @@ const { assessEmail } = require("../services/emailRiskService");
 const { extractBusinessCard, extractDigitalBusinessCard } = require("../services/businessCardExtractionService");
 const { generateLinkedinDraft } = require("../services/linkedinOutreachService");
 const { sendEmail } = require("../services/email");
+const { findOrCreateUtilityCampaign } = require("../services/utilityCampaignService");
 const { getConnectionPriorities } = require("../services/campaignAudienceService");
 const { authenticatedUserId } = require("../authorization/accessPolicy");
 const agentExecutionService = require("../services/agentExecutionService");
@@ -825,11 +826,13 @@ router.patch("/:id/linkedin-outreach", async (req, res) => {
 
 /**
  * One-off "email this person right now" — the direct-from-CRM send the
- * owner asked for, distinct from a campaign blast or a sequence step. Still
- * sends under an existing campaign's sender identity, compliance footer,
- * and unsubscribe handling (services/email.js's sendEmail), same as every
- * other real send path in the app — a real campaign is required so this
- * can never bypass suppression/compliance by skipping that identity setup.
+ * owner asked for, distinct from a campaign blast or a sequence step.
+ * Sender identity, compliance footer, and unsubscribe handling come from
+ * WorkspaceConfig (services/email.js's sendEmail), never from a campaign —
+ * so this uses a single shared auto-managed "Direct Sends" utility
+ * campaign (see utilityCampaignService.js) purely to satisfy
+ * Outreach.campaignId's bookkeeping requirement, rather than asking the
+ * owner to pick one.
  */
 router.post("/:id/send-email", async (req, res) => {
   try {
@@ -839,13 +842,10 @@ router.post("/:id/send-email", async (req, res) => {
     if (["invalid", "unsubscribed", "archived"].includes(contact.status) || contact.emailBounced === true || contact.emailStatus === "undeliverable") {
       return res.status(400).json({ success: false, message: "This address previously bounced or cannot receive marketing email." });
     }
-    const campaignId = req.body?.campaignId;
     const subject = String(req.body?.subject || "").trim();
     const body = String(req.body?.body || "").trim();
-    if (!campaignId) return res.status(400).json({ success: false, message: "Choose which campaign this sends under." });
     if (!subject || !body) return res.status(400).json({ success: false, message: "Write a subject and message first." });
-    const campaign = await Campaign.findById(campaignId).select("_id workspaceId").lean();
-    if (!campaign) return res.status(404).json({ success: false, message: "Campaign not found" });
+    const campaignId = await findOrCreateUtilityCampaign({ workspaceId: req.auth.workspaceId, name: "Direct Sends", purpose: "direct_send" });
     const outreach = await Outreach.create({
       campaignId, contactId: contact._id, workspaceId: req.auth.workspaceId,
       organization: contact.company || contact.name || "Contact", contactName: contact.name || `${contact.firstName || ""} ${contact.lastName || ""}`.trim(),

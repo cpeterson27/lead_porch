@@ -24,6 +24,16 @@ const campaignSchema = new mongoose.Schema(
     default: "event",
   },
   campaignKind: { type: String, enum: ["event", "program"], default: "event", index: true },
+  // "manual" = the owner created this campaign herself and picked its
+  // audience by hand, same as always. The other three are auto-created
+  // behind the scenes purely as the required bookkeeping container
+  // Outreach.campaignId needs (sender identity/compliance come from
+  // WorkspaceConfig, never from the campaign itself — see services/email.js)
+  // so the owner is never asked to "pick a campaign" for a sequence, a
+  // one-off send, or a newsletter issue. "newsletter" specifically also
+  // marks which campaigns routes/campaigns.js's newsletter history
+  // endpoint should list.
+  campaignPurpose: { type: String, enum: ["manual", "sequence", "direct_send", "newsletter"], default: "manual", index: true },
   programName: { type: String, default: "" },
   templateKey: { type: String, default: "event_investor" },
   brand: {

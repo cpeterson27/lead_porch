@@ -179,6 +179,35 @@ router.get("/sender-domain-status", async (req, res) => {
     return res.status(502).json({ success: false, error: error.message || "Unable to check Resend domain status", code: error.code || "RESEND_DOMAIN_STATUS_FAILED" });
   }
 });
+
+router.get("/newsletter/preview", async (req, res) => {
+  try {
+    const { previewRecipientCount } = require("../services/newsletterService");
+    return res.json({ success: true, data: await previewRecipientCount(req.auth.workspaceId) });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: "Unable to count newsletter recipients" });
+  }
+});
+
+router.get("/newsletter/history", async (req, res) => {
+  try {
+    const { listNewsletterHistory } = require("../services/newsletterService");
+    return res.json({ success: true, data: await listNewsletterHistory(req.auth.workspaceId) });
+  } catch (error) {
+    return res.status(500).json({ success: false, error: "Unable to load newsletter history" });
+  }
+});
+
+router.post("/newsletter/send", requireRole("owner", "admin"), async (req, res) => {
+  try {
+    const { sendNewsletter } = require("../services/newsletterService");
+    const data = await sendNewsletter({ workspaceId: req.auth.workspaceId, subject: req.body?.subject, body: req.body?.body });
+    return res.status(202).json({ success: true, data, message: `Sending to ${data.queued} contact${data.queued === 1 ? "" : "s"} now — this paces out automatically to protect deliverability, so it won't all go out instantly.` });
+  } catch (error) {
+    return res.status(error.code ? 400 : 500).json({ success: false, error: error.message, code: error.code });
+  }
+});
+
 router.get("/", async (req, res) => {
   try {
     const campaigns = await Campaign.find()
