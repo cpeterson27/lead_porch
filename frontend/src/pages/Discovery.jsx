@@ -1521,15 +1521,26 @@ export default function Discovery() {
   return <div className="discovery-page">
     <header className="discovery-header discovery-header--minimal discovery-command-hero"><div className="discovery-command-hero__copy"><span className="eyebrow">Intelligence engine</span><h1>Turn market signals<br/>into real opportunities.</h1><p>Jarvis searches, qualifies, and organizes the people showing genuine intent—then guides each result into the right next action.</p><div className="discovery-command-hero__stats"><span><strong>{bucketSummary.live_lead || 0}</strong>ready to review</span><span><strong>{bucketSummary.watchlist || 0}</strong>signals developing</span><span><strong>{monitors.filter((item) => item.enabled).length}</strong>monitors working</span></div></div><div className="discovery-radar" aria-hidden="true"><i/><i/><i/><i/><span>LIVE<br/>SIGNALS</span></div></header>
 
+    {/* Button order matches the 4-step journey below left to right (Find ->
+        Listen -> Qualify), so the two navigation controls agree instead of
+        contradicting each other — they used to be in a different order than
+        the steps, so clicking the 2nd button lit up step 3 and vice versa.
+        Find companies/Past searches are secondary tools, not pipeline
+        steps, so they're visually set apart after a divider. */}
     <nav className="discovery-flow-nav" aria-label="Discovery actions">
       <button type="button" className={activeTab === "people" ? "is-active" : ""} onClick={() => setActiveTab("people")}>Find leads</button>
-      <button type="button" className={activeTab === "leads" ? "is-active" : ""} onClick={() => setActiveTab("leads")}>Review leads {bucketSummary.live_lead ? <span>{bucketSummary.live_lead}</span> : null}</button>
       <button type="button" className={activeTab === "monitoring" ? "is-active" : ""} onClick={() => setActiveTab("monitoring")}>Automatic searches</button>
+      <button type="button" className={activeTab === "leads" ? "is-active" : ""} onClick={() => setActiveTab("leads")}>Review leads {bucketSummary.live_lead ? <span>{bucketSummary.live_lead}</span> : null}</button>
       <button type="button" className={activeTab === "company" ? "is-active" : ""} onClick={() => setActiveTab("company")}>Find companies</button>
       <button type="button" className={activeTab === "saved" ? "is-active" : ""} onClick={() => setActiveTab("saved")}>Past searches</button>
     </nav>
 
-    <section className="discovery-journey" aria-label="Discovery workflow"><div className={activeTab === "people" ? "is-current" : ""}><span>01</span><strong>Find</strong><small>Build the audience</small></div><i/><div className={activeTab === "monitoring" ? "is-current" : ""}><span>02</span><strong>Listen</strong><small>Capture live intent</small></div><i/><div className={activeTab === "leads" ? "is-current" : ""}><span>03</span><strong>Qualify</strong><small>Review the evidence</small></div><i/><div><span>04</span><strong>Activate</strong><small>Move into outreach</small></div></section>
+    <section className="discovery-journey" aria-label="Discovery workflow — click a step to jump there">
+      <button type="button" className={activeTab === "people" ? "is-current" : ""} onClick={() => setActiveTab("people")}><span>01</span><strong>Find</strong><small>Build the audience</small></button><i/>
+      <button type="button" className={activeTab === "monitoring" ? "is-current" : ""} onClick={() => setActiveTab("monitoring")}><span>02</span><strong>Listen</strong><small>Capture live intent</small></button><i/>
+      <button type="button" className={activeTab === "leads" ? "is-current" : ""} onClick={() => setActiveTab("leads")}><span>03</span><strong>Qualify</strong><small>Review the evidence</small></button><i/>
+      <button type="button" title="Leaves Discovery for the Outreach page, where a qualified lead actually gets contacted" onClick={() => navigate("/outreach")}><span>04</span><strong>Activate</strong><small>Move into outreach</small></button>
+    </section>
 
     {notice ? <div className="notice-banner" role="status">{notice}</div> : null}
 
@@ -1586,7 +1597,7 @@ export default function Discovery() {
 
     <details className="activity-drawer"><summary>View monitoring activity</summary><p className="activity-help">This is an optional audit trail. Source retries are informational; you do not need to fix them.</p><div className="monitor-timeline">{monitorActivity.length ? monitorActivity.slice(0, 20).map((item) => <article key={item._id} className={`is-${item.type}`}><span></span><div><strong>{friendlyActivityMessage(item)}</strong><small>{new Date(item.createdAt).toLocaleString()}</small></div></article>) : <p>No activity yet.</p>}</div></details></> : null}
 
-    {activeTab === "leads" ? <><section className="discovery-section-heading"><div><span>Review leads</span><h2>{bucketSummary.live_lead} live lead{bucketSummary.live_lead === 1 ? "" : "s"}</h2><p>{intentSignals.length} lead records are loaded below. Choose a view to review or continue their next action.</p></div></section>
+    {activeTab === "leads" ? <><section className="discovery-section-heading"><div><span>Review leads</span><h2>{bucketSummary.live_lead} live lead{bucketSummary.live_lead === 1 ? "" : "s"}</h2><p>Everything here came from step 01 (Find leads) or step 02 (Automatic searches, your scheduled monitors) — nothing lands here any other way. {intentSignals.length} lead record{intentSignals.length === 1 ? "" : "s"} are loaded below for you to approve, dismiss, or send to CRM; nothing is added or contacted automatically.</p></div></section>
     <section className="discovery-track-tabs" aria-label="Discovery track">{[["live_lead", "Live Leads", bucketSummary.live_lead], ["watchlist", "Watchlist", bucketSummary.watchlist], ["community_opportunity", "Community Opportunities", bucketSummary.community_opportunity], ["rejected", "Rejected", bucketSummary.rejected]].map(([id, label, count]) => <button key={id} type="button" className={discoveryTrack === id ? "is-active" : ""} onClick={() => loadDiscoveryTrack(id)}><span>{label}</span><strong>{count}</strong></button>)}</section>
     {discoveryTrack !== "live_lead" ? <DashboardCard title={discoveryTrack === "watchlist" ? "Watchlist — relevant people without confirmed current intent" : discoveryTrack === "community_opportunity" ? "Community Opportunities" : "Rejected — recorded reason for every irrelevant result"}>
       {trackError ? <p className="form-error" role="alert">{trackError}</p> : null}
