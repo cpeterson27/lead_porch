@@ -67,9 +67,10 @@ router.post("/:id/enroll", async (req, res) => {
   }
 });
 
-router.post("/enrollments/:enrollmentId/:action(pause|resume|stop)", async (req, res) => {
+router.post("/enrollments/:enrollmentId/:action", async (req, res) => {
   try {
     const status = { pause: "paused", resume: "active", stop: "stopped" }[req.params.action];
+    if (!status) return res.status(400).json({ success: false, error: "Unknown action", code: "EMAIL_SEQUENCE_ENROLLMENT_ACTION_INVALID" });
     const enrollment = await emailSequenceService.setEnrollmentStatus({
       workspaceId: req.auth.workspaceId, enrollmentId: req.params.enrollmentId, status, reason: req.body?.reason,
     });
