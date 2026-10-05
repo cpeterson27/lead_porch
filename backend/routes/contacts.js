@@ -18,6 +18,7 @@ const { applyResearchClassification } = require("../services/contactResearchServ
 const { assessEmail } = require("../services/emailRiskService");
 const { extractBusinessCard, extractDigitalBusinessCard } = require("../services/businessCardExtractionService");
 const { generateLinkedinDraft } = require("../services/linkedinOutreachService");
+const { sendEmail } = require("../services/email");
 const { getConnectionPriorities } = require("../services/campaignAudienceService");
 const { authenticatedUserId } = require("../authorization/accessPolicy");
 const agentExecutionService = require("../services/agentExecutionService");
@@ -794,6 +795,51 @@ router.patch("/:id/linkedin-outreach", async (req, res) => {
     return res.json({ success: true, data: contact, message: "LinkedIn outreach updated. Nothing was sent." });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message || "Unable to update LinkedIn outreach" });
+  }
+});
+
+/**
+ * One-off "email this person right now" — the direct-from-CRM send the
+ * owner asked for, distinct from a campaign blast or a sequence step. Still
+ * sends under an existing campaign's sender identity, compliance footer,
+ * and unsubscribe handling (services/email.js's sendEmail), same as every
+ * other real send path in the app — a real campaign is required so this
+ * can never bypass suppression/compliance by skipping that identity setup.
+ */
+router.post("/:id/send-email", async (req, res) => {
+  try {
+    const contact = await Contact.findById(req.params.id);
+    if (!contact) return res.status(404).json({ success: false, message: "Contact not found" });
+    if (!contact.email) return res.status(400).json({ success: false, message: "This contact has no email on file." });
+    if (["invalid", "unsubscribed", "archived"].includes(contact.status) || contact.emailBounced === true || contact.emailStatus === "undeliverable") {
+      return res.status(400).json({ success: false, message: "This address previously bounced or cannot receive marketing email." });
+    }
+    const campaignId = req.body?.campaignId;
+    const subject = String(req.body?.subject || "").trim();
+    const body = String(req.body?.body || "").trim();
+    if (!campaignId) return res.status(400).json({ success: false, message: "Choose which campaign this sends under." });
+    if (!subject || !body) return res.status(400).json({ success: false, message: "Write a subject and message first." });
+    const campaign = await Campaign.findById(campaignId).select("_id workspaceId").lean();
+    if (!campaign) return res.status(404).json({ success: false, message: "Campaign not found" });
+    const outreach = await Outreach.create({
+      campaignId, contactId: contact._id, workspaceId: req.auth.workspaceId,
+      organization: contact.company || contact.name || "Contact", contactName: contact.name || `${contact.firstName || ""} ${contact.lastName || ""}`.trim(),
+      contactEmail: contact.email, contactRole: contact.title || "",
+      subject, emailDraft: body, emailTopic: "program_offers", deliveryPurpose: "marketing", status: "approved",
+    });
+    const result = await sendEmail(outreach, { deliveryPurpose: "marketing" });
+    if (!result.success) {
+      outreach.status = "failed"; outreach.failedAt = new Date(); outreach.deliveryStatus = "failed"; outreach.errorMessage = result.message;
+      await outreach.save();
+      return res.status(400).json({ success: false, message: result.message });
+    }
+    outreach.status = "sent"; outreach.sentAt = new Date(); outreach.messageId = result.id || ""; outreach.deliveryStatus = "accepted";
+    await outreach.save();
+    await Campaign.updateOne({ _id: campaignId }, { $inc: { "metrics.sent": 1 } });
+    await CrmActivity.create({ contactId: contact._id, organizationId: contact.organizationId || null, type: "email_sent", title: "One-off email sent", body: subject, source: "crm", createdBy: authenticatedUserId(req) });
+    return res.json({ success: true, data: outreach, message: "Email sent." });
+  } catch (error) {
+    return res.status(400).json({ success: false, message: error.message || "Unable to send that email" });
   }
 });
 

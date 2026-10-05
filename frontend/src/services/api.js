@@ -1637,6 +1637,8 @@ export const updateLinkedinContactOutreach = (contactId, data) =>
     .then((res) => res.data);
 export const researchContactWithAi = (contactId) =>
   api.post(`/contacts/${contactId}/ai-research`).then((res) => res.data.data);
+export const sendContactEmail = (contactId, { campaignId, subject, body }) =>
+  api.post(`/contacts/${contactId}/send-email`, { campaignId, subject, body }).then((res) => res.data);
 export const fetchPipelineHealth = () =>
   api.get("/system-agent/pipeline-health").then((res) => res.data.data);
 export const synthesizePipelineHealth = () =>

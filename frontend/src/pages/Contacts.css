@@ -2691,3 +2691,30 @@
   .page-dashboard:has(.crm-toolbar) .table td { white-space: normal; overflow: visible; }
   .page-dashboard:has(.crm-toolbar) .table th { width: auto !important; }
 }
+
+.contact-compose-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.contact-compose-form .form-field {
+  display: grid;
+  gap: 6px;
+}
+.contact-compose-form .form-field span {
+  font-size: 0.78rem;
+  font-weight: 650;
+  color: var(--color-text-muted);
+}
+.contact-compose-form .form-field small {
+  color: var(--color-text-subtle);
+  font-size: 0.74rem;
+}
+.contact-compose-form__to {
+  margin: 0;
+  padding: 8px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-subtle);
+  font-size: 0.84rem;
+  color: var(--color-text-muted);
+}

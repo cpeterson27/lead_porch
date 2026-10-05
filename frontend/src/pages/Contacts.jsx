@@ -39,6 +39,7 @@ import {
   bulkAssignContactsToCampaign,
   fetchEmailSequences,
   enrollContactsInEmailSequence,
+  sendContactEmail,
   bulkConfirmAndAssignContacts,
   createEmailVerificationBatch,
   fetchEmailVerificationBatch,
@@ -620,6 +621,12 @@ export default function Contacts() {
   const [bulkSequenceId, setBulkSequenceId] = useState("");
   const [sequences, setSequences] = useState([]);
   const [bulkEnrolling, setBulkEnrolling] = useState(false);
+  const [composeContact, setComposeContact] = useState(null);
+  const [composeCampaignId, setComposeCampaignId] = useState("");
+  const [composeSubject, setComposeSubject] = useState("");
+  const [composeBody, setComposeBody] = useState("");
+  const [composeSending, setComposeSending] = useState(false);
+  const [composeError, setComposeError] = useState("");
   const [bulkNotice, setBulkNotice] = useState("");
   const [fieldUpdateOpen, setFieldUpdateOpen] = useState(false);
   const [fieldUpdateFields, setFieldUpdateFields] = useState([]);
@@ -1324,6 +1331,30 @@ export default function Contacts() {
       setError(err.response?.data?.error || "Unable to enroll selected contacts");
     } finally {
       setBulkEnrolling(false);
+    }
+  }
+
+  function openCompose(contact) {
+    setComposeContact(contact);
+    setComposeCampaignId(campaigns[0]?._id || "");
+    setComposeSubject("");
+    setComposeBody("");
+    setComposeError("");
+  }
+
+  async function sendComposedEmail() {
+    if (!composeCampaignId) return setComposeError("Choose which campaign this sends under.");
+    if (!composeSubject.trim() || !composeBody.trim()) return setComposeError("Write a subject and message first.");
+    try {
+      setComposeSending(true);
+      setComposeError("");
+      await sendContactEmail(composeContact._id, { campaignId: composeCampaignId, subject: composeSubject, body: composeBody });
+      setComposeContact(null);
+      setBulkNotice(`Email sent to ${contactDisplayName(composeContact)}.`);
+    } catch (err) {
+      setComposeError(err.response?.data?.message || "Unable to send that email.");
+    } finally {
+      setComposeSending(false);
     }
   }
 
@@ -4048,6 +4079,13 @@ export default function Contacts() {
                 </p>
               </div>
               <div className="contact-detail__actions">
+                {detailContact.email ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => openCompose(detailContact)}
+                  >Send email</Button>
+                ) : null}
                 <Button
                   size="sm"
                   onClick={() => {
@@ -4685,6 +4723,39 @@ export default function Contacts() {
               </div>
             </>
           )
+        ) : null}
+      </Modal>
+
+      <Modal
+        isOpen={Boolean(composeContact)}
+        onClose={() => !composeSending && setComposeContact(null)}
+        title={`Email ${composeContact ? contactDisplayName(composeContact) : ""}`}
+        footer={<>
+          <Button variant="outline" onClick={() => setComposeContact(null)} disabled={composeSending}>Cancel</Button>
+          <Button onClick={sendComposedEmail} loading={composeSending}>Send</Button>
+        </>}
+      >
+        {composeContact ? (
+          <div className="contact-compose-form">
+            <p className="contact-compose-form__to">To: {composeContact.email}</p>
+            <label className="form-field">
+              <span>Sends under campaign</span>
+              <select className="select-input" value={composeCampaignId} onChange={(event) => setComposeCampaignId(event.target.value)}>
+                <option value="">Choose a campaign…</option>
+                {campaigns.map((campaign) => <option key={campaign._id} value={campaign._id}>{campaign.name}</option>)}
+              </select>
+              <small>Sender identity, compliance footer, and unsubscribe handling come from this campaign.</small>
+            </label>
+            <label className="form-field">
+              <span>Subject</span>
+              <input value={composeSubject} onChange={(event) => setComposeSubject(event.target.value)} />
+            </label>
+            <label className="form-field">
+              <span>Message</span>
+              <textarea className="select-input" rows={8} value={composeBody} onChange={(event) => setComposeBody(event.target.value)} />
+            </label>
+            {composeError ? <p className="form-error">{composeError}</p> : null}
+          </div>
         ) : null}
       </Modal>
     </div>
