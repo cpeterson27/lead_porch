@@ -782,18 +782,19 @@ export default function Discovery() {
     if (approveBusy) return;
     if (!window.confirm("Add every \"needs review\" person straight to the CRM, overriding the AI's own uncertainty about whether they're a real fit? This can add lower-quality leads along with good ones. This can take a few minutes and processes in bounded passes.")) return;
     setApproveBusy(true);
-    let totalSaved = 0, passes = 0;
+    let totalSaved = 0, totalSkippedNoEmail = 0, passes = 0;
     try {
       let hasMore = true;
       while (hasMore) {
         const res = await approveNeedsReviewLeads();
-        const { saved, hasMore: more, campaignName } = res.data || {};
+        const { saved, skippedNoEmail, hasMore: more, campaignName } = res.data || {};
         totalSaved += saved ?? 0;
+        totalSkippedNoEmail += skippedNoEmail ?? 0;
         passes += 1;
         hasMore = Boolean(more);
         setNotice(`Approving needs-review leads… ${totalSaved} added to CRM so far${campaignName ? ` (into ${campaignName})` : ""}.${hasMore ? "" : " Done."}`);
       }
-      setNotice(`Approved ${totalSaved} "needs review" people straight to the CRM over ${passes} pass(es).`);
+      setNotice(`Approved ${totalSaved} "needs review" people straight to the CRM over ${passes} pass(es).${totalSkippedNoEmail ? ` ${totalSkippedNoEmail} skipped — no email found, so they were never added.` : ""}`);
       await loadGroundingResults();
     } catch (err) {
       setNotice(err.response?.data?.error || "Unable to approve these leads.");

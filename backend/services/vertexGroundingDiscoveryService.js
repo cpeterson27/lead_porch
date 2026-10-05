@@ -351,7 +351,15 @@ async function getSuggestedSearches({ workspaceId }, dependencies = {}) {
  * today — "saved" honestly means kept in this review queue's own record
  * (with all its evidence) rather than inventing a new CRM entity type.
  */
-async function saveResult({ workspaceId, userId, resultId, campaignId = null }, dependencies = {}) {
+// `requireEmail`: only the bulk/automatic save paths (approveNeedsReviewPeople,
+// autoGradeApproveAndEnroll — see discoveryAutoEnrollmentService.js) pass
+// this true. The owner's own explicit decision: a blind bulk sweep must
+// never save a person with no real email again (that's how so many
+// no-email contacts ended up in the CRM), but a human reviewing ONE
+// specific result and deliberately clicking "Add anyway" still can —
+// that click IS the informed override, same as it already is for
+// qualificationLabel below.
+async function saveResult({ workspaceId, userId, resultId, campaignId = null, requireEmail = false }, dependencies = {}) {
   const Model = dependencies.GroundingResearchResult || GroundingResearchResult;
   const OrganizationModel = dependencies.Organization || Organization;
   const ingest = dependencies.ingestContacts || ingestContacts;
@@ -392,6 +400,7 @@ async function saveResult({ workspaceId, userId, resultId, campaignId = null }, 
         : row.email
           ? { email: row.email, state: row.emailState || "unverified", provider: row.providers?.find((p) => p === "pdl_person_search" || p === "apollo_person_search") || "" }
           : null;
+    if (requireEmail && !emailSource?.email) { const error = new Error("No email found for this result — skipped by a bulk/automatic save, which never adds a contact with no email"); error.code = "GROUNDING_RESULT_NO_EMAIL"; throw error; }
     // ingestContacts() itself always takes the newest non-empty value for
     // most fields — the right behavior for its other callers (a CSV
     // re-import or Monday sync, where a fresher value SHOULD win). Apollo

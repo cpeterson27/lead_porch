@@ -47,7 +47,7 @@ async function findActiveCampaign(workspaceId) {
  * sitting in the review queue for a human to look at.
  */
 async function autoGradeApproveAndEnroll({ workspaceId, auth, discoveryRunId, scheduleName = "" }) {
-  const summary = { graded: 0, qualified: 0, saved: 0, campaignId: null, campaignName: "", errors: [] };
+  const summary = { graded: 0, qualified: 0, saved: 0, skippedNoEmail: 0, campaignId: null, campaignName: "", errors: [] };
   const pending = await GroundingResearchResult.find({
     workspaceId, discoveryRunId, type: "person", status: "pending_review", qualificationLabel: "",
   }).select("_id");
@@ -75,12 +75,13 @@ async function autoGradeApproveAndEnroll({ workspaceId, auth, discoveryRunId, sc
 
   for (const row of qualifiedRows) {
     try {
-      const saved = await saveResult({ workspaceId, userId: null, resultId: row._id, campaignId: activeCampaign?._id || null });
+      const saved = await saveResult({ workspaceId, userId: null, resultId: row._id, campaignId: activeCampaign?._id || null, requireEmail: true });
       summary.saved += 1;
       if (saved.savedContactId && scheduleName) {
         await Contact.updateOne({ _id: saved.savedContactId }, { $addToSet: { tags: `discovery:${scheduleName}` } });
       }
     } catch (error) {
+      if (error.code === "GROUNDING_RESULT_NO_EMAIL") { summary.skippedNoEmail += 1; continue; }
       summary.errors.push(`${row._id}: ${error.message || error}`);
     }
   }
@@ -163,7 +164,7 @@ async function approveNeedsReviewPeople({ workspaceId, limit = 50 }) {
     workspaceId, type: "person", status: "pending_review", qualificationLabel: "needs_review",
   }).select("_id").limit(limit);
 
-  const summary = { saved: 0, errors: [], campaignId: null, campaignName: "" };
+  const summary = { saved: 0, skippedNoEmail: 0, errors: [], campaignId: null, campaignName: "" };
   if (!rows.length) return { ...summary, hasMore: false };
 
   const activeCampaign = await findActiveCampaign(workspaceId);
@@ -172,9 +173,10 @@ async function approveNeedsReviewPeople({ workspaceId, limit = 50 }) {
 
   for (const row of rows) {
     try {
-      await saveResult({ workspaceId, userId: null, resultId: row._id, campaignId: activeCampaign?._id || null });
+      await saveResult({ workspaceId, userId: null, resultId: row._id, campaignId: activeCampaign?._id || null, requireEmail: true });
       summary.saved += 1;
     } catch (error) {
+      if (error.code === "GROUNDING_RESULT_NO_EMAIL") { summary.skippedNoEmail += 1; continue; }
       summary.errors.push(`${row._id}: ${error.message || error}`);
     }
   }
