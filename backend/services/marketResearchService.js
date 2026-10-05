@@ -1,4 +1,5 @@
 const OpenAI = require("openai");
+const { recordOpenAiUsage } = require("./aiUsageTracker");
 
 const clean = (value) => String(value || "").trim().replace(/\s+/g, " ");
 const titleCase = (value) => clean(value).replace(/\b\w/g, (letter) => letter.toUpperCase());
@@ -46,28 +47,37 @@ function compileWithRules(question) {
   };
 }
 
-async function compileWithOpenAI(question) {
+async function compileWithOpenAI(question, { workspaceId, userId } = {}) {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
   if (!apiKey || process.env.MARKET_RESEARCH_AI_ENABLED === "false") return null;
   const client = new OpenAI({ apiKey });
-  const response = await client.chat.completions.create({
-    model: process.env.MARKET_RESEARCH_OPENAI_MODEL || process.env.JARVIS_OPENAI_MODEL || "gpt-4.1-mini",
-    response_format: { type: "json_object" },
-    temperature: 0,
-    messages: [
-      { role: "system", content: "Convert a natural-language B2B/local-business research request into strict JSON. Never invent companies, counts, contacts, or search results. Return: name, summary, criteria {industries:string[], keywords:string[], locations:string[], employeeRange:{min:number|null,max:number|null}, minimumLocations:number|null, minimumRating:number|null}, rankingDimensions:string[], assumptions:string[], unresolved:string[]. Keep explicit user constraints. Use null for unknown numeric constraints." },
-      { role: "user", content: clean(question) },
-    ],
-  });
+  const model = process.env.MARKET_RESEARCH_OPENAI_MODEL || process.env.JARVIS_OPENAI_MODEL || "gpt-4.1-mini";
+  const started = Date.now();
+  let response;
+  try {
+    response = await client.chat.completions.create({
+      model,
+      response_format: { type: "json_object" },
+      temperature: 0,
+      messages: [
+        { role: "system", content: "Convert a natural-language B2B/local-business research request into strict JSON. Never invent companies, counts, contacts, or search results. Return: name, summary, criteria {industries:string[], keywords:string[], locations:string[], employeeRange:{min:number|null,max:number|null}, minimumLocations:number|null, minimumRating:number|null}, rankingDimensions:string[], assumptions:string[], unresolved:string[]. Keep explicit user constraints. Use null for unknown numeric constraints." },
+        { role: "user", content: clean(question) },
+      ],
+    });
+  } catch (error) {
+    await recordOpenAiUsage({ workspaceId, userId, agent: "sales", feature: "market_research_compile", model, error, latencyMs: Date.now() - started });
+    throw error;
+  }
+  await recordOpenAiUsage({ workspaceId, userId, agent: "sales", feature: "market_research_compile", model, response, latencyMs: Date.now() - started });
   const parsed = JSON.parse(response.choices?.[0]?.message?.content || "{}");
   if (!parsed.name || !parsed.criteria) throw new Error("The AI research plan was incomplete.");
   return { ...parsed, compiler: "openai" };
 }
 
-async function compileMarketQuestion(question) {
+async function compileMarketQuestion(question, context = {}) {
   const fallback = compileWithRules(question);
   try {
-    const aiPlan = await compileWithOpenAI(question);
+    const aiPlan = await compileWithOpenAI(question, context);
     return aiPlan || fallback;
   } catch (error) {
     return { ...fallback, compilerWarning: "Lead Porch used its built-in parser because the AI planner was unavailable." };

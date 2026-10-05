@@ -646,7 +646,7 @@ router.post("/research/plan", async (req, res) => {
     if (question.length < 8 || question.length > 1000) {
       return res.status(400).json({ success: false, error: "Enter a market question between 8 and 1,000 characters." });
     }
-    const plan = await compileMarketQuestion(question);
+    const plan = await compileMarketQuestion(question, { workspaceId: req.auth.workspaceId, userId: req.auth.user?._id });
     return res.json({ success: true, plan });
   } catch (error) {
     return res.status(400).json({ success: false, error: error.message || "Unable to build a research plan." });
@@ -881,7 +881,7 @@ router.get("/research/results/:audienceId/people", async (req, res) => {
 router.post("/research/run", async (req, res) => {
   try {
     const question = String(req.body?.question || "").trim();
-    const plan = req.body?.plan || await compileMarketQuestion(question);
+    const plan = req.body?.plan || await compileMarketQuestion(question, { workspaceId: req.auth.workspaceId, userId: req.auth.user?._id });
     // 300 = the real ceiling enforced inside searchApolloCompanies (3 pages
     // x 100 results, each page one paid Apollo call) — this outer limit is
     // kept in sync so the API contract is honest rather than silently

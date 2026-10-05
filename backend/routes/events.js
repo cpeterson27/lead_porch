@@ -186,7 +186,7 @@ router.delete("/:id/register/:contactId", async (req, res) => {
 
 router.post("/audience-recommendations", async (req, res) => {
   try {
-    const result = await recommendAudiences(req.body || {});
+    const result = await recommendAudiences(req.body || {}, { workspaceId: req.auth.workspaceId, userId: req.auth.user?._id });
     res.json(result);
   } catch (error) {
     console.error("EVENT AUDIENCE RECOMMENDATION ERROR:", error.message);

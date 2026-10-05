@@ -73,4 +73,30 @@ async function summary(workspaceId, { now = new Date(), Model = AiUsageRecord } 
   };
 }
 
-module.exports = { monthRange, summary };
+// Real pre-action cost estimates, not a cost calculator — there is no way
+// to know a call's exact token cost before the provider actually responds,
+// so this answers "what has this specific action actually cost recently"
+// instead: the average estimatedTotalCostUsd across this workspace's last
+// `lookback` SUCCESSFUL, PRICED calls for that feature, across all time (not
+// just this month, so a brand-new month still has a real number to show).
+// Used both for the "confirm before you spend" prompts the owner asked for
+// and for the always-visible "typical cost per action" reference table.
+async function estimateFeatureCost(workspaceId, feature, { calls = 1, lookback = 20, Model = AiUsageRecord } = {}) {
+  const recent = await Model.find({ workspaceId, feature, success: true, estimatedTotalCostUsd: { $ne: null } })
+    .sort({ createdAt: -1 }).limit(lookback).select("estimatedTotalCostUsd").lean();
+  if (!recent.length) return { feature, hasHistory: false, averageCostPerCallUsd: null, estimatedCostUsd: null, basedOnCalls: 0, requestedCalls: Math.max(1, Number(calls) || 1) };
+  const averageCostPerCallUsd = recent.reduce((n, row) => n + Number(row.estimatedTotalCostUsd), 0) / recent.length;
+  const requestedCalls = Math.max(1, Number(calls) || 1);
+  return { feature, hasHistory: true, averageCostPerCallUsd, estimatedCostUsd: averageCostPerCallUsd * requestedCalls, basedOnCalls: recent.length, requestedCalls };
+}
+
+// One row per distinct feature this workspace has ever actually run,
+// all-time — the standing "how much does each button cost" reference the
+// owner asked for, independent of the current month's totals above.
+async function typicalCosts(workspaceId, { lookback = 20, Model = AiUsageRecord } = {}) {
+  const features = await Model.distinct("feature", { workspaceId });
+  const rows = await Promise.all(features.map((feature) => estimateFeatureCost(workspaceId, feature, { lookback, Model })));
+  return rows.filter((row) => row.hasHistory).sort((a, b) => b.averageCostPerCallUsd - a.averageCostPerCallUsd);
+}
+
+module.exports = { monthRange, summary, estimateFeatureCost, typicalCosts };

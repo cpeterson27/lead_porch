@@ -37,12 +37,36 @@ function createAiRouter(dependencies = {}) {
   const configService = dependencies.aiConfigService || aiConfigService;
   const usageService = dependencies.aiUsageService || aiUsageService;
 
+  /**
+   * Deliberately NOT behind requireAiAdministrator below — this backs the
+   * "this will cost about $X, proceed?" confirmation any user triggering a
+   * costed action (qualifying leads, running a monitor, etc.) sees, not
+   * just owners/admins viewing the Usage & Agents dashboard.
+   */
+  router.get("/usage/estimate", async (req, res) => {
+    try {
+      const feature = String(req.query?.feature || "").trim();
+      if (!feature) return res.status(400).json({ error: "feature is required", code: "AI_USAGE_ESTIMATE_FEATURE_REQUIRED" });
+      const calls = Math.min(1000, Math.max(1, Number(req.query?.calls) || 1));
+      return res.json({ success: true, data: await usageService.estimateFeatureCost(req.auth.workspaceId, feature, { calls }) });
+    } catch (error) {
+      return res.status(500).json({ error: "Cost estimate could not be loaded", code: "AI_USAGE_ESTIMATE_FAILED" });
+    }
+  });
+
   router.use(requireAiAdministrator);
   router.get("/usage/summary", async (req, res) => {
     try {
       return res.json({ success: true, data: await usageService.summary(req.auth.workspaceId) });
     } catch (error) {
       return res.status(500).json({ error: "AI usage could not be loaded", code: "AI_USAGE_SUMMARY_FAILED" });
+    }
+  });
+  router.get("/usage/typical-costs", async (req, res) => {
+    try {
+      return res.json({ success: true, data: await usageService.typicalCosts(req.auth.workspaceId) });
+    } catch (error) {
+      return res.status(500).json({ error: "Typical costs could not be loaded", code: "AI_USAGE_TYPICAL_COSTS_FAILED" });
     }
   });
   router.get("/config", async (req, res) => {

@@ -3,6 +3,7 @@ const OpenAI = require("openai");
 
 const PeopleResearchPreview = require("../models/PeopleResearchPreview");
 const { previewContactIngestion } = require("./contactIngestionService");
+const { recordOpenAiUsage } = require("./aiUsageTracker");
 
 function normalizePublicPeople(rows) {
   if (!Array.isArray(rows) || !rows.length || rows.length > 100) throw new Error("Provide between 1 and 100 researched people.");
@@ -129,34 +130,43 @@ async function researchAndStagePublicPeople({ question, maxResults = 20, workspa
   }
   const limit = Math.min(50, Math.max(1, Number(maxResults) || 20));
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY.trim() });
-  const response = await client.responses.create({
-    model: researchModel(),
-    reasoning: { effort: "low" },
-    tools: [{ type: "web_search" }],
-    input: [
-      {
-        role: "developer",
-        content: `Role: You are Jarvis, the public-web lead researcher inside Growth Operator.\n\nGoal: Find up to ${limit} real decision-makers matching the user's request and return a reviewable evidence-backed list.\n\nSuccess criteria:\n- use public web search and identify named owners, founders, principals, managing partners, presidents, CEOs, or similarly relevant decision-makers\n- cite an HTTPS official company, leadership, association, government registry, or credible news page for every person\n- include an email only when that exact email is visibly published on the cited page; otherwise return an empty email\n- return an empty list when reliable evidence is insufficient\n\nConstraints:\n- never use LinkedIn as the evidence URL and do not claim to scrape LinkedIn\n- never guess or infer email addresses\n- do not create contacts, send outreach, or claim that an email is verified\n- exclude a person when their role or company cannot be supported by the cited source\n\nStop after ${limit} supported people or when further searching is unlikely to produce reliable results.`,
-      },
-      { role: "user", content: question },
-    ],
-    text: {
-      format: {
-        type: "json_schema",
-        name: "jarvis_public_people_research",
-        strict: true,
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            people: { type: "array", items: personSchema },
+  const model = researchModel();
+  const started = Date.now();
+  let response;
+  try {
+    response = await client.responses.create({
+      model,
+      reasoning: { effort: "low" },
+      tools: [{ type: "web_search" }],
+      input: [
+        {
+          role: "developer",
+          content: `Role: You are Jarvis, the public-web lead researcher inside Growth Operator.\n\nGoal: Find up to ${limit} real decision-makers matching the user's request and return a reviewable evidence-backed list.\n\nSuccess criteria:\n- use public web search and identify named owners, founders, principals, managing partners, presidents, CEOs, or similarly relevant decision-makers\n- cite an HTTPS official company, leadership, association, government registry, or credible news page for every person\n- include an email only when that exact email is visibly published on the cited page; otherwise return an empty email\n- return an empty list when reliable evidence is insufficient\n\nConstraints:\n- never use LinkedIn as the evidence URL and do not claim to scrape LinkedIn\n- never guess or infer email addresses\n- do not create contacts, send outreach, or claim that an email is verified\n- exclude a person when their role or company cannot be supported by the cited source\n\nStop after ${limit} supported people or when further searching is unlikely to produce reliable results.`,
+        },
+        { role: "user", content: question },
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "jarvis_public_people_research",
+          strict: true,
+          schema: {
+            type: "object",
+            additionalProperties: false,
+            properties: {
+              people: { type: "array", items: personSchema },
+            },
+            required: ["people"],
           },
-          required: ["people"],
         },
       },
-    },
-    max_output_tokens: 12000,
-  });
+      max_output_tokens: 12000,
+    });
+  } catch (error) {
+    await recordOpenAiUsage({ workspaceId, userId, agent: "research", feature: "public_people_research", model, endpoint: "responses", error, latencyMs: Date.now() - started });
+    throw error;
+  }
+  await recordOpenAiUsage({ workspaceId, userId, agent: "research", feature: "public_people_research", model, endpoint: "responses", response, latencyMs: Date.now() - started });
   if (response.status !== "completed") throw new Error("Jarvis web research did not complete. Try a narrower market or fewer results.");
   const parsed = JSON.parse(response.output_text || "{}");
   const validRows = [];

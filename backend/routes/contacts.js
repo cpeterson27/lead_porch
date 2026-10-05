@@ -26,7 +26,7 @@ const router = express.Router();
 
 router.post("/business-card/extract", async (req, res) => {
   try {
-    const contact = await extractBusinessCard(req.body?.image);
+    const contact = await extractBusinessCard(req.body?.image, { workspaceId: req.auth.workspaceId, userId: req.auth.user?._id });
     return res.json({ success: true, data: contact });
   } catch (error) {
     return res.status(400).json({ success: false, message: error.message || "Unable to read the business card image" });

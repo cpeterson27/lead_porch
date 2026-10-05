@@ -1,4 +1,5 @@
 const OpenAI = require("openai");
+const { recordOpenAiUsage } = require("./aiUsageTracker");
 
 const PROFILES = [
   {
@@ -64,34 +65,43 @@ function ruleRecommendations(input = {}) {
     .slice(0, 8);
 }
 
-async function openAiRecommendations(input = {}) {
+async function openAiRecommendations(input = {}, { workspaceId, userId } = {}) {
   if (!process.env.OPENAI_API_KEY?.trim() || process.env.JARVIS_OPENAI_ENABLED !== "true") {
     return [];
   }
   const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY.trim() });
-  const response = await client.chat.completions.create({
-    model: process.env.JARVIS_OPENAI_MODEL || "gpt-4.1-mini",
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content: "You are an event marketing strategist. Return JSON with an audiences array of 3-8 objects. Each object must have label, reason, and evidence (an array of short phrases grounded only in the supplied event). Do not invent demographics, income, profession, or intent. Prefer precise market segments over vague groups.",
-      },
-      {
-        role: "user",
-        content: JSON.stringify({
-          name: input.name || "",
-          summary: input.summary || "",
-          description: input.description || "",
-          attendeeOutcomes: input.planning?.attendeeOutcomes || "",
-          idealAttendee: input.planning?.idealAttendee || "",
-          businessGoal: input.planning?.businessGoal || "",
-          price: input.ticketPrice || 0,
-          format: input.locationType || "online",
-        }),
-      },
-    ],
-  });
+  const model = process.env.JARVIS_OPENAI_MODEL || "gpt-4.1-mini";
+  const started = Date.now();
+  let response;
+  try {
+    response = await client.chat.completions.create({
+      model,
+      response_format: { type: "json_object" },
+      messages: [
+        {
+          role: "system",
+          content: "You are an event marketing strategist. Return JSON with an audiences array of 3-8 objects. Each object must have label, reason, and evidence (an array of short phrases grounded only in the supplied event). Do not invent demographics, income, profession, or intent. Prefer precise market segments over vague groups.",
+        },
+        {
+          role: "user",
+          content: JSON.stringify({
+            name: input.name || "",
+            summary: input.summary || "",
+            description: input.description || "",
+            attendeeOutcomes: input.planning?.attendeeOutcomes || "",
+            idealAttendee: input.planning?.idealAttendee || "",
+            businessGoal: input.planning?.businessGoal || "",
+            price: input.ticketPrice || 0,
+            format: input.locationType || "online",
+          }),
+        },
+      ],
+    });
+  } catch (error) {
+    await recordOpenAiUsage({ workspaceId, userId, agent: "sales", feature: "event_audience_recommendation", model, error, latencyMs: Date.now() - started });
+    return [];
+  }
+  await recordOpenAiUsage({ workspaceId, userId, agent: "sales", feature: "event_audience_recommendation", model, response, latencyMs: Date.now() - started });
   try {
     const parsed = JSON.parse(response.choices?.[0]?.message?.content || "{}");
     return Array.isArray(parsed.audiences)
@@ -102,8 +112,8 @@ async function openAiRecommendations(input = {}) {
   }
 }
 
-async function recommendAudiences(input = {}) {
-  const ai = await openAiRecommendations(input);
+async function recommendAudiences(input = {}, context = {}) {
+  const ai = await openAiRecommendations(input, context);
   if (ai.length) return { source: "openai", recommendations: ai };
   return { source: "rules", recommendations: ruleRecommendations(input) };
 }

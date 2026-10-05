@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from "react-router-dom";
 import Button from "../components/Button.jsx";
 import DashboardCard from "../components/DashboardCard.jsx";
 import Modal from "../components/Modal.jsx";
+import CostConfirmModal from "../components/CostConfirmModal.jsx";
 import PublicWebDiscoveryPanel from "./PublicWebDiscoveryPanel.jsx";
 import {
   createAudienceDefinition,
@@ -617,6 +618,16 @@ export default function Discovery() {
   // of 20 and runs them sequentially instead, so every selected lead is
   // actually processed and the UI shows real batch progress.
   const QUALIFY_BATCH_SIZE = 20;
+  // Gate the actual spend behind an explicit confirm — the owner's own
+  // request: no button that spends real AI money runs until she's seen and
+  // accepted an estimated cost first, whether she's qualifying one lead or
+  // fifty at once.
+  const [qualifyConfirmIds, setQualifyConfirmIds] = useState(null);
+  const requestQualify = (resultIds) => {
+    const ids = Array.isArray(resultIds) ? resultIds : selectedGroundingIds;
+    if (!ids.length || qualifyBusy) return;
+    setQualifyConfirmIds(ids);
+  };
   const qualifyGroundingResults = async (resultIds) => {
     const ids = Array.isArray(resultIds) ? resultIds : selectedGroundingIds;
     if (!ids.length || qualifyBusy) return;
@@ -660,7 +671,7 @@ export default function Discovery() {
     }
   };
 
-  const qualifySelectedGroundingResults = () => qualifyGroundingResults(selectedGroundingIds);
+  const qualifySelectedGroundingResults = () => requestQualify(selectedGroundingIds);
 
   const runGroundingSearch = async () => {
     if (!groundingQuery.trim() || groundingBusy || !groundingTypes.length) return;
@@ -1972,7 +1983,7 @@ export default function Discovery() {
                     {primaryStep === "qualify" ? (
                       <div className="leadgen-row-actions__group is-next-step">
                         <span>Next step:</span>
-                        <Button size="sm" loading={qualifyBusy} onClick={() => qualifyGroundingResults([result._id])}>Qualify with Jarvis</Button>
+                        <Button size="sm" loading={qualifyBusy} onClick={() => requestQualify([result._id])}>Qualify with Jarvis</Button>
                       </div>
                     ) : null}
                     {result.qualificationLabel === "needs_review" ? (
@@ -1982,7 +1993,7 @@ export default function Discovery() {
                     {primaryStep === "qualify_again" ? (
                       <div className="leadgen-row-actions__group is-next-step">
                         <span>Next step:</span>
-                        <Button size="sm" loading={qualifyBusy} onClick={() => qualifyGroundingResults([result._id])}>Qualify again with Jarvis</Button>
+                        <Button size="sm" loading={qualifyBusy} onClick={() => requestQualify([result._id])}>Qualify again with Jarvis</Button>
                       </div>
                     ) : null}
                     {primaryStep === "add_to_crm" ? <Button size="sm" onClick={() => saveGroundingResult(result._id)}>{leadCampaignId ? "Add to CRM + campaign" : "Add to CRM"}</Button> : null}
@@ -1993,7 +2004,7 @@ export default function Discovery() {
                         <div className="leadgen-row-actions__more-body">
                           {showFindContactGroup && primaryStep !== "find_contact" ? findContactGroup : null}
                           {canQualifyAgain && primaryStep !== "qualify_again" ? (
-                            <Button size="sm" variant="outline" loading={qualifyBusy} onClick={() => qualifyGroundingResults([result._id])}>Qualify again with Jarvis</Button>
+                            <Button size="sm" variant="outline" loading={qualifyBusy} onClick={() => requestQualify([result._id])}>Qualify again with Jarvis</Button>
                           ) : null}
                           {canSaveAnyway ? (
                             <Button size="sm" variant="outline" onClick={() => saveGroundingResult(result._id)} title={result.qualificationLabel === "not_a_fit" ? "Jarvis scored this a poor program fit and marked it not a fit — you have a real email and can overrule that judgment yourself." : "Jarvis didn't find enough evidence to auto-qualify this one, but you have a real email and can judge it yourself."}>{result.qualificationLabel === "not_a_fit" ? "Add anyway — Jarvis said not a fit" : "Save anyway"}</Button>
@@ -2192,5 +2203,17 @@ export default function Discovery() {
         {scheduleError ? <p className="form-error">{scheduleError}</p> : null}
       </div>
     </Modal>
+
+    <CostConfirmModal
+      open={Boolean(qualifyConfirmIds)}
+      feature="qualify_and_recommend_leads"
+      calls={qualifyConfirmIds ? Math.ceil(qualifyConfirmIds.length / QUALIFY_BATCH_SIZE) : 1}
+      itemNoun="batch"
+      title={qualifyConfirmIds?.length > 1 ? `Qualify ${qualifyConfirmIds.length} leads with Jarvis?` : "Qualify this lead with Jarvis?"}
+      actionLabel="Qualify with Jarvis"
+      busy={qualifyBusy}
+      onCancel={() => setQualifyConfirmIds(null)}
+      onConfirm={() => { const ids = qualifyConfirmIds; setQualifyConfirmIds(null); qualifyGroundingResults(ids); }}
+    />
   </div>;
 }

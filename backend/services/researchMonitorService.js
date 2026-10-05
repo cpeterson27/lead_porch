@@ -11,6 +11,7 @@ const { researchPublicWebsite } = require("./publicWebsiteResearchService");
 const { runWithWorkspace } = require("../tenancy/workspaceContext");
 const CoachingProgram = require("../models/CoachingProgram");
 const taxonomy = require("./leadDiscoveryTaxonomy");
+const { recordOpenAiUsage } = require("./aiUsageTracker");
 
 const RUNNER_INTERVAL_MS = Math.max(15000, Number(process.env.RESEARCH_WORKER_POLL_MS) || 60000);
 const LEASE_MS = Math.max(120000, Number(process.env.RESEARCH_WORKER_LEASE_MS) || 20 * 60000);
@@ -241,13 +242,15 @@ function deduplicateSignals(signals = []) {
   return [...rows.values()];
 }
 
-async function classifySignal(signal) {
+async function classifySignal(signal, monitor) {
   const fallback = rulesClassify(signal);
   if (process.env.JARVIS_OPENAI_ENABLED !== "true" || !process.env.OPENAI_API_KEY?.trim()) return fallback;
+  const model = process.env.INTENT_CLASSIFICATION_OPENAI_MODEL || process.env.JARVIS_OPENAI_MODEL || "gpt-4.1-mini";
+  const started = Date.now();
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY.trim() });
     const response = await client.chat.completions.create({
-      model: process.env.INTENT_CLASSIFICATION_OPENAI_MODEL || process.env.JARVIS_OPENAI_MODEL || "gpt-4.1-mini",
+      model,
       response_format: { type: "json_object" },
       temperature: 0,
       messages: [
@@ -255,11 +258,15 @@ async function classifySignal(signal) {
         { role: "user", content: JSON.stringify({ title: signal.title || "", excerpt: signal.excerpt || "", source: signal.source }) },
       ],
     });
+    await recordOpenAiUsage({ workspaceId: monitor?.workspaceId, userId: monitor?.userId, agent: "research", feature: "monitor_signal_classification", model, response, latencyMs: Date.now() - started });
     const parsed = JSON.parse(response.choices?.[0]?.message?.content || "{}");
     const allowed = new Set(["buyer_intent", "hypothetical_or_student", "promotion", "job_seeker", "irrelevant", "uncertain"]);
     if (!allowed.has(parsed.classification)) return fallback;
     return { classification: parsed.classification, method: "openai", reason: String(parsed.reason || "AI classification completed.").slice(0, 500) };
-  } catch (_error) { return fallback; }
+  } catch (error) {
+    await recordOpenAiUsage({ workspaceId: monitor?.workspaceId, userId: monitor?.userId, agent: "research", feature: "monitor_signal_classification", model, error, latencyMs: Date.now() - started });
+    return fallback;
+  }
 }
 
 function identityResolution(signal) {
@@ -327,7 +334,7 @@ async function runResearchMonitor(monitorId) {
         // Only spend an OpenAI call on candidates that already cleared the deterministic gate for an
         // individual buyer-intent conversation — never on community/investor rows or already-rejected ones.
         if (bucket !== "rejected" && !isInvestorProfileMonitor(monitor) && !isCommunityPartnerMonitor(monitor)) {
-          classification = await classifySignal(signal);
+          classification = await classifySignal(signal, monitor);
           if (["hypothetical_or_student", "promotion", "job_seeker", "irrelevant"].includes(classification.classification)) {
             bucket = "rejected";
             rejectionReason = mapAiRejection(classification.classification);

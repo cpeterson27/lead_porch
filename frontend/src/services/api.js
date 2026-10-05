@@ -1910,6 +1910,10 @@ export const updateAiConfig = (payload) =>
   api.patch("/ai/config", payload).then((res) => res.data);
 export const fetchAiUsageSummary = () =>
   api.get("/ai/usage/summary").then((res) => res.data);
+export const fetchAiUsageTypicalCosts = () =>
+  api.get("/ai/usage/typical-costs").then((res) => res.data);
+export const fetchAiCostEstimate = (feature, calls = 1) =>
+  api.get("/ai/usage/estimate", { params: { feature, calls } }).then((res) => res.data);
 export const fetchGeminiConfig = () =>
   api.get("/ai/gemini/config").then((res) => res.data);
 export const updateGeminiConfig = (payload) =>

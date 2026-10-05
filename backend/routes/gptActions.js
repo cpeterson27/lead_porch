@@ -122,7 +122,7 @@ router.post("/gpt-actions/research/plan", requireScope("research:read"), async (
   try {
     const question = String(req.body?.question || "").trim();
     if (question.length < 8 || question.length > 1000) return res.status(400).json({ error: "Enter a research question between 8 and 1,000 characters." });
-    const plan = await compileMarketQuestion(question);
+    const plan = await compileMarketQuestion(question, { workspaceId: req.mcpAuth.workspaceId, userId: req.mcpAuth.userId });
     audit(req, "plan_research", true);
     res.json({ plan, confirmationRequiredBeforeStarting: true });
   } catch (error) { audit(req, "plan_research", false, error.message); res.status(400).json({ error: error.message }); }
@@ -134,7 +134,7 @@ router.post("/gpt-actions/research/run", requireScope("research:write"), async (
     // 300 = the real ceiling enforced inside searchApolloCompanies (3 pages
     // x 100 results, each page one paid Apollo call).
     const maxResults = Math.min(300, Math.max(1, Number(req.body?.maxResults) || 250));
-    const plan = await compileMarketQuestion(question);
+    const plan = await compileMarketQuestion(question, { workspaceId: req.mcpAuth.workspaceId, userId: req.mcpAuth.userId });
     const audience = await Audience.create({ workspaceId: req.mcpAuth.workspaceId, name: String(plan.name || "Lead Porch market research").slice(0, 160), description: plan.summary || question, source: "ai", criteria: plan.criteria || {} });
     const job = await MarketResearchJob.create({ workspaceId: req.mcpAuth.workspaceId, userId: req.mcpAuth.userId, audienceId: audience._id, question, plan, sourceId: "apollo_company_search", status: "queued" });
     setImmediate(() => runMarketResearchJob(job._id, { maxResults }).catch(() => {}));

@@ -3,12 +3,14 @@ import { Link } from "react-router-dom";
 import Button from "../components/Button.jsx";
 import DashboardCard from "../components/DashboardCard.jsx";
 import StatCard from "../components/StatCard.jsx";
+import CostConfirmModal from "../components/CostConfirmModal.jsx";
 import useAuth from "../context/useAuth.js";
 import { hasRole } from "../utils/roleAccess.js";
 import {
   fetchAiConfig,
   updateAiConfig,
   fetchAiUsageSummary,
+  fetchAiUsageTypicalCosts,
   fetchGeminiConfig,
   updateGeminiConfig,
   fetchVertexConfig,
@@ -84,6 +86,11 @@ const FEATURE_LABELS = {
   testimonials: "Generating testimonials",
   explain_pipeline_health: "Explaining pipeline health",
   application: "General application request",
+  business_card_extraction: "Reading a scanned business card",
+  event_audience_recommendation: "Suggesting an event's target audience",
+  market_research_compile: "Reading a market-research request",
+  public_people_research: "Public-web people research (Jarvis chat \"find leads\")",
+  monitor_signal_classification: "Monitor — classifying a found signal",
 };
 function featureLabel(feature) { return FEATURE_LABELS[feature] || feature.replace(/[._]/g, " "); }
 
@@ -174,6 +181,8 @@ export default function AiAcquisitionControls() {
   const { session } = useAuth();
   const [aiConfig, setAiConfig] = useState(null);
   const [usage, setUsage] = useState(null);
+  const [typicalCosts, setTypicalCosts] = useState(null);
+  const [runConfirmMonitor, setRunConfirmMonitor] = useState(null);
   const [geminiConfig, setGeminiConfig] = useState(null);
   const [vertexConfig, setVertexConfig] = useState(null);
   const [health, setHealth] = useState(null);
@@ -200,6 +209,7 @@ export default function AiAcquisitionControls() {
     const requests = [
       fetchAiConfig().then((res) => setAiConfig(res.data)),
       fetchAiUsageSummary().then((res) => setUsage(res.data)),
+      fetchAiUsageTypicalCosts().then((res) => setTypicalCosts(res.data)).catch(() => {}),
       fetchGeminiConfig().then((res) => setGeminiConfig(res.data)),
       fetchVertexConfig().then((res) => setVertexConfig(res.data)),
       fetchProvidersHealth().then((res) => setHealth(res.data)),
@@ -403,6 +413,12 @@ export default function AiAcquisitionControls() {
     }
   };
 
+  const confirmRunNow = async () => {
+    const monitor = runConfirmMonitor;
+    setRunConfirmMonitor(null);
+    await runNow(monitor);
+  };
+
   const pauseAll = async () => {
     if (!window.confirm("Pause all AI generation and discovery monitors for this workspace? This can be turned back on at any time.")) return;
     setSaving(true);
@@ -509,6 +525,28 @@ export default function AiAcquisitionControls() {
         ) : null}
         <p className="ai-usage-command__note"><strong>This is not your provider billing total.</strong> It includes only AI requests recorded by Lead Porch during the current month. Requests made before usage tracking existed, direct provider-dashboard usage, image charges without returned pricing, and Gemini's external credit balance may be absent. Apollo, PDL, and OpenAI's real account balances are shown separately below. {usage.unpricedRequestCount || 0} tracked request{usage.unpricedRequestCount === 1 ? " has" : "s have"} no price available.</p>
       </section> : null}
+
+      <DashboardCard title="Typical cost per action" action={<Button variant="outline" size="sm" onClick={() => fetchAiUsageTypicalCosts().then((res) => setTypicalCosts(res.data)).catch(() => {})}>Refresh</Button>}>
+        <p className="provider-health-explainer">
+          What each action has actually cost recently, all-time (not just this month) — the standing answer to
+          "how much does this button cost." Each number is the average of the last 20 times that specific action
+          ran successfully for this workspace, so it only appears here once it has run at least once. The
+          confirmation popup you see before qualifying leads or running a monitor shows this same number.
+        </p>
+        {typicalCosts?.length ? (
+          <div className="ai-agent-ledger" aria-label="Average cost per action, all-time">
+            <header><strong>Action</strong><span>Average cost per run · based on last N runs</span></header>
+            {typicalCosts.map((row) => <div key={row.feature}>
+              <strong>{featureLabel(row.feature)}</strong>
+              <span>Based on last {row.basedOnCalls} run{row.basedOnCalls === 1 ? "" : "s"}</span>
+              <span />
+              <b>{money(row.averageCostPerCallUsd)}</b>
+            </div>)}
+          </div>
+        ) : (
+          <p>No actions have run yet for this workspace — this fills in automatically the first time each one is used.</p>
+        )}
+      </DashboardCard>
 
       <DashboardCard
         title="Emergency stop"
@@ -803,7 +841,7 @@ export default function AiAcquisitionControls() {
                   <td>{performance ? performance.buckets.live_lead : "—"}</td>
                   <td>{monitor.lastRunStatus || "never run"}</td>
                   <td className="ai-controls-monitor-table__actions">
-                    <Button size="sm" variant="outline" disabled={busy} onClick={() => runNow(monitor)}>Run now</Button>
+                    <Button size="sm" variant="outline" disabled={busy} onClick={() => setRunConfirmMonitor(monitor)}>Run now</Button>
                     <Button size="sm" variant="outline" disabled={busy} onClick={() => resetMonitorLeads(monitor)}>Trash &amp; reset</Button>
                   </td>
                 </tr>
@@ -849,6 +887,18 @@ export default function AiAcquisitionControls() {
           )}
         </DashboardCard>
       ) : null}
+
+      <CostConfirmModal
+        open={Boolean(runConfirmMonitor)}
+        feature="monitor_signal_classification"
+        calls={1}
+        title={`Run "${runConfirmMonitor?.name || "this monitor"}" now?`}
+        actionLabel="Run now"
+        note="This is the typical cost per signal this monitor classifies with AI, not a total for the whole run — a run can check anywhere from a few to dozens of signals, so the real total varies and will show on this page afterward."
+        busy={monitorBusyId === runConfirmMonitor?._id}
+        onCancel={() => setRunConfirmMonitor(null)}
+        onConfirm={confirmRunNow}
+      />
     </div>
   );
 }

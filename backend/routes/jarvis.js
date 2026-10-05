@@ -198,7 +198,7 @@ router.post("/chat", async (req, res) => {
     const leadResearchRequest = /\b(find|discover|research|search for|build)\b/i.test(message)
       && /\b(leads?|prospects?|business(?:es)?|compan(?:y|ies)|owners?|founders?|decision[- ]makers?|principals?|presidents?|ceos?|attendees?|contacts?)\b/i.test(message);
     if (leadResearchRequest) {
-      const plan = await compileMarketQuestion(message);
+      const plan = await compileMarketQuestion(message, { workspaceId: req.auth.workspaceId, userId: req.auth.user?._id });
       try {
         const requestedCount = [...message.matchAll(/\b(\d{1,2})\b/g)]
           .map((match) => Number(match[1]))
