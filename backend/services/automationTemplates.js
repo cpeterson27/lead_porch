@@ -1,3 +1,26 @@
+// Real, found incident (2026-10-05): every "communication.email" action
+// below routes through coachingCommunicationService.js's processJob(),
+// which calls integrationHub.execute("resend", "sendEmail", ...) directly —
+// a completely separate path from services/email.js's sendEmail(), which
+// every campaign/sequence/newsletter send in this app uses. That means
+// communication.email automation sends currently have NONE of: the hourly
+// rate cap (see email.js's RAMP_* constants — the exact protection built
+// after a real spam-triggering burst), the real sender-identity lookup from
+// Settings (falls back to a hardcoded process.env.EMAIL_FROM, or the
+// Resend sandbox address if that's unset), or a visible compliance
+// footer/postal address in the email body for purpose:"marketing" sends.
+// DO NOT enable any of the templates below with a purpose:"marketing"
+// action until this is fixed — currently: closed_lost_nurture,
+// program_completed_sequence, event_reminder,
+// incomplete_application_followup, lead_magnet_delivery,
+// partnership_outreach. The fix is
+// not a one-line swap: services/email.js's sendEmail() requires real
+// marketing consent on every send (correct for campaigns), which would
+// wrongly BLOCK the purpose:"transactional" automations here (payment
+// reminders, application confirmations) for any contact who hasn't opted
+// into marketing — checkSendEligibility needs a genuine, separate
+// "transactional" bypass added before these two send paths can safely
+// share one function.
 const templates = Object.freeze([
   { key: "ambassador_welcome", name: "Ambassador profile → welcome draft", description: "After profile completion, notify the team and generate a review-only welcome draft when workspace permission is enabled. Never publishes automatically.", trigger: { eventType: "ambassador.profile.completed" }, conditions: [], actions: [{ type: "notification.create", config: { title: "Ambassador profile ready for review" } }, { type: "ambassador.welcome_draft", config: {} }] },
   { key: "ambassador_profile_reminder", name: "Ambassador profile reminder", description: "After account activation, wait three days and notify an ambassador in-app only if their profile remains incomplete.", trigger: { eventType: "team.invitation.accepted" }, conditions: [{ field: "event.roles", operator: "contains", value: "ambassador" }], actions: [{ type: "ambassador.profile_reminder", delayMinutes: 4320, config: { title: "Complete your ambassador profile", body: "Add your headshot and required profile information so your welcome post can be prepared." } }] },
