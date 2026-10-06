@@ -14,6 +14,35 @@
 }
 .email-sequences-header p { color: var(--color-text-muted); max-width: 640px; }
 
+.email-sequences-explainer dl { margin: 0; }
+.email-sequences-explainer__grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px 24px;
+}
+.email-sequences-explainer__grid dt {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin-bottom: 4px;
+}
+.email-sequences-explainer__grid dd {
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+.email-sequences-explainer__footnote {
+  margin: 16px 0 0;
+  padding-top: 14px;
+  border-top: 1px solid var(--color-border);
+  color: var(--color-text-subtle);
+  font-size: 0.82rem;
+}
+@media (max-width: 640px) {
+  .email-sequences-explainer__grid { grid-template-columns: 1fr; }
+}
+
 .email-sequence-list {
   display: flex;
   flex-direction: column;
@@ -105,6 +134,25 @@
 .email-sequence-form .form-field select {
   width: 100%;
   box-sizing: border-box;
+  border: 1px solid var(--color-border);
+  background: var(--color-canvas, var(--color-surface));
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.875rem;
+}
+.email-sequence-form .form-field input {
+  height: 40px;
+  padding: 0 14px;
+}
+.email-sequence-form .form-field textarea {
+  padding: 10px 14px;
+  resize: vertical;
+}
+.email-sequence-form .form-field input:focus-visible,
+.email-sequence-form .form-field textarea:focus-visible {
+  border-color: var(--color-brand);
+  box-shadow: 0 0 0 3px var(--color-brand-soft);
+  outline: none;
 }
 .email-sequence-form h3 { margin: 6px 0 0; }
 .email-sequence-form__checkbox {
@@ -114,29 +162,76 @@
   font-size: 0.86rem;
 }
 
-.email-sequence-step-editor {
+.email-sequence-form__steps-hint {
+  margin: -4px 0 4px;
+  color: var(--color-text-subtle);
+  font-size: 0.82rem;
+}
+
+.email-sequence-timeline {
+  display: flex;
+  flex-direction: column;
+}
+.email-sequence-timeline__item {
+  display: grid;
+  grid-template-columns: 40px 1fr;
+  gap: 16px;
+}
+.email-sequence-timeline__rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.email-sequence-timeline__marker {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(135deg, var(--color-brand), #29c7ed);
+  color: #fff;
+  font-weight: 700;
+  font-size: 0.86rem;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--color-brand) 30%, transparent);
+}
+.email-sequence-timeline__marker--add {
+  background: var(--color-surface-muted);
+  color: var(--color-text-subtle);
+  box-shadow: none;
+}
+.email-sequence-timeline__line {
+  flex: 1;
+  width: 2px;
+  min-height: 24px;
+  margin: 4px 0;
+  background: color-mix(in srgb, var(--color-brand) 24%, transparent);
+}
+.email-sequence-timeline__content {
+  padding-bottom: 22px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 16px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-lg);
-  background: var(--color-surface-subtle);
 }
-.email-sequence-step-editor header {
+.email-sequence-timeline__item--add .email-sequence-timeline__content {
+  padding-bottom: 0;
+  justify-content: center;
+}
+.email-sequence-timeline__content header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
 }
-.email-sequence-step-editor header label {
+.email-sequence-timeline__delay {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 0.82rem;
   color: var(--color-text-muted);
 }
-.email-sequence-step-editor header input[type="number"] {
+.email-sequence-timeline__delay input[type="number"] {
   width: 56px;
   text-align: center;
 }

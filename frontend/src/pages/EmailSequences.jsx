@@ -145,12 +145,38 @@ export default function EmailSequences() {
           <p className="page-eyebrow">Outreach</p>
           <h1>Email Sequences</h1>
           <p>
-            Timed, multi-step email nurture campaigns — enroll contacts from the CRM and Lead Porch
-            sends each step on schedule, stopping automatically if the contact replies.
+            Build a short series of emails once, then enroll contacts one at a time from the CRM.
+            Each contact gets their own timer and moves through the steps on schedule — Lead Porch
+            stops their sequence automatically if they reply.
           </p>
         </div>
         <Button onClick={openNewSequence}>New sequence</Button>
       </header>
+
+      <DashboardCard title="How this is different from Campaigns, Newsletter, and Automations" className="email-sequences-explainer">
+        <dl className="email-sequences-explainer__grid">
+          <div>
+            <dt>Email Sequences (this page)</dt>
+            <dd>A series you write once. You enroll contacts individually from the CRM, and each one privately works through the steps on their own timeline.</dd>
+          </div>
+          <div>
+            <dt>Campaigns</dt>
+            <dd>A one-time personalized email you send once to a list of contacts you pick.</dd>
+          </div>
+          <div>
+            <dt>Newsletter</dt>
+            <dd>A one-time email sent to literally everyone in your CRM at once — no list to pick.</dd>
+          </div>
+          <div>
+            <dt>Automations</dt>
+            <dd>A separate, rule-based feature that reacts to events (e.g. "application gone stale") and can send its own emails or take other actions automatically — not built or edited here.</dd>
+          </div>
+        </dl>
+        <p className="email-sequences-explainer__footnote">
+          All four now send through the same protected delivery system, so the same spam
+          protections, sending limits, and compliance footer apply no matter which one you use.
+        </p>
+      </DashboardCard>
 
       {error ? <p className="form-error">{error}</p> : null}
       {notice ? <p className="discovery-notice">{notice}</p> : null}
@@ -236,29 +262,46 @@ export default function EmailSequences() {
             </label>
 
             <h3>Steps</h3>
-            {editingSequence.steps.map((step, index) => (
-              <div className="email-sequence-step-editor" key={index}>
-                <header>
-                  <strong>Step {index + 1}</strong>
-                  <label>
-                    Send
-                    <input type="number" min="0" max="365" value={step.delayDays} onChange={(event) => updateStep(index, { delayDays: Number(event.target.value) })} />
-                    day{step.delayDays === 1 ? "" : "s"} after {index === 0 ? "enrollment" : "the previous step"}
-                  </label>
-                  {editingSequence.steps.length > 1 ? <Button size="sm" variant="outline" onClick={() => removeStep(index)}>Remove</Button> : null}
-                </header>
-                <label className="form-field">
-                  <span>Subject</span>
-                  <input value={step.subject} onChange={(event) => updateStep(index, { subject: event.target.value })} placeholder="{{firstName}}, ..." />
-                </label>
-                <label className="form-field">
-                  <span>Message</span>
-                  <textarea className="select-input" rows={6} value={step.body} onChange={(event) => updateStep(index, { body: event.target.value })} placeholder={"Hi {{firstName}},\n\n..."} />
-                  <small>Tokens: {"{{firstName}}"}, {"{{lastName}}"}, {"{{company}}"}</small>
-                </label>
+            <p className="email-sequence-form__steps-hint">
+              Each step fires this many days after the step before it (step 1 fires on enrollment day).
+            </p>
+            <div className="email-sequence-timeline">
+              {editingSequence.steps.map((step, index) => (
+                <div className="email-sequence-timeline__item" key={index}>
+                  <div className="email-sequence-timeline__rail">
+                    <span className="email-sequence-timeline__marker">{index + 1}</span>
+                    {index < editingSequence.steps.length - 1 ? <i className="email-sequence-timeline__line" /> : null}
+                  </div>
+                  <div className="email-sequence-timeline__content">
+                    <header>
+                      <label className="email-sequence-timeline__delay">
+                        Send
+                        <input type="number" min="0" max="365" value={step.delayDays} onChange={(event) => updateStep(index, { delayDays: Number(event.target.value) })} />
+                        day{step.delayDays === 1 ? "" : "s"} after {index === 0 ? "enrollment" : "the previous step"}
+                      </label>
+                      {editingSequence.steps.length > 1 ? <Button size="sm" variant="outline" onClick={() => removeStep(index)}>Remove step</Button> : null}
+                    </header>
+                    <label className="form-field">
+                      <span>Subject</span>
+                      <input value={step.subject} onChange={(event) => updateStep(index, { subject: event.target.value })} placeholder="{{firstName}}, ..." />
+                    </label>
+                    <label className="form-field">
+                      <span>Message</span>
+                      <textarea rows={6} value={step.body} onChange={(event) => updateStep(index, { body: event.target.value })} placeholder={"Hi {{firstName}},\n\n..."} />
+                      <small>Tokens: {"{{firstName}}"}, {"{{lastName}}"}, {"{{company}}"}</small>
+                    </label>
+                  </div>
+                </div>
+              ))}
+              <div className="email-sequence-timeline__item email-sequence-timeline__item--add">
+                <div className="email-sequence-timeline__rail">
+                  <span className="email-sequence-timeline__marker email-sequence-timeline__marker--add">+</span>
+                </div>
+                <div className="email-sequence-timeline__content">
+                  <Button variant="outline" onClick={addStep}>Add another step</Button>
+                </div>
               </div>
-            ))}
-            <Button variant="outline" onClick={addStep}>Add another step</Button>
+            </div>
           </div>
         ) : null}
       </Modal>
