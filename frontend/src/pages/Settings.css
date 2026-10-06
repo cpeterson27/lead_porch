@@ -1523,3 +1523,18 @@
 .sender-domain-status__warning {
   color: #a66e04;
 }
+
+.sender-domain-status__records {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  font-size: 0.78rem;
+}
+.sender-domain-status__records li {
+  padding: 2px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-surface-subtle);
+}

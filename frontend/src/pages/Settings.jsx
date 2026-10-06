@@ -473,12 +473,31 @@ export default function Settings() {
                         address — this will land in spam almost every time. Add a real address on your own domain above and save.
                       </p>
                     ) : domainStatus.matchedDomain ? (
-                      <p className={domainStatus.matchedDomain.status === "verified" ? "sender-domain-status__ok" : "sender-domain-status__warning"}>
-                        {domainStatus.senderEmail.split("@")[1]} is {domainStatus.matchedDomain.status === "verified" ? "verified with Resend." : `not fully verified yet (status: ${domainStatus.matchedDomain.status}).`}
-                        {domainStatus.matchedDomain.status !== "verified" && domainStatus.matchedDomain.records?.length ? (
-                          <> Missing/pending records: {domainStatus.matchedDomain.records.filter((record) => record.status !== "verified").map((record) => record.type).join(", ") || "none listed"} — add these in your domain's DNS settings, then check again.</>
+                      <>
+                        <p className={domainStatus.matchedDomain.status === "verified" ? "sender-domain-status__ok" : "sender-domain-status__warning"}>
+                          {domainStatus.senderEmail.split("@")[1]} is {domainStatus.matchedDomain.status === "verified" ? "verified with Resend." : `not fully verified yet (status: ${domainStatus.matchedDomain.status}).`}
+                          {domainStatus.matchedDomain.status !== "verified" && domainStatus.matchedDomain.records?.length ? (
+                            <> Missing/pending records: {domainStatus.matchedDomain.records.filter((record) => record.status !== "verified").map((record) => record.type).join(", ") || "none listed"} — add these in your domain's DNS settings, then check again.</>
+                          ) : null}
+                        </p>
+                        {domainStatus.matchedDomain.records?.length ? (
+                          <ul className="sender-domain-status__records">
+                            {domainStatus.matchedDomain.records.map((record, index) => (
+                              <li key={index} className={record.status === "verified" ? "sender-domain-status__ok" : "sender-domain-status__warning"}>
+                                {record.type}: {record.status}
+                              </li>
+                            ))}
+                          </ul>
                         ) : null}
-                      </p>
+                        {!domainStatus.matchedDomain.records?.some((record) => record.type === "DMARC") ? (
+                          <p className="sender-domain-status__warning">
+                            No DMARC record listed at all — SPF/DKIM being verified is not the same as DMARC. Gmail and other large
+                            providers weigh DMARC heavily for bulk/marketing mail even below their official volume threshold. Adding one
+                            is a real, separate DNS record (ask whoever manages elliescoaching.com's DNS, or add it yourself at your
+                            domain registrar).
+                          </p>
+                        ) : null}
+                      </>
                     ) : (
                       <p className="sender-domain-status__warning">
                         {domainStatus.senderEmail.split("@")[1] || "This domain"} isn't set up in Resend at all yet — add and verify it at{" "}
