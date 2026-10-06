@@ -99,8 +99,9 @@ async function checkHourlySendCap() {
 
 async function renderEmailContent(
   outreachItem,
-  { contact = null, preview = false, unsubscribeUrlOverride = "" } = {},
+  { contact = null, preview = false, unsubscribeUrlOverride = "", deliveryPurpose = "marketing" } = {},
 ) {
+  const isTransactional = deliveryPurpose === "transactional";
   const workspace = outreachItem.workspaceId
     ? await Workspace.findById(outreachItem.workspaceId)
         .select("name publicHosts")
@@ -133,8 +134,11 @@ async function renderEmailContent(
     workspaceConfig?.postalAddress ||
     (preview ? "Business postal address from Settings" : "");
   const websiteUrl = String(workspaceConfig?.websiteUrl || "").trim();
-  const complianceText = `This promotional message was sent because we believed this opportunity may be relevant to your professional work.\n${businessName}${postalAddress ? ` · ${postalAddress}` : ""}${websiteUrl ? ` · ${websiteUrl}` : ""}\nUnsubscribe: ${unsubscribeUrl}`;
-  const footerHtml = `<div style="margin-top:36px;padding-top:20px;border-top:1px solid #ddd7ca;color:#737b77;font-size:12px;line-height:1.6;text-align:center"><div style="margin-bottom:8px">This promotional message was sent because we believed this opportunity may be relevant to your professional work.</div><div><strong>${String(businessName).replace(/[<>&"]/g, "")}</strong></div>${postalAddress ? `<div>${String(postalAddress).replace(/[<>&"]/g, "")}</div>` : ""}${websiteUrl ? `<div><a href="${websiteUrl.replace(/"/g, "&quot;")}" style="color:#506b63">${websiteUrl.replace(/[<>&"]/g, "")}</a></div>` : ""}<div style="margin-top:8px"><a href="${unsubscribeUrl}" style="color:#506b63">Unsubscribe from campaign emails</a></div></div>`;
+  const disclosureLine = isTransactional
+    ? "This message relates to your account or an action you took."
+    : "This promotional message was sent because we believed this opportunity may be relevant to your professional work.";
+  const complianceText = `${disclosureLine}\n${businessName}${postalAddress ? ` · ${postalAddress}` : ""}${websiteUrl ? ` · ${websiteUrl}` : ""}${isTransactional ? "" : `\nUnsubscribe: ${unsubscribeUrl}`}`;
+  const footerHtml = `<div style="margin-top:36px;padding-top:20px;border-top:1px solid #ddd7ca;color:#737b77;font-size:12px;line-height:1.6;text-align:center"><div style="margin-bottom:8px">${disclosureLine}</div><div><strong>${String(businessName).replace(/[<>&"]/g, "")}</strong></div>${postalAddress ? `<div>${String(postalAddress).replace(/[<>&"]/g, "")}</div>` : ""}${websiteUrl ? `<div><a href="${websiteUrl.replace(/"/g, "&quot;")}" style="color:#506b63">${websiteUrl.replace(/[<>&"]/g, "")}</a></div>` : ""}${isTransactional ? "" : `<div style="margin-top:8px"><a href="${unsubscribeUrl}" style="color:#506b63">Unsubscribe from campaign emails</a></div>`}</div>`;
   const text = `${outreachItem.emailDraft || ""}\n\n—\n${complianceText}`;
   let html =
     outreachItem.htmlBody ||
@@ -198,22 +202,30 @@ async function checkSendEligibility(recipientEmail, { contactId, emailTopic, all
     ? await Contact.findById(contactId)
     : await Contact.findOne({ email: recipient.toLowerCase() });
   if (["invalid", "archived"].includes(contact?.status)) {
-    return { eligible: false, message: "This contact is invalid or archived and cannot receive campaign email." };
-  }
-  if (
-    contact?.status === "unsubscribed" ||
-    contact?.emailPreferences?.marketingStatus === "unsubscribed"
-  ) {
-    return { eligible: false, message: "This contact unsubscribed from campaign email." };
+    return { eligible: false, message: "This contact is invalid or archived and cannot receive email." };
   }
   if (!contact) {
-    return { eligible: false, message: "A CRM contact is required before campaign email can be sent." };
+    return { eligible: false, message: "A CRM contact is required before email can be sent." };
   }
   if (contact.emailStatus === "undeliverable" || contact.emailBounced === true) {
     return {
       eligible: false,
       message: "This email address is known to bounce and cannot be sent to.",
     };
+  }
+  // A genuinely transactional email (a payment reminder, an application
+  // confirmation — never a marketing subscription) must never be gated by
+  // marketing-unsubscribe, address-verification, consent, or topic checks:
+  // a contact who unsubscribed from the newsletter must still get a real
+  // payment-decline notice. Suppression and the bounced/invalid/archived
+  // checks above still fully apply — this is not a way to email a known-bad
+  // address, only a way to skip MARKETING-specific gates.
+  if (deliveryPurpose === "transactional") return { eligible: true, contact };
+  if (
+    contact.status === "unsubscribed" ||
+    contact.emailPreferences?.marketingStatus === "unsubscribed"
+  ) {
+    return { eligible: false, message: "This contact unsubscribed from campaign email." };
   }
   if (contact.emailStatus !== "verified" && (!allowUnverified || deliveryPurpose === "business_prospecting")) {
     return {
@@ -284,7 +296,7 @@ async function sendEmail(outreachItem, { allowUnverified = false, deliveryPurpos
   const contact = eligibility.contact;
   let rendered;
   try {
-    rendered = await renderEmailContent(outreachItem, { contact });
+    rendered = await renderEmailContent(outreachItem, { contact, deliveryPurpose });
   } catch (error) {
     return { success: false, message: error.message };
   }

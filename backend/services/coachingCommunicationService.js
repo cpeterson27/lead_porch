@@ -10,15 +10,16 @@ const MessagingSender = require("../models/MessagingSender");
 const ConversationThread = require("../models/ConversationThread");
 const ConversationMessage = require("../models/ConversationMessage");
 const CrmActivity = require("../models/CrmActivity");
+const WorkspaceConfig = require("../models/WorkspaceConfig");
 const integrationHub = require("./integrationHub");
+const { sendEmail: sendProtectedEmail } = require("./email");
 const segmentService = require("./communicationSegmentService");
 const { twilioConversationAdapter } = require("./conversations/twilioConversationAdapter");
 const { ingestProviderMessage } = require("./conversations/conversationIngestionService");
 const { evaluateOutboundCommunication } = require("./communicationPolicyService");
-const { createUnsubscribeToken, publicBackendUrl } = require("../utils/unsubscribe");
 const { runWithWorkspace } = require("../tenancy/workspaceContext");
 
-const deps = { Contact, CoachingSession, CoachProfile, CoachingProgram, Enrollment, MarketingCampaign, CommunicationJob, EmailSuppression, MessagingSender, ConversationThread, ConversationMessage, CrmActivity, integrationHub, segmentService, twilioConversationAdapter, ingestProviderMessage };
+const deps = { Contact, CoachingSession, CoachProfile, CoachingProgram, Enrollment, MarketingCampaign, CommunicationJob, EmailSuppression, MessagingSender, ConversationThread, ConversationMessage, CrmActivity, WorkspaceConfig, integrationHub, segmentService, twilioConversationAdapter, ingestProviderMessage, sendProtectedEmail };
 function communicationError(message, code = "COMMUNICATION_INVALID") { const error = new Error(message); error.code = code; return error; }
 function firstName(contact) { return contact.firstName || String(contact.name || "there").trim().split(/\s+/)[0] || "there"; }
 function render(value, context) { return String(value || "").replace(/{{\s*([a-zA-Z0-9_.]+)\s*}}/g, (_all, key) => key.split(".").reduce((current, part) => current?.[part], context) ?? ""); }
@@ -119,10 +120,32 @@ async function processJob(job, models = deps) {
   try {
     let response;
     if (job.channel === "email") {
-      const policy = await emailPolicy(contact, job.purpose, models, job.metadata?.topic); if (!policy.allowed) throw communicationError(policy.reason, "COMMUNICATION_BLOCKED");
-      const unsubscribeUrl = `${publicBackendUrl()}/api/unsubscribe/${encodeURIComponent(createUnsubscribeToken(contact))}`;
-      response = await models.integrationHub.execute("resend", "sendEmail", { from: process.env.EMAIL_FROM || "Growth Operator <onboarding@resend.dev>", to: contact.email, subject: render(job.content.subject, { contact: safeContact(contact) }), text: render(job.content.body, { contact: safeContact(contact) }), html: job.content.html ? render(job.content.html, { contact: safeContact(contact) }) : undefined, headers: job.purpose === "marketing" ? { "List-Unsubscribe": `<${unsubscribeUrl}>`, "List-Unsubscribe-Post": "List-Unsubscribe=One-Click" } : undefined });
-      await recordCanonicalMessage({ job, contact, channel: "email", provider: "resend", providerMessageId: response.messageId, senderAddress: process.env.EMAIL_FROM || "onboarding@resend.dev", recipientAddress: contact.email }, models);
+      // Real, found incident (2026-10-05): this used to call
+      // integrationHub.execute("resend", "sendEmail", ...) directly — a
+      // second, unprotected send path with none of services/email.js's
+      // real protections (the hourly rate cap added after a genuine
+      // spam-triggering burst, the real configured sender identity, a
+      // correct compliance footer). Now goes through that exact same
+      // function every campaign/sequence/newsletter send uses.
+      // deliveryPurpose:"transactional" for job.purpose === "transactional"
+      // correctly bypasses marketing-consent gating (see email.js's
+      // checkSendEligibility) — a payment reminder must still send to a
+      // contact who unsubscribed from marketing emails.
+      const result = await models.sendProtectedEmail(
+        {
+          workspaceId: job.workspaceId, contactId: contact._id, contactEmail: contact.email,
+          subject: render(job.content.subject, { contact: safeContact(contact) }),
+          emailDraft: render(job.content.body, { contact: safeContact(contact) }),
+          htmlBody: job.content.html ? render(job.content.html, { contact: safeContact(contact) }) : "",
+          emailTopic: "general",
+        },
+        { deliveryPurpose: job.purpose === "marketing" ? "marketing" : "transactional" },
+      );
+      if (!result.success) throw communicationError(result.message || "Unable to send this email", "COMMUNICATION_BLOCKED");
+      response = { messageId: result.id };
+      const workspaceConfig = await models.WorkspaceConfig.findOne({ workspaceId: job.workspaceId, key: "primary" }).select("invitationIdentity").lean();
+      const senderAddress = workspaceConfig?.invitationIdentity?.senderEmail || process.env.EMAIL_FROM || "onboarding@resend.dev";
+      await recordCanonicalMessage({ job, contact, channel: "email", provider: "resend", providerMessageId: response.messageId, senderAddress, recipientAddress: contact.email }, models);
     } else {
       const sender = await models.MessagingSender.findOne({ workspaceId: job.workspaceId, provider: "twilio", status: "active" }); if (!sender) throw communicationError("No active Twilio sender", "COMMUNICATION_BLOCKED");
       const to = contact.mobilePhone || contact.phone || contact.workDirectPhone;

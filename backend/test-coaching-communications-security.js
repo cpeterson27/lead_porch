@@ -12,7 +12,13 @@ assert.match(routes, /const communicationFilter = \{ workspaceId: req\.auth\.wor
 assert.match(routes, /ConversationMessage\.find\(communicationFilter\)/);
 assert.match(service, /CommunicationJob/);
 assert.match(service, /ingestProviderMessage/);
-assert.match(service, /List-Unsubscribe/);
+// 2026-10-05: email sends now go through services/email.js's sendEmail()
+// (the same protected path every campaign/sequence/newsletter send uses —
+// real rate cap, real sender identity, real compliance footer) instead of
+// a second, separate List-Unsubscribe header built inline here. Assert the
+// delegation instead of the now-relocated header text.
+assert.match(service, /sendProtectedEmail/);
+assert.match(service, /deliveryPurpose: job\.purpose/);
 assert.doesNotMatch(service, /hostUrl|start_url|coachingNotes|CoachingNote/);
 assert.match(webhooks, /provider: "resend", providerMessageId: messageId/);
 assert.match(webhooks, /MessageDeliveryEvent\.create/);
